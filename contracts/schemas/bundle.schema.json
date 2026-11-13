@@ -112,6 +112,230 @@
       "title": "CommandsResponse",
       "type": "object"
     },
+    "CompanionSessionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "intent": {
+          "default": "talk",
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "enum": [
+                "en",
+                "fi",
+                "sv"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "default: config/kaiku.toml [home].language"
+        },
+        "others_present": {
+          "default": false,
+          "type": "boolean"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "surface",
+        "home_id"
+      ],
+      "title": "CompanionSessionRequest",
+      "type": "object"
+    },
+    "CompanionSessionResponse": {
+      "additionalProperties": false,
+      "description": "POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null\nwhen the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines).",
+      "properties": {
+        "context_card": {
+          "$ref": "#/$defs/ContextCard"
+        },
+        "live_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LiveToken"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model": {
+          "type": "string"
+        },
+        "persona_version": {
+          "type": "string"
+        },
+        "safety_phrases_version": {
+          "type": "string"
+        },
+        "session_id": {
+          "description": "pass to /v1/companion/tool and /v1/companion/episode",
+          "type": "string"
+        },
+        "system_instruction": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/CompanionTool"
+          },
+          "type": "array"
+        },
+        "voice": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "model",
+        "voice",
+        "system_instruction",
+        "tools",
+        "context_card",
+        "persona_version",
+        "safety_phrases_version"
+      ],
+      "title": "CompanionSessionResponse",
+      "type": "object"
+    },
+    "CompanionTool": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "title": "CompanionTool",
+      "type": "object"
+    },
+    "CompanionToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "surface",
+        "name"
+      ],
+      "title": "CompanionToolCall",
+      "type": "object"
+    },
+    "CompanionToolResult": {
+      "additionalProperties": false,
+      "description": "`ok=false` + `error` when the call was refused (not on this surface, bad args, memory rule). `crisis=true`:\na crisis phrase was in the arguments — nothing was stored, obs.safety_flag was raised; stop the session and\nshow/say `result.script` verbatim. `executor=device`: the device performs the effect itself.",
+      "properties": {
+        "crisis": {
+          "default": false,
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "executor": {
+          "default": "cloud",
+          "enum": [
+            "cloud",
+            "device"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "result": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "name"
+      ],
+      "title": "CompanionToolResult",
+      "type": "object"
+    },
     "Consensus": {
       "additionalProperties": false,
       "properties": {
@@ -192,6 +416,149 @@
         "computed_at"
       ],
       "title": "Consensus",
+      "type": "object"
+    },
+    "ContextCard": {
+      "additionalProperties": false,
+      "description": "What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,\nscores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.",
+      "properties": {
+        "care_info": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "done_today": {
+          "description": "on any surface",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "type": "array"
+        },
+        "dont_remember": {
+          "default": false,
+          "type": "boolean"
+        },
+        "first_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only if the person told Kaiku their name"
+        },
+        "intent": {
+          "default": "talk",
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "fi",
+            "sv"
+          ],
+          "type": "string"
+        },
+        "memories": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
+        "open_thread": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "topic left open on any surface"
+        },
+        "others_present": {
+          "default": false,
+          "type": "boolean"
+        },
+        "phq9_due": {
+          "default": false,
+          "type": "boolean"
+        },
+        "routines": {
+          "description": "e.g. \"usually walks on Tuesdays\"",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "today's bandit suggestion, phrased"
+        },
+        "time_of_day": {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening",
+            "night"
+          ],
+          "type": "string"
+        },
+        "tone": {
+          "default": "steady",
+          "enum": [
+            "steady",
+            "gentle",
+            "extra-gentle"
+          ],
+          "type": "string"
+        },
+        "weather_word": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "time_of_day"
+      ],
+      "title": "ContextCard",
       "type": "object"
     },
     "Criteria": {
@@ -422,6 +789,19 @@
       "title": "Defaults",
       "type": "object"
     },
+    "DeletedResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "title": "DeletedResponse",
+      "type": "object"
+    },
     "DrumSession": {
       "additionalProperties": false,
       "properties": {
@@ -528,6 +908,121 @@
         "payload"
       ],
       "title": "Envelope[dict[str, Any]]",
+      "type": "object"
+    },
+    "EpisodeIn": {
+      "additionalProperties": false,
+      "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.",
+      "properties": {
+        "close_thread": {
+          "default": false,
+          "type": "boolean"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "session_id (or a client UUID); idempotent"
+        },
+        "intent": {
+          "default": "talk",
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "type": "string"
+        },
+        "open_thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadIn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "outcome": {
+          "default": "completed",
+          "enum": [
+            "completed",
+            "skipped",
+            "ended_early",
+            "crisis",
+            "offline"
+          ],
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "tools_used": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "surface",
+        "start"
+      ],
+      "title": "EpisodeIn",
+      "type": "object"
+    },
+    "EpisodeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "id"
+      ],
+      "title": "EpisodeResult",
       "type": "object"
     },
     "EvalResult": {
@@ -1380,6 +1875,30 @@
       "title": "LiveEventsResponse",
       "type": "object"
     },
+    "LiveToken": {
+      "additionalProperties": false,
+      "description": "Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within\n`new_session_expires_at`; the session may run until `expires_at`.",
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "new_session_expires_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "expires_at",
+        "new_session_expires_at"
+      ],
+      "title": "LiveToken",
+      "type": "object"
+    },
     "Log": {
       "additionalProperties": false,
       "properties": {
@@ -1630,6 +2149,92 @@
         }
       },
       "title": "MeasuresDelta",
+      "type": "object"
+    },
+    "MemoriesResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/memories — \"What Kaiku remembers\". Person-facing only; no clinician route returns memories.",
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "memories": {
+          "items": {
+            "$ref": "#/$defs/Memory"
+          },
+          "type": "array"
+        },
+        "remember": {
+          "description": "false = the person turned remembering off",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "home_id",
+        "remember",
+        "memories"
+      ],
+      "title": "MemoriesResponse",
+      "type": "object"
+    },
+    "Memory": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "name",
+            "people",
+            "places",
+            "likes",
+            "what_helps",
+            "plans",
+            "preference"
+          ],
+          "type": "string"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "last_used": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "text",
+        "created"
+      ],
+      "title": "Memory",
+      "type": "object"
+    },
+    "MemorySettings": {
+      "additionalProperties": false,
+      "properties": {
+        "remember": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "remember"
+      ],
+      "title": "MemorySettings",
       "type": "object"
     },
     "MetricSeries": {
@@ -2393,8 +2998,22 @@
     },
     "PlaySession": {
       "additionalProperties": false,
-      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
+      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku, pebbles memory span) on the phone, Mac or\nweb. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
       "properties": {
+        "accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pebbles: share of rounds repeated correctly"
+        },
         "device": {
           "enum": [
             "phone",
@@ -2425,7 +3044,8 @@
           "enum": [
             "firefly",
             "breathe",
-            "tell"
+            "tell",
+            "pebbles"
           ],
           "type": "string"
         },
@@ -2524,6 +3144,20 @@
           ],
           "default": null,
           "description": "firefly: correct taps"
+        },
+        "span_max": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pebbles: longest sequence repeated correctly"
         },
         "speech_rate": {
           "anyOf": [
@@ -3461,6 +4095,30 @@
         "arm"
       ],
       "title": "SuggestNudge",
+      "type": "object"
+    },
+    "ThreadIn": {
+      "additionalProperties": false,
+      "properties": {
+        "skill": {
+          "enum": [
+            "morning_ritual",
+            "weather_check",
+            "walk_companion",
+            "breathe"
+          ],
+          "type": "string"
+        },
+        "topic": {
+          "maxLength": 80,
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill",
+        "topic"
+      ],
+      "title": "ThreadIn",
       "type": "object"
     },
     "TimelinePoint": {

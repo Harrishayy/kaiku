@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "description": "Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within\n`new_session_expires_at`; the session may run until `expires_at`.",
+  "properties": {
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "new_session_expires_at": {
+      "format": "date-time",
+      "title": "New Session Expires At",
+      "type": "string"
+    },
+    "token": {
+      "title": "Token",
+      "type": "string"
+    }
+  },
+  "required": [
+    "token",
+    "expires_at",
+    "new_session_expires_at"
+  ],
+  "title": "LiveToken",
+  "type": "object"
+}

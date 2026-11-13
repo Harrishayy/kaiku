@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "deleted": {
+      "title": "Deleted",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "deleted"
+  ],
+  "title": "DeletedResponse",
+  "type": "object"
+}

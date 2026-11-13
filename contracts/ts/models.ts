@@ -56,6 +56,141 @@ export interface EnvelopeDictStrAny {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CompanionSessionRequest".
+ */
+export interface CompanionSessionRequest {
+  home_id: string;
+  intent?: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
+  /**
+   * default: config/kaiku.toml [home].language
+   */
+  language?: ("en" | "fi" | "sv") | null;
+  others_present?: boolean;
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+}
+/**
+ * POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
+ * when the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CompanionSessionResponse".
+ */
+export interface CompanionSessionResponse {
+  context_card: ContextCard;
+  live_token?: LiveToken | null;
+  model: string;
+  persona_version: string;
+  safety_phrases_version: string;
+  /**
+   * pass to /v1/companion/tool and /v1/companion/episode
+   */
+  session_id: string;
+  system_instruction: string;
+  tools: CompanionTool[];
+  voice: string;
+}
+/**
+ * What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,
+ * scores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ContextCard".
+ */
+export interface ContextCard {
+  care_info?: string | null;
+  /**
+   * on any surface
+   *
+   * @maxItems 4
+   */
+  done_today?: [] | [string] | [string, string] | [string, string, string] | [string, string, string, string];
+  dont_remember?: boolean;
+  /**
+   * only if the person told Kaiku their name
+   */
+  first_name?: string | null;
+  intent?: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
+  language?: "en" | "fi" | "sv";
+  /**
+   * @maxItems 3
+   */
+  memories?: [] | [string] | [string, string] | [string, string, string];
+  /**
+   * topic left open on any surface
+   */
+  open_thread?: string | null;
+  others_present?: boolean;
+  phq9_due?: boolean;
+  /**
+   * e.g. "usually walks on Tuesdays"
+   *
+   * @maxItems 2
+   */
+  routines?: [] | [string] | [string, string];
+  /**
+   * today's bandit suggestion, phrased
+   */
+  suggestion?: string | null;
+  time_of_day: "morning" | "afternoon" | "evening" | "night";
+  tone?: "steady" | "gentle" | "extra-gentle";
+  weather_word?: string | null;
+}
+/**
+ * Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within
+ * `new_session_expires_at`; the session may run until `expires_at`.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "LiveToken".
+ */
+export interface LiveToken {
+  expires_at: string;
+  new_session_expires_at: string;
+  token: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CompanionTool".
+ */
+export interface CompanionTool {
+  description: string;
+  name: string;
+  parameters: {
+    [k: string]: unknown;
+  };
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CompanionToolCall".
+ */
+export interface CompanionToolCall {
+  args?: {
+    [k: string]: unknown;
+  };
+  home_id: string;
+  name: string;
+  session_id?: string | null;
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+}
+/**
+ * `ok=false` + `error` when the call was refused (not on this surface, bad args, memory rule). `crisis=true`:
+ * a crisis phrase was in the arguments — nothing was stored, obs.safety_flag was raised; stop the session and
+ * show/say `result.script` verbatim. `executor=device`: the device performs the effect itself.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CompanionToolResult".
+ */
+export interface CompanionToolResult {
+  crisis?: boolean;
+  error?: string | null;
+  executor?: "cloud" | "device";
+  name: string;
+  ok: boolean;
+  result?: {
+    [k: string]: unknown;
+  };
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "Consensus".
  */
 export interface Consensus {
@@ -394,6 +529,13 @@ export interface CriteriaUpdate {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DeletedResponse".
+ */
+export interface DeletedResponse {
+  deleted: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "DrumSession".
  */
 export interface DrumSession {
@@ -402,6 +544,43 @@ export interface DrumSession {
   regularity: number;
   taps: number;
   tempo_bpm: number;
+}
+/**
+ * POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "EpisodeIn".
+ */
+export interface EpisodeIn {
+  close_thread?: boolean;
+  end?: string | null;
+  home_id: string;
+  /**
+   * session_id (or a client UUID); idempotent
+   */
+  id?: string | null;
+  intent?: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
+  open_thread?: ThreadIn | null;
+  outcome?: "completed" | "skipped" | "ended_early" | "crisis" | "offline";
+  start: string;
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  tools_used?: string[];
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ThreadIn".
+ */
+export interface ThreadIn {
+  skill: "morning_ritual" | "weather_check" | "walk_companion" | "breathe";
+  topic: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "EpisodeResult".
+ */
+export interface EpisodeResult {
+  id: string;
+  ok: boolean;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -748,6 +927,38 @@ export interface NudgeResponse {
   reason: string;
 }
 /**
+ * GET /v1/me/memories — "What Kaiku remembers". Person-facing only; no clinician route returns memories.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "MemoriesResponse".
+ */
+export interface MemoriesResponse {
+  home_id: string;
+  memories: Memory[];
+  /**
+   * false = the person turned remembering off
+   */
+  remember: boolean;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Memory".
+ */
+export interface Memory {
+  category: "name" | "people" | "places" | "likes" | "what_helps" | "plans" | "preference";
+  created: string;
+  id: number;
+  last_used?: string | null;
+  text: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "MemorySettings".
+ */
+export interface MemorySettings {
+  remember: boolean;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "MetricSeries".
  */
@@ -899,7 +1110,8 @@ export interface Phq9History {
   patient_id: string;
 }
 /**
- * One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is
+ * One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku, pebbles memory span) on the phone, Mac or
+ * web. Every feature is
  * computed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.
  * Counts toward the "laptop" (display: Apps) source wherever it was played.
  *
@@ -907,13 +1119,17 @@ export interface Phq9History {
  * via the `definition` "PlaySession".
  */
 export interface PlaySession {
+  /**
+   * pebbles: share of rounds repeated correctly
+   */
+  accuracy?: number | null;
   device: "phone" | "mac" | "web";
   duration_s: number;
   /**
    * firefly: taps on a moth (no-go)
    */
   false_taps?: number | null;
-  game: "firefly" | "breathe" | "tell";
+  game: "firefly" | "breathe" | "tell" | "pebbles";
   /**
    * breathe, with a watch
    */
@@ -939,6 +1155,10 @@ export interface PlaySession {
    * firefly: correct taps
    */
   reaction_ms_median?: number | null;
+  /**
+   * pebbles: longest sequence repeated correctly
+   */
+  span_max?: number | null;
   /**
    * tell: syllables per second
    */

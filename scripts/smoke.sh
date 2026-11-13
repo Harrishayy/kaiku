@@ -51,6 +51,22 @@ if aino:
     check("/v1/me wording clean", not any(b in text for b in banned))
     tl = get(f"/v1/patients/{pid}/timeline")
     check("timeline has series", len(tl.get("series", [])) > 5)
+    req = urllib.request.Request(base + "/v1/companion/session", method="POST",
+                                 data=json.dumps({"home_id": pid, "surface": "robot", "intent": "ritual"}).encode(),
+                                 headers={"content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        sess = json.loads(r.read())
+    check("companion session has system_instruction", "## Who Kaiku is" in sess.get("system_instruction", ""))
+    check("companion session has tools", {"remember", "recall", "end_session"} <= {t["name"] for t in sess.get("tools", [])})
+    card = sess.get("context_card", {})
+    check("context card is rich (name, memories, thread)", card.get("first_name") == "Aino" and card.get("memories")
+          and card.get("open_thread"), json.dumps(card)[:300])
+    card_text = json.dumps(card).lower()
+    check("context card has no state words", not any(w in card_text for w in
+          ["needs_call", "needs a call", "stable", "consensus", "worse", "score", "diagnos", "relapse", "predict"]),
+          card_text[:300])
+    mems = get(f"/v1/me/memories?home_id={pid}")
+    check("/v1/me/memories lists Aino's notebook", len(mems.get("memories", [])) >= 4)
 if fails:
     print(f"\n{len(fails)} smoke check(s) failed"); sys.exit(1)
 print("\nsmoke OK")

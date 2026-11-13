@@ -1,0 +1,335 @@
+{
+  "intents": [
+    "ritual",
+    "checkin",
+    "walk",
+    "breathe",
+    "talk",
+    "break"
+  ],
+  "memory_categories": [
+    "name",
+    "people",
+    "places",
+    "likes",
+    "what_helps",
+    "plans",
+    "preference"
+  ],
+  "skill_of_intent": {
+    "break": "breathe",
+    "breathe": "breathe",
+    "checkin": "weather_check",
+    "ritual": "morning_ritual",
+    "talk": null,
+    "walk": "walk_companion"
+  },
+  "skills": [
+    "morning_ritual",
+    "weather_check",
+    "walk_companion",
+    "breathe"
+  ],
+  "surfaces": [
+    "robot",
+    "glasses",
+    "iphone",
+    "mac",
+    "web"
+  ],
+  "tools": {
+    "end_session": {
+      "description": "Close the session politely. Optionally leave one open thread to pick up next time on any device (e.g. skill walk_companion, topic \"the walk by the lake\").",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "follow_up": {
+            "properties": {
+              "skill": {
+                "enum": [
+                  "morning_ritual",
+                  "weather_check",
+                  "walk_companion",
+                  "breathe"
+                ],
+                "type": "string"
+              },
+              "topic": {
+                "maxLength": 80,
+                "type": "string"
+              }
+            },
+            "required": [
+              "skill",
+              "topic"
+            ],
+            "type": "object"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "skipped",
+              "ended_early"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "express": {
+      "description": "Show a feeling on Kaiku's face and body.",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "feeling": {
+            "enum": [
+              "happy",
+              "curious",
+              "sleepy",
+              "cozy",
+              "proud"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "feeling"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "forget": {
+      "description": "The person said \"don't remember that\" (scope last) or wants everything forgotten (all).",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "scope": {
+            "enum": [
+              "last",
+              "all"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "log_walk_moment": {
+      "description": "The person found something on the light hunt (e.g. something green).",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "glasses"
+      ]
+    },
+    "look_at_this": {
+      "description": "Ask for ONE camera frame from the glasses (only while the person holds the tap).",
+      "executor": "device",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      },
+      "surfaces": [
+        "glasses"
+      ]
+    },
+    "recall": {
+      "description": "Look up to 3 things the person told Kaiku before about a topic.",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "topic": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "record_dial": {
+      "description": "Record the person's 1-5 answer to a dial question.",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "item": {
+            "enum": [
+              "mood",
+              "energy",
+              "sleep"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "value"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "remember": {
+      "description": "Keep a short fact the person agreed to share (stored only if allowed; they can see and delete it). Never health details.",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "category": {
+            "enum": [
+              "name",
+              "people",
+              "places",
+              "likes",
+              "what_helps",
+              "plans",
+              "preference"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "text"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "send_friend_ping": {
+      "description": "Light the friend's lamp.",
+      "executor": "device",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "iphone"
+      ]
+    },
+    "start_activity": {
+      "description": "Start a short activity on this device (the device runs it; data comes from sensors).",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "breathe",
+              "drum",
+              "firefly",
+              "pebbles",
+              "tell",
+              "walk",
+              "light_hunt"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "start_phq9": {
+      "description": "Start the two-weekly questionnaire (read items verbatim; code scores it).",
+      "executor": "device",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
+    "suggest_nudge": {
+      "description": "Get today's one small suggestion (phrase it, never change it).",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    }
+  }
+}

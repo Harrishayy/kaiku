@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "args": {
+      "additionalProperties": true,
+      "title": "Args",
+      "type": "object"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "surface": {
+      "enum": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ],
+      "title": "Surface",
+      "type": "string"
+    }
+  },
+  "required": [
+    "home_id",
+    "surface",
+    "name"
+  ],
+  "title": "CompanionToolCall",
+  "type": "object"
+}

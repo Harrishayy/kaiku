@@ -1,0 +1,276 @@
+{
+  "$defs": {
+    "CompanionTool": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "title": "CompanionTool",
+      "type": "object"
+    },
+    "ContextCard": {
+      "additionalProperties": false,
+      "description": "What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,\nscores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.",
+      "properties": {
+        "care_info": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Care Info"
+        },
+        "done_today": {
+          "description": "on any surface",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Done Today",
+          "type": "array"
+        },
+        "dont_remember": {
+          "default": false,
+          "title": "Dont Remember",
+          "type": "boolean"
+        },
+        "first_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only if the person told Kaiku their name",
+          "title": "First Name"
+        },
+        "intent": {
+          "default": "talk",
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "fi",
+            "sv"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "memories": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Memories",
+          "type": "array"
+        },
+        "open_thread": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "topic left open on any surface",
+          "title": "Open Thread"
+        },
+        "others_present": {
+          "default": false,
+          "title": "Others Present",
+          "type": "boolean"
+        },
+        "phq9_due": {
+          "default": false,
+          "title": "Phq9 Due",
+          "type": "boolean"
+        },
+        "routines": {
+          "description": "e.g. \"usually walks on Tuesdays\"",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Routines",
+          "type": "array"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "today's bandit suggestion, phrased",
+          "title": "Suggestion"
+        },
+        "time_of_day": {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening",
+            "night"
+          ],
+          "title": "Time Of Day",
+          "type": "string"
+        },
+        "tone": {
+          "default": "steady",
+          "enum": [
+            "steady",
+            "gentle",
+            "extra-gentle"
+          ],
+          "title": "Tone",
+          "type": "string"
+        },
+        "weather_word": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weather Word"
+        }
+      },
+      "required": [
+        "time_of_day"
+      ],
+      "title": "ContextCard",
+      "type": "object"
+    },
+    "LiveToken": {
+      "additionalProperties": false,
+      "description": "Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within\n`new_session_expires_at`; the session may run until `expires_at`.",
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "new_session_expires_at": {
+          "format": "date-time",
+          "title": "New Session Expires At",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "expires_at",
+        "new_session_expires_at"
+      ],
+      "title": "LiveToken",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null\nwhen the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines).",
+  "properties": {
+    "context_card": {
+      "$ref": "#/$defs/ContextCard"
+    },
+    "live_token": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LiveToken"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "persona_version": {
+      "title": "Persona Version",
+      "type": "string"
+    },
+    "safety_phrases_version": {
+      "title": "Safety Phrases Version",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "pass to /v1/companion/tool and /v1/companion/episode",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "system_instruction": {
+      "title": "System Instruction",
+      "type": "string"
+    },
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/CompanionTool"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "voice": {
+      "title": "Voice",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "model",
+    "voice",
+    "system_instruction",
+    "tools",
+    "context_card",
+    "persona_version",
+    "safety_phrases_version"
+  ],
+  "title": "CompanionSessionResponse",
+  "type": "object"
+}

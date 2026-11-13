@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "remember": {
+      "title": "Remember",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "remember"
+  ],
+  "title": "MemorySettings",
+  "type": "object"
+}

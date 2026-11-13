@@ -63,6 +63,48 @@ CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- companion mind (plan 03 §6): what the person chose to tell Kaiku. Never read by clinician routes.
+CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    text TEXT NOT NULL,
+    norm TEXT NOT NULL,              -- dedupe key (casefolded, whitespace/punctuation-trimmed)
+    created TEXT NOT NULL,
+    last_used TEXT,
+    UNIQUE(home_id, norm)
+);
+CREATE TABLE IF NOT EXISTS episodes (  -- one row per session; no transcript, no audio
+    id TEXT PRIMARY KEY,
+    home_id TEXT NOT NULL,
+    surface TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    start TEXT NOT NULL,
+    end TEXT,
+    tools TEXT NOT NULL DEFAULT '[]',
+    outcome TEXT
+);
+CREATE INDEX IF NOT EXISTS episodes_home ON episodes(home_id, start);
+CREATE TABLE IF NOT EXISTS threads (   -- at most one open per home; continues on any surface
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_id TEXT NOT NULL,
+    skill TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    created TEXT NOT NULL,
+    expires TEXT NOT NULL,
+    closed TEXT
+);
+"""
+
+FTS = """
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    text, content='memories', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2');
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
 """
 
 
@@ -80,6 +122,11 @@ class Store:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=DELETE")  # network volumes dislike WAL
         self._db.executescript(SCHEMA)
+        try:
+            self._db.executescript(FTS)
+            self.fts = True
+        except sqlite3.OperationalError:  # SQLite built without FTS5: recall falls back to LIKE
+            self.fts = False
         self._migrate()
 
     def _migrate(self) -> None:
@@ -166,10 +213,13 @@ class Store:
         """Demo reset: drop all simulated events and every derived row of homes left without events."""
         with self._lock:
             n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
-            for table in ("homes", "explanations", "commands", "actions", "node_health"):
+            for table in ("homes", "explanations", "commands", "actions", "node_health", "memories", "episodes",
+                          "threads"):
                 self._db.execute(f"DELETE FROM {table} WHERE home_id NOT IN (SELECT DISTINCT home_id FROM events)")
             self._db.execute("DELETE FROM explanations")  # cheap to regenerate
             self._db.execute("DELETE FROM kv WHERE key LIKE 'phq9_due:%'")
+            self._db.execute("DELETE FROM kv WHERE key LIKE 'remember_off:%' AND substr(key, 14) NOT IN"
+                             " (SELECT DISTINCT home_id FROM events)")
         return n
 
     # ------------------------------------------------------------------ homes (computed status)
@@ -267,3 +317,112 @@ class Store:
     def kv_delete(self, key: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM kv WHERE key=?", (key,))
+
+    # ------------------------------------------------------------------ memories (Kaiku's notebook)
+    def memory_insert(self, home_id: str, category: str, text: str, norm: str, created: str) -> tuple[int, bool]:
+        """Returns (id, created_new). Same normalised text for the same home -> the existing row (last_used bumped)."""
+        with self._lock:
+            r = self._db.execute("SELECT id FROM memories WHERE home_id=? AND norm=?", (home_id, norm)).fetchone()
+            if r:
+                self._db.execute("UPDATE memories SET last_used=? WHERE id=?", (created, r[0]))
+                return int(r[0]), False
+            cur = self._db.execute("INSERT INTO memories(home_id,category,text,norm,created) VALUES (?,?,?,?,?)",
+                                   (home_id, category, text, norm, created))
+            return int(cur.lastrowid or 0), True
+
+    def memories(self, home_id: str) -> list[dict[str, Any]]:
+        """Newest first."""
+        with self._lock:
+            return [dict(r) for r in self._db.execute(
+                "SELECT id, category, text, created, last_used FROM memories WHERE home_id=?"
+                " ORDER BY created DESC, id DESC", (home_id,))]
+
+    def memory_search(self, home_id: str, terms: list[str], limit: int) -> list[dict[str, Any]]:
+        """Match any term (FTS5 bm25 with porter stemming: walk ~ walking), best first, then most recent."""
+        terms = [t for t in terms if t]
+        if not terms:
+            return []
+        with self._lock:
+            if self.fts:
+                q = " OR ".join('"' + t.replace('"', "") + '"' for t in terms)
+                rows = self._db.execute(
+                    "SELECT m.id, m.category, m.text, m.created, m.last_used FROM memories_fts f"
+                    " JOIN memories m ON m.id=f.rowid WHERE memories_fts MATCH ? AND m.home_id=?"
+                    " ORDER BY bm25(memories_fts), m.created DESC LIMIT ?", (q, home_id, limit)).fetchall()
+            else:
+                like = " OR ".join("lower(text) LIKE ?" for _ in terms)
+                rows = self._db.execute(
+                    f"SELECT id, category, text, created, last_used FROM memories WHERE home_id=? AND ({like})"
+                    " ORDER BY created DESC LIMIT ?", (home_id, *[f"%{t.lower()}%" for t in terms], limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def memory_touch(self, ids: list[int], ts: str) -> None:
+        if ids:
+            with self._lock:
+                self._db.execute(f"UPDATE memories SET last_used=? WHERE id IN ({','.join('?' * len(ids))})",
+                                 (ts, *ids))
+
+    def memory_delete(self, home_id: str, memory_id: int | None = None) -> int:
+        """Delete one memory (by id) or all of a home's memories."""
+        with self._lock:
+            if memory_id is None:
+                return self._db.execute("DELETE FROM memories WHERE home_id=?", (home_id,)).rowcount
+            return self._db.execute("DELETE FROM memories WHERE home_id=? AND id=?", (home_id, memory_id)).rowcount
+
+    def memory_delete_last(self, home_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._db.execute("SELECT id, category, text FROM memories WHERE home_id=?"
+                                 " ORDER BY created DESC, id DESC LIMIT 1", (home_id,)).fetchone()
+            if r:
+                self._db.execute("DELETE FROM memories WHERE id=?", (r["id"],))
+        return dict(r) if r else None
+
+    def memory_expire(self, home_id: str, category: str, before: str) -> int:
+        with self._lock:
+            return self._db.execute("DELETE FROM memories WHERE home_id=? AND category=? AND created<?",
+                                    (home_id, category, before)).rowcount
+
+    # ------------------------------------------------------------------ episodes (one per session, no transcript)
+    def episode_upsert(self, ep: dict[str, Any]) -> None:
+        """Insert, or update end/outcome/tools of an existing session (start/surface/intent are kept)."""
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO episodes(id,home_id,surface,intent,start,end,tools,outcome) VALUES (?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET end=COALESCE(excluded.end, episodes.end),"
+                " outcome=COALESCE(excluded.outcome, episodes.outcome), tools=excluded.tools",
+                (ep["id"], ep["home_id"], ep["surface"], ep["intent"], ep["start"], ep.get("end"),
+                 json.dumps(ep.get("tools", [])), ep.get("outcome")))
+
+    def episode(self, episode_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._db.execute("SELECT * FROM episodes WHERE id=?", (episode_id,)).fetchone()
+        return {**dict(r), "tools": json.loads(r["tools"])} if r else None
+
+    def episodes(self, home_id: str, since: str | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM episodes WHERE home_id=? AND start>=? ORDER BY start",
+                                    (home_id, since or "")).fetchall()
+        return [{**dict(r), "tools": json.loads(r["tools"])} for r in rows]
+
+    # ------------------------------------------------------------------ open thread
+    def thread_open(self, home_id: str, skill: str, topic: str, created: str, expires: str) -> int:
+        """Opening a thread closes any other open one (one thread at a time)."""
+        with self._lock:
+            self._db.execute("UPDATE threads SET closed=? WHERE home_id=? AND closed IS NULL", (created, home_id))
+            cur = self._db.execute("INSERT INTO threads(home_id,skill,topic,created,expires) VALUES (?,?,?,?,?)",
+                                   (home_id, skill, topic, created, expires))
+            return int(cur.lastrowid or 0)
+
+    def thread_current(self, home_id: str, now: str) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._db.execute("SELECT * FROM threads WHERE home_id=? AND closed IS NULL AND expires>?"
+                                 " ORDER BY created DESC LIMIT 1", (home_id, now)).fetchone()
+        return dict(r) if r else None
+
+    def thread_close(self, home_id: str, ts: str, skill: str | None = None) -> int:
+        with self._lock:
+            q, args = "UPDATE threads SET closed=? WHERE home_id=? AND closed IS NULL", [ts, home_id]
+            if skill:
+                q += " AND skill=?"
+                args.append(skill)
+            return self._db.execute(q, args).rowcount

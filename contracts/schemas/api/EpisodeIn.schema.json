@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "ThreadIn": {
+      "additionalProperties": false,
+      "properties": {
+        "skill": {
+          "enum": [
+            "morning_ritual",
+            "weather_check",
+            "walk_companion",
+            "breathe"
+          ],
+          "title": "Skill",
+          "type": "string"
+        },
+        "topic": {
+          "maxLength": 80,
+          "title": "Topic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill",
+        "topic"
+      ],
+      "title": "ThreadIn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.",
+  "properties": {
+    "close_thread": {
+      "default": false,
+      "title": "Close Thread",
+      "type": "boolean"
+    },
+    "end": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "session_id (or a client UUID); idempotent",
+      "title": "Id"
+    },
+    "intent": {
+      "default": "talk",
+      "enum": [
+        "ritual",
+        "checkin",
+        "walk",
+        "breathe",
+        "talk",
+        "break"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "open_thread": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ThreadIn"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "outcome": {
+      "default": "completed",
+      "enum": [
+        "completed",
+        "skipped",
+        "ended_early",
+        "crisis",
+        "offline"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "start": {
+      "format": "date-time",
+      "title": "Start",
+      "type": "string"
+    },
+    "surface": {
+      "enum": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ],
+      "title": "Surface",
+      "type": "string"
+    },
+    "tools_used": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tools Used",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "surface",
+    "start"
+  ],
+  "title": "EpisodeIn",
+  "type": "object"
+}

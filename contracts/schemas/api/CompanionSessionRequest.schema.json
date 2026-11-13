@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "intent": {
+      "default": "talk",
+      "enum": [
+        "ritual",
+        "checkin",
+        "walk",
+        "breathe",
+        "talk",
+        "break"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "enum": [
+            "en",
+            "fi",
+            "sv"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "default: config/kaiku.toml [home].language",
+      "title": "Language"
+    },
+    "others_present": {
+      "default": false,
+      "title": "Others Present",
+      "type": "boolean"
+    },
+    "surface": {
+      "enum": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ],
+      "title": "Surface",
+      "type": "string"
+    }
+  },
+  "required": [
+    "surface",
+    "home_id"
+  ],
+  "title": "CompanionSessionRequest",
+  "type": "object"
+}

@@ -1,7 +1,6 @@
 """Deterministic wording linter for everything Kaiku says to a person (plan 03 §8).
 
-Pure stdlib, no repo imports: this file is meant to be copied verbatim into
-`kaiku_contracts/wording.py` (and ported to Swift). Length caps and surface-only phrases are passed in by the
+Pure stdlib, no repo imports (shared by the cloud and the companion evals; port it verbatim to Swift). Length caps and surface-only phrases are passed in by the
 caller (ground truth: `config/surfaces.toml`), so nothing here duplicates config.
 
     issues = lint("You seem depressed today.", max_words=30, max_sentences=2)

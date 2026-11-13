@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "Memory": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "name",
+            "people",
+            "places",
+            "likes",
+            "what_helps",
+            "plans",
+            "preference"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "created": {
+          "format": "date-time",
+          "title": "Created",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "last_used": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Used"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "text",
+        "created"
+      ],
+      "title": "Memory",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/memories — \"What Kaiku remembers\". Person-facing only; no clinician route returns memories.",
+  "properties": {
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "memories": {
+      "items": {
+        "$ref": "#/$defs/Memory"
+      },
+      "title": "Memories",
+      "type": "array"
+    },
+    "remember": {
+      "description": "false = the person turned remembering off",
+      "title": "Remember",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "home_id",
+    "remember",
+    "memories"
+  ],
+  "title": "MemoriesResponse",
+  "type": "object"
+}

@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "skill": {
+      "enum": [
+        "morning_ritual",
+        "weather_check",
+        "walk_companion",
+        "breathe"
+      ],
+      "title": "Skill",
+      "type": "string"
+    },
+    "topic": {
+      "maxLength": 80,
+      "title": "Topic",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skill",
+    "topic"
+  ],
+  "title": "ThreadIn",
+  "type": "object"
+}

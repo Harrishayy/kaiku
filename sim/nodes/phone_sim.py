@@ -1,6 +1,7 @@
 """Sim twin of the iPhone app (source `phone`). HTTPS only, like KaikuKit: POSTs the morning Apple Health summary
 (obs.wearable_daily -> the optional "wearable" consensus source), the weather check (obs.self_report x3 with
-channel "phone" -> robot source, it is the daily dial) and a firefly game played on the phone (obs.play_session).
+channel "phone" -> robot source, it is the daily dial) and a firefly + a pebbles game played on the phone
+(obs.play_session).
 
     uv run python -m sim.nodes.phone_sim [--every 300] [--once] [--no-watch]
 
@@ -51,12 +52,18 @@ class PhoneSim:
                                      "lapses": max(0, int(round(g(1, 1)))),
                                      "false_taps": max(0, int(round(g(0.5, 0.7))))})
 
+    def pebbles(self) -> tuple[str, dict]:
+        g = self.rng.gauss
+        return ("obs.play_session", {"game": "pebbles", "device": "phone", "duration_s": round(max(20.0, g(75, 10)), 1),
+                                     "span_max": max(2, min(12, int(round(g(6, 1))))),
+                                     "accuracy": round(min(1.0, max(0.0, g(0.8, 0.08))), 2)})
+
     async def morning(self) -> bool:
         """What the app sends when opened in the morning: Health summary + weather check."""
         return await self.http.post([("obs.wearable_daily", self.wearable_payload()), *self.weather_check()])
 
     async def play(self) -> bool:
-        return await self.http.post([self.firefly()])
+        return await self.http.post([self.firefly(), self.pebbles()])
 
     async def run(self, stop: asyncio.Event | None = None, once: bool = False) -> None:
         stop = stop or asyncio.Event()

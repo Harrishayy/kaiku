@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "description": "`ok=false` + `error` when the call was refused (not on this surface, bad args, memory rule). `crisis=true`:\na crisis phrase was in the arguments — nothing was stored, obs.safety_flag was raised; stop the session and\nshow/say `result.script` verbatim. `executor=device`: the device performs the effect itself.",
+  "properties": {
+    "crisis": {
+      "default": false,
+      "title": "Crisis",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "executor": {
+      "default": "cloud",
+      "enum": [
+        "cloud",
+        "device"
+      ],
+      "title": "Executor",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "result": {
+      "additionalProperties": true,
+      "title": "Result",
+      "type": "object"
+    }
+  },
+  "required": [
+    "ok",
+    "name"
+  ],
+  "title": "CompanionToolResult",
+  "type": "object"
+}

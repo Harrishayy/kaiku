@@ -26,7 +26,7 @@ NUDGE_ARMS: tuple[str, ...] = ("breathe", "drum", "daylight_walk", "friend_ping"
 Activity = Literal["breathe", "drum", "walk", "friend_ping", "icbt"]
 Eyes = Literal["neutral", "happy", "sleepy", "wide", "listening", "thinking", "soft"]
 SelfReportChannel = Literal["robot", "phone", "mac", "web", "glasses_voice"]
-PlayGame = Literal["firefly", "breathe", "tell"]
+PlayGame = Literal["firefly", "breathe", "tell", "pebbles"]
 PlayDevice = Literal["phone", "mac", "web"]
 SCREEN_CATEGORIES: tuple[str, ...] = ("work", "communication", "social", "video", "news", "games", "other")
 
@@ -175,7 +175,8 @@ class ScreenActivity(Strict):
 
 
 class PlaySession(Strict):
-    """One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is
+    """One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku, pebbles memory span) on the phone, Mac or
+    web. Every feature is
     computed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.
     Counts toward the "laptop" (display: Apps) source wherever it was played."""
 
@@ -191,6 +192,8 @@ class PlaySession(Strict):
     pitch_variability: float | None = Field(default=None, ge=0, le=20, description="tell: semitones SD")
     hr_before_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
     hr_after_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
+    span_max: int | None = Field(default=None, ge=0, le=20, description="pebbles: longest sequence repeated correctly")
+    accuracy: float | None = Field(default=None, ge=0, le=1, description="pebbles: share of rounds repeated correctly")
 
 
 class WearableDaily(Strict):

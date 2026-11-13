@@ -159,6 +159,8 @@ async def test_mac_and_phone_twins_post_plan02_obs():
     dial = [e for e in envs if e.type == "obs.self_report"]
     assert len(dial) == 6 and all(e.payload.channel == "phone" for e in dial)
     assert {e.payload.device for e in envs if e.type == "obs.play_session"} == {"mac", "phone"}
+    pebbles = next(e for e in envs if e.type == "obs.play_session" and e.payload.game == "pebbles")
+    assert pebbles.payload.span_max >= 2 and 0 <= pebbles.payload.accuracy <= 1
 
 
 async def test_http_sims_fail_soft_when_cloud_down():

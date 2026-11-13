@@ -22,15 +22,24 @@ from kaiku_contracts.api import (
     ActionRequest,
     ActionResult,
     CommandsResponse,
+    CompanionSessionRequest,
+    CompanionSessionResponse,
+    CompanionToolCall,
+    CompanionToolResult,
     Consensus,
     CriteriaPreview,
     CriteriaResponse,
     CriteriaUpdate,
+    DeletedResponse,
+    EpisodeIn,
+    EpisodeResult,
     EvalResult,
     EventsResult,
     HealthOverview,
     Healthz,
     LiveEventsResponse,
+    MemoriesResponse,
+    MemorySettings,
     MeResponse,
     NodeHealthReport,
     NudgeResponse,
@@ -44,6 +53,8 @@ from kaiku_contracts.jlog import get_logger
 
 from .. import service, voice
 from ..jobs import nightly
+from ..mind import memory as mind_memory
+from ..mind import session as mind
 from ..settings import VERSION, Settings
 from ..store.db import Store
 
@@ -196,6 +207,48 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         row = store.home_summary(home_id) or (service.recompute_home(store, settings, home_id)
                                                if home_id in store.home_ids() else None)
         return service.me(store, settings, home_id, row)
+
+    # ------------------------------------------------------------------ companion mind (plan 03 §3–§6)
+    @app.post("/v1/companion/session", response_model=CompanionSessionResponse,
+              dependencies=[Depends(require_home_token)])
+    def companion_session(req: CompanionSessionRequest) -> CompanionSessionResponse:
+        """Bootstrap one Gemini Live session as Kaiku: model, voice, system instruction, tools, context card and an
+        ephemeral Live token (null without a cloud Gemini key)."""
+        return mind.start_session(store, settings, req)
+
+    @app.post("/v1/companion/tool", response_model=CompanionToolResult, dependencies=[Depends(require_home_token)])
+    def companion_tool(call: CompanionToolCall) -> CompanionToolResult:
+        """A device forwards a model's tool call; the cloud checks and executes it deterministically."""
+        return mind.run_tool(store, settings, call)
+
+    @app.post("/v1/companion/episode", response_model=EpisodeResult, dependencies=[Depends(require_home_token)])
+    def companion_episode(ep: EpisodeIn) -> EpisodeResult:
+        try:
+            return EpisodeResult(ok=True, id=mind.record_episode(store, ep))
+        except ValueError as e:  # includes MemoryRefused (thread topic)
+            raise HTTPException(422, str(e)) from None
+
+    # "What Kaiku remembers" — person-facing only; no clinician route reads memories.
+    @app.get("/v1/me/memories", response_model=MemoriesResponse)
+    def me_memories(home_id: str) -> MemoriesResponse:
+        return MemoriesResponse(home_id=home_id, remember=mind_memory.remembering(store, home_id),
+                                memories=mind_memory.listing(store, home_id))
+
+    @app.delete("/v1/me/memories/{memory_id}", response_model=DeletedResponse)
+    def me_forget_one(memory_id: int, home_id: str) -> DeletedResponse:
+        n = store.memory_delete(home_id, memory_id)
+        if not n:
+            raise HTTPException(404, "no such memory")
+        return DeletedResponse(deleted=n)
+
+    @app.delete("/v1/me/memories", response_model=DeletedResponse)
+    def me_forget_all(home_id: str) -> DeletedResponse:
+        return DeletedResponse(deleted=store.memory_delete(home_id))
+
+    @app.put("/v1/me/memory_settings", response_model=MemorySettings)
+    def me_memory_settings(home_id: str, body: MemorySettings) -> MemorySettings:
+        mind_memory.set_remembering(store, home_id, body.remember)
+        return body
 
     # ------------------------------------------------------------------ voice (D27: one voice, keyed lines)
     @app.get("/v1/voice", response_model=VoiceLinesResponse)

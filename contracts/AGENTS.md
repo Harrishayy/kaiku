@@ -40,6 +40,14 @@ no titles/URLs/keystrokes — `extra=forbid` rejects them) · `obs.play_session`
 midpoint in min from local midnight, regularity, resting HR, HRV SDNN, steps, exercise, `device`).
 API: `MeResponse.mascot {mood: idle|happy|cozy|crisis, line_key}`, `highlights [{date, kind: good|hard, text,
 source}]`, `garden {plants, resting}`; `VoiceLinesResponse` (`GET /v1/voice`).
+Companion mind (plan 03 §3–§6, workstream I1): `companion_tools.py` = the tool registry (12 tools: JSON-schema
+`parameters`, `surfaces`, `executor` cloud|device; plus `Surface`, `Intent`, `Skill`, `MemoryCategory`,
+`SKILL_OF_INTENT`) → `schemas/companion_tools.json` + `COMPANION_TOOLS` in `ts/index.ts` (Swift/TS read these).
+`wording.py` = the deterministic wording linter (stdlib only, port verbatim to Swift). `safety.py` = the crisis
+phrase matcher (same as the hub gate, reads `config/safety_phrases.toml`). API: `CompanionSessionRequest/Response`,
+`ContextCard` (no state/score/wearable fields by construction; `tone` is the only consensus cue), `LiveToken`,
+`CompanionToolCall/Result`, `Memory`, `MemoriesResponse`, `MemorySettings`, `DeletedResponse`, `EpisodeIn/Result`,
+`ThreadIn`. `obs.play_session.game` adds `pebbles` (`span_max`, `accuracy`).
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 
@@ -55,6 +63,9 @@ python/kaiku_contracts/
                 (`category_min.communication`); per-metric `person_hard` sentence for /me
   api.py        cloud HTTP models: Consensus, SourceVerdict, Explanation, PatientSummary, Timeline, PHQ-9, Me (+ Mascot,
                 Highlight, Garden), VoiceLinesResponse, Eval, Criteria*
+  companion_tools.py  tool registry (schema + surfaces + executor), for_surface(), validate_args(), export()
+  wording.py    wording linter (clinical terms, state talk/numbers, medical advice, promises, watch data, caps)
+  safety.py     crisis phrase matcher (config/safety_phrases.toml) shared by cloud + evals
   topics.py     topic(), topic_for(), parse_topic(), QoS/retain
   bus.py        async MQTT client: validates both ways, reconnects, heartbeat + last-will
   config.py     config/kaiku.toml + KAIKU_<SECTION>_<KEY> env overrides, .env loader
@@ -72,6 +83,9 @@ tests/          round trips, rejections, topics, source map, criteria validation
   + metrics in `config/criteria.toml`. Cloud verdict/consensus code is source-agnostic.
 - **New criteria knob:** a field in `criteria.py` with a default + description (existing files stay valid), used in
   cloud analytics, explained in the `config/criteria.toml` header.
+- **New companion tool:** add it to `companion_tools.TOOLS` (schema, surfaces, executor), list it in the surface's
+  `tools` in `config/surfaces.toml`, handle it in `cloud/kaiku_cloud/mind/session.py` if `executor = "cloud"`,
+  `make contracts`, add an eval scenario.
 - **New API field:** additive optional fields need no version bump; removing/renaming = breaking → bump `SCHEMA_VERSION`.
 
 ## Invariants

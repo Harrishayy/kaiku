@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .companion_tools import Intent, MemoryCategory, Skill, Surface
 from .criteria import Criteria
 from .envelope import Envelope
 from .payloads import Health, NudgeArm
@@ -316,3 +317,137 @@ class CriteriaPreview(ApiModel):
     changes: list[PreviewChange]
     unchanged: int
     eval: EvalResult | None = Field(default=None, description="simulation under the candidate, if requested")
+
+
+# ----------------------------------------------------------------- companion mind (plan 03 §3–§6, plan 04 scope guard)
+ToneCue = Literal["steady", "gentle", "extra-gentle"]
+EpisodeOutcome = Literal["completed", "skipped", "ended_early", "crisis", "offline"]
+
+
+class ContextCard(ApiModel):
+    """What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,
+    scores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus."""
+
+    language: VoiceLang = "en"
+    intent: Intent = "talk"
+    time_of_day: Literal["morning", "afternoon", "evening", "night"]
+    weather_word: str | None = None
+    first_name: str | None = Field(default=None, description="only if the person told Kaiku their name")
+    done_today: list[str] = Field(default_factory=list, max_length=4, description="on any surface")
+    suggestion: str | None = Field(default=None, description="today's bandit suggestion, phrased")
+    phq9_due: bool = False
+    memories: list[str] = Field(default_factory=list, max_length=3)
+    routines: list[str] = Field(default_factory=list, max_length=2, description='e.g. "usually walks on Tuesdays"')
+    open_thread: str | None = Field(default=None, description="topic left open on any surface")
+    tone: ToneCue = "steady"
+    care_info: str | None = None
+    others_present: bool = False
+    dont_remember: bool = False
+
+
+class CompanionSessionRequest(ApiModel):
+    surface: Surface
+    home_id: str
+    intent: Intent = "talk"
+    language: VoiceLang | None = Field(default=None, description="default: config/kaiku.toml [home].language")
+    others_present: bool = False
+
+
+class LiveToken(ApiModel):
+    """Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within
+    `new_session_expires_at`; the session may run until `expires_at`."""
+
+    token: str
+    expires_at: datetime
+    new_session_expires_at: datetime
+
+
+class CompanionTool(ApiModel):
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+class CompanionSessionResponse(ApiModel):
+    """POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
+    when the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines)."""
+
+    session_id: str = Field(description="pass to /v1/companion/tool and /v1/companion/episode")
+    model: str
+    voice: str
+    system_instruction: str
+    tools: list[CompanionTool]
+    context_card: ContextCard
+    persona_version: str
+    safety_phrases_version: str
+    live_token: LiveToken | None = None
+
+
+class CompanionToolCall(ApiModel):
+    home_id: str
+    surface: Surface
+    session_id: str | None = None
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class CompanionToolResult(ApiModel):
+    """`ok=false` + `error` when the call was refused (not on this surface, bad args, memory rule). `crisis=true`:
+    a crisis phrase was in the arguments — nothing was stored, obs.safety_flag was raised; stop the session and
+    show/say `result.script` verbatim. `executor=device`: the device performs the effect itself."""
+
+    ok: bool
+    name: str
+    executor: Literal["cloud", "device"] = "cloud"
+    result: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    crisis: bool = False
+
+
+class Memory(ApiModel):
+    id: int
+    category: MemoryCategory
+    text: str
+    created: datetime
+    last_used: datetime | None = None
+
+
+class MemoriesResponse(ApiModel):
+    """GET /v1/me/memories — "What Kaiku remembers". Person-facing only; no clinician route returns memories."""
+
+    home_id: str
+    remember: bool = Field(description="false = the person turned remembering off")
+    memories: list[Memory]
+
+
+class MemorySettings(ApiModel):
+    remember: bool
+
+
+class DeletedResponse(ApiModel):
+    deleted: int
+
+
+class ThreadIn(ApiModel):
+    skill: Skill
+    topic: str = Field(max_length=80)
+
+
+class EpisodeIn(ApiModel):
+    """POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio."""
+
+    home_id: str
+    surface: Surface
+    intent: Intent = "talk"
+    id: str | None = Field(default=None, description="session_id (or a client UUID); idempotent")
+    start: datetime
+    end: datetime | None = None
+    tools_used: list[str] = Field(default_factory=list)
+    outcome: EpisodeOutcome = "completed"
+    open_thread: ThreadIn | None = None
+    close_thread: bool = False
+
+
+class EpisodeResult(ApiModel):
+    ok: bool
+    id: str

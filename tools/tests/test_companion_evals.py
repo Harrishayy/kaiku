@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 
 import pytest
+from kaiku_contracts import wording
 
-from tools.companion_evals import assemble, run, safety, tool_specs, wording
+from tools.companion_evals import assemble, run, safety, tool_specs
 
 HERE = Path(__file__).resolve().parents[1] / "companion_evals"
 PERSONA, SURFACES = assemble.load_files()
@@ -60,7 +61,7 @@ def test_linter_length_and_surface_rule():
 
 
 def test_wording_is_copyable_stdlib_only():
-    tree = ast.parse((HERE / "wording.py").read_text())
+    tree = ast.parse(Path(wording.__file__).read_text())
     mods = {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     mods |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     assert mods <= {"__future__", "re", "unicodedata", "collections.abc", "dataclasses"}

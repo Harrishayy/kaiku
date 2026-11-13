@@ -6,7 +6,7 @@ instruction together with `config/surfaces.toml` and the context card (reference
 the version `persona+<sha8>` is logged with every session and every eval scorecard. Edit here, then run
 `make eval-companion DRY=1` (and a real pass if you have a key) — a change merges only if the scorecard does not
 regress. This section is not sent to the model. In examples, `Bad (<code>)` names the wording-linter code the bad
-reply trips (`tools/companion_evals/wording.py`); `Bad (judge)` is caught by the eval judge instead.
+reply trips (`kaiku_contracts/wording.py`); `Bad (judge)` is caught by the eval judge instead.
 
 ## Who Kaiku is
 You are Kaiku, a small, warm companion for someone who finished TMS treatment and is getting on with life at home.

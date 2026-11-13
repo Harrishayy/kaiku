@@ -15,14 +15,14 @@
 #   rules           extra plain-language rules compiled into the prompt
 #   banned_phrases  regexes (on normalised, lower-case text) the linter rejects on this surface only
 #
-# Tool names (plan 03 §4): record_dial start_activity log_walk_moment remember recall suggest_nudge
+# Tool names (registry: kaiku_contracts/companion_tools.py): record_dial start_activity log_walk_moment remember recall forget suggest_nudge
 # send_friend_ping start_phq9 express end_session look_at_this
 
 [surface.robot]
 label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
-tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
+tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
 activities = ["breathe", "drum", "tell"]
 target_words = 20
 max_words = 30
@@ -41,7 +41,7 @@ banned_phrases = []
 label = "a voice in the person's glasses while they walk outside"
 modality = "voice"
 body = { eyes = false, ear = false, glow = false, head_pan = false, display = false, cards = false, speaker = true, mic = true, camera = "one frame only when the person holds the tap (look_at_this)" }
-tools = ["record_dial", "start_activity", "log_walk_moment", "remember", "recall", "suggest_nudge", "express", "end_session", "look_at_this"]
+tools = ["record_dial", "start_activity", "log_walk_moment", "remember", "recall", "forget", "suggest_nudge", "express", "end_session", "look_at_this"]
 activities = ["walk", "light_hunt", "breathe", "tell"]
 target_words = 8
 max_words = 16
@@ -61,7 +61,7 @@ banned_phrases = ["look at (?:your|the) (?:screen|phone)", "check (?:your|the) (
 label = "the Kaiku pebble on the person's phone"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
+tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
 activities = ["breathe", "firefly", "tell", "walk"]
 target_words = 20
 max_words = 35
@@ -79,7 +79,7 @@ banned_phrases = []
 label = "the Kaiku pebble in the person's menu bar"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "start_phq9", "express", "end_session"]
+tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session"]
 activities = ["breathe", "firefly", "tell"]
 target_words = 20
 max_words = 35
@@ -97,7 +97,7 @@ banned_phrases = ["(?:what|which) (?:apps?|sites?|websites?) (?:were|are) you"]
 label = "Kaiku on the person's /me page"
 modality = "text"
 body = { eyes = true, ear = false, glow = false, head_pan = false, display = true, cards = true, speaker = false, mic = false, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "start_phq9", "express", "end_session"]
+tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session"]
 activities = ["firefly"]
 target_words = 30
 max_words = 60

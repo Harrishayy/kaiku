@@ -1,0 +1,158 @@
+{
+  "additionalProperties": false,
+  "description": "What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,\nscores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.",
+  "properties": {
+    "care_info": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Care Info"
+    },
+    "done_today": {
+      "description": "on any surface",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Done Today",
+      "type": "array"
+    },
+    "dont_remember": {
+      "default": false,
+      "title": "Dont Remember",
+      "type": "boolean"
+    },
+    "first_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "only if the person told Kaiku their name",
+      "title": "First Name"
+    },
+    "intent": {
+      "default": "talk",
+      "enum": [
+        "ritual",
+        "checkin",
+        "walk",
+        "breathe",
+        "talk",
+        "break"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "language": {
+      "default": "en",
+      "enum": [
+        "en",
+        "fi",
+        "sv"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "memories": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Memories",
+      "type": "array"
+    },
+    "open_thread": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "topic left open on any surface",
+      "title": "Open Thread"
+    },
+    "others_present": {
+      "default": false,
+      "title": "Others Present",
+      "type": "boolean"
+    },
+    "phq9_due": {
+      "default": false,
+      "title": "Phq9 Due",
+      "type": "boolean"
+    },
+    "routines": {
+      "description": "e.g. \"usually walks on Tuesdays\"",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "title": "Routines",
+      "type": "array"
+    },
+    "suggestion": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "today's bandit suggestion, phrased",
+      "title": "Suggestion"
+    },
+    "time_of_day": {
+      "enum": [
+        "morning",
+        "afternoon",
+        "evening",
+        "night"
+      ],
+      "title": "Time Of Day",
+      "type": "string"
+    },
+    "tone": {
+      "default": "steady",
+      "enum": [
+        "steady",
+        "gentle",
+        "extra-gentle"
+      ],
+      "title": "Tone",
+      "type": "string"
+    },
+    "weather_word": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weather Word"
+    }
+  },
+  "required": [
+    "time_of_day"
+  ],
+  "title": "ContextCard",
+  "type": "object"
+}

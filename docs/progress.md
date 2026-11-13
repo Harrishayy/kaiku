@@ -77,3 +77,26 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Contract changes: none. For B: please add `"pebbles"` to the `play_session` game enum; fields `span_max`, `accuracy`, `duration_s`.
 - Broken/blocked: no Swedish UI copy yet.
 - Next: A1/W build screens from `design/ia.md` + `copy.json`, check each against the `layout.md` stress case.
+
+## 2026-11-14 — Claude Code (workstream I1, companion mind) — contracts, cloud, sim, tools/companion_evals, docs
+- Did: scope-guard steps 2, 3, 7 on the cloud side. Contracts: `companion_tools.py` (12 tools: schema + surfaces +
+  executor; `forget` added for "don't remember that"), `wording.py` moved here verbatim from the evals, `safety.py`
+  (crisis matcher shared by cloud + evals), companion API models (`ContextCard`, session/tool/episode/memory), export
+  of `schemas/companion_tools.json` + TS `COMPANION_TOOLS`; `obs.play_session` game `pebbles` (`span_max`, `accuracy`).
+  Cloud `mind/`: `assemble.py` (ported; evals now import it), `card.py`, `memory.py` (FTS5 recall, dedupe, plan expiry,
+  routines count rule, one open thread), `session.py`, `live_token.py`. Routes: `POST /v1/companion/session|tool|episode`,
+  `GET/DELETE /v1/me/memories[/{id}]`, `PUT /v1/me/memory_settings`. Sim: phone twin plays pebbles; `make seed` gives
+  Aino 5 memories, 3 Tuesday walks and an open thread ("the walk by the lake") through the real endpoints.
+- Verified: `make check` green; `make smoke` green incl. the new session check (system instruction, tools, rich card,
+  no state words) and `/v1/me/memories`. `cloud/tests/test_mind.py`: near-identical edge pairs (remember vs "don't
+  remember that", dedupe vs different fact, plan 6 d vs 8 d, thread robot→glasses vs closed/expired, Tuesday×3 vs
+  Tuesday×2 + Monday, crisis phrase vs "dye my hair", allowed vs refused categories / health texts, remember_off,
+  Finnish with and without diacritics), tone per state incl. insufficient/low_coverage, card property test over all 8
+  seeded patients × 5 surfaces, clinician routes never contain memories, live token mocked.
+- Contract changes: additive only (new module + API models + `pebbles`); `SCHEMA_VERSION` unchanged.
+- Broken/blocked: config (owner all): `config/surfaces.toml` tool lists don't name `forget` yet and its header +
+  `config/persona.md` still point at `tools/companion_evals/{assemble,wording}.py` (now `kaiku_cloud/mind/assemble.py`,
+  `kaiku_contracts/wording.py`). Ephemeral token not exercised against the real API (no key here) — null on failure.
+- Next (hub / apps): call `POST /v1/companion/session` before Live; use `live_token.token` as the Live API key
+  (v1beta) when present, else own fallback; forward `executor: cloud` tool calls to `/v1/companion/tool` with the
+  `session_id`; on `crisis: true` stop Live and play `result.script`; post `/v1/companion/episode` for offline sessions.

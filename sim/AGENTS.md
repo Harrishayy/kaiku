@@ -25,12 +25,12 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
 | `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: dat_imu, cadence_spm, gait_regularity, head_up_ratio, daylight_min}` + `obs.intervention_response{activity: walk}` | — |
 | `nodes/laptop_sim.py` | laptop `/session` + `/phq9` + Mac app (source 3, "Apps") | HTTPS | `obs.laptop_session`, `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0), hourly `obs.screen_activity`, `obs.play_session{game: firefly, device: mac}` | — |
-| `nodes/phone_sim.py` | iPhone app (source `phone`) | HTTPS | `obs.wearable_daily` (watch, or `--no-watch` phone_only), weather check `obs.self_report{channel: phone}` ×3, `obs.play_session{device: phone}` | — |
+| `nodes/phone_sim.py` | iPhone app (source `phone`) | HTTPS | `obs.wearable_daily` (watch, or `--no-watch` phone_only), weather check `obs.self_report{channel: phone}` ×3, `obs.play_session{device: phone}` (firefly + pebbles) | — |
 | `nodes/http_source.py` | shared HTTPS poster: validates, Bearer token, timeouts, retries, fail-soft | | | |
 | `nodes/signals.py` | synthetic PPG with RSA, approach curve, daylight | | | |
 | `run.py` | `make sim`: runs the twins together, auto or `--keyboard` | | | |
 | `patients/` | the demo cohort (`python -m sim.patients`) | | | |
-| `seed_demo.py` | `make seed [ARGS=--reset]`: idempotent seeder, prints expected vs actual state per patient | | | |
+| `seed_demo.py` | `make seed [ARGS=--reset]`: idempotent seeder, prints expected vs actual state per patient; gives Aino 5 memories, 3 Tuesday walks and an open thread via `/v1/companion/tool` + `/episode` | | | |
 
 **Auto mode** acts like a user, following the hub's dial protocol (`hub/AGENTS.md` → Invariants):
 someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn

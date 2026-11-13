@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from kaiku_contracts import wording
 
-from tools.companion_evals import assemble, safety, tool_specs, wording
+from tools.companion_evals import assemble, safety, tool_specs
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]

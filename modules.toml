@@ -48,12 +48,14 @@ consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_sess
             "obs.light_level", "obs.ritual", "obs.outing", "obs.laptop_session", "obs.phq9",
             "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link",
             "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily"]
-emits = ["cmd.hub"]
+emits = ["cmd.hub", "obs.safety_flag"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
         "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions",
         "GET /v1/me", "GET /v1/events", "PUT /v1/health/{home_id}", "GET /v1/health", "POST /v1/admin/recompute",
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
-        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}"]
+        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}",
+        "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
+        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
 
 [[module]]
 name = "web"
@@ -129,7 +131,8 @@ emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.sensors.ppg", "raw
          "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "obs.friend_link", "obs.outing",
          "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
          "obs.play_session", "obs.wearable_daily", "obs.self_report", "cmd.hub", "health"]
-http = ["POST /v1/events", "POST /v1/admin/recompute", "POST /v1/admin/reset"]
+http = ["POST /v1/events", "POST /v1/admin/recompute", "POST /v1/admin/reset", "POST /v1/companion/tool",
+        "POST /v1/companion/episode"]
 
 [[module]]
 name = "tools"

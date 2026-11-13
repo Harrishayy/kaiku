@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic.json_schema import models_json_schema
 
-from . import api
+from . import api, companion_tools
 from .envelope import SCHEMA_VERSION, SOURCES, Envelope
 from .registry import EXAMPLES, REGISTRY
 from .sources import CONSENSUS_SOURCES, SOURCE_LABELS, SOURCE_OF
@@ -32,6 +32,9 @@ API_MODELS = [
     api.MeResponse, api.VoiceLinesResponse, api.StateScore,
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
+    api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
+    api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
+    api.DeletedResponse, api.ThreadIn, api.EpisodeIn, api.EpisodeResult,
 ]
 
 
@@ -58,6 +61,7 @@ def build() -> dict[str, Any]:
     for m in API_MODELS:
         files[f"api/{m.__name__}.schema.json"] = m.model_json_schema()
     files["../ts/index.ts"] = build_ts_index()
+    files["companion_tools.json"] = companion_tools.export()
     files["index.json"] = {"schema_version": SCHEMA_VERSION, "types": index}
     files["examples.json"] = EXAMPLES
     files["sources.json"] = {"consensus_sources": list(CONSENSUS_SOURCES), "source_labels": SOURCE_LABELS,
@@ -131,6 +135,9 @@ def build_ts_index() -> str:
         "export const SOURCE_OF: Record<string, string> = " + json.dumps(SOURCE_OF) + ";",
         "/** Display labels for consensus sources (\"laptop\" is shown as \"Apps\"). */",
         "export const SOURCE_LABELS: Record<ConsensusSource, string> = " + json.dumps(SOURCE_LABELS) + ";",
+        "",
+        "/** Companion tool registry (mirrors kaiku_contracts.companion_tools): tools, surfaces, intents, skills. */",
+        "export const COMPANION_TOOLS = " + json.dumps(companion_tools.export()) + " as const;",
         "",
         "/** MQTT topic for a message (mirrors kaiku_contracts.topic_for). */",
         "export function topicFor(env: Pick<Envelope, 'home_id' | 'type' | 'source'>): string {",

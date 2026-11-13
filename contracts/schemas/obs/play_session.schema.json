@@ -2,8 +2,23 @@
   "$defs": {
     "PlaySession": {
       "additionalProperties": false,
-      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
+      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku, pebbles memory span) on the phone, Mac or\nweb. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
       "properties": {
+        "accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pebbles: share of rounds repeated correctly",
+          "title": "Accuracy"
+        },
         "device": {
           "enum": [
             "phone",
@@ -37,7 +52,8 @@
           "enum": [
             "firefly",
             "breathe",
-            "tell"
+            "tell",
+            "pebbles"
           ],
           "title": "Game",
           "type": "string"
@@ -144,6 +160,21 @@
           "default": null,
           "description": "firefly: correct taps",
           "title": "Reaction Ms Median"
+        },
+        "span_max": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pebbles: longest sequence repeated correctly",
+          "title": "Span Max"
         },
         "speech_rate": {
           "anyOf": [

@@ -9,8 +9,9 @@ directly; the watch summary comes from the phone), keeps them in SQLite, compute
 needs_call / safety), explains it (template, hosted Gemma, or Gemma 4 on a Modal GPU — the explanation never
 changes the state), learns which nudge helps (bandit), runs the consensus-accuracy simulation, and serves the
 Next.js export. How each input is used is defined in `config/criteria.toml` (see "Tuning the consensus").
-It also serves the person-facing companion (`/v1/me` mascot, highlights, garden) and Kaiku's one voice
-(`/v1/voice`, Gemini TTS, cached).
+It also serves the person-facing companion (`/v1/me` mascot, highlights, garden), Kaiku's one voice
+(`/v1/voice`, Gemini TTS, cached) and the **companion mind** (`mind/`): the session bootstrap every surface calls
+before opening Gemini Live, the tool endpoint, and Kaiku's notebook (memories, episodes, open thread).
 
 ## Boundaries
 May import `kaiku_contracts` + fastapi, numpy, httpx, modal, google-genai (voice only, lazily) — never hub, apps, sim or tools. Request/response shapes
@@ -21,6 +22,8 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 - `POST /v1/events` — `{events: [Envelope]}` of `obs.*` only (max 500), idempotent by `id`. From hub, glasses
   (`source: glasses`), laptop/Mac (`source: laptop`) and phone (`source: phone`).
 - `PUT /v1/health/{home_id}` — `NodeHealthReport` from each hub.
+- `POST /v1/companion/tool` — `CompanionToolCall` a device forwards from the model (see Emits).
+- `POST /v1/companion/episode` — `EpisodeIn`: one finished session (or one run offline); idempotent by `id`.
 - `POST /v1/patients/{id}/actions` — `{action: flag_booster|flag_icbt_referral|acknowledge|send_message, note?, by?}`.
 
 ## Emits (topics/endpoints)
@@ -41,6 +44,13 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/eval` | `EvalResult` (per-state precision/recall, false needs_call per patient-month, lead time, ablation) |
 | `POST /v1/admin/recompute?eval=true` · `POST /v1/admin/reset` | recompute (+ simulation) · delete simulated data |
 | `GET /v1/admin/criteria` · `PUT /v1/admin/criteria` · `POST /v1/admin/criteria/preview?eval=1` | criteria in effect · apply/reset a live override · dry-run (`CriteriaResponse` / `CriteriaPreview`) |
+| `POST /v1/companion/session` | `CompanionSessionResponse {session_id, model, voice, system_instruction, tools[], context_card, persona_version, safety_phrases_version, live_token\|null}` (home token) |
+| `POST /v1/companion/tool` | `CompanionToolResult {ok, executor, result, error, crisis}` — crisis check first, then surface + schema, then the effect |
+| `POST /v1/companion/episode` | `EpisodeResult`; 422 if the thread topic is refused or the id belongs to another home |
+| `GET /v1/me/memories?home_id=` | `MemoriesResponse` ("What Kaiku remembers", newest first, expired plans dropped) |
+| `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` | `DeletedResponse` (404 if not that home's) |
+| `PUT /v1/me/memory_settings?home_id=` | `MemorySettings {remember}` — false = no memory writes |
+| emits `obs.safety_flag` | `{trigger: phrase, handled_locally: false}` (source `cloud`) when a crisis phrase arrives in a tool call |
 | `/` | static Next.js export (`apps/web/out`) when built; `/v1/*` and `/healthz` always win |
 
 All models: `contracts/python/kaiku_contracts/api.py` (TS: `contracts/ts`). Interactive docs at `/docs`.
@@ -60,8 +70,22 @@ kaiku_cloud/
                           garden (interactions in 14 days, resting after 3 quiet days) — pure functions
   voice.py                config/voice_lines.toml + Gemini TTS (Interactions API) + disk cache; `python -m
                           kaiku_cloud.voice` pre-renders (`make voice-prerender`)
+  mind/                   companion mind (plan 03 §3–§6; scope guard steps 2, 3, 7)
+    assemble.py           persona.md + surfaces.toml surface + context card -> system instruction (pure; the evals
+                          import this file, so they test what is served); persona+<sha8>
+    card.py               build_card(): time of day, name, done today (any surface), suggestion, phq9_due, ≤ 3
+                          memories, routines, open thread, tone cue (stable steady · watch gentle · needs_call/safety
+                          extra-gentle · no data / low_coverage steady). Never state words, numbers or watch data
+    memory.py             notebook rules: categories, health-detail refusal, dedupe, "don't remember that", remember
+                          off, plans expire (7 d), recall (FTS5 bm25 + porter + recency), routines (≥ 3 completed
+                          sessions of one intent on one weekday in 35 d), open thread (3 d, one at a time)
+    session.py            start_session (episode opened), run_tool (crisis -> safety_flag, nothing stored), end_session
+                          (closes episode, closes the thread of the same skill, opens follow_up), record_episode
+    live_token.py         Gemini Live ephemeral token (REST v1beta auth_tokens, uses=1, 30 min / 1 min to start);
+                          None without GEMINI_API_KEY or on any error
   api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
-  store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv)
+  store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv,
+                          memories + memories_fts, episodes, threads)
   analytics/
     metrics.py            generic daily extraction from Criteria [[metric]] (field / @count / @local_minutes,
                           where filters, agg, missing=zero). NO metric is defined in code
@@ -83,7 +107,8 @@ kaiku_cloud/
                           CLI for offline tuning (`make tune`)
     nightly.py            recompute all (+ simulation) inside the API process
 tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py,
-                          test_companion.py (mascot, garden, highlights, voice 404/503/cache)
+                          test_companion.py (mascot, garden, highlights, voice 404/503/cache),
+                          test_mind.py (session, tools, memory rules, thread across surfaces, routines, tone, token)
 ```
 
 ## Extension points
@@ -105,6 +130,9 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
 - Thin data is never "stable": < 2 sufficient sources → `watch` with `agreement: low_coverage`.
 - Only `obs.*` is accepted; duplicates by envelope `id` are ignored. With `KAIKU_HOME_TOKEN` set, every
   `POST /v1/events` needs `Authorization: Bearer <token>` (hub, glasses, laptop alike).
+- **Memories, episodes and threads are person-facing only**: no clinician route reads them (tested). Episodes hold
+  no transcript. The context card never contains the consensus state, scores, numbers or wearable data; tone is the
+  only cue. A crisis phrase in a tool call stores nothing, raises `obs.safety_flag` and returns the scripted message.
 - One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
 - No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient, every
   voice line and every `person_hard` sentence).
@@ -173,6 +201,7 @@ late-night minutes; glasses as usual with a sub-threshold cadence dip → disagr
 | `KAIKU_CRITERIA` | `config/criteria.toml` | consensus criteria file (re-read on change) |
 | `GEMINI_API_KEY` | unset → voice serves cache only (503 + hint on a miss) | Gemini TTS for `/v1/voice` |
 | `KAIKU_VOICE_CACHE` | `[voice].cache_dir` (`logs/voice_cache`; `/data/voice_cache` on Modal) | rendered audio |
+| `GEMINI_API_KEY` (mind) | unset → `live_token: null` | mints Gemini Live ephemeral tokens for `/v1/companion/session` |
 | `KAIKU_VOICE_LINES` | `config/voice_lines.toml` | keyed script (re-read on change) |
 
 Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
@@ -204,4 +233,8 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
 - `homes.summary` rows written by v1 code are ignored and recomputed on first read.
 - `/v1/voice` has not been called against the live TTS API yet (no key in the build env); the response parser
   handles both `output_audio` and `steps[].content[]`. Pre-render once a key is available.
+- Companion: Live model/voice come from `config/kaiku.toml [models].gemini_live` / `[voice].name`. The ephemeral token
+  call follows the current docs but has not run against the real API here (no key); it fails soft to null.
+  `forget` is in the registry on every surface but not yet in `config/surfaces.toml` tool lists (prompt lists the
+  served tools, so it is described anyway). Memories are not embedded (FTS5 only, per the scope guard).
 - The synth emits screen activity in 4 blocks a day (not hourly) to keep `make tune` fast; the real Mac app is hourly.

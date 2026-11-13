@@ -10,7 +10,7 @@ Quick use:
     env2 = validate(incoming_bytes)          # raises ContractError if invalid
 """
 
-from . import api, criteria, payloads, sources
+from . import api, companion_tools, criteria, payloads, sources, wording
 from .envelope import SCHEMA_VERSION, SOURCES, Envelope, default_home_id, make, utcnow, uuid7
 from .registry import (
     CMD,
@@ -29,7 +29,7 @@ from .sources import CONSENSUS_SOURCES, SOURCE_OF, consensus_source
 from .topics import PREFIX, ParsedTopic, parse_topic, qos_for, retain_for, topic, topic_for
 
 __all__ = [
-    "api", "criteria", "payloads", "sources", "CONSENSUS_SOURCES", "SOURCE_OF", "consensus_source", "SCHEMA_VERSION", "SOURCES", "Envelope", "default_home_id", "make", "utcnow",
+    "api", "companion_tools", "criteria", "wording", "payloads", "sources", "CONSENSUS_SOURCES", "SOURCE_OF", "consensus_source", "SCHEMA_VERSION", "SOURCES", "Envelope", "default_home_id", "make", "utcnow",
     "uuid7", "CMD", "EXAMPLES", "OBS", "RAW", "REGISTRY", "UPLINKABLE", "ContractError", "example",
     "payload_model", "to_json", "validate", "PREFIX", "ParsedTopic", "parse_topic", "qos_for",
     "retain_for", "topic", "topic_for",

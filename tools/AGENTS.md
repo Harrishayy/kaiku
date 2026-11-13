@@ -21,10 +21,9 @@ Any MQTT topic; `GET {KAIKU_CLOUD_URL}/healthz`, `GET /v1/patients` (doctor: per
 | `doctor.py` | `make doctor` | ✅/⚠️/❌ toolchain, `.env` key names, schemas, `.mcp.json`, broker, node heartbeat ages, cloud `/healthz`, per-source last data + consensus, Gemini key, Modal auth |
 | `agents_sync.py` | `make agents` (fix) / in `make test` (check) | one `AGENTS.md` per module (no CLAUDE/GEMINI/README), required sections, module index, message flows, criteria producers |
 | `busio.py` | — | MQTT connection kwargs from env + payload decoding |
-| `companion_evals/assemble.py` | — | system instruction = `config/persona.md` + one `config/surfaces.toml` surface + context card (pure; reference for the cloud's `/v1/companion/session`); rejects state/score/wearable keys in the card; `persona+<sha8>` |
-| `companion_evals/wording.py` | — | deterministic wording linter (clinical terms en/fi/sv, state talk/numbers, medical advice, promises, pretends human, watch/sleep data, surface phrases, length/sentence/question caps). Stdlib only — copy verbatim into `kaiku_contracts/wording.py` |
-| `companion_evals/safety.py` | — | crisis phrase check duplicated from `hub/kaiku_hub/safety/gate.py` (same TOML); parity test on `fixtures/safety_cases.json` |
-| `companion_evals/tool_specs.py` | — | plan 03 §4 tool schemas (prefers `kaiku_contracts.companion_tools` once it exists) + tiny arg validator |
+| `companion_evals/assemble.py` | — | re-exports `kaiku_cloud.mind.assemble` (what `/v1/companion/session` serves): persona + surface + context card; rejects state/score/wearable keys; `persona+<sha8>` |
+| `companion_evals/safety.py` | — | re-exports `kaiku_contracts.safety` (crisis matcher shared with the cloud); parity test vs `hub/kaiku_hub/safety/gate.py` on `fixtures/safety_cases.json` |
+| `companion_evals/tool_specs.py` | — | re-exports `kaiku_contracts.companion_tools` (TOOLS + `validate_args`); the wording linter is `kaiku_contracts.wording` |
 | `companion_evals/run.py` | `make eval-companion [DRY=1]` | scenarios → transcripts → deterministic checks (+ judge in real mode) → `logs/companion-evals/<persona>-<mode>-<ts>/scorecard.json` + `summary.md` |
 | `companion_evals/scenarios/*.yaml` | — | one list per skill file: `id, surface, skill, language, context` (card), `person` (sim persona), `turns` (scripted person lines), `expect {crisis, tools_any, tools_forbidden, handoff}` |
 | `companion_evals/fixtures/` | — | `dry_replies.yaml` (canned Kaiku turns per scenario id for `--dry`), `safety_cases.json` (shared gate fixture) |
