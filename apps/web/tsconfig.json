@@ -18,6 +18,7 @@
     "baseUrl": ".",
     "paths": {
       "@contracts": ["../../contracts/ts/index.ts"],
+      "@design/*": ["../../design/*"],
       "@/*": ["./*"]
     }
   },

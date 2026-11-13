@@ -1,4 +1,4 @@
-import type { Envelope } from '@contracts';
+import { SOURCE_LABELS as CONTRACT_SOURCE_LABELS, type Envelope } from '@contracts';
 
 /** Consensus states (handoff §6.4). Wording per §12: never diagnostic. */
 export type State = 'stable' | 'watch' | 'needs_call' | 'safety';
@@ -8,7 +8,7 @@ export type Agreement = 'agree' | 'disagree' | 'low_coverage';
 export const STATE_LABEL: Record<State, string> = {
   safety: 'Safety',
   needs_call: 'Needs a call',
-  watch: 'Watch',
+  watch: 'Worth a check-in',
   stable: 'Stable',
 };
 
@@ -51,11 +51,12 @@ export const AGREEMENT_LABEL: Record<Agreement, string> = {
 };
 
 /** Display names for consensus sources. Unknown (future) sources fall back to a prettified id. */
-const SOURCE_LABELS: Record<string, string> = { robot: 'Home robot', glasses: 'Meta glasses', laptop: 'Laptop' };
+const SOURCE_LABELS: Record<string, string> = CONTRACT_SOURCE_LABELS;
 const SOURCE_BLURB: Record<string, string> = {
   robot: 'Morning ritual: dial, heart rate & HRV, drumming, speech, get-up time, room light',
-  glasses: 'Walk companion: outings, time outdoors, steps',
-  laptop: '2-minute session (voice, expressivity, reaction time) and PHQ-9',
+  glasses: 'Walk companion: outings, time outdoors, steps, cadence',
+  laptop: 'Phone, Mac and web: games, short sessions, usage rhythm and PHQ-9',
+  wearable: 'Watch: sleep, resting heart rate, HRV, steps',
 };
 export const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? prettify(s);
 export const sourceBlurb = (s: string) => SOURCE_BLURB[s] ?? '';

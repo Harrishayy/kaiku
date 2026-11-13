@@ -66,7 +66,7 @@ make web                  # http://localhost:3000/clinician/
 
 | Path | What |
 |---|---|
-| [`docs/plans/`](docs/plans/) | plans in order: 01 foundation (done), 02 companion apps, 03 intelligence, 04 mind depth (current) — start here |
+| [`docs/plans/`](docs/plans/) | plans in order: 01 foundation (done), 02 companion apps, 03 intelligence, 04 mind depth (current), 05 iPhone extras (next) — start here |
 | [`AGENTS.md`](AGENTS.md) | rules for coding agents and humans; every module has its own `AGENTS.md` |
 | [`modules.toml`](modules.toml) | module registry: what exists, who owns it, what it emits/consumes |
 | `contracts/` | message envelope, payloads, topics, API models, shared MQTT `Bus` |

@@ -1,58 +1,65 @@
 'use client';
 
-import type { SourceVerdict } from '@contracts';
-import { fmt, pct, prettify, relTime, sourceBlurb, sourceLabel } from '@/lib/format';
-import { VerdictChip } from './ui';
+import type { MetricSeries, SourceVerdict } from '@contracts';
+import { cardSeries, num, sourceMissing, sparkline, verdictChip } from '@/lib/clinician.ts';
+import { pct, relTime, sourceBlurb, sourceLabel } from '@/lib/format';
 
 /**
- * One consensus source (robot / glasses / laptop / any future source). Data-driven: renders whatever
- * SourceVerdict the cloud sends, so a 4th source needs no change here.
- * "insufficient" is shown as "not enough data" — never as fine.
+ * One consensus source (look book clinician card): verdict chip + up to 3 metrics with sparkline and usual band.
+ * Data-driven: any source the cloud reports renders. "insufficient" is never shown as fine; a source with no data
+ * at all (e.g. no watch) says so plainly and that it isn't counted.
  */
-export function SourceCard({
-  source,
-  v,
-  labelFor = prettify,
-}: {
-  source: string;
-  v: SourceVerdict | undefined;
-  labelFor?: (metric: string) => string;
-}) {
-  const verdict = v?.verdict ?? 'insufficient';
-  const evidence = v?.evidence ?? [];
+export function SourceCard({ source, v, series }: { source: string; v: SourceVerdict | undefined; series: MetricSeries[] }) {
+  const chip = verdictChip(v?.verdict);
+  const metrics = cardSeries(source, v, series);
+  const missing = sourceMissing(v, series, source);
   return (
-    <article className={`card source source-${verdict}`} aria-labelledby={`src-${source}`}>
-      <header className="source-head">
-        <h3 id={`src-${source}`}>{sourceLabel(source)}</h3>
-        <VerdictChip verdict={verdict} />
-      </header>
-      <p className="muted small source-blurb">{sourceBlurb(source)}</p>
-      {!v && <p className="small">No data from this source yet.</p>}
-      {v && verdict === 'insufficient' && (
-        <p className="small">
-          Not enough recent data to compare with this person’s usual — excluded from the consensus vote.
+    <article className="k-src" aria-labelledby={`src-${source}`}>
+      <div className="h">
+        <span id={`src-${source}`}>{sourceLabel(source)}</span>
+        <span className={`k-chip ${chip.cls}`}>{chip.label}</span>
+      </div>
+      <p className="xs mut">{sourceBlurb(source)}</p>
+      {missing ? (
+        <p className="sm mut">
+          {source === 'wearable' ? 'No watch connected.' : 'No data from this source yet.'} Not counted, so it can’t pull the
+          consensus either way.
         </p>
-      )}
-      {v && evidence.length > 0 && (
-        <ul className="evidence">
-          {evidence.slice(0, 4).map((e, i) => (
-            <li key={`${e.metric}-${i}`}>
-              <strong>{labelFor(e.metric)}</strong> {e.direction === 'down' ? 'lower' : 'higher'} than usual
-              {e.days ? ` on ${e.days} of the last days` : ''}
-              {typeof e.z === 'number' ? <span className="muted"> · z {fmt(e.z, 1)}</span> : null}
-              {e.summary ? <div className="muted small">{e.summary}</div> : null}
-            </li>
+      ) : (
+        <>
+          {v?.verdict === 'insufficient' && (
+            <p className="sm mut">Not enough recent data to compare with this person’s usual. Not counted in the consensus.</p>
+          )}
+          {metrics.map((s) => (
+            <Metric key={s.metric} s={s} />
           ))}
-        </ul>
+        </>
       )}
-      {v && verdict !== 'insufficient' && evidence.length === 0 && (
-        <p className="small muted">No metric is drifting from the usual range.</p>
-      )}
-      {v && (
-        <p className="muted small source-foot">
+      {v && !missing && (
+        <p className="foot">
           Confidence {pct(v.confidence)} · last data {relTime(v.last_data_at)}
         </p>
       )}
     </article>
+  );
+}
+
+function Metric({ s }: { s: MetricSeries }) {
+  const sp = sparkline(s.points);
+  if (!sp) return null;
+  const v = sp.last.value as number;
+  const worse =
+    (s.worse_when === 'down' && typeof sp.last.band_low === 'number' && v < sp.last.band_low) ||
+    (s.worse_when === 'up' && typeof sp.last.band_high === 'number' && v > sp.last.band_high);
+  return (
+    <div className="k-met">
+      <span title={s.unit ? `${s.label} (${s.unit})` : s.label}>{s.label}</span>
+      <svg viewBox="0 0 72 22" aria-hidden="true">
+        {sp.band && <rect x="0" y={sp.band.y.toFixed(1)} width="72" height={sp.band.h.toFixed(1)} rx="2" style={{ fill: 'var(--k-sky-soft)' }} />}
+        <polyline points={sp.line} style={{ fill: 'none', stroke: 'var(--k-muted)', strokeWidth: 1.5 }} />
+        <circle cx={sp.dot.x} cy={sp.dot.y} r="2.6" style={{ fill: worse ? 'var(--k-honey)' : 'var(--k-sage)' }} />
+      </svg>
+      <b>{num(v)}</b>
+    </div>
   );
 }

@@ -125,3 +125,23 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   App Lab YOLO publisher per `devices/unoq_yolo.py`; pan sign convention. I1 — hub expects
   `POST /v1/companion/session` → `{system_instruction, tools?, model?, voice?, persona_version?}`.
 - Next: real Live smoke with a key; MediaPipe face detector for the laptop path; body sync while speaking.
+
+## 2026-11-14 — Claude Code (workstream W) — web [person + clinician dashboards on the design system]
+- Did: `apps/web` adopts `design/`: `design/generated/tokens.css` imported (not copied) + Fredoka/Nunito/DM Mono; legacy
+  CSS names mapped onto `--k-*`; new `app/kaiku.css` (look book components, em sizing with `--ts`). `<Mascot>` renders
+  `design/mascot.spec.json` directly (all 11 states, blink modes, yawn event, tap ear flick, glow by hour from tokens,
+  Reduce Motion). Person copy via `useCopy()` from `design/copy.json` (+ `lib/copy-web.json` for missing keys), en/fi.
+  `/me` redesigned per `design/ia.md` + look book (ambient mascot from `/v1/me` mood, `crisis` → crisis screen, weather
+  check → `obs.self_report` channel web, good & hard moments, garden, pairing QR + link, suggestion, what helps, What
+  Kaiku remembers with delete one/all + remembering switch, What Kaiku saw today receipt, PHQ-9 card). New
+  `/play/firefly/` (go/no-go, jar ending, `obs.play_session` firefly/web). Clinician list + patient view rebuilt (consensus
+  chip wording, 4 source cards with sparklines, "No watch connected", evidence table, summary "not a decision",
+  timeline grid, PHQ-9, actions; no memories). Nav: For you · Clinician · small Team menu (/live, /health, /eval, /tune).
+- Verified: Playwright matrix /me, /clinician, /clinician/patient/?id=demo-aino, /play/firefly at 320/390/768/1280 ×
+  light/dark × en/fi × 1.0/1.35 text against `make cloud-local` + seed: no horizontal page scroll or clipped text
+  (fixed: "English" segment breaking mid-word, cramped evidence table → full-width row, side-tab borders removed).
+  Weather check, memory delete/switch, I'm not OK and a full firefly round posted to the local cloud. `pnpm typecheck`,
+  `pnpm test` (21), `pnpm build`, `ui_copy_check`, `make check` (410), `make smoke` green.
+- Contract changes: none. `modules.toml` web: emits + memories endpoints; removed the `obs.play_session` planned producer.
+- Broken/blocked: design (D) — move `apps/web/lib/copy-web.json` keys into `design/copy.json`. Cloud (C) — highlights /
+  what-helps / suggestion reasons are English only; per-signal pause for the receipt has no endpoint.

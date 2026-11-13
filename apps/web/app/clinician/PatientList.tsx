@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { CONSENSUS_SOURCES, type PatientsResponse, type SourceBadge } from '@contracts';
 import { useApi } from '@/lib/api';
-import { STATE_LABEL, relTime, sortByState, sourceLabel, type State } from '@/lib/format';
-import { AgreementBadge, Empty, ErrorBox, Loading, PageHead, SimBadge, StaleNote, StateChip, VerdictChip } from '@/components/ui';
+import { consensusChip, verdictChip, VERDICT_WORD } from '@/lib/clinician.ts';
+import { relTime, sortByState, sourceLabel, type State } from '@/lib/format';
+import { Mascot } from '@/components/Mascot';
 
 const ORDER: State[] = ['safety', 'needs_call', 'watch', 'stable'];
 
@@ -22,71 +23,86 @@ export function PatientList() {
   patients.forEach((p) => (counts[p.state] += 1));
 
   return (
-    <>
-      <PageHead
-        title="Who needs a call"
-        lede={
-          <>
-            Ranked by consensus. Each person is observed by three independent sources; <strong>Needs a call</strong> means two
-            or more report a change from that person’s usual. <strong>Safety</strong> comes only from a crisis trigger.
-          </>
-        }
-      >
-        {data &&
-          ORDER.map((s) => (
-            <span key={s} className="count">
-              <StateChip state={s} /> <span className="num">{counts[s]}</span>
+    <div className="ui k-cl" lang="en">
+      <div className="k-cl-head">
+        <Mascot state="idle" size={30} still tappable={false} />
+        <div>
+          <h1>Who needs a call</h1>
+          <p className="meta">
+            Ranked by consensus. Each person is seen by up to four independent sources, each compared with that person’s own
+            usual. Safety comes only from a crisis trigger.
+          </p>
+        </div>
+      </div>
+      {data && (
+        <div className="k-counts" aria-label="People per state">
+          {ORDER.map((s) => (
+            <span key={s} className={`k-chip ${consensusChip(s, 'agree').cls}`}>
+              {consensusChip(s, 'agree').label} · <span className="num">{counts[s]}</span>
             </span>
           ))}
-      </PageHead>
+        </div>
+      )}
 
-      {loading && !data && <Loading label="Loading patients…" />}
-      {error && !data && <ErrorBox error={error} onRetry={reload} what="patients" />}
-      <StaleNote show={Boolean(error && data)} />
+      {loading && !data && (
+        <p className="mut" role="status">
+          Loading people…
+        </p>
+      )}
+      {error && !data && (
+        <div className="k-banner" role="alert">
+          <div>
+            <b>Can’t reach the Kaiku cloud.</b> Check the connection and try again.{' '}
+            <button type="button" className="k-b k-b-soft k-b-small" onClick={reload}>
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+      {error && data && (
+        <p className="xs mut" role="status">
+          Connection lost. Showing the last data received; retrying.
+        </p>
+      )}
       {data && patients.length === 0 && (
-        <Empty>
-          No one is connected yet. People appear here once their Kaiku sends its first check-in.
-        </Empty>
+        <div className="k-empty">No one is connected yet. People appear here once their Kaiku sends its first check-in.</div>
       )}
 
       {patients.length > 0 && (
-        <ul className="patients">
-          {patients.map((p) => (
-            <li key={p.id} className={`card patient s-${p.state}`}>
-              <div>
-                <Link className="patient-name" href={`/clinician/patient/?id=${encodeURIComponent(p.id)}`}>
-                  {p.display_name}
+        <ul className="k-plist">
+          {patients.map((p) => {
+            const chip = consensusChip(p.state, p.agreement);
+            return (
+              <li key={p.id}>
+                <Link className="k-prow" href={`/clinician/patient/?id=${encodeURIComponent(p.id)}`}>
+                  <div>
+                    <div className="name">
+                      {p.display_name.replace(/\s*\(SIMULATED\)$/, '')} {p.sim && <span className="k-sim">SIMULATED</span>}
+                    </div>
+                    <div className="head">
+                      Last activity {relTime(p.last_activity_at)}
+                      {p.safety_since ? ` · safety since ${relTime(p.safety_since)}` : ''}
+                      {p.acknowledged ? ' · acknowledged' : ''}
+                    </div>
+                  </div>
+                  <span className={`k-chip ${chip.cls}`}>{chip.label}</span>
+                  <div className="k-minisrc">
+                    {orderedSources(p.sources).map(({ source, badge }) => {
+                      const v = verdictChip(badge?.verdict);
+                      return (
+                        <span key={source} className={`k-chip ${v.cls}`} title={badge ? `last data ${relTime(badge.last_data_at)}` : 'no data'}>
+                          {sourceLabel(source)}: {VERDICT_WORD[badge?.verdict ?? 'insufficient']}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </Link>
-                <SimBadge show={Boolean(p.sim)} />
-                <p className="muted small" style={{ margin: '4px 0 0' }}>
-                  {p.headline}
-                </p>
-              </div>
-              <div className="patient-state">
-                <StateChip state={p.state} />
-                {p.acknowledged && <span className="tag">acknowledged</span>}
-              </div>
-              <div className="patient-meta">
-                <AgreementBadge agreement={p.agreement} />
-                {orderedSources(p.sources).map(({ source, badge }) => (
-                  <span key={source} className="src-mini" title={badge ? `last data ${relTime(badge.last_data_at)}` : 'no data'}>
-                    {sourceLabel(source)} <VerdictChip verdict={badge?.verdict ?? 'insufficient'} compact />
-                    <span className="muted"> {badge ? relTime(badge.last_data_at) : ''}</span>
-                  </span>
-                ))}
-                {p.safety_since && <span>Safety since {relTime(p.safety_since)}</span>}
-                <span>Last activity {relTime(p.last_activity_at)}</span>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
-      {data && (
-        <p className="muted small" style={{ marginTop: 14 }}>
-          Rule <code>{data.rule_version}</code> — deterministic and auditable. {STATE_LABEL.watch} = one source worse or only one source
-          with enough data.
-        </p>
-      )}
-    </>
+      {data && <p className="k-rule">Rule {data.rule_version}. Deterministic and auditable.</p>}
+    </div>
   );
 }

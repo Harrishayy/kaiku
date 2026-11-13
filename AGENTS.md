@@ -85,7 +85,7 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | contracts | [`contracts/`](contracts/AGENTS.md) | all | library | no | Message envelope, payloads, topics, API models, consensus source map; shared Bus/config/jlog |
 | hub | [`hub/`](hub/AGENTS.md) | B | node | no | Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink |
 | cloud | [`cloud/`](cloud/AGENTS.md) | C | service | no | Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma explanations, simulation, web hosting |
-| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js static export: clinician dashboard, /me, laptop /session, /phq9, /consent, /live, /health, /eval, /tune |
+| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js static export: person /me (+ firefly game), clinician dashboard, laptop /session, /phq9, /consent; team menu: /live, /health, /eval, /tune |
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
 | atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Head: eyes, IMU taps, ear encoder, pan motor, chest LEDs, purr |
