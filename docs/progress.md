@@ -29,3 +29,10 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Contract changes: v2 types (see D17), `api.Criteria*`, criteria schema. Still `v: 1` (nothing deployed).
 - Broken/blocked: nothing deployed to Modal; Gemini Live / Lyria / vLLM untested against real services; model IDs are `VERIFY-`; real-face expressivity untested; D20 lead-time vs precision trade-off needs a team decision; repo is private.
 - Next: A — Atech/UNO Q spikes. B — real Gemini Live + Lyria. C — `modal deploy`, Gemma serving, tune with tester data. D — glasses web app, demo script, submission text (`docs/submission.md`).
+
+## 2026-11-14 01:30 — Claude Code — hardware (A)
+- Did: downloaded the datasheets for UNO Q, Arduino USB Camera TPX00246 and Modulino Buzzer ABX00108, plus the chip datasheet for each Atech module, into `hardware/datasheets/` (now gitignored; `SOURCES.md` inside lists the URLs). Added `hardware/dimensions.md`, the single file for part dimensions, with photo estimates (±5 %) for the Atech motherboard (~127 × 68), the DC motor (~23 × 23 × 44, 3 mm shaft) and the module cubes (~22 mm).
+- Verified: every PDF opens and has the right title or page count.
+- Contract changes: none
+- Broken/blocked: Atech publishes no mechanical dimensions, so the Atech rows are photo estimates or MEASURE. The TPX00246 camera has a USB-A plug, so the UNO Q needs a USB-C hub or adapter. Atech's IMU module ID is `icm40608_imu`, but its docs name the chip as the LSM6DSOX.
+- Next: A — measure the Atech modules and the UNO Q stack height with calipers, then fill in dimensions.md before modelling the shell.
