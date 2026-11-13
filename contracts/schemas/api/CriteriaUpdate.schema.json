@@ -206,7 +206,7 @@
           "type": "string"
         },
         "field": {
-          "description": "payload field, or @count / @local_minutes",
+          "description": "payload field (nested with a dot, e.g. category_min.communication), or @count / @local_minutes",
           "title": "Field",
           "type": "string"
         },
@@ -250,6 +250,13 @@
         "obs": {
           "description": "obs type, e.g. obs.hrv_session",
           "title": "Obs",
+          "type": "string"
+        },
+        "person_hard": {
+          "default": "",
+          "description": "plain, gentle sentence shown to the PERSON on /me ('Your days') for a day this metric was beyond the usual in its worse direction; empty = never shown. Wording rules: root AGENTS.md (no clinical words)",
+          "maxLength": 160,
+          "title": "Person Hard",
           "type": "string"
         },
         "quality_min": {

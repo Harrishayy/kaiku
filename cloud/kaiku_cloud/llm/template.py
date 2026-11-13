@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from kaiku_contracts.api import Explanation, SourceNote
+from kaiku_contracts.sources import SOURCE_LABELS
 
 CAVEATS = ("Change signals are measured against this person's own recent baseline; they are not clinical "
            "findings and can have ordinary causes. Simulated data is labelled SIMULATED.")
-SOURCE_LABEL = {"robot": "Robot", "glasses": "Glasses", "laptop": "Laptop"}
+SOURCE_LABEL = SOURCE_LABELS  # robot "Home robot", glasses, laptop "Apps", wearable "Watch"
 VERDICT_WORD = {"better": "better than usual", "as_usual": "as usual", "worse": "worse than usual",
                 "insufficient": "not enough data"}
 
@@ -34,7 +35,9 @@ def template_explanation(ctx: dict[str, Any]) -> Explanation:
                 "shown the MIELI Crisis Helpline and 112 on the spot. Please contact them today.")
         actions = ["check_in_call", "send_message"]
     elif state == "needs_call":
-        names = " and ".join(SOURCE_LABEL[v["source"]].lower() for v in worse) or "two sources"
+        labels = [SOURCE_LABEL[v["source"]].lower() for v in worse]
+        names = (", ".join(labels[:-1]) + " and " + labels[-1]) if len(labels) > 1 else (labels[0] if labels
+                                                                                          else "two sources")
         headline = f"{name}: {names} show change from their usual — needs a call"
         text = (f"{len(worse)} independent sources report worse than this person's usual. "
                 + ("A clinician acknowledged it; the state holds until three stable days. " if ctx.get("acknowledged")
@@ -47,7 +50,7 @@ def template_explanation(ctx: dict[str, Any]) -> Explanation:
                     "picture. Encourage the missing sessions or walks.")
         else:
             src = SOURCE_LABEL[worse[0]["source"]].lower() if worse else "one source"
-            verb = "show" if src == "glasses" else "shows"
+            verb = "show" if src.endswith("s") else "shows"
             headline = f"{name}: {src} {verb} change from their usual — watching"
             text = "One source reports worse than usual; the others look as usual. Not enough on its own for a call."
         actions = ["none"]

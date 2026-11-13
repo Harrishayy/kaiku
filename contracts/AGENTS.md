@@ -27,26 +27,42 @@ Defines all of them. The topic is derived from the fully-qualified `type`:
 | `health` | `kaiku/v1/<home>/health/<envelope.source>` | 1 | yes |
 | `log` | `kaiku/v1/<home>/log/<envelope.source>` | 0 | no |
 
-Only `obs.*` may be uplinked (`UPLINKABLE`). Glasses and laptop apps send the same envelopes over `POST /v1/events`.
+Only `obs.*` may be uplinked (`UPLINKABLE`). Glasses, laptop/Mac and phone apps send the same envelopes over
+`POST /v1/events`.
+
+Plan 02 additions (all computed on the device; only derived numbers): envelope source `phone` ·
+`obs.self_report.channel` (`robot|phone|mac|web|glasses_voice`, default `robot`; always the robot source's daily
+dial) · `obs.outing` `method: dat_imu` + `cadence_spm`, `gait_regularity`, `head_up_ratio` ·
+`obs.screen_activity` (Mac usage rhythm: `period_min`, `active_min`, `late_night_min`, `category_min{work,
+communication, social, video, news, games, other}`, `switches_per_hour`, `longest_stretch_min`, `breaks`, `paused`;
+no titles/URLs/keystrokes — `extra=forbid` rejects them) · `obs.play_session` (`game: firefly|breathe|tell`,
+`device: phone|mac|web`, reaction/speech/HR features) · `obs.wearable_daily` (`date` = the morning; sleep, sleep
+midpoint in min from local midnight, regularity, resting HR, HRV SDNN, steps, exercise, `device`).
+API: `MeResponse.mascot {mood: idle|happy|cozy|crisis, line_key}`, `highlights [{date, kind: good|hard, text,
+source}]`, `garden {plants, resting}`; `VoiceLinesResponse` (`GET /v1/voice`).
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 
 ## Map
 ```
 python/kaiku_contracts/
-  envelope.py   Envelope, Source, make(), uuid7()           sources: head|sensors|hub|friendlink|glasses|laptop|cloud|sim
+  envelope.py   Envelope, Source, make(), uuid7()           sources: head|sensors|hub|friendlink|glasses|laptop|phone|cloud|sim
   payloads.py   every payload model (obs/raw/cmd/health/log)
   registry.py   type -> model (OBS/RAW/CMD), UPLINKABLE, validate(), EXAMPLES (one per type, required)
-  sources.py    obs type -> consensus source (robot|glasses|laptop) or learner|adherence|override
-  criteria.py   schema + loader for config/criteria.toml; rule_version = name + hash
-  api.py        cloud HTTP models: Consensus, SourceVerdict, Explanation, PatientSummary, Timeline, PHQ-9, Me, Eval, Criteria*
+  sources.py    obs type -> consensus source (robot|glasses|laptop|wearable) or learner|adherence|override;
+                SOURCE_LABELS (laptop is shown as "Apps", wearable as "Watch")
+  criteria.py   schema + loader for config/criteria.toml; rule_version = name + hash; nested fields
+                (`category_min.communication`); per-metric `person_hard` sentence for /me
+  api.py        cloud HTTP models: Consensus, SourceVerdict, Explanation, PatientSummary, Timeline, PHQ-9, Me (+ Mascot,
+                Highlight, Garden), VoiceLinesResponse, Eval, Criteria*
   topics.py     topic(), topic_for(), parse_topic(), QoS/retain
   bus.py        async MQTT client: validates both ways, reconnects, heartbeat + last-will
   config.py     config/kaiku.toml + KAIKU_<SECTION>_<KEY> env overrides, .env loader
   jlog.py       JSON-lines logging
   export.py     writes schemas/ + ts/index.ts (make contracts); --check for tests
 schemas/  ts/   GENERATED — never edit by hand
-tests/          round trips, rejections, topics, source map, criteria validation, bus on a real broker, stale schemas
+tests/          round trips, rejections, topics, source map, criteria validation, bus on a real broker, stale schemas,
+                test_plan02.py (new types, bounds, no content fields)
 ```
 
 ## Extension points

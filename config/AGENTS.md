@@ -16,6 +16,10 @@
   activities, word/sentence/question caps (enforced by the wording linter), session length, proactive limits,
   extra rules, surface-only banned phrases. The header comment documents every key.
 - `safety_phrases.toml` — crisis phrases (en/fi/sv) and the scripted message spoken/shown verbatim. No LLM.
+- `voice_lines.toml` — every line Kaiku says on every surface, keyed (`greet.morning`, `walk.light_hunt.1`, …),
+  en/fi/sv + optional `style`. Clients use keys, never their own wording; served by `GET /v1/voice[/{key}]`.
+  The voice itself (one Gemini prebuilt voice + TTS model) is `kaiku.toml [voice]` (D27). Never a crisis line here.
+  fi/sv are drafts: have a native speaker check them.
 - `mosquitto.conf` — dev/demo broker.
 
 ## Rules
@@ -39,5 +43,8 @@
    change state; `PUT /v1/admin/criteria` → apply; `criteria: null` → back to the file). Export the result as
    TOML and commit it here — the file is the ground truth; a live override is temporary.
 5. Log meaningful changes in `docs/decisions.md` (what changed, why, eval before/after).
+- Optional `person_hard` on a metric: the gentle sentence the person sees in "Your days" on a day beyond their usual
+  (wording rules apply; tested against the banned-word list). Nested payload fields use a dot
+  (`category_min.communication`).
 - Adding a new signal: if its obs type/field already exists, just add a `[[metric]]` block. If it needs a new field
   or obs type, change contracts first (root rule 4), then add the block.

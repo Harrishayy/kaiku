@@ -3,7 +3,7 @@ import type * as M from './models';
 export * from './models';
 
 export const SCHEMA_VERSION = 1;
-export type Source = 'head' | 'sensors' | 'hub' | 'friendlink' | 'glasses' | 'laptop' | 'cloud' | 'sim';
+export type Source = 'head' | 'sensors' | 'hub' | 'friendlink' | 'glasses' | 'laptop' | 'phone' | 'cloud' | 'sim';
 
 export interface Envelope<P = unknown, T extends string = string> {
   v: 1;
@@ -30,6 +30,9 @@ export interface PayloadByType {
   'obs.outing': M.Outing;
   'obs.friend_link': M.FriendLink;
   'obs.laptop_session': M.LaptopSession;
+  'obs.screen_activity': M.ScreenActivity;
+  'obs.play_session': M.PlaySession;
+  'obs.wearable_daily': M.WearableDaily;
   'obs.phq9': M.Phq9;
   'obs.intervention_response': M.InterventionResponse;
   'obs.safety_flag': M.SafetyFlag;
@@ -52,10 +55,12 @@ export interface PayloadByType {
 export type MessageType = keyof PayloadByType;
 export type Message<T extends MessageType = MessageType> = { [K in T]: Envelope<PayloadByType[K], K> }[T];
 
-export const CONSENSUS_SOURCES = ["robot", "glasses", "laptop"] as const;
+export const CONSENSUS_SOURCES = ["robot", "glasses", "laptop", "wearable"] as const;
 export type ConsensusSource = (typeof CONSENSUS_SOURCES)[number];
 /** obs type -> consensus source | learner | adherence | override (mirrors kaiku_contracts.sources). */
-export const SOURCE_OF: Record<string, string> = {"obs.presence": "robot", "obs.self_report": "robot", "obs.hrv_session": "robot", "obs.drum_session": "robot", "obs.speech_features": "robot", "obs.light_level": "robot", "obs.friend_link": "robot", "obs.outing": "glasses", "obs.laptop_session": "laptop", "obs.phq9": "laptop", "obs.ritual": "adherence", "obs.intervention_response": "learner", "obs.nudge_offered": "learner", "obs.nudge_outcome": "learner", "obs.safety_flag": "override"};
+export const SOURCE_OF: Record<string, string> = {"obs.presence": "robot", "obs.self_report": "robot", "obs.hrv_session": "robot", "obs.drum_session": "robot", "obs.speech_features": "robot", "obs.light_level": "robot", "obs.friend_link": "robot", "obs.outing": "glasses", "obs.laptop_session": "laptop", "obs.screen_activity": "laptop", "obs.play_session": "laptop", "obs.wearable_daily": "wearable", "obs.phq9": "laptop", "obs.ritual": "adherence", "obs.intervention_response": "learner", "obs.nudge_offered": "learner", "obs.nudge_outcome": "learner", "obs.safety_flag": "override"};
+/** Display labels for consensus sources ("laptop" is shown as "Apps"). */
+export const SOURCE_LABELS: Record<ConsensusSource, string> = {"robot": "Home robot", "glasses": "Glasses", "laptop": "Apps", "wearable": "Watch"};
 
 /** MQTT topic for a message (mirrors kaiku_contracts.topic_for). */
 export function topicFor(env: Pick<Envelope, 'home_id' | 'type' | 'source'>): string {

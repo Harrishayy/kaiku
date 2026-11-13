@@ -54,7 +54,9 @@ def extract(m: MetricSpec, p: dict[str, Any], t_local: datetime) -> float | None
         return 1.0
     if m.field == "@local_minutes":
         return float(t_local.hour * 60 + t_local.minute)
-    v = p.get(m.field)
+    v: Any = p
+    for part in m.field.split("."):  # nested fields: "category_min.communication"
+        v = v.get(part) if isinstance(v, dict) else None
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else (1.0 if v is True else None)
 
 

@@ -64,8 +64,7 @@ export function ErrorBox({ error, onRetry, what }: { error: ApiError; onRetry?: 
         <strong>Couldn’t load {what}.</strong> {error.message}
         {error.status === null && (
           <div className="muted small">
-            Is the cloud running? Locally: <code>make cloud-local</code>, then open the app with{' '}
-            <code>NEXT_PUBLIC_KAIKU_API=http://localhost:8000</code>.
+            Kaiku can’t reach the server right now. Check your connection and try again in a moment.
           </div>
         )}
       </div>

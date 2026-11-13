@@ -971,6 +971,7 @@ version = "0.1.0"
 source = { editable = "cloud" }
 dependencies = [
     { name = "fastapi" },
+    { name = "google-genai" },
     { name = "httpx" },
     { name = "kaiku-contracts" },
     { name = "modal" },
@@ -983,6 +984,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "google-genai", specifier = ">=2.25" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kaiku-contracts", editable = "contracts/python" },
     { name = "modal", specifier = ">=1.0" },

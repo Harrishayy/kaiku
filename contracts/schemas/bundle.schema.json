@@ -501,6 +501,7 @@
             "friendlink",
             "glasses",
             "laptop",
+            "phone",
             "cloud",
             "sim"
           ],
@@ -766,6 +767,23 @@
       "title": "FriendlinkCmd",
       "type": "object"
     },
+    "Garden": {
+      "additionalProperties": false,
+      "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter.",
+      "properties": {
+        "plants": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resting": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "title": "Garden",
+      "type": "object"
+    },
     "HeadCmd": {
       "additionalProperties": false,
       "properties": {
@@ -1026,6 +1044,44 @@
         "tries"
       ],
       "title": "HelpStat",
+      "type": "object"
+    },
+    "Highlight": {
+      "additionalProperties": false,
+      "description": "One line for \"Your days\": a good moment or a gentle note about a harder day. Plain, friendly, never clinical.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "good",
+            "hard"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "kind",
+        "text",
+        "source"
+      ],
+      "title": "Highlight",
       "type": "object"
     },
     "HrvSession": {
@@ -1372,10 +1428,52 @@
       "title": "LookAt",
       "type": "object"
     },
+    "Mascot": {
+      "additionalProperties": false,
+      "description": "Kaiku's ambient mood (plan 02 §2): a pure function of the consensus state, computed once in the cloud so every\nsurface shows the same thing. Never sad or worried at the person: stable -> idle/happy, watch -> cozy,\nneeds_call -> cozy + the nurse-chat offer, safety -> \"crisis\" (clients show the scripted crisis screen from\nconfig/safety_phrases.toml: no animation, no character lines; line_key is then null).",
+      "properties": {
+        "line_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "key in config/voice_lines.toml (GET /v1/voice/{key})"
+        },
+        "mood": {
+          "enum": [
+            "idle",
+            "happy",
+            "cozy",
+            "crisis"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "mood"
+      ],
+      "title": "Mascot",
+      "type": "object"
+    },
     "MeResponse": {
       "additionalProperties": false,
       "description": "Person-facing view. Plain language, never alarming.",
       "properties": {
+        "garden": {
+          "$ref": "#/$defs/Garden"
+        },
+        "highlights": {
+          "description": "last 7 days, newest first",
+          "items": {
+            "$ref": "#/$defs/Highlight"
+          },
+          "type": "array"
+        },
         "home_id": {
           "type": "string"
         },
@@ -1385,6 +1483,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "mascot": {
+          "$ref": "#/$defs/Mascot"
         },
         "next_suggestion": {
           "anyOf": [
@@ -1550,7 +1651,8 @@
           "enum": [
             "robot",
             "glasses",
-            "laptop"
+            "laptop",
+            "wearable"
           ],
           "type": "string"
         },
@@ -1655,7 +1757,7 @@
           "type": "string"
         },
         "field": {
-          "description": "payload field, or @count / @local_minutes",
+          "description": "payload field (nested with a dot, e.g. category_min.communication), or @count / @local_minutes",
           "type": "string"
         },
         "label": {
@@ -1692,6 +1794,12 @@
         },
         "obs": {
           "description": "obs type, e.g. obs.hrv_session",
+          "type": "string"
+        },
+        "person_hard": {
+          "default": "",
+          "description": "plain, gentle sentence shown to the PERSON on /me ('Your days') for a day this metric was beyond the usual in its worse direction; empty = never shown. Wording rules: root AGENTS.md (no clinical words)",
+          "maxLength": 160,
           "type": "string"
         },
         "quality_min": {
@@ -1974,8 +2082,22 @@
     },
     "Outing": {
       "additionalProperties": false,
-      "description": "A walk / time outdoors. daylight_min only from the optional DAT camera app.",
+      "description": "A walk / time outdoors. Everything is computed on the phone / glasses; only these numbers are uplinked.\n\ndaylight_min only with a camera (DAT camera app or the iPhone DAT bridge: sparse frames -> brightness, frames\ndiscarded). cadence / gait / head-up come from the glasses IMU via the DAT SDK (`method: dat_imu`, beta).",
       "properties": {
+        "cadence_spm": {
+          "anyOf": [
+            {
+              "maximum": 250,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walking cadence, steps per minute"
+        },
         "daylight_min": {
           "anyOf": [
             {
@@ -1988,11 +2110,40 @@
           ],
           "default": null
         },
+        "gait_regularity": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "step-interval regularity, 1 = metronome"
+        },
+        "head_up_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of walking time looking ahead/up"
+        },
         "method": {
           "enum": [
             "location",
             "steps",
-            "dat_camera"
+            "dat_camera",
+            "dat_imu"
           ],
           "type": "string"
         },
@@ -2238,6 +2389,163 @@
         "entries"
       ],
       "title": "Phq9History",
+      "type": "object"
+    },
+    "PlaySession": {
+      "additionalProperties": false,
+      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
+      "properties": {
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "duration_s": {
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "number"
+        },
+        "false_taps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: taps on a moth (no-go)"
+        },
+        "game": {
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell"
+          ],
+          "type": "string"
+        },
+        "hr_after_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "breathe, with a watch"
+        },
+        "hr_before_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "breathe, with a watch"
+        },
+        "lapses": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: responses > 500 ms or missed fireflies"
+        },
+        "pause_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell"
+        },
+        "pitch_variability": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell: semitones SD"
+        },
+        "reaction_ms_iqr": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reaction_ms_median": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: correct taps"
+        },
+        "speech_rate": {
+          "anyOf": [
+            {
+              "maximum": 15,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell: syllables per second"
+        }
+      },
+      "required": [
+        "game",
+        "device",
+        "duration_s"
+      ],
+      "title": "PlaySession",
       "type": "object"
     },
     "Presence": {
@@ -2663,10 +2971,123 @@
       "title": "SafetyFlag",
       "type": "object"
     },
+    "ScreenActivity": {
+      "additionalProperties": false,
+      "description": "Usage rhythm (D26), one per period (hourly) from the Mac app. Computed on the Mac from the frontmost app's\nbundle id + idle time only: no window titles, URLs, keystrokes or screenshots ever leave it (or are kept).\n`paused: true` = the person paused sensing for (part of) this period; the numbers then cover the rest only.",
+      "properties": {
+        "active_min": {
+          "description": "minutes with input activity (not idle)",
+          "maximum": 1440,
+          "minimum": 0,
+          "type": "number"
+        },
+        "breaks": {
+          "default": 0,
+          "description": "idle gaps >= 5 min",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "category_min": {
+          "$ref": "#/$defs/ScreenCategoryMinutes"
+        },
+        "late_night_min": {
+          "default": 0,
+          "description": "active minutes between 00:00 and 05:00 local",
+          "maximum": 1440,
+          "minimum": 0,
+          "type": "number"
+        },
+        "longest_stretch_min": {
+          "default": 0,
+          "description": "longest unbroken active stretch",
+          "maximum": 1440,
+          "minimum": 0,
+          "type": "number"
+        },
+        "paused": {
+          "default": false,
+          "type": "boolean"
+        },
+        "period_min": {
+          "description": "length of the period this summarises (60 = hourly)",
+          "exclusiveMinimum": 0,
+          "maximum": 1440,
+          "type": "number"
+        },
+        "switches_per_hour": {
+          "default": 0,
+          "description": "frontmost-app switches per active hour",
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "period_min",
+        "active_min"
+      ],
+      "title": "ScreenActivity",
+      "type": "object"
+    },
+    "ScreenCategoryMinutes": {
+      "additionalProperties": false,
+      "description": "Minutes by broad category, from a LOCAL bundle-id -> category table on the Mac. Never titles/URLs/content.",
+      "properties": {
+        "communication": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "games": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "news": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "other": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "social": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "video": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "work": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "title": "ScreenCategoryMinutes",
+      "type": "object"
+    },
     "SelfReport": {
       "additionalProperties": false,
       "description": "One dial answer (turn the ear). The ritual asks mood, energy, last night's sleep.",
       "properties": {
+        "channel": {
+          "default": "robot",
+          "description": "where the dial was answered: robot ear, phone/Mac/web weather check, or spoken on the glasses (parsed on the phone, no transcript kept). Always counts toward the robot source",
+          "enum": [
+            "robot",
+            "phone",
+            "mac",
+            "web",
+            "glasses_voice"
+          ],
+          "type": "string"
+        },
         "context": {
           "default": "ritual",
           "enum": [
@@ -2754,7 +3175,8 @@
           "enum": [
             "robot",
             "glasses",
-            "laptop"
+            "laptop",
+            "wearable"
           ],
           "type": "string"
         },
@@ -2783,7 +3205,8 @@
           "enum": [
             "robot",
             "glasses",
-            "laptop"
+            "laptop",
+            "wearable"
           ],
           "type": "string"
         },
@@ -2871,7 +3294,8 @@
           "enum": [
             "robot",
             "glasses",
-            "laptop"
+            "laptop",
+            "wearable"
           ],
           "type": "string"
         },
@@ -3157,6 +3581,159 @@
         "days"
       ],
       "title": "VerdictEvidence",
+      "type": "object"
+    },
+    "VoiceLinesResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.\nAudio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key).",
+      "properties": {
+        "lang": {
+          "enum": [
+            "en",
+            "fi",
+            "sv"
+          ],
+          "type": "string"
+        },
+        "lines": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "voice": {
+          "description": "Gemini prebuilt voice name (config/kaiku.toml [voice])",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lang",
+        "voice",
+        "model",
+        "lines"
+      ],
+      "title": "VoiceLinesResponse",
+      "type": "object"
+    },
+    "WearableDaily": {
+      "additionalProperties": false,
+      "description": "Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.\nPosted once per morning; `date` = that local morning: sleep = the night that ended this morning, steps /\nexercise / resting HR / HRV = the previous 24 h. Only these aggregates leave the phone (no raw samples).\nOptional source: people without a watch simply never send it.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "device": {
+          "enum": [
+            "apple_watch",
+            "other_watch",
+            "phone_only"
+          ],
+          "type": "string"
+        },
+        "exercise_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hrv_sdnn_ms": {
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resting_hr_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 20,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sleep_midpoint_min": {
+          "anyOf": [
+            {
+              "maximum": 720,
+              "minimum": -720,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "midpoint of last night's sleep, minutes from local midnight (-30 = 23:30, 210 = 03:30)"
+        },
+        "sleep_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes asleep last night"
+        },
+        "sleep_regularity": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1 = same sleep times every night"
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "maximum": 200000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "date",
+        "device"
+      ],
+      "title": "WearableDaily",
       "type": "object"
     }
   },

@@ -2,8 +2,15 @@
   "consensus_sources": [
     "robot",
     "glasses",
-    "laptop"
+    "laptop",
+    "wearable"
   ],
+  "source_labels": {
+    "glasses": "Glasses",
+    "laptop": "Apps",
+    "robot": "Home robot",
+    "wearable": "Watch"
+  },
   "source_of": {
     "obs.drum_session": "robot",
     "obs.friend_link": "robot",
@@ -15,10 +22,13 @@
     "obs.nudge_outcome": "learner",
     "obs.outing": "glasses",
     "obs.phq9": "laptop",
+    "obs.play_session": "laptop",
     "obs.presence": "robot",
     "obs.ritual": "adherence",
     "obs.safety_flag": "override",
+    "obs.screen_activity": "laptop",
     "obs.self_report": "robot",
-    "obs.speech_features": "robot"
+    "obs.speech_features": "robot",
+    "obs.wearable_daily": "wearable"
   }
 }

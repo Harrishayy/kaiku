@@ -7,13 +7,26 @@ language = "en"            # en | fi  (D9: Finnish greeting + English conversati
 greeting_language = "fi"
 
 [models]
-# VERIFY current IDs in the Gemini docs (geminiDocs MCP) before coding. Model names change.
-gemini_live = "VERIFY-gemini-live-model-id"
-lyria_realtime = "VERIFY-lyria-realtime-model-id"
+# Verified in the Gemini docs (geminiDocs MCP) 2026-11-14. Model names change: re-check before a deploy.
+gemini_live = "gemini-3.8-live"
+lyria_realtime = "lyria-realtime-exp"
+gemini_flagship = "gemini-4-argon"
 gemini_vision = "VERIFY-gemini-flash-model-id"
-# VERIFY Hugging Face repo id + licence acceptance (D5: smallest instruct variant first)
-gemma_hf_repo = "VERIFY-gemma-4-e4b-instruct-repo"
-gemma_hosted = "VERIFY-hosted-gemma-model-id"
+tts = "gemini-3.8-flash-tts"              # GA 2026-09-22, Interactions API; used by the cloud /v1/voice
+tts_lite = "gemini-3.8-flash-lite-tts"    # cheaper on-demand alternative
+gemma_hosted = "gemma-4-26b-a4b-it"       # larger: gemma-4-31b-it
+# VERIFY Hugging Face repo id (org prefix) + licence acceptance (D5: smallest instruct variant first)
+gemma_hf_repo = "VERIFY-google/gemma-4-26b-a4b-it"
+
+[voice]
+# D27: ONE voice for Kaiku everywhere (Gemini Live on the robot + cloud TTS for apps/glasses).
+# Prebuilt voice names: Gemini docs "speech-generation#prebuilt-voices" (Sulafat = "Warm").
+name = "Sulafat"
+model = "gemini-3.8-flash-tts"
+style = "warm, gentle, unhurried, softly smiling; a small friendly companion"
+cache_dir = "logs/voice_cache"           # rendered audio (wav), keyed by model+voice+lang+text hash
+timeout_s = 20
+lang_codes = { en = "en-US", fi = "fi-FI", sv = "sv-SE" }
 
 [mqtt]
 host = "localhost"

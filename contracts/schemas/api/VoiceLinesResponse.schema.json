@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "description": "GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.\nAudio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key).",
+  "properties": {
+    "lang": {
+      "enum": [
+        "en",
+        "fi",
+        "sv"
+      ],
+      "title": "Lang",
+      "type": "string"
+    },
+    "lines": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Lines",
+      "type": "object"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "voice": {
+      "description": "Gemini prebuilt voice name (config/kaiku.toml [voice])",
+      "title": "Voice",
+      "type": "string"
+    }
+  },
+  "required": [
+    "lang",
+    "voice",
+    "model",
+    "lines"
+  ],
+  "title": "VoiceLinesResponse",
+  "type": "object"
+}

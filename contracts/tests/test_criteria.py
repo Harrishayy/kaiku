@@ -12,7 +12,7 @@ def _raw():
 def test_repo_criteria_file_is_valid():
     c = load_criteria()
     assert c.rule_version.startswith(c.name + "+")
-    for s in ("robot", "glasses", "laptop"):
+    for s in ("robot", "glasses", "laptop", "wearable"):
         assert c.sources[s].enabled
         assert c.metrics_for(s), f"no enabled metrics for {s}"
 

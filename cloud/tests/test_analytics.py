@@ -40,6 +40,11 @@ def tuned(**changes) -> Criteria:
     return Criteria.model_validate(data)
 
 
+def _pad(verdicts):
+    """Scripted rows name robot, glasses, laptop; the optional wearable (no watch) is insufficient."""
+    return (*verdicts, *["insufficient"] * (len(CONSENSUS_SOURCES) - len(verdicts)))
+
+
 def V(source, verdict, families=()):
     model = SourceVerdict(home_id="h", source=source, verdict=verdict, confidence=0.9 if verdict != "insufficient" else 0.1,
                           evidence=[VerdictEvidence(metric="m", z=-2.0, direction="down", days=3)], computed_at=NOW)
@@ -99,7 +104,7 @@ def _state(home, crit=CRIT):
 def test_verdict_per_source_on_aino():
     _, data = _demo("demo-aino")
     got = {s: verdict_for(data, s, END, CRIT).model.verdict for s in CONSENSUS_SOURCES}
-    assert got == {"robot": "worse", "glasses": "as_usual", "laptop": "worse"}
+    assert got == {"robot": "worse", "glasses": "as_usual", "laptop": "worse", "wearable": "worse"}
 
 
 def test_missing_source_is_insufficient_not_as_usual():
@@ -129,7 +134,7 @@ def test_rules_from_criteria_fire():
     (("as_usual", "as_usual", "as_usual"), True, "safety", "agree"),
 ])
 def test_raw_state_table(verdicts, safety, state, agreement):
-    vs = [V(s, v) for s, v in zip(CONSENSUS_SOURCES, verdicts, strict=True)]
+    vs = [V(s, v) for s, v in zip(CONSENSUS_SOURCES, _pad(verdicts), strict=True)]
     assert raw_state(vs, safety, CRIT.state) == (state, agreement)
 
 
@@ -141,7 +146,7 @@ def _scripted(monkeypatch, plan: dict[int, tuple[str, str, str]], acks=()):
     data.first_day = start
 
     def fake(_data, day, _crit, _now=None):
-        return [V(s, v) for s, v in zip(CONSENSUS_SOURCES, plan[(day - start).days], strict=True)]
+        return [V(s, v) for s, v in zip(CONSENSUS_SOURCES, _pad(plan[(day - start).days]), strict=True)]
 
     monkeypatch.setattr(consensus, "all_verdicts", fake)
     return [r.state for r in replay(data, CRIT, END, NOW)]
@@ -207,11 +212,14 @@ def test_aino_disagreement_and_low_coverage_agreements():
 
 # ---------------------------------------------------------------- tuning: criteria values alone change outcomes
 def test_raising_worse_min_weight_turns_needs_call_into_watch():
-    assert _state("demo-aino", tuned(**{"sources.robot.worse_min_weight": 99.0})).state == "watch"
+    # Aino is worse on robot, laptop and watch: muting two of them leaves one worse source -> watch
+    assert _state("demo-aino", tuned(**{"sources.robot.worse_min_weight": 99.0})).state == "needs_call"
+    assert _state("demo-aino", tuned(**{"sources.robot.worse_min_weight": 99.0,
+                                        "sources.wearable.worse_min_weight": 99.0})).state == "watch"
 
 
 def test_disabling_a_source_removes_it_from_the_vote():
-    c = _state("demo-aino", tuned(**{"sources.laptop.enabled": False}))
+    c = _state("demo-aino", tuned(**{"sources.laptop.enabled": False, "sources.wearable.enabled": False}))
     assert c.state == "watch" and {v.source for v in c.sources} == {"robot", "glasses"}
 
 

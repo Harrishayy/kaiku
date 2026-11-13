@@ -1,0 +1,195 @@
+{
+  "$defs": {
+    "ScreenActivity": {
+      "additionalProperties": false,
+      "description": "Usage rhythm (D26), one per period (hourly) from the Mac app. Computed on the Mac from the frontmost app's\nbundle id + idle time only: no window titles, URLs, keystrokes or screenshots ever leave it (or are kept).\n`paused: true` = the person paused sensing for (part of) this period; the numbers then cover the rest only.",
+      "properties": {
+        "active_min": {
+          "description": "minutes with input activity (not idle)",
+          "maximum": 1440,
+          "minimum": 0,
+          "title": "Active Min",
+          "type": "number"
+        },
+        "breaks": {
+          "default": 0,
+          "description": "idle gaps >= 5 min",
+          "minimum": 0,
+          "title": "Breaks",
+          "type": "integer"
+        },
+        "category_min": {
+          "$ref": "#/$defs/ScreenCategoryMinutes"
+        },
+        "late_night_min": {
+          "default": 0,
+          "description": "active minutes between 00:00 and 05:00 local",
+          "maximum": 1440,
+          "minimum": 0,
+          "title": "Late Night Min",
+          "type": "number"
+        },
+        "longest_stretch_min": {
+          "default": 0,
+          "description": "longest unbroken active stretch",
+          "maximum": 1440,
+          "minimum": 0,
+          "title": "Longest Stretch Min",
+          "type": "number"
+        },
+        "paused": {
+          "default": false,
+          "title": "Paused",
+          "type": "boolean"
+        },
+        "period_min": {
+          "description": "length of the period this summarises (60 = hourly)",
+          "exclusiveMinimum": 0,
+          "maximum": 1440,
+          "title": "Period Min",
+          "type": "number"
+        },
+        "switches_per_hour": {
+          "default": 0,
+          "description": "frontmost-app switches per active hour",
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Switches Per Hour",
+          "type": "number"
+        }
+      },
+      "required": [
+        "period_min",
+        "active_min"
+      ],
+      "title": "ScreenActivity",
+      "type": "object"
+    },
+    "ScreenCategoryMinutes": {
+      "additionalProperties": false,
+      "description": "Minutes by broad category, from a LOCAL bundle-id -> category table on the Mac. Never titles/URLs/content.",
+      "properties": {
+        "communication": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Communication",
+          "type": "number"
+        },
+        "games": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Games",
+          "type": "number"
+        },
+        "news": {
+          "default": 0,
+          "minimum": 0,
+          "title": "News",
+          "type": "number"
+        },
+        "other": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Other",
+          "type": "number"
+        },
+        "social": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Social",
+          "type": "number"
+        },
+        "video": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Video",
+          "type": "number"
+        },
+        "work": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Work",
+          "type": "number"
+        }
+      },
+      "title": "ScreenCategoryMinutes",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/ScreenActivity"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.screen_activity>",
+  "type": "object"
+}

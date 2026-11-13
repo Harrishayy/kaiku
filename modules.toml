@@ -47,13 +47,13 @@ removable = false
 consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
             "obs.light_level", "obs.ritual", "obs.outing", "obs.laptop_session", "obs.phq9",
             "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link",
-            "obs.safety_flag"]
+            "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily"]
 emits = ["cmd.hub"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
         "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions",
         "GET /v1/me", "GET /v1/events", "PUT /v1/health/{home_id}", "GET /v1/health", "POST /v1/admin/recompute",
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
-        "GET /v1/eval", "GET /healthz"]
+        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}"]
 
 [[module]]
 name = "web"
@@ -122,12 +122,13 @@ name = "sim"
 path = "sim"
 owner = "C"
 kind = "harness"
-summary = "Twins of every hardware node + glasses/laptop sources; synthetic patients; cloud seeder"
+summary = "Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder"
 removable = true
 consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session"]
 emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.sensors.ppg", "raw.sensors.distance",
          "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "obs.friend_link", "obs.outing",
-         "obs.intervention_response", "obs.laptop_session", "obs.phq9", "cmd.hub", "health"]
+         "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
+         "obs.play_session", "obs.wearable_daily", "obs.self_report", "cmd.hub", "health"]
 http = ["POST /v1/events", "POST /v1/admin/recompute", "POST /v1/admin/reset"]
 
 [[module]]
@@ -143,7 +144,7 @@ name = "config"
 path = "config"
 owner = "all"
 kind = "docs"
-summary = "criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), safety phrases, mosquitto.conf"
+summary = "criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), voice lines, safety phrases, mosquitto.conf"
 removable = false
 
 [[module]]
@@ -177,3 +178,11 @@ owner = "all"
 kind = "docs"
 summary = "Progress log, decisions, safety, privacy, tracks, validation, submission text, templates"
 removable = false
+
+# Temporary: obs types whose real producer is being built by another workstream (plan 02 §11). The sim twins emit
+# them today. `make agents` fails once a real module emits a type still listed here, so delete the line then.
+# apps/apple (iPhone + Mac, workstreams A1-A3) and design/ (workstream D) add their own [[module]] entries.
+[planned_producers]
+"obs.screen_activity" = "apps/apple Mac app (A3)"
+"obs.play_session" = "apps/apple iPhone + Mac (A1), web /me firefly (W)"
+"obs.wearable_daily" = "apps/apple iPhone HealthKit adapter (A2)"

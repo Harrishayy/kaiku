@@ -21,8 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 SCHEMA_VERSION = 1
 
-Source = Literal["head", "sensors", "hub", "friendlink", "glasses", "laptop", "cloud", "sim"]
-SOURCES: tuple[str, ...] = ("head", "sensors", "hub", "friendlink", "glasses", "laptop", "cloud", "sim")
+# "phone" = the iPhone app (KaikuKit): wearable_daily, weather-check self_report, play_session. "laptop" = Mac app
+# + browser apps.
+Source = Literal["head", "sensors", "hub", "friendlink", "glasses", "laptop", "phone", "cloud", "sim"]
+SOURCES: tuple[str, ...] = ("head", "sensors", "hub", "friendlink", "glasses", "laptop", "phone", "cloud", "sim")
 
 P = TypeVar("P")
 

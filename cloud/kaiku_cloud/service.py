@@ -31,6 +31,7 @@ from kaiku_contracts.api import (
 )
 from kaiku_contracts.criteria import Criteria, criteria_path, load_criteria
 
+from . import companion
 from .analytics import bandit
 from .analytics.consensus import compute
 from .analytics.data import PatientData, build
@@ -255,10 +256,14 @@ ME_STATE = {
 }
 
 
-def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | None) -> MeResponse:
-    data = patient_data(store, home_id, active_criteria(store))
+def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | None,
+       now: datetime | None = None) -> MeResponse:
+    crit = active_criteria(store)
+    events = store.events_for_home(home_id)
+    data = build(home_id, events, crit, store.actions(home_id))
     state = (row or {}).get("summary", {}).get("state", "watch")
-    today = today_local()
+    now_local = (now or datetime.now(UTC)).astimezone(TZ)
+    today = now_local.date()
     week = today - timedelta(days=7)
     lines: list[str] = []
     rituals = len({local_date(t) for t in data.rituals if local_date(t) > week})
@@ -276,7 +281,10 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
     helps = [HelpStat(**h) for h in bandit.help_stats(data.nudge_outcomes, data.interventions)]
     nxt = NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions))
     return MeResponse(home_id=home_id, summary=ME_STATE[state], last_week=lines, what_helps=helps,
-                      next_suggestion=nxt, phq9_due=phq9_due(data, settings.phq9_every_days, today), sim=data.sim)
+                      next_suggestion=nxt, phq9_due=phq9_due(data, settings.phq9_every_days, today),
+                      mascot=companion.mascot_for(state, now_local.hour, companion.together_recently(events, today)),
+                      highlights=companion.highlights_for(events, data, crit, today),
+                      garden=companion.garden_for(events, today), sim=data.sim)
 
 
 def nudge(store: Store, settings: Settings, home_id: str) -> NudgeResponse:

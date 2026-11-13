@@ -9,7 +9,9 @@ exists), Codex, Cursor, and by Gemini CLI via .gemini/settings.json `context.fil
   2. non-docs modules' AGENTS.md has the standard sections (MODULE_SECTIONS)
   3. no CLAUDE.md / GEMINI.md at the root; .gemini/settings.json points Gemini CLI at AGENTS.md
   4. every message type a module emits/consumes exists in kaiku_contracts
-  5. every obs.* type has at least one real (non-harness) producer and one consumer
+  5. every obs.* type has at least one real (non-harness) producer and one consumer. A type whose real producer is
+     still being built by another workstream may be listed in modules.toml [planned_producers] (type -> who); the
+     entry must be removed once a real module emits it (checked)
   6. the generated module index in the root AGENTS.md matches modules.toml
   7. config/criteria.toml is valid and every enabled metric/rule reads an obs type some real module emits
 """
@@ -36,6 +38,11 @@ END = "<!-- END MODULE INDEX -->"
 
 def load_modules(root: Path = ROOT) -> list[dict]:
     return tomllib.loads((root / "modules.toml").read_text())["module"]
+
+
+def load_planned(root: Path = ROOT) -> dict[str, str]:
+    """[planned_producers] obs type -> the module/workstream that will emit it (temporary, see check 5)."""
+    return dict(tomllib.loads((root / "modules.toml").read_text()).get("planned_producers", {}))
 
 
 def render_index(modules: list[dict]) -> str:
@@ -77,8 +84,14 @@ def check(root: Path = ROOT, fix: bool = False) -> list[str]:
                     problems.append(f"{tag}: {field} unknown message type {t!r} (not in kaiku_contracts)")
 
     real = [m for m in modules if m["kind"] != "harness"]
+    planned = load_planned(root)
+    for t, who in planned.items():
+        if t not in OBS:
+            problems.append(f"[planned_producers] {t!r} is not an obs type")
+        elif any(t in m.get("emits", []) for m in real):
+            problems.append(f"[planned_producers] {t}: a real module emits it now — remove the entry ({who})")
     for t in sorted(OBS):
-        if not any(t in m.get("emits", []) for m in real):
+        if not any(t in m.get("emits", []) for m in real) and t not in planned:
             problems.append(f"{t}: no module emits it (add a producer or remove the type)")
         if not any(t in m.get("consumes", []) for m in real):
             problems.append(f"{t}: no module consumes it")
@@ -89,7 +102,8 @@ def check(root: Path = ROOT, fix: bool = False) -> list[str]:
 
         crit = load_criteria(root / "config" / "criteria.toml")
         for item in [*crit.metrics, *crit.rules]:
-            if getattr(item, "enabled", True) and not any(item.obs in m.get("emits", []) for m in real):
+            if (getattr(item, "enabled", True) and item.obs not in planned
+                    and not any(item.obs in m.get("emits", []) for m in real)):
                 problems.append(f"criteria {item.name}: reads {item.obs}, which no module emits")
     except FileNotFoundError:
         pass

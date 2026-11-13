@@ -1,0 +1,192 @@
+# ============================================================================================================
+# VOICE LINES — every line Kaiku says, on every surface (robot, iPhone, Mac, web, glasses). Ground truth (D27).
+# ============================================================================================================
+# Clients use KEYS, never their own wording:  GET /v1/voice?lang=en  (all lines as text, for captions)
+#                                              GET /v1/voice/<key>?lang=en  (audio/wav, cloud TTS, cached)
+# A key is the dotted table name, e.g. [greet.morning] -> "greet.morning". Every line has en, fi and sv.
+# Optional `style` overrides config/kaiku.toml [voice].style for that line (how it is spoken, never what).
+# Wording rules (root AGENTS.md): short, warm, second person, never clinical, never nagging, no streaks, no
+# guilt. "Change from your usual", never diagnosis words. Nothing here is a crisis line: the crisis message is
+# scripted in config/safety_phrases.toml and is never synthesised from this file.
+# fi / sv are first drafts by the team — have a native speaker read them before the demo.
+# ============================================================================================================
+
+# ---------------------------------------------------------------- greetings (by time of day)
+[greet.morning]
+en = "Good morning. I'm glad you're here."
+fi = "Huomenta. Kiva, että olet täällä."
+sv = "God morgon. Vad fint att du är här."
+
+[greet.afternoon]
+en = "Hi there. How's your afternoon going?"
+fi = "Hei. Miten iltapäiväsi sujuu?"
+sv = "Hej. Hur går eftermiddagen?"
+
+[greet.evening]
+en = "Good evening. Nice to see you."
+fi = "Hyvää iltaa. Mukava nähdä sinua."
+sv = "God kväll. Kul att se dig."
+
+[greet.night]
+en = "Hello, night owl. I'm here."
+fi = "Hei, yökyöpeli. Minä olen tässä."
+sv = "Hej, nattuggla. Jag är här."
+style = "quiet, soft, sleepy"
+
+# ---------------------------------------------------------------- weather check (daily dial)
+[checkin.ask]
+en = "How's the weather inside today?"
+fi = "Millainen sää sisälläsi on tänään?"
+sv = "Hur är vädret inombords i dag?"
+
+[checkin.mood]
+en = "Sunny or cloudy? Turn the dial."
+fi = "Aurinkoista vai pilvistä? Käännä valitsinta."
+sv = "Sol eller moln? Vrid på ratten."
+
+[checkin.energy]
+en = "And your battery?"
+fi = "Entä akkusi?"
+sv = "Och ditt batteri?"
+
+[checkin.sleep]
+en = "How did you sleep?"
+fi = "Miten nukuit?"
+sv = "Hur sov du?"
+
+[checkin.thanks]
+en = "Thank you for telling me."
+fi = "Kiitos, että kerroit."
+sv = "Tack för att du berättade."
+
+[checkin.cozy]
+en = "I'm right here. Want to do something small together?"
+fi = "Olen ihan tässä. Tehdäänkö yhdessä jotain pientä?"
+sv = "Jag är här. Ska vi göra något litet tillsammans?"
+
+[checkin.skip]
+en = "Okay, I'll be here."
+fi = "Selvä, minä olen täällä."
+sv = "Okej, jag finns här."
+
+# ---------------------------------------------------------------- walks (glasses / phone)
+[walk.start]
+en = "Let's go outside for a bit. I'll come along."
+fi = "Lähdetään hetkeksi ulos. Tulen mukaan."
+sv = "Vi går ut en stund. Jag följer med."
+
+[walk.light_hunt.1]
+en = "Light hunt: can you find three green things?"
+fi = "Valojahti: löydätkö kolme vihreää asiaa?"
+sv = "Ljusjakt: hittar du tre gröna saker?"
+
+[walk.light_hunt.2]
+en = "Now look for something that catches the light."
+fi = "Etsi nyt jotain, mikä kimmeltää valossa."
+sv = "Leta nu efter något som fångar ljuset."
+
+[walk.light_hunt.3]
+en = "Last one: find the brightest patch of sky."
+fi = "Viimeinen: etsi taivaan kirkkain kohta."
+sv = "Sista: hitta den ljusaste biten av himlen."
+
+[walk.light_hunt.found]
+en = "Found it. Lovely."
+fi = "Löytyi. Ihanaa."
+sv = "Hittat. Fint."
+
+[walk.done]
+en = "That was a nice walk. Thank you for taking me."
+fi = "Olipa mukava kävely. Kiitos, että otit minut mukaan."
+sv = "Det var en fin promenad. Tack för att jag fick följa med."
+
+# ---------------------------------------------------------------- firefly (go / no-go game)
+[firefly.intro]
+en = "Tap when a firefly glows. Let the moths fly by."
+fi = "Napauta, kun tulikärpänen syttyy. Anna yöperhosten lentää ohi."
+sv = "Tryck när en eldfluga lyser. Låt nattfjärilarna flyga förbi."
+
+[firefly.done]
+en = "Look at all your fireflies tonight."
+fi = "Katso kaikkia tulikärpäsiäsi."
+sv = "Titta på alla dina eldflugor."
+style = "delighted, gentle"
+
+# ---------------------------------------------------------------- breathe
+[breathe.intro]
+en = "Let's breathe together. Follow me as I grow and shrink."
+fi = "Hengitetään yhdessä. Seuraa, kun kasvan ja pienenen."
+sv = "Vi andas tillsammans. Följ mig när jag växer och krymper."
+
+[breathe.in]
+en = "Breathe in."
+fi = "Hengitä sisään."
+sv = "Andas in."
+style = "slow, calm"
+
+[breathe.out]
+en = "And out."
+fi = "Ja ulos."
+sv = "Och ut."
+style = "slow, calm"
+
+[breathe.done]
+en = "Nicely done. That was calm."
+fi = "Hienosti. Olipa rauhallista."
+sv = "Bra gjort. Det var lugnt."
+
+# ---------------------------------------------------------------- tell Kaiku
+[tell.prompt]
+en = "What was the best bit of yesterday?"
+fi = "Mikä oli eilisen paras hetki?"
+sv = "Vad var det bästa med i går?"
+
+[tell.thanks]
+en = "I like hearing that."
+fi = "Tuota on mukava kuulla."
+sv = "Det är fint att höra."
+
+# ---------------------------------------------------------------- late night (Mac notch / phone)
+[late_night.peek]
+en = "It's late. I'm going to sleep. You too?"
+fi = "On jo myöhä. Minä menen nukkumaan. Entä sinä?"
+sv = "Det är sent. Jag ska sova. Du också?"
+style = "sleepy, yawning, soft"
+
+# ---------------------------------------------------------------- garden
+[garden.sprout]
+en = "Something new is growing in our garden."
+fi = "Puutarhassamme kasvaa jotain uutta."
+sv = "Något nytt växer i vår trädgård."
+
+[garden.resting]
+en = "The garden is resting. It'll be here when you are."
+fi = "Puutarha lepää. Se odottaa sinua."
+sv = "Trädgården vilar. Den finns här när du är det."
+
+[garden.welcome_back]
+en = "Welcome back. The garden missed you."
+fi = "Tervetuloa takaisin. Puutarha kaipasi sinua."
+sv = "Välkommen tillbaka. Trädgården saknade dig."
+
+# ---------------------------------------------------------------- care team
+[needs_call.offer]
+en = "Would you like me to let your nurse know you'd like a chat?"
+fi = "Haluatko, että kerron hoitajallesi, että haluaisit jutella?"
+sv = "Vill du att jag säger till din sjuksköterska att du vill prata?"
+
+[needs_call.sent]
+en = "Done. Someone from your care team will get in touch."
+fi = "Selvä. Joku hoitotiimistäsi ottaa yhteyttä."
+sv = "Klart. Någon från ditt vårdteam hör av sig."
+
+# ---------------------------------------------------------------- general
+[general.bye]
+en = "See you soon."
+fi = "Nähdään pian."
+sv = "Vi ses snart."
+
+[general.not_today]
+en = "That's fine. Not today."
+fi = "Ei se haittaa. Ei tänään."
+sv = "Det gör inget. Inte i dag."

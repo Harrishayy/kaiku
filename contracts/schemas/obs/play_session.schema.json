@@ -1,0 +1,249 @@
+{
+  "$defs": {
+    "PlaySession": {
+      "additionalProperties": false,
+      "description": "One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is\ncomputed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.\nCounts toward the \"laptop\" (display: Apps) source wherever it was played.",
+      "properties": {
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "duration_s": {
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "false_taps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: taps on a moth (no-go)",
+          "title": "False Taps"
+        },
+        "game": {
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell"
+          ],
+          "title": "Game",
+          "type": "string"
+        },
+        "hr_after_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "breathe, with a watch",
+          "title": "Hr After Bpm"
+        },
+        "hr_before_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "breathe, with a watch",
+          "title": "Hr Before Bpm"
+        },
+        "lapses": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: responses > 500 ms or missed fireflies",
+          "title": "Lapses"
+        },
+        "pause_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell",
+          "title": "Pause Ratio"
+        },
+        "pitch_variability": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell: semitones SD",
+          "title": "Pitch Variability"
+        },
+        "reaction_ms_iqr": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reaction Ms Iqr"
+        },
+        "reaction_ms_median": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "firefly: correct taps",
+          "title": "Reaction Ms Median"
+        },
+        "speech_rate": {
+          "anyOf": [
+            {
+              "maximum": 15,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tell: syllables per second",
+          "title": "Speech Rate"
+        }
+      },
+      "required": [
+        "game",
+        "device",
+        "duration_s"
+      ],
+      "title": "PlaySession",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/PlaySession"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.play_session>",
+  "type": "object"
+}

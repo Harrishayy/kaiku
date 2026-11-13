@@ -47,6 +47,7 @@ ENV = {
     "KAIKU_CONFIG": "/root/config/kaiku.toml",
     "KAIKU_CRITERIA": "/root/config/criteria.toml",
     "KAIKU_WEB_DIR": "/root/web",  # Next.js static export; API serves a JSON root if it wasn't built
+    "KAIKU_VOICE_CACHE": f"{DATA}/voice_cache",  # rendered TTS audio survives restarts (Volume)
     "KAIKU_LLM": LLM,
     "KAIKU_MODAL_APP": APP_NAME,
     "KAIKU_HAS_SECRET": "1" if SECRETS else "0",
@@ -55,7 +56,7 @@ ENV = {
 # Build steps first; add_local_* must be the last layers.
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .pip_install("pydantic>=2.7", "fastapi>=0.115", "httpx>=0.27", "tzdata>=2024.1")
+    .pip_install("pydantic>=2.7", "fastapi>=0.115", "httpx>=0.27", "tzdata>=2024.1", "google-genai>=2.25")
     .env(ENV)
     .add_local_dir(ROOT / "config", "/root/config")  # kaiku.toml + criteria.toml (live overrides live in the DB)
     .add_local_python_source("kaiku_contracts", "kaiku_cloud")

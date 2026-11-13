@@ -127,11 +127,38 @@ async def test_glasses_and_laptop_post_valid_envelopes(monkeypatch):
     envs = [validate(e) for r in reqs for e in json.loads(r.content)["events"]]
     by_type = {e.type: e for e in envs}
     assert {e.source for e in envs} == {"glasses", "laptop"} and all(e.sim for e in envs)
-    assert by_type["obs.outing"].payload.method == "location" and by_type["obs.outing"].payload.steps
+    out = by_type["obs.outing"].payload
+    assert out.method == "dat_imu" and out.steps and out.cadence_spm > 0 and 0 <= out.head_up_ratio <= 1
     assert by_type["obs.intervention_response"].payload.activity == "walk"
     assert by_type["obs.laptop_session"].payload.reaction_ms_median > 0
     assert by_type["obs.phq9"].payload.item9_positive and by_type["obs.phq9"].payload.mode == "laptop"
     assert by_type["obs.safety_flag"].payload.trigger == "phq9_item9"
+
+
+async def test_mac_and_phone_twins_post_plan02_obs():
+    import json
+
+    from kaiku_contracts import validate
+
+    from sim.nodes.laptop_sim import LaptopSim
+    from sim.nodes.phone_sim import PhoneSim
+
+    reqs = []
+    lap = LaptopSim(seed=3, transport=_mock(reqs), url="http://cloud")
+    assert await lap.mac_hour(hour=2)
+    phone = PhoneSim(seed=3, transport=_mock(reqs), url="http://cloud")
+    assert await phone.morning() and await phone.play()
+    no_watch = PhoneSim(seed=4, watch=False, transport=_mock(reqs), url="http://cloud")
+    assert await no_watch.morning()
+    envs = [validate(e) for r in reqs for e in json.loads(r.content)["events"]]
+    screen = next(e for e in envs if e.type == "obs.screen_activity")
+    assert screen.source == "laptop" and screen.payload.late_night_min == screen.payload.active_min  # 02:00
+    wear = [e for e in envs if e.type == "obs.wearable_daily"]
+    assert {e.source for e in wear} == {"phone"} and {w.payload.device for w in wear} == {"apple_watch", "phone_only"}
+    assert next(w for w in wear if w.payload.device == "phone_only").payload.sleep_min is None
+    dial = [e for e in envs if e.type == "obs.self_report"]
+    assert len(dial) == 6 and all(e.payload.channel == "phone" for e in dial)
+    assert {e.payload.device for e in envs if e.type == "obs.play_session"} == {"mac", "phone"}
 
 
 async def test_http_sims_fail_soft_when_cloud_down():

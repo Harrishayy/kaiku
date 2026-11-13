@@ -87,7 +87,7 @@ export function LiveFeed() {
       {error && events.length === 0 && <ErrorBox error={error} what="live events" />}
       <StaleNote show={Boolean(error && events.length > 0)} />
       {loaded && !error && events.length === 0 && (
-        <Empty>Nothing yet. Start the sims and the hub (`make sim` + `make hub`) or wave at the robot.</Empty>
+        <Empty>Nothing yet. Say hello to Kaiku and it will show up here.</Empty>
       )}
 
       {events.length > 0 && (

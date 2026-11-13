@@ -96,7 +96,7 @@ def test_every_obs_type_has_a_consensus_role():
     from kaiku_contracts import OBS, SOURCE_OF
 
     assert set(OBS) == set(SOURCE_OF), "map every obs type in kaiku_contracts/sources.py"
-    assert set(SOURCE_OF.values()) <= {"robot", "glasses", "laptop", "learner", "adherence", "override"}
+    assert set(SOURCE_OF.values()) <= {"robot", "glasses", "laptop", "wearable", "learner", "adherence", "override"}
 
 
 def test_api_consensus_round_trip():

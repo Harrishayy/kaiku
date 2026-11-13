@@ -4,20 +4,22 @@
 > module's interface, structure or invariants.
 
 ## Purpose
-The Modal service. It ingests `obs.*` from all three sources (robot via the hub, glasses and laptop browser apps
-directly), keeps them in SQLite, computes per-source verdicts and the deterministic **consensus** (stable / watch /
+The Modal service. It ingests `obs.*` from all four sources (robot via the hub; glasses, laptop/Mac and phone apps
+directly; the watch summary comes from the phone), keeps them in SQLite, computes per-source verdicts and the deterministic **consensus** (stable / watch /
 needs_call / safety), explains it (template, hosted Gemma, or Gemma 4 on a Modal GPU — the explanation never
 changes the state), learns which nudge helps (bandit), runs the consensus-accuracy simulation, and serves the
 Next.js export. How each input is used is defined in `config/criteria.toml` (see "Tuning the consensus").
+It also serves the person-facing companion (`/v1/me` mascot, highlights, garden) and Kaiku's one voice
+(`/v1/voice`, Gemini TTS, cached).
 
 ## Boundaries
-May import `kaiku_contracts` + fastapi, numpy, httpx, modal — never hub, apps, sim or tools. Request/response shapes
+May import `kaiku_contracts` + fastapi, numpy, httpx, modal, google-genai (voice only, lazily) — never hub, apps, sim or tools. Request/response shapes
 are `kaiku_contracts.api`: change them there (contract change), never ad hoc here. `sim/patients` and
 `sim/seed_demo.py` import `kaiku_cloud.jobs.synth` (sim is a harness); never the reverse.
 
 ## Consumes (topics/endpoints)
 - `POST /v1/events` — `{events: [Envelope]}` of `obs.*` only (max 500), idempotent by `id`. From hub, glasses
-  (`source: glasses`) and laptop (`source: laptop`).
+  (`source: glasses`), laptop/Mac (`source: laptop`) and phone (`source: phone`).
 - `PUT /v1/health/{home_id}` — `NodeHealthReport` from each hub.
 - `POST /v1/patients/{id}/actions` — `{action: flag_booster|flag_icbt_referral|acknowledge|send_message, note?, by?}`.
 
@@ -26,10 +28,12 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 |---|---|
 | `GET /healthz` | `Healthz` |
 | `GET /v1/patients` | `PatientsResponse` ranked safety › needs_call › watch › stable, with per-source badges |
-| `GET /v1/patients/{id}/consensus` | `Consensus`: state, rule_version, 3 `SourceVerdict`s, agreement, `Explanation` |
+| `GET /v1/patients/{id}/consensus` | `Consensus`: state, rule_version, one `SourceVerdict` per source (4), agreement, `Explanation` |
 | `GET /v1/patients/{id}/timeline?metrics=&days=30` | `TimelineResponse`: `series[]` with `source`, `worse_when`, baseline band |
 | `GET /v1/patients/{id}/phq9` | `Phq9History` + `next_due` |
-| `GET /v1/me?home_id=` | `MeResponse` — person view: plain-language summary, what helps, next suggestion |
+| `GET /v1/me?home_id=` | `MeResponse` — person view: plain-language summary, what helps, next suggestion, `mascot`, `highlights` (7 days), `garden` |
+| `GET /v1/voice?lang=en\|fi\|sv` | `VoiceLinesResponse`: every keyed line as text (captions/offline) |
+| `GET /v1/voice/{line_key}?lang=` | `audio/wav` in Kaiku's voice (cached on disk); 404 unknown key; **503 + JSON `{detail, reason, hint}`** when TTS is unavailable and nothing is cached |
 | `GET /v1/nudge?home_id=` | `NudgeResponse` (Thompson sampling) |
 | `GET /v1/commands?home_id=&since=` · `WS /v1/stream/{home_id}?token=` | `cmd.hub` envelopes (clinician_message, phq9_due); delivered once |
 | `GET /v1/events?home_id=&since=&limit=` | `LiveEventsResponse` (newest first) |
@@ -52,6 +56,10 @@ kaiku_cloud/
   settings.py             env (DB path, tokens, LLM), config/kaiku.toml [ritual] accessors, TZ from criteria
   service.py              use-cases: effective criteria (file|override), recompute, preview, consensus (+LLM cache),
                           timeline, phq9, me, nudge
+  companion.py            /v1/me mascot (pure fn of state), highlights (good moments + criteria `person_hard`),
+                          garden (interactions in 14 days, resting after 3 quiet days) — pure functions
+  voice.py                config/voice_lines.toml + Gemini TTS (Interactions API) + disk cache; `python -m
+                          kaiku_cloud.voice` pre-renders (`make voice-prerender`)
   api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
   store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv)
   analytics/
@@ -68,12 +76,14 @@ kaiku_cloud/
     template.py           deterministic explanation (default, always available)
     gemma_hosted.py       hosted Gemma adapter       gemma_vllm.py   Modal GPU adapter     prompts/explain.md
   jobs/
-    synth.py              synthetic patients: DEMO_PATIENTS (8, pinned by tests) + evaluation cohort (10 scenarios
-                          incl. glasses+laptop-only drift), all with known ground truth
+    synth.py              synthetic patients: DEMO_PATIENTS (8, pinned by tests) + evaluation cohort (13 scenarios
+                          incl. glasses+laptop-only drift, watch drift, no watch), all with known ground truth;
+                          plan-02 signals use a second RNG so plan-01 events/ids are unchanged
     simulate.py           per-state precision/recall, false needs_call / patient-month, lead time, ablation;
                           CLI for offline tuning (`make tune`)
     nightly.py            recompute all (+ simulation) inside the API process
-tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py
+tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py,
+                          test_companion.py (mascot, garden, highlights, voice 404/503/cache)
 ```
 
 ## Extension points
@@ -96,7 +106,11 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
 - Only `obs.*` is accepted; duplicates by envelope `id` are ignored. With `KAIKU_HOME_TOKEN` set, every
   `POST /v1/events` needs `Authorization: Bearer <token>` (hub, glasses, laptop alike).
 - One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
-- No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient).
+- No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient, every
+  voice line and every `person_hard` sentence).
+- The mascot never looks sad or worried at the person; `safety` → mood `crisis`, `line_key: null` (clients show the
+  scripted screen from `config/safety_phrases.toml`). The crisis message is never synthesised by `/v1/voice`.
+- A source with no data (e.g. no watch) is `insufficient` and not counted — it can never make anyone look worse.
 
 ## Tuning the consensus
 Ground truth for HOW every data input is used: **`config/criteria.toml`** (schema + validation:
@@ -142,8 +156,8 @@ write request. A 15-minute schedule and a nightly cron (03:00 Helsinki, + simula
 make cloud-local & make seed                 # history for all states
 make broker & make sim & make hub            # live robot data lands on demo-aino's robot card
 ```
-Demo patients (`jobs/synth.py`): `demo-aino` needs_call (robot + laptop worse, glasses as usual → disagree) ·
-`sim-eero` stable · `sim-juho` noisy → stable · `sim-helmi` robot-only → watch · `sim-kaisa` robot only → watch
+Demo patients (`jobs/synth.py`): `demo-aino` needs_call (robot + apps + watch worse — later sleep midpoint, more
+late-night minutes; glasses as usual with a sub-threshold cadence dip → disagree) · `sim-eero` stable, **no watch** · `sim-juho` noisy → stable · `sim-helmi` robot-only → watch · `sim-kaisa` robot only → watch
 (low_coverage) · `sim-lauri` PHQ-9 item 9 → safety · `sim-mirja` glasses-only → watch · `sim-onni` improving → stable.
 
 ## Config & env
@@ -157,6 +171,9 @@ Demo patients (`jobs/synth.py`): `demo-aino` needs_call (robot + laptop worse, g
 | `KAIKU_MODAL_SECRET` | `kaiku-secrets` | Modal secret to attach (deploy still works if missing) |
 | `KAIKU_GEMMA_REPO` | `[models].gemma_hf_repo` | HF repo for the vLLM class |
 | `KAIKU_CRITERIA` | `config/criteria.toml` | consensus criteria file (re-read on change) |
+| `GEMINI_API_KEY` | unset → voice serves cache only (503 + hint on a miss) | Gemini TTS for `/v1/voice` |
+| `KAIKU_VOICE_CACHE` | `[voice].cache_dir` (`logs/voice_cache`; `/data/voice_cache` on Modal) | rendered audio |
+| `KAIKU_VOICE_LINES` | `config/voice_lines.toml` | keyed script (re-read on change) |
 
 Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
 PHQ-9 cadence/mode: `config/kaiku.toml [ritual] phq9_every_days`, `phq9_mode` (spoken|both → the cloud queues
@@ -185,3 +202,6 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
   change flips one, fix the scenario deliberately — the live demo depends on it.
 - Re-seeding on a later day is a no-op (ids don't depend on the date): `make seed ARGS=--reset` re-anchors to today.
 - `homes.summary` rows written by v1 code are ignored and recomputed on first read.
+- `/v1/voice` has not been called against the live TTS API yet (no key in the build env); the response parser
+  handles both `output_audio` and `steps[].content[]`. Pre-render once a key is available.
+- The synth emits screen activity in 4 blocks a day (not hourly) to keep `make tune` fast; the real Mac app is hourly.

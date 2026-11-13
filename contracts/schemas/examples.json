@@ -87,7 +87,10 @@
     "reward": 0.75
   },
   "obs.outing": {
-    "method": "location",
+    "cadence_spm": 104.0,
+    "gait_regularity": 0.82,
+    "head_up_ratio": 0.64,
+    "method": "dat_imu",
     "minutes": 22.0,
     "steps": 2400
   },
@@ -107,6 +110,15 @@
     "mode": "laptop",
     "total": 7
   },
+  "obs.play_session": {
+    "device": "phone",
+    "duration_s": 60.0,
+    "false_taps": 0,
+    "game": "firefly",
+    "lapses": 1,
+    "reaction_ms_iqr": 58.0,
+    "reaction_ms_median": 318.0
+  },
   "obs.presence": {
     "distance_cm": 62.0,
     "dwell_s": 14.0,
@@ -122,7 +134,26 @@
     "severity": "high",
     "trigger": "manual"
   },
+  "obs.screen_activity": {
+    "active_min": 41.0,
+    "breaks": 1,
+    "category_min": {
+      "communication": 9.0,
+      "games": 0.0,
+      "news": 2.0,
+      "other": 0.0,
+      "social": 3.0,
+      "video": 5.0,
+      "work": 22.0
+    },
+    "late_night_min": 0.0,
+    "longest_stretch_min": 24.0,
+    "paused": false,
+    "period_min": 60.0,
+    "switches_per_hour": 18.0
+  },
   "obs.self_report": {
+    "channel": "robot",
     "context": "ritual",
     "item": "mood",
     "value": 3
@@ -131,6 +162,17 @@
     "duration_s": 30.0,
     "pause_ratio": 0.22,
     "syllables_per_s": 3.9
+  },
+  "obs.wearable_daily": {
+    "date": "2026-11-14",
+    "device": "apple_watch",
+    "exercise_min": 22.0,
+    "hrv_sdnn_ms": 46.0,
+    "resting_hr_bpm": 61.0,
+    "sleep_midpoint_min": 195.0,
+    "sleep_min": 432.0,
+    "sleep_regularity": 0.81,
+    "steps": 6400
   },
   "raw.head.ear": {
     "delta": 1,

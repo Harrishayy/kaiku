@@ -23,8 +23,9 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 | `nodes/head_sim.py` | Atech head | MQTT | `raw/head/tap`, `raw/head/ear`, `raw/head/pan` (5 Hz), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
 | `nodes/sensors_sim.py` | UNO Q | MQTT | `raw/sensors/distance` (5 Hz), `raw/sensors/ppg` (25 @ 100 Hz, only between `ppg start/stop`), `light`, `hall`, `button`, `health/sensors` | `cmd/sensors`, `obs/ritual` |
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
-| `nodes/glasses_sim.py` | glasses web app (source 2) | HTTPS | `obs.outing` + `obs.intervention_response{activity: walk}` | — |
-| `nodes/laptop_sim.py` | laptop `/session` + `/phq9` (source 3) | HTTPS | `obs.laptop_session`, `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0) | — |
+| `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: dat_imu, cadence_spm, gait_regularity, head_up_ratio, daylight_min}` + `obs.intervention_response{activity: walk}` | — |
+| `nodes/laptop_sim.py` | laptop `/session` + `/phq9` + Mac app (source 3, "Apps") | HTTPS | `obs.laptop_session`, `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0), hourly `obs.screen_activity`, `obs.play_session{game: firefly, device: mac}` | — |
+| `nodes/phone_sim.py` | iPhone app (source `phone`) | HTTPS | `obs.wearable_daily` (watch, or `--no-watch` phone_only), weather check `obs.self_report{channel: phone}` ×3, `obs.play_session{device: phone}` | — |
 | `nodes/http_source.py` | shared HTTPS poster: validates, Bearer token, timeouts, retries, fail-soft | | | |
 | `nodes/signals.py` | synthetic PPG with RSA, approach curve, daylight | | | |
 | `run.py` | `make sim`: runs the twins together, auto or `--keyboard` | | | |
@@ -35,7 +36,8 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn
 the ear, then press · `drum started` → tap at `--tempo` · `obs/drum_session` → stop, answer the post-activity
 mood · `phq9 started` → nine presses (item 9 always 0) · during `breathe` the PPG's RSA grows (RMSSD rises) ·
-glasses walk and laptop session once at start, then every `--every` s.
+glasses walk, laptop session + Mac hour, phone morning (watch summary + weather check) + firefly once at start,
+then every `--every` s.
 
 Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their end states are pinned by cloud tests.
 
@@ -52,10 +54,12 @@ Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their 
 - Keyboard keys are documented once: in `run.py`'s docstring and in "Run standalone" below.
 
 ## Run standalone
-`make sim` (all five twins, auto) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
+`make sim` (all six twins, auto) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
 `[`/`]` ear, `e` press ear, `p` arrive/leave, `s` start ritual, `x` long-press top button = manual safety trigger,
-`f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `q` quit).
-Single twin: `uv run python -m sim.nodes.head_sim --tempo 110` · `uv run python -m sim.nodes.laptop_sim --once --phq9-item9`.
+`f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `m` Mac hour (screen activity +
+firefly), `o` phone morning (watch summary + weather check), `q` quit).
+Single twin: `uv run python -m sim.nodes.head_sim --tempo 110` · `uv run python -m sim.nodes.laptop_sim --once --phq9-item9`
+· `uv run python -m sim.nodes.phone_sim --once [--no-watch]`.
 Cohort without network: `uv run python -m sim.patients [--jsonl logs/patients.jsonl]`.
 
 ## Run with sim
@@ -80,4 +84,5 @@ generator and every demo patient's end state are tested in `cloud/tests`.
 ## Known issues
 - Pan is cosmetic (no motor physics). PPG has no motion artefacts — use recorded fixtures for quality-gate tests.
 - The laptop twin's features are plausible random numbers, not computed from audio/video.
+- Phone/Mac twins stand in for `apps/apple` until it exists (`modules.toml [planned_producers]`).
 - Simulated drift is one model (a ramp across signals); real drift will be messier.

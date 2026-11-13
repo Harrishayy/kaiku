@@ -1,11 +1,15 @@
-"""Synthetic patients across the three sources (all output `sim: true`, labelled SIMULATED in the UI).
+"""Synthetic patients across the four sources (all output `sim: true`, labelled SIMULATED in the UI).
 
 A PatientSpec says which sources the person uses (`present`), which of them drift from `onset`
-(`drift`), whether robot signals improve instead (`improving`), and an optional PHQ-9 item-9 day (`safety_day`).
+(`drift`), which show only a small half-weight change that should NOT tip that source's vote (`subtle`),
+whether signals improve instead (`improving`), and an optional PHQ-9 item-9 day (`safety_day`).
 `expected_state` is the ground truth the consensus rule should reach — used by the scenario tests and by
 jobs/simulate.py. Event ids come from a seeded RNG (not the date), so re-seeding is idempotent.
 
-Producers mirror reality: robot obs source "hub", glasses obs "glasses", laptop obs "laptop".
+Producers mirror reality: robot obs source "hub", glasses obs "glasses", laptop obs "laptop" (Mac app: screen
+activity; games on the Mac/web), phone obs "phone" (wearable_daily; games on the iPhone).
+The plan-02 signals (screen_activity, play_session, wearable_daily, the extended outing fields) draw from a SECOND
+seeded RNG, so every plan-01 event — and its id — is unchanged (re-seeding stays idempotent).
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ from ..settings import TZ
 
 CLINICAL_LAG_DAYS = 10  # when a clinician would otherwise notice (lead-time reference)
 RAMP_DAYS = 7
-ALL = frozenset({"robot", "glasses", "laptop"})
+ALL = frozenset({"robot", "glasses", "laptop", "wearable"})
+NO_WATCH = frozenset({"robot", "glasses", "laptop"})
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,7 @@ class PatientSpec:
     days: int = 30
     present: frozenset[str] = ALL
     drift: frozenset[str] = frozenset()
+    subtle: frozenset[str] = frozenset()  # only half-weight signals drift (e.g. cadence): visible, not a vote
     onset: int | None = None  # 0-based day index where drift/improvement starts
     improving: bool = False
     safety_day: int | None = None
@@ -69,9 +75,10 @@ class PatientSpec:
 
 
 DEMO_PATIENTS: tuple[PatientSpec, ...] = (
-    PatientSpec("demo-aino", 11, "robot+laptop drift, glasses as usual", drift=frozenset({"robot", "laptop"}),
-                onset=17, favourite_arm="daylight_walk"),
-    PatientSpec("sim-eero", 12, "stable", favourite_arm="drum"),
+    PatientSpec("demo-aino", 11, "robot+laptop+watch drift, glasses as usual (cadence a little lower)",
+                drift=frozenset({"robot", "laptop", "wearable"}), subtle=frozenset({"glasses"}), onset=17,
+                favourite_arm="daylight_walk"),
+    PatientSpec("sim-eero", 12, "stable, no watch", present=NO_WATCH, favourite_arm="drum"),
     PatientSpec("sim-juho", 21, "noisy but fine", noise=1.6, p_miss=0.15, favourite_arm="breathe"),
     PatientSpec("sim-helmi", 13, "robot-only drift", drift=frozenset({"robot"}), onset=18, favourite_arm="friend_ping"),
     PatientSpec("sim-kaisa", 15, "low coverage (robot only)", present=frozenset({"robot"}), favourite_arm="breathe"),
@@ -109,6 +116,7 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
     Yesterday, not today: today's simulated morning could still be in the future, and live data from the hub and
     apps should be the newest thing on the dashboard. Deterministic (no dependence on the time of day)."""
     rng = random.Random(spec.seed)
+    r2 = random.Random(spec.seed * 7919 + 17)  # plan-02 signals only (keeps plan-01 events identical)
     end = end or (datetime.now(TZ).date() - timedelta(days=1))
     start = end - timedelta(days=spec.days - 1)
     n = spec.noise
@@ -120,16 +128,22 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
         "lt_syll": rng.uniform(3.6, 4.4), "lt_pause": rng.uniform(0.16, 0.26), "pitch": rng.uniform(2.2, 3.2),
         "expr": rng.uniform(0.5, 0.7), "rt": rng.uniform(280, 340), "phq9": rng.randint(3, 6),
     }
+    b2 = {  # plan-02 baselines
+        "late": r2.uniform(0, 5), "active": r2.uniform(260, 420), "comm": r2.uniform(45, 90),
+        "ff_rt": r2.uniform(300, 360), "sleep": r2.uniform(400, 470), "mid": r2.uniform(150, 230),
+        "rhr": r2.uniform(56, 68), "hrv": r2.uniform(35, 60), "steps": r2.uniform(5000, 9000),
+        "cad": r2.uniform(100, 112), "sun": r2.uniform(0.5, 0.8),
+    }
     events: list[dict[str, Any]] = []
 
-    def emit(type_: str, payload: dict[str, Any], local_dt: datetime, source: str) -> None:
-        env = validate({"id": str(_sim_id(rng)), "ts": local_dt.astimezone(UTC), "home_id": spec.home_id,
+    def emit(type_: str, payload: dict[str, Any], local_dt: datetime, source: str, r: random.Random = rng) -> None:
+        env = validate({"id": str(_sim_id(r)), "ts": local_dt.astimezone(UTC), "home_id": spec.home_id,
                         "source": source, "type": type_, "payload": payload, "sim": True,
-                        "quality": round(rng.uniform(0.75, 0.98), 2)})
+                        "quality": round(r.uniform(0.75, 0.98), 2)})
         events.append(env.model_dump(mode="json", exclude_none=True))
 
     def ramp(i: int, source: str) -> float:
-        if spec.onset is None or i < spec.onset or source not in spec.drift:
+        if spec.onset is None or i < spec.onset or source not in spec.drift | spec.subtle:
             return 0.0
         return min(1.0, (i - spec.onset + 1) / RAMP_DAYS)
 
@@ -137,12 +151,17 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
     prev_activity = 0.0
     for i in range(spec.days):
         day = start + timedelta(days=i)
-        rr, rg, rl = ramp(i, "robot"), ramp(i, "glasses"), ramp(i, "laptop")
+        rr, rl, rw = ramp(i, "robot"), ramp(i, "laptop"), ramp(i, "wearable")
+        rg = 0.0 if "glasses" in spec.subtle else ramp(i, "glasses")
+        rs = ramp(i, "glasses") if "glasses" in spec.subtle else 0.0  # subtle: cadence etc. only
         imp = min(1.0, (i - spec.onset + 1) / RAMP_DAYS) if spec.improving and spec.onset is not None and i >= spec.onset \
             else 0.0
 
         def g(sd: float) -> float:
             return rng.gauss(0, sd * n)
+
+        def g2(sd: float) -> float:
+            return r2.gauss(0, sd * n)
 
         def at(minutes: float, day: date = day) -> datetime:
             minutes = _clip(minutes, 0, 23 * 60 + 59)
@@ -206,7 +225,12 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
             minutes = _clip(b["outing"] - 25 * rg + 8 * imp + g(8), 2, 240)
             outing_today = minutes
             steps = int(_clip(minutes * rng.uniform(90, 110) - 900 * rg + g(150), 0, 40000))
-            emit("obs.outing", {"minutes": round(minutes, 1), "steps": steps, "method": "location"},
+            cadence = _clip(b2["cad"] - 9 * rg - 8 * rs + 2 * imp + g2(2.0), 40, 160)
+            daylight = _clip(minutes * b2["sun"] - 10 * rg + g2(3.0), 0, minutes)
+            emit("obs.outing", {"minutes": round(minutes, 1), "steps": steps, "method": "dat_imu",
+                                "cadence_spm": round(cadence, 1), "daylight_min": round(daylight, 1),
+                                "gait_regularity": round(_clip(0.82 - 0.1 * (rg + rs) + g2(0.04), 0, 1), 3),
+                                "head_up_ratio": round(_clip(0.62 - 0.15 * (rg + rs) + g2(0.05), 0, 1), 3)},
                  at(15 * 60 + g(60)), "glasses")
             if rng.random() < 0.5:
                 pre = int(_clip(mood, 1, 5))
@@ -237,8 +261,56 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
                     emit("obs.safety_flag", {"trigger": "phq9_item9", "severity": "high", "handled_locally": True},
                          at(19 * 60 + 1), "laptop")
 
+        # ---------------------------------------------------------------- plan 02: Mac usage rhythm + games (laptop)
+        if "laptop" in spec.present:
+            if r2.random() < 0.9:  # Mac used that day (blocks instead of hourly, to keep the simulation fast)
+                late = max(0.0, r2.gauss(b2["late"], 4 * n) + 50 * rl)
+                emit("obs.screen_activity", _screen_block(300, late, 0.0, late, r2), at(5 * 60), "laptop", r2)
+                active = _clip(b2["active"] * (1 - 0.3 * rl) + 15 * imp + g2(30), 20, 900)
+                comm = _clip(b2["comm"] * (1 - 0.55 * rl) + g2(8), 0, active)
+                for end_min, period, share in ((13 * 60, 240, 0.4), (18 * 60, 300, 0.35), (23 * 60 + 55, 355, 0.25)):
+                    emit("obs.screen_activity", _screen_block(period, active * share, comm * share, 0.0, r2),
+                         at(end_min), "laptop", r2)
+            if r2.random() < 0.5:
+                dev = r2.choice(("phone", "mac", "web"))
+                emit("obs.play_session", {
+                    "game": "firefly", "device": dev, "duration_s": 60.0,
+                    "reaction_ms_median": round(_clip(b2["ff_rt"] + 70 * rl - 10 * imp + g2(15), 150, 1500), 1),
+                    "reaction_ms_iqr": round(_clip(55 + 25 * rl + g2(8), 5, 500), 1),
+                    "lapses": int(_clip(round(1 + 2 * rl + g2(0.7)), 0, 30)),
+                    "false_taps": int(_clip(round(0.5 + rl + g2(0.6)), 0, 30))},
+                     at(20 * 60 + 40), "phone" if dev == "phone" else "laptop", r2)
+
+        # ---------------------------------------------------------------- plan 02: watch summary (wearable, source 4)
+        if "wearable" in spec.present and r2.random() < 0.92:
+            emit("obs.wearable_daily", {
+                "date": day.isoformat(),
+                "sleep_min": round(_clip(b2["sleep"] - 70 * rw + 20 * imp + g2(25), 60, 900), 0),
+                "sleep_midpoint_min": round(_clip(b2["mid"] + 80 * rw - 10 * imp + g2(15), -720, 720), 0),
+                "sleep_regularity": round(_clip(0.8 - 0.2 * rw + g2(0.05), 0, 1), 2),
+                "resting_hr_bpm": round(_clip(b2["rhr"] + 5 * rw - 2 * imp + g2(1.5), 35, 120), 1),
+                "hrv_sdnn_ms": round(_clip(b2["hrv"] - 11 * rw + 4 * imp + g2(3.5), 5, 200), 1),
+                "steps": int(_clip(b2["steps"] - 2800 * rw + 600 * imp + g2(700), 0, 60000)),
+                "exercise_min": round(_clip(25 - 12 * rw + g2(8), 0, 300), 0),
+                "device": "apple_watch"}, at(7 * 60 + 30), "phone", r2)
+
     events.sort(key=lambda e: e["ts"])
     return events
+
+
+def _screen_block(period: float, active: float, comm: float, late: float, r: random.Random) -> dict[str, Any]:
+    """One obs.screen_activity period; the other categories split the non-communication active minutes."""
+    active = _clip(active, 0, period)
+    comm = _clip(comm, 0, active)
+    rest = active - comm
+    split = {"work": 0.5, "social": 0.12, "video": 0.2, "news": 0.08, "games": 0.03, "other": 0.07}
+    cats = {k: round(rest * v, 1) for k, v in split.items()}
+    cats["communication"] = round(comm, 1)
+    return {"period_min": float(period), "active_min": round(active, 1),
+            "late_night_min": round(_clip(late, 0, period), 1), "category_min": cats,
+            "switches_per_hour": round(_clip(r.gauss(16, 4), 0, 120), 1),
+            "longest_stretch_min": round(min(active, _clip(r.gauss(35, 10), 0, period)), 1),
+            "breaks": int(_clip(round(r.gauss(active / 60, 1)), 0, 60)), "paused": False}
 
 
 SCENARIOS: tuple[tuple[str, dict[str, Any]], ...] = (
@@ -247,9 +319,12 @@ SCENARIOS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("robot+laptop drift", {"drift": frozenset({"robot", "laptop"})}),
     ("robot+glasses drift", {"drift": frozenset({"robot", "glasses"})}),
     ("glasses+laptop drift", {"drift": frozenset({"glasses", "laptop"})}),  # robot steady: needs_call without it
+    ("robot+wearable drift", {"drift": frozenset({"robot", "wearable"})}),
     ("robot-only drift", {"drift": frozenset({"robot"})}),
+    ("wearable-only drift", {"drift": frozenset({"wearable"})}),
     ("laptop-only drift", {"drift": frozenset({"laptop"})}),
     ("low coverage", {"present": frozenset({"robot"})}),
+    ("stable, no watch", {"present": NO_WATCH}),
     ("improving", {"improving": True}),
     ("safety", {}),
 )

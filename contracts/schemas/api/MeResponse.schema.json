@@ -1,5 +1,24 @@
 {
   "$defs": {
+    "Garden": {
+      "additionalProperties": false,
+      "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter.",
+      "properties": {
+        "plants": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Plants",
+          "type": "integer"
+        },
+        "resting": {
+          "default": false,
+          "title": "Resting",
+          "type": "boolean"
+        }
+      },
+      "title": "Garden",
+      "type": "object"
+    },
     "HelpStat": {
       "additionalProperties": false,
       "properties": {
@@ -36,6 +55,82 @@
         "tries"
       ],
       "title": "HelpStat",
+      "type": "object"
+    },
+    "Highlight": {
+      "additionalProperties": false,
+      "description": "One line for \"Your days\": a good moment or a gentle note about a harder day. Plain, friendly, never clinical.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "good",
+            "hard"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "kind",
+        "text",
+        "source"
+      ],
+      "title": "Highlight",
+      "type": "object"
+    },
+    "Mascot": {
+      "additionalProperties": false,
+      "description": "Kaiku's ambient mood (plan 02 §2): a pure function of the consensus state, computed once in the cloud so every\nsurface shows the same thing. Never sad or worried at the person: stable -> idle/happy, watch -> cozy,\nneeds_call -> cozy + the nurse-chat offer, safety -> \"crisis\" (clients show the scripted crisis screen from\nconfig/safety_phrases.toml: no animation, no character lines; line_key is then null).",
+      "properties": {
+        "line_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "key in config/voice_lines.toml (GET /v1/voice/{key})",
+          "title": "Line Key"
+        },
+        "mood": {
+          "enum": [
+            "idle",
+            "happy",
+            "cozy",
+            "crisis"
+          ],
+          "title": "Mood",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mood"
+      ],
+      "title": "Mascot",
       "type": "object"
     },
     "NudgeResponse": {
@@ -75,6 +170,17 @@
   "additionalProperties": false,
   "description": "Person-facing view. Plain language, never alarming.",
   "properties": {
+    "garden": {
+      "$ref": "#/$defs/Garden"
+    },
+    "highlights": {
+      "description": "last 7 days, newest first",
+      "items": {
+        "$ref": "#/$defs/Highlight"
+      },
+      "title": "Highlights",
+      "type": "array"
+    },
     "home_id": {
       "title": "Home Id",
       "type": "string"
@@ -86,6 +192,9 @@
       },
       "title": "Last Week",
       "type": "array"
+    },
+    "mascot": {
+      "$ref": "#/$defs/Mascot"
     },
     "next_suggestion": {
       "anyOf": [

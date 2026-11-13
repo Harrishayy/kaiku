@@ -28,7 +28,8 @@ state against their own baseline; a **deterministic consensus engine** combines 
 | **How each data input decides state** (metrics, directions, weights, thresholds, source votes, state rule) | **`config/criteria.toml`** (validated by `kaiku_contracts/criteria.py`; tune via `make criteria`, `make tune`, `/tune/`) | rule version `consensus-v1+<hash>` |
 | Model IDs, timings, perception thresholds, ports | `config/kaiku.toml` (+ env `KAIKU_<SECTION>_<KEY>`) | — |
 | Crisis phrases + scripted message | `config/safety_phrases.toml` | — |
-| Look: colours, type, spacing, motion, mascot geometry + states | `design/tokens.json`, `design/mascot.spec.json`, `design/motion.md` | `design/mascot.svg`, `design/generated/` via `make design` · `make eval-companion [DRY=1]` |
+| Look: colours, type, spacing, motion, mascot geometry + states | `design/tokens.json`, `design/mascot.spec.json`, `design/motion.md` | `design/mascot.svg`, `design/generated/` via `make design` |
+| Every line Kaiku says (en/fi/sv) + the one voice | `config/voice_lines.toml` + `config/kaiku.toml [voice]` | audio cache via `GET /v1/voice/{key}` |
 | Decisions and why | `docs/decisions.md` | — |
 | Plan, story, schedule | `docs/plans/NN-*.md` (newest number = current; done plans are marked ✅ DONE, never rewritten) | — |
 | What happened | `docs/progress.md` (append-only) | — |
@@ -90,9 +91,9 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Head: eyes, IMU taps, ear encoder, pan motor, chest LEDs, purr |
 | unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: PPG, distance, light, hall, top button |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
-| sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop sources; synthetic patients; cloud seeder |
+| sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder |
 | tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker, companion evals (persona/wording/safety scorecard) |
-| config | [`config/`](config/AGENTS.md) | all | docs | no | criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), safety phrases, mosquitto.conf |
+| config | [`config/`](config/AGENTS.md) | all | docs | no | criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), voice lines, safety phrases, mosquitto.conf |
 | design | [`design/`](design/AGENTS.md) | D | library | no | Look ground truth: tokens.json, mascot.spec.json (+ generated mascot.svg, tokens.css, Tokens.swift), motion.md |
 | hardware | [`hardware/`](hardware/AGENTS.md) | A | docs | yes | CAD (with provenance), wiring, BOM |
 | demo | [`demo/`](demo/AGENTS.md) | D | docs | yes | Live demo script, video shot list, reset script |
@@ -102,17 +103,17 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 
 ## Message conventions (details: `contracts/AGENTS.md`)
 - Envelope `{v, id (UUIDv7), ts (UTC ms Z), home_id, source, type, payload, quality?, sim}`;
-  sources `head | sensors | hub | friendlink | glasses | laptop | cloud | sim`.
+  sources `head | sensors | hub | friendlink | glasses | laptop | phone | cloud | sim`.
 - `type` is fully qualified and decides the topic: `obs.drum_session` → `kaiku/v1/<home>/obs/drum_session`,
   `raw.head.tap` → `.../raw/head/tap`, `cmd.head` → `.../cmd/head`, `health` → `.../health/<source>`.
-- Robot nodes use MQTT via `Bus.publish(type, payload)` (validates). Glasses and laptop apps `POST /v1/events`
-  directly with the same envelope. Sims set `sim=true`; `source` stays the real node name.
+- Robot nodes use MQTT via `Bus.publish(type, payload)` (validates). Glasses, laptop/Mac and phone apps
+  `POST /v1/events` directly with the same envelope. Sims set `sim=true`; `source` stays the real node name.
 
 ## Commands (all in the Makefile — `make help`)
 `make setup` · `make broker` · `make sim [NODES=head,sensors,friendlink,glasses,laptop]` · `make hub` ·
 `make tail TOPIC=...` · `make record` / `make replay FILE=` · `make cloud-local` · `make seed` · `make web` ·
 `make test` · `make check` · `make doctor` · `make contracts` · `make agents` · `make criteria` · `make tune` ·
-`make cloud-deploy` · `make demo-reset` · `make design` · `make eval-companion [DRY=1]`
+`make cloud-deploy` · `make voice-prerender` · `make demo-reset` · `make design` · `make eval-companion [DRY=1]`
 
 ## Tech rules
 - Python ≥ 3.11 via **uv** only (`uv add --package <member> <dep>`; uv workspace: `contracts/python`, `hub`,

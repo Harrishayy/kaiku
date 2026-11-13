@@ -5,7 +5,7 @@ UV ?= uv
 RUN := $(UV) run --quiet
 MOSQUITTO ?= $(shell command -v mosquitto 2>/dev/null || ls /opt/homebrew/sbin/mosquitto /usr/local/sbin/mosquitto /usr/sbin/mosquitto 2>/dev/null | head -1)
 TOPIC ?= kaiku/v1/\#
-NODES ?= head,sensors,friendlink,glasses,laptop
+NODES ?= head,sensors,friendlink,glasses,laptop,phone
 ROLE ?= all
 
 .PHONY: help
@@ -45,7 +45,7 @@ test-contracts: ## contract round-trip tests + stale-schema check
 broker: ## start mosquitto on :1883 (foreground)
 	@if [ -z "$(MOSQUITTO)" ]; then echo "mosquitto not found: brew install mosquitto | apt install mosquitto"; exit 1; fi
 	$(MOSQUITTO) -c config/mosquitto.conf
-sim: ## run sim twins: make sim NODES=head,sensors,friendlink,glasses,laptop [ARGS=--keyboard]
+sim: ## run sim twins: make sim NODES=head,sensors,friendlink,glasses,laptop,phone [ARGS=--keyboard]
 	$(RUN) python -m sim.run --nodes $(NODES) $(ARGS)
 hub: ## run the hub (reads .env; KAIKU_VOICE=text for keyboard ritual)
 	$(RUN) python -m kaiku_hub.main $(ARGS)
@@ -57,7 +57,7 @@ replay: ## replay a recording: make replay FILE=logs/x.jsonl [SPEED=1]
 	$(RUN) python tools/replay.py $(FILE) --speed $(or $(SPEED),1)
 
 # ---------------------------------------------------------------- cloud & web
-.PHONY: cloud-local cloud-dev cloud-deploy seed web web-build
+.PHONY: cloud-local cloud-dev cloud-deploy seed web web-build voice-prerender
 cloud-local: ## run the cloud API locally on :8000 (no Modal needed)
 	$(RUN) uvicorn kaiku_cloud.api.main:app --reload --port 8000
 cloud-dev: ## modal serve (hot-reload on Modal)
@@ -66,6 +66,8 @@ cloud-deploy: web-build ## modal deploy (public URL)
 	cd cloud && $(RUN) modal deploy app.py
 seed: ## seed the cloud with simulated patients (KAIKU_CLOUD_URL) [ARGS=--reset]
 	$(RUN) python -m sim.seed_demo $(ARGS)
+voice-prerender: ## render every config/voice_lines.toml line into the TTS cache (needs GEMINI_API_KEY) [ARGS=--lang en]
+	$(RUN) python -m kaiku_cloud.voice $(ARGS)
 web: ## Next.js dev server on :3000 (talks to the cloud API at NEXT_PUBLIC_KAIKU_API, default :8000)
 	cd apps/web && NEXT_PUBLIC_KAIKU_API=$${NEXT_PUBLIC_KAIKU_API:-http://localhost:8000} pnpm dev
 web-build: ## static-export the Next.js app to apps/web/out (served by the cloud)

@@ -6,7 +6,9 @@
 #                                    make tune CRITERIA=my.toml     (compare a candidate file)
 # Live cloud, no redeploy:           GET/PUT /v1/admin/criteria, POST /v1/admin/criteria/preview (who would change state)
 # The rule version shown everywhere is "<name>+<hash>": every edit is traceable, no manual bump needed.
-# A metric's consensus source (robot / glasses / laptop) comes from its obs type (contracts/.../sources.py).
+# A metric's consensus source (robot / glasses / laptop="Apps" / wearable) comes from its obs type
+# (contracts/.../sources.py). A source with no data (e.g. no watch) is "insufficient" and simply not counted.
+# person_hard = optional gentle sentence shown to the person on /me ("Your days") for a day beyond the usual.
 #
 # HOW A STATE IS DECIDED
 #   1. per metric, per day: aggregate the obs field (agg) -> daily value; skip readings with quality < quality_min
@@ -49,11 +51,18 @@ better_min_weight = 1.0
 expected_per_week = 3
 min_confidence = 0.4
 
-[sources.laptop]
+[sources.laptop]               # display label "Apps": Mac app, browser apps, games on any device
 enabled = true
 worse_min_weight = 1.0
 better_min_weight = 2.0
 expected_per_week = 3
+min_confidence = 0.4
+
+[sources.wearable]             # D25: optional Apple Health daily summary (any watch); D29 numbers
+enabled = true
+worse_min_weight = 1.0         # all wearable metrics are half-weight: two must drift together
+better_min_weight = 1.0
+expected_per_week = 7          # one summary per morning
 min_confidence = 0.4
 
 # ---------------------------------------------------------------- state: how verdicts combine
@@ -245,6 +254,7 @@ field = "minutes"
 agg = "sum"
 worse_when = "down"
 missing = "skip"            # D20: "zero" (no walk = 0 min) caused most false alarms in simulation
+person_hard = "A quieter day indoors than your usual."
 min_mad = 8.0
 
 [[metric]]
@@ -259,7 +269,33 @@ worse_when = "down"
 weight = 0.5
 min_mad = 500.0
 
-# ===== laptop (source 3) =====
+[[metric]]
+name = "cadence"
+label = "Walking cadence"
+unit = "steps/min"
+family = "behaviour"
+obs = "obs.outing"
+field = "cadence_spm"
+agg = "mean"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative; glasses IMU via DAT SDK (beta)
+min_mad = 3.0
+baseline_min_days = 4       # walks ~4 days/week
+
+[[metric]]
+name = "daylight_min"
+label = "Daylight on walks"
+unit = "min"
+family = "behaviour"
+obs = "obs.outing"
+field = "daylight_min"
+agg = "sum"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative; only with a camera-capable glasses bridge
+min_mad = 5.0
+baseline_min_days = 4
+
+# ===== laptop / "Apps" (source 3) =====
 [[metric]]
 name = "voice_rate"
 label = "Speech rate (laptop)"
@@ -331,11 +367,128 @@ agg = "mean"
 worse_when = "up"
 weight = 0.5
 min_mad = 1.0
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "late_night"
+label = "Late-night screen time (00–05)"
+unit = "min"
+family = "behaviour"
+obs = "obs.screen_activity"
+field = "late_night_min"
+where = { paused = false }
+agg = "sum"
+worse_when = "up"
+weight = 0.5                # D29: new, conservative (usage rhythm, D26)
+min_mad = 10.0              # most nights are 0: ≥ 15 extra minutes on 3 of 5 days counts
+person_hard = "A later night on the laptop than your usual."
+
+[[metric]]
+name = "active_min"
+label = "Active screen time"
+unit = "min"
+family = "behaviour"
+obs = "obs.screen_activity"
+field = "active_min"
+where = { paused = false }
+agg = "sum"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative
+min_mad = 30.0
+
+[[metric]]
+name = "communication_min"
+label = "Time in messages & calls apps"
+unit = "min"
+family = "behaviour"
+obs = "obs.screen_activity"
+field = "category_min.communication"
+where = { paused = false }
+agg = "sum"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative (withdrawal from communication)
+min_mad = 8.0
+
+[[metric]]
+name = "firefly_reaction"
+label = "Firefly reaction time"
+unit = "ms"
+family = "cognition"
+obs = "obs.play_session"
+field = "reaction_ms_median"
+where = { game = "firefly" }
+agg = "mean"
+worse_when = "up"
+weight = 0.5                # D29: new, conservative
+min_mad = 20.0
+baseline_min_days = 4       # ~3–4 games/week
+
+# ===== wearable (source 4, optional) =====
+[[metric]]
+name = "watch_sleep"
+label = "Sleep (watch)"
+unit = "min"
+family = "physiology"
+obs = "obs.wearable_daily"
+field = "sleep_min"
+agg = "mean"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative
+min_mad = 25.0
+person_hard = "A shorter night than your usual."
+
+[[metric]]
+name = "sleep_midpoint"
+label = "Middle of the night's sleep (later = up)"
+unit = "min from midnight"
+family = "physiology"
+obs = "obs.wearable_daily"
+field = "sleep_midpoint_min"
+agg = "mean"
+worse_when = "up"
+weight = 0.5                # D29: new, conservative
+min_mad = 15.0
+person_hard = "You went to sleep later than your usual."
+
+[[metric]]
+name = "resting_hr"
+label = "Resting heart rate (watch)"
+unit = "bpm"
+family = "physiology"
+obs = "obs.wearable_daily"
+field = "resting_hr_bpm"
+agg = "mean"
+worse_when = "up"
+weight = 0.5                # D29: new, conservative
+min_mad = 2.0
+
+[[metric]]
+name = "hrv_sdnn"
+label = "Heart rate variability (watch, SDNN)"
+unit = "ms"
+family = "physiology"
+obs = "obs.wearable_daily"
+field = "hrv_sdnn_ms"
+agg = "mean"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative
+min_mad = 4.0
+
+[[metric]]
+name = "daily_steps"
+label = "Daily steps (watch)"
+unit = "steps"
+family = "behaviour"
+obs = "obs.wearable_daily"
+field = "steps"
+agg = "mean"
+worse_when = "down"
+weight = 0.5                # D29: new, conservative
+min_mad = 800.0
 
 # PHQ-9 is too sparse (every 14 days) to baseline; it acts through the rules below and is charted separately.
 
 # ---------------------------------------------------------------- rules: direct "worse" triggers
-baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[rule]]
 name = "phq9_rise"

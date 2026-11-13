@@ -4,6 +4,19 @@
       "additionalProperties": false,
       "description": "One dial answer (turn the ear). The ritual asks mood, energy, last night's sleep.",
       "properties": {
+        "channel": {
+          "default": "robot",
+          "description": "where the dial was answered: robot ear, phone/Mac/web weather check, or spoken on the glasses (parsed on the phone, no transcript kept). Always counts toward the robot source",
+          "enum": [
+            "robot",
+            "phone",
+            "mac",
+            "web",
+            "glasses_voice"
+          ],
+          "title": "Channel",
+          "type": "string"
+        },
         "context": {
           "default": "ritual",
           "enum": [
@@ -82,6 +95,7 @@
         "friendlink",
         "glasses",
         "laptop",
+        "phone",
         "cloud",
         "sim"
       ],

@@ -8,6 +8,14 @@
 | Speech | robot: rate + pauses as `obs.speech_features`; laptop session: rate, pauses, pitch variability in-browser in `obs.laptop_session` | features only, no transcripts |
 | Reaction task | median / IQR / lapses in `obs.laptop_session` | numbers only |
 | Glasses walks | minutes, steps (location from the paired phone, not stored as a track) in `obs.outing` | numbers only |
+| Glasses IMU (DAT SDK, beta) | cadence, gait regularity, head-up ratio computed on the iPhone; raw motion never leaves it | numbers only |
+| Glasses camera (DAT, optional) | sparse frames → daylight minutes on the iPhone, frames discarded immediately | never; never transmitted |
+| Glasses mic / spoken answers | on-device speech recognition parses a dial value; speech features during "Tell Kaiku" | no audio, no transcript; numbers only |
+| Mac usage rhythm (opt-in, pausable) | frontmost app's **bundle id → broad category on the Mac**, idle time; hourly `obs.screen_activity` (minutes per category, late-night minutes, switches, longest stretch, breaks) | numbers only. **Never** window titles, URLs, keystrokes, screenshots or content (the contract rejects extra fields) |
+| Games (firefly, breathe, tell) | reaction / speech / HR features computed on the device in `obs.play_session` | numbers only |
+| Watch / Apple Health (optional) | daily summary on the iPhone: sleep minutes + midpoint + regularity, resting HR, HRV, steps, exercise (`obs.wearable_daily`) | daily aggregates only; no raw samples, no location |
+| Weather check on phone / Mac / web | three dial values (`obs.self_report`, `channel`) | numbers only |
+| Kaiku's voice (`/v1/voice`) | fixed script text → Gemini TTS in the cloud | rendered audio of the script only (no personal data) |
 | Raw sensor streams (`raw/*`) | local MQTT on the home network | never uplinked (cloud rejects them) |
 | Observations (`obs/*`) | uplinked to the Modal cloud | yes: derived numbers, ritual metadata |
 | PHQ-9 | total, 9 item scores, item-9 flag (`obs.phq9`) | yes |
@@ -16,6 +24,8 @@
 
 - The robot has a physical camera shutter and status LED; the camera is enabled only when someone is near.
 - The `/consent` screen explains this table in plain language; the glasses app has its own "what is shared" screen.
+- Every plan-02 signal is opt-in per signal, pausable (Mac menu bar), and listed in "What Kaiku saw today".
+- A missing source (no watch, no Mac) is simply not counted; it never makes the consensus look worse.
 - Browser apps never hold the Gemini key; they authenticate with a pairing token (D16).
 - All demo data is synthetic and labelled SIMULATED (`sim: true`).
 - No real patient data is used at the hackathon.

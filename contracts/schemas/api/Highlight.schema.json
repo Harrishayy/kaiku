@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "One line for \"Your days\": a good moment or a gentle note about a harder day. Plain, friendly, never clinical.",
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "good",
+        "hard"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 200,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "date",
+    "kind",
+    "text",
+    "source"
+  ],
+  "title": "Highlight",
+  "type": "object"
+}

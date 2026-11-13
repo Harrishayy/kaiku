@@ -71,11 +71,11 @@ def test_patients_ranked_and_consensus_views(client):
     aino = pts[0]
     assert aino["state"] == "needs_call" and aino["agreement"] == "disagree" and aino["sim"] is True
     assert {b["source"]: b["verdict"] for b in aino["sources"]} == {"robot": "worse", "glasses": "as_usual",
-                                                                     "laptop": "worse"}
+                                                                     "laptop": "worse", "wearable": "worse"}
     assert next(p for p in pts if p["id"] == "sim-kaisa")["agreement"] == "low_coverage"
 
     c = client.get("/v1/patients/demo-aino/consensus").json()
-    assert c["state"] == "needs_call" and c["rule_version"] == body["rule_version"] and len(c["sources"]) == 3
+    assert c["state"] == "needs_call" and c["rule_version"] == body["rule_version"] and len(c["sources"]) == 4
     robot = next(s for s in c["sources"] if s["source"] == "robot")
     assert robot["evidence"] and robot["confidence"] > 0.4
     ex = c["explanation"]
@@ -88,7 +88,7 @@ def test_patients_ranked_and_consensus_views(client):
     from kaiku_contracts.criteria import load_criteria
 
     crit = load_criteria()
-    pick = {src: crit.metrics_for(src)[0] for src in ("robot", "glasses", "laptop")}
+    pick = {src: crit.metrics_for(src)[0] for src in ("robot", "glasses", "laptop", "wearable")}
     tl = client.get("/v1/patients/demo-aino/timeline",
                     params={"metrics": ",".join(m.name for m in pick.values())}).json()
     series = {s["metric"]: s for s in tl["series"]}
@@ -99,7 +99,7 @@ def test_patients_ranked_and_consensus_views(client):
     mood = series[pick["robot"].name]
     assert len(mood["points"]) == 30 and any(p["band_low"] is not None for p in mood["points"])
     full = client.get("/v1/patients/demo-aino/timeline").json()["series"]
-    assert {s["source"] for s in full} == {"robot", "glasses", "laptop"}
+    assert {s["source"] for s in full} == {"robot", "glasses", "laptop", "wearable"}
 
     phq = client.get("/v1/patients/demo-aino/phq9").json()
     assert len(phq["entries"]) == 3 and phq["entries"][-1]["total"] >= 10 and phq["next_due"]
@@ -213,7 +213,8 @@ def test_criteria_get_preview_apply_reset(client):
     seed(client, "demo-aino", "sim-eero")
     cur = client.get("/v1/admin/criteria").json()
     assert cur["origin"] == "file" and cur["rule_version"].startswith("consensus-v1+")
-    cand = {"criteria": _crit_json(**{"sources.robot.worse_min_weight": 99.0}), "by": "tuner"}
+    cand = {"criteria": _crit_json(**{"sources.robot.worse_min_weight": 99.0,
+                                      "sources.wearable.worse_min_weight": 99.0}), "by": "tuner"}
 
     pv = client.post("/v1/admin/criteria/preview", json=cand).json()
     assert pv["candidate_rule_version"] != pv["current_rule_version"]
@@ -236,7 +237,7 @@ def test_criteria_get_preview_apply_reset(client):
 def test_criteria_preview_with_eval(client):
     seed(client, "sim-eero")
     pv = client.post("/v1/admin/criteria/preview", params={"eval": "1"}, json={"criteria": None}).json()
-    assert pv["eval"]["n_patients"] > 0 and set(pv["eval"]["ablation"]) == {"robot", "glasses", "laptop"}
+    assert pv["eval"]["n_patients"] > 0 and set(pv["eval"]["ablation"]) == {"robot", "glasses", "laptop", "wearable"}
 
 
 def test_invalid_criteria_is_422(client):

@@ -175,6 +175,36 @@ class HelpStat(ApiModel):
     mean_effect: float | None = Field(default=None, description="mean reward 0..1")
 
 
+MascotMood = Literal["idle", "happy", "cozy", "crisis"]
+
+
+class Mascot(ApiModel):
+    """Kaiku's ambient mood (plan 02 §2): a pure function of the consensus state, computed once in the cloud so every
+    surface shows the same thing. Never sad or worried at the person: stable -> idle/happy, watch -> cozy,
+    needs_call -> cozy + the nurse-chat offer, safety -> "crisis" (clients show the scripted crisis screen from
+    config/safety_phrases.toml: no animation, no character lines; line_key is then null)."""
+
+    mood: MascotMood
+    line_key: str | None = Field(default=None, description="key in config/voice_lines.toml (GET /v1/voice/{key})")
+
+
+class Highlight(ApiModel):
+    """One line for "Your days": a good moment or a gentle note about a harder day. Plain, friendly, never clinical."""
+
+    date: date
+    kind: Literal["good", "hard"]
+    text: str = Field(max_length=200)
+    source: ConsensusSource
+
+
+class Garden(ApiModel):
+    """Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.
+    It never wilts and there is no streak counter."""
+
+    plants: int = Field(0, ge=0)
+    resting: bool = False
+
+
 class MeResponse(ApiModel):
     """Person-facing view. Plain language, never alarming."""
 
@@ -184,7 +214,23 @@ class MeResponse(ApiModel):
     what_helps: list[HelpStat] = Field(default_factory=list)
     next_suggestion: NudgeResponse | None = None
     phq9_due: bool = False
+    mascot: Mascot = Field(default_factory=lambda: Mascot(mood="idle", line_key="greet.morning"))
+    highlights: list[Highlight] = Field(default_factory=list, description="last 7 days, newest first")
+    garden: Garden = Field(default_factory=Garden)
     sim: bool = False
+
+
+VoiceLang = Literal["en", "fi", "sv"]
+
+
+class VoiceLinesResponse(ApiModel):
+    """GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.
+    Audio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key)."""
+
+    lang: VoiceLang
+    voice: str = Field(description="Gemini prebuilt voice name (config/kaiku.toml [voice])")
+    model: str
+    lines: dict[str, str]
 
 
 class StateScore(ApiModel):

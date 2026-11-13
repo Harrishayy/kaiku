@@ -1,11 +1,12 @@
-"""Run sim twins together: python -m sim.run --nodes head,sensors,friendlink,glasses,laptop [--keyboard]
+"""Run sim twins together: python -m sim.run --nodes head,sensors,friendlink,glasses,laptop,phone [--keyboard]
 
-head/sensors/friendlink talk MQTT (like the robot hardware); glasses/laptop POST to the cloud (like the apps).
+head/sensors/friendlink talk MQTT (like the robot hardware); glasses/laptop/phone POST to the cloud (like the apps).
 
 Keyboard (with --keyboard):  t tap · [ / ] ear down/up · e press ear · p person arrives/leaves
                              s start ritual · x long-press top button (manual safety trigger)
                              f friend presses lamp button · w glasses walk done · l laptop session
-                             9 laptop PHQ-9 · q quit
+                             9 laptop PHQ-9 · m Mac hour (screen activity + firefly)
+                             o phone morning (watch summary + weather check) · q quit
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from sim.nodes.friendlink_sim import FriendlinkSim
 from sim.nodes.glasses_sim import GlassesSim
 from sim.nodes.head_sim import HeadSim
 from sim.nodes.laptop_sim import LaptopSim
+from sim.nodes.phone_sim import PhoneSim
 from sim.nodes.sensors_sim import SensorsSim
 
 HELP = __doc__.split("\n\n", 1)[1]
@@ -50,6 +52,7 @@ async def _keyboard(nodes: dict, stop: asyncio.Event) -> None:
     friend: FriendlinkSim | None = nodes.get("friendlink")
     glasses: GlassesSim | None = nodes.get("glasses")
     laptop: LaptopSim | None = nodes.get("laptop")
+    phone: PhoneSim | None = nodes.get("phone")
     loop = asyncio.get_running_loop()
     print(HELP, file=sys.stderr)
     async with Bus("sim", heartbeat=False, sim=True) as ctl:
@@ -77,6 +80,10 @@ async def _keyboard(nodes: dict, stop: asyncio.Event) -> None:
                     await laptop.session()
                 elif ch == "9" and laptop:
                     await laptop.phq9()
+                elif ch == "m" and laptop:
+                    await laptop.mac_hour()
+                elif ch == "o" and phone:
+                    await phone.morning()
                 elif ch == "s":
                     await ctl.publish("cmd.hub", {"start_ritual": True}, source="sim")
 
@@ -94,14 +101,16 @@ async def amain(names: list[str], keyboard: bool, args: argparse.Namespace) -> N
         nodes["glasses"] = GlassesSim(every_s=args.every)
     if "laptop" in names:
         nodes["laptop"] = LaptopSim(every_s=args.every)
+    if "phone" in names:
+        nodes["phone"] = PhoneSim(every_s=args.every)
     unknown = set(names) - set(nodes)
     if unknown:
         raise SystemExit(f"unknown sim nodes: {', '.join(sorted(unknown))} "
-                         "(have head, sensors, friendlink, glasses, laptop)")
+                         "(have head, sensors, friendlink, glasses, laptop, phone)")
     tasks = []
     for name, n in nodes.items():
-        if keyboard and name in ("glasses", "laptop"):
-            continue  # keyboard mode: these post only on w / l / 9
+        if keyboard and name in ("glasses", "laptop", "phone"):
+            continue  # keyboard mode: these post only on w / l / 9 / m / o
         if name == "laptop":
             tasks.append(asyncio.create_task(n.run(stop, phq9=args.phq9, item9=args.phq9_item9)))
         else:
@@ -117,13 +126,13 @@ async def amain(names: list[str], keyboard: bool, args: argparse.Namespace) -> N
 def main() -> None:
     load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--nodes", default="head,sensors,friendlink,glasses,laptop",
-                    help="comma list: head,sensors,friendlink,glasses,laptop")
+    ap.add_argument("--nodes", default="head,sensors,friendlink,glasses,laptop,phone",
+                    help="comma list: head,sensors,friendlink,glasses,laptop,phone")
     ap.add_argument("--keyboard", action="store_true", help="drive the sims by hand instead of auto mode")
     ap.add_argument("--tempo", type=float, default=96.0, help="auto drum tempo")
     ap.add_argument("--mood", type=int, choices=range(1, 6), help="auto mood dial value")
     ap.add_argument("--arrive-after", type=float, default=3.0, help="auto presence after N s (-1 never)")
-    ap.add_argument("--every", type=float, default=300.0, help="glasses/laptop: seconds between posts (auto)")
+    ap.add_argument("--every", type=float, default=300.0, help="glasses/laptop/phone: seconds between posts (auto)")
     ap.add_argument("--phq9", action="store_true", help="laptop: also send a PHQ-9 at start")
     ap.add_argument("--phq9-item9", action="store_true", help="laptop: PHQ-9 with item 9 > 0 (+ safety_flag)")
     args = ap.parse_args()

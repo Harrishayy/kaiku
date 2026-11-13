@@ -119,3 +119,27 @@ their defaults are in docs/plans/01-foundation.md §12 — record the actual ans
 ## D28 — Plans live in `docs/plans/NN-*.md` (2026-11-14)
 - `handoff.md` became `docs/plans/01-foundation.md` (✅ DONE, kept as reference). New plans get the next number;
   done plans are marked, never rewritten. The "Hexarp" draft was dropped; the name is Kaiku.
+
+## D29 — Plan-02 signals in the criteria, conservative; second tuning pass (2026-11-14, workstream B, simulation)
+- Change: `[sources.wearable]` (expected 7/week, `worse_min_weight = 1.0`: two half-weight watch signals must drift
+  together) and 11 new metrics, **all `weight = 0.5`**: wearable `watch_sleep`↓, `sleep_midpoint`↑ (later),
+  `resting_hr`↑, `hrv_sdnn`↓, `daily_steps`↓; apps `late_night`↑, `active_min`↓, `communication_min`↓
+  (`category_min.communication`, nested fields now supported), `firefly_reaction`↑; glasses `cadence`↓,
+  `daylight_min`↓. Optional `person_hard` sentences drive the gentle "hard day" notes on `/me`.
+- Cohort: 13 scenarios (adds robot+watch drift, watch-only drift, stable without a watch); demo Aino now drifts on
+  robot + apps + watch, with a sub-threshold glasses cadence dip (glasses stay "as usual" → disagree).
+- Numbers (`make tune`, 40 synthetic patients):
+
+  | metric | D20 `consensus-v1+4936eb40` (3 sources) | D29 `consensus-v1+6763c8eb` (4 sources) |
+  |---|---|---|
+  | needs_call precision / recall | 1.00 / 0.76 | 0.97 / 0.90 |
+  | false needs_call per patient-month | 0.00 | 0.03 |
+  | median lead time (days) | 2.0 | 6.0 |
+  | stable precision / recall | 1.00 / 0.98 | 0.97 / 0.98 |
+  | watch precision / recall | 0.80 / 1.00 | 0.89 / 0.90 |
+  | ablation needs_call recall without robot / glasses / laptop / wearable | 0.33 / 0.33 / 0.33 / — | 0.17 / 0.50 / 0.50 / 0.67 |
+
+- Reading: a fourth independent source buys recall and lead time (+4 days) at a small false-alarm cost (0.03 per
+  patient-month). People without a watch lose nothing (scenario "stable, no watch" stays stable). Weights stay at
+  0.5 until tester data exists; raise them one at a time with `make tune`.
+- Caveat as D20: our own generator, not clinical validity. The rule version above is the file at this commit.

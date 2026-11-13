@@ -33,7 +33,20 @@ from .sources import CONSENSUS_SOURCES, SOURCE_OF
 Agg = Literal["mean", "median", "min", "max", "sum", "first", "last", "count"]
 # Derived fields (not in the payload): "@count" = number of observations that day,
 # "@local_minutes" = minutes after local midnight of the envelope ts (e.g. get-up time from first presence).
+# Nested payload fields use a dot: "category_min.communication" (obs.screen_activity).
 DERIVED_FIELDS: frozenset[str] = frozenset({"@count", "@local_minutes"})
+
+
+def field_exists(model: type[BaseModel], path: str) -> bool:
+    """True if `path` ("a" or "a.b") names a field of `model` (one level of nesting into a sub-model)."""
+    head, _, rest = path.partition(".")
+    f = model.model_fields.get(head)
+    if f is None:
+        return False
+    if not rest:
+        return True
+    sub = f.annotation
+    return isinstance(sub, type) and issubclass(sub, BaseModel) and field_exists(sub, rest)
 Scalar = str | int | float | bool
 
 
@@ -92,7 +105,8 @@ class MetricSpec(_M):
     unit: str = ""
     family: str = Field("behaviour", description="e.g. self_report | physiology | behaviour | voice | cognition")
     obs: str = Field(description="obs type, e.g. obs.hrv_session")
-    field: str = Field(description="payload field, or @count / @local_minutes")
+    field: str = Field(description="payload field (nested with a dot, e.g. category_min.communication), "
+                                   "or @count / @local_minutes")
     where: dict[str, Scalar | list[Scalar]] = Field(default_factory=dict, description="payload filters (equality / any-of)")
     agg: Agg = "mean"
     worse_when: Literal["up", "down"]
@@ -109,13 +123,16 @@ class MetricSpec(_M):
     min_mad: float | None = Field(None, ge=0)
     quality_min: float | None = Field(None, ge=0, le=1)
     note: str = ""
+    person_hard: str = Field("", max_length=160, description="plain, gentle sentence shown to the PERSON on /me "
+                             "('Your days') for a day this metric was beyond the usual in its worse direction; "
+                             "empty = never shown. Wording rules: root AGENTS.md (no clinical words)")
 
     @model_validator(mode="after")
     def _check_against_contracts(self):
         if self.obs not in OBS:
             raise ValueError(f"metric {self.name}: unknown obs type {self.obs!r}")
         fields = OBS[self.obs].model_fields
-        if self.field not in fields and self.field not in DERIVED_FIELDS:
+        if not field_exists(OBS[self.obs], self.field) and self.field not in DERIVED_FIELDS:
             raise ValueError(f"metric {self.name}: {self.obs} has no field {self.field!r} "
                              f"(fields: {', '.join(fields)}; derived: {', '.join(sorted(DERIVED_FIELDS))})")
         bad = [k for k in self.where if k not in fields]

@@ -45,7 +45,7 @@ export function PatientList() {
       <StaleNote show={Boolean(error && data)} />
       {data && patients.length === 0 && (
         <Empty>
-          No patients yet. Seed the demo with <code>make seed</code> or run the hub with sims.
+          No one is connected yet. People appear here once their Kaiku sends its first check-in.
         </Empty>
       )}
 

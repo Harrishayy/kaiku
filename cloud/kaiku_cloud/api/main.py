@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from kaiku_contracts import SCHEMA_VERSION, UPLINKABLE, ContractError, make, validate
 from kaiku_contracts.api import (
@@ -37,10 +37,12 @@ from kaiku_contracts.api import (
     PatientsResponse,
     Phq9History,
     TimelineResponse,
+    VoiceLang,
+    VoiceLinesResponse,
 )
 from kaiku_contracts.jlog import get_logger
 
-from .. import service
+from .. import service, voice
 from ..jobs import nightly
 from ..settings import VERSION, Settings
 from ..store.db import Store
@@ -194,6 +196,28 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         row = store.home_summary(home_id) or (service.recompute_home(store, settings, home_id)
                                                if home_id in store.home_ids() else None)
         return service.me(store, settings, home_id, row)
+
+    # ------------------------------------------------------------------ voice (D27: one voice, keyed lines)
+    @app.get("/v1/voice", response_model=VoiceLinesResponse)
+    def get_voice_lines(lang: VoiceLang = "en") -> VoiceLinesResponse:
+        """Every keyed line as text (captions, offline). Source: config/voice_lines.toml."""
+        return VoiceLinesResponse(lang=lang, voice=voice.voice_name(), model=voice.tts_model(), lines=voice.lines(lang))
+
+    @app.get("/v1/voice/{line_key}", response_class=Response,
+             responses={200: {"content": {"audio/wav": {}}}, 404: {}, 503: {}})
+    def get_voice(line_key: str, lang: VoiceLang = "en") -> Response:
+        """Audio (wav) for one line in Kaiku's voice. Cached on disk; 503 + JSON hint if TTS is unavailable."""
+        try:
+            data = voice.audio(line_key, lang)
+        except voice.UnknownLine:
+            raise HTTPException(404, f"unknown line {line_key!r} (see GET /v1/voice)") from None
+        except voice.VoiceUnavailable as e:
+            log.warning("voice_unavailable", str(e), key=line_key, lang=lang)
+            return JSONResponse(status_code=503, content={
+                "detail": "voice audio unavailable", "reason": str(e),
+                "hint": "show the text from GET /v1/voice instead; set GEMINI_API_KEY on the cloud or pre-render "
+                        "with `make voice-prerender`"})
+        return Response(content=data, media_type="audio/wav", headers={"cache-control": "public, max-age=86400"})
 
     # ------------------------------------------------------------------ clinician
     @app.get("/v1/patients", response_model=PatientsResponse)

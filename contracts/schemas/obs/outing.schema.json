@@ -2,8 +2,23 @@
   "$defs": {
     "Outing": {
       "additionalProperties": false,
-      "description": "A walk / time outdoors. daylight_min only from the optional DAT camera app.",
+      "description": "A walk / time outdoors. Everything is computed on the phone / glasses; only these numbers are uplinked.\n\ndaylight_min only with a camera (DAT camera app or the iPhone DAT bridge: sparse frames -> brightness, frames\ndiscarded). cadence / gait / head-up come from the glasses IMU via the DAT SDK (`method: dat_imu`, beta).",
       "properties": {
+        "cadence_spm": {
+          "anyOf": [
+            {
+              "maximum": 250,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walking cadence, steps per minute",
+          "title": "Cadence Spm"
+        },
         "daylight_min": {
           "anyOf": [
             {
@@ -17,11 +32,42 @@
           "default": null,
           "title": "Daylight Min"
         },
+        "gait_regularity": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "step-interval regularity, 1 = metronome",
+          "title": "Gait Regularity"
+        },
+        "head_up_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of walking time looking ahead/up",
+          "title": "Head Up Ratio"
+        },
         "method": {
           "enum": [
             "location",
             "steps",
-            "dat_camera"
+            "dat_camera",
+            "dat_imu"
           ],
           "title": "Method",
           "type": "string"
@@ -97,6 +143,7 @@
         "friendlink",
         "glasses",
         "laptop",
+        "phone",
         "cloud",
         "sim"
       ],

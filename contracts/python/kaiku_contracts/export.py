@@ -20,7 +20,7 @@ from pydantic.json_schema import models_json_schema
 from . import api
 from .envelope import SCHEMA_VERSION, SOURCES, Envelope
 from .registry import EXAMPLES, REGISTRY
-from .sources import CONSENSUS_SOURCES, SOURCE_OF
+from .sources import CONSENSUS_SOURCES, SOURCE_LABELS, SOURCE_OF
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "schemas"
 
@@ -28,7 +28,8 @@ API_MODELS = [
     api.EventsBatch, api.EventsResult, api.CommandsResponse, api.VerdictEvidence, api.SourceVerdict,
     api.SourceNote, api.Explanation, api.Consensus, api.SourceBadge, api.PatientSummary, api.PatientsResponse,
     api.TimelinePoint, api.MetricSeries, api.TimelineResponse, api.Phq9Entry, api.Phq9History,
-    api.ActionRequest, api.ActionResult, api.NudgeResponse, api.HelpStat, api.MeResponse, api.StateScore,
+    api.ActionRequest, api.ActionResult, api.NudgeResponse, api.HelpStat, api.Mascot, api.Highlight, api.Garden,
+    api.MeResponse, api.VoiceLinesResponse, api.StateScore,
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
 ]
@@ -59,7 +60,8 @@ def build() -> dict[str, Any]:
     files["../ts/index.ts"] = build_ts_index()
     files["index.json"] = {"schema_version": SCHEMA_VERSION, "types": index}
     files["examples.json"] = EXAMPLES
-    files["sources.json"] = {"consensus_sources": list(CONSENSUS_SOURCES), "source_of": SOURCE_OF}
+    files["sources.json"] = {"consensus_sources": list(CONSENSUS_SOURCES), "source_labels": SOURCE_LABELS,
+                             "source_of": SOURCE_OF}
 
     # Combined bundle with every payload + API model in $defs (input for TS generation).
     _, bundle = models_json_schema(
@@ -127,6 +129,8 @@ def build_ts_index() -> str:
         "export type ConsensusSource = (typeof CONSENSUS_SOURCES)[number];",
         "/** obs type -> consensus source | learner | adherence | override (mirrors kaiku_contracts.sources). */",
         "export const SOURCE_OF: Record<string, string> = " + json.dumps(SOURCE_OF) + ";",
+        "/** Display labels for consensus sources (\"laptop\" is shown as \"Apps\"). */",
+        "export const SOURCE_LABELS: Record<ConsensusSource, string> = " + json.dumps(SOURCE_LABELS) + ";",
         "",
         "/** MQTT topic for a message (mirrors kaiku_contracts.topic_for). */",
         "export function topicFor(env: Pick<Envelope, 'home_id' | 'type' | 'source'>): string {",

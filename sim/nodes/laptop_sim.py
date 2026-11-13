@@ -1,6 +1,9 @@
-"""Sim twin of the laptop apps (source 3): /session (2-minute session) and /phq9. HTTPS only.
+"""Sim twin of the laptop / "Apps" source (3): web /session + /phq9, and the Mac app (hourly obs.screen_activity
+usage rhythm, obs.play_session firefly games). HTTPS only.
 
     uv run python -m sim.nodes.laptop_sim [--every 300] [--once] [--phq9] [--phq9-item9]
+
+Each round posts a session, then one hour of screen activity plus a firefly game played on the Mac.
 
 --phq9-item9 sends a PHQ-9 with item 9 > 0 AND the obs.safety_flag the web app sends alongside it
 (the browser shows the crisis panel itself; the flag puts the dashboard into Safety).
@@ -11,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import random
+from datetime import datetime
 
 import httpx
 from kaiku_contracts.config import load_dotenv
@@ -38,6 +42,30 @@ class LaptopSim:
             "duration_s": round(g(118, 4), 1),
         }
 
+    def screen_payload(self, hour: int) -> dict:
+        """One hour of Mac usage rhythm (minutes by category from bundle ids only; no titles/URLs)."""
+        g = self.rng.gauss
+        active = round(min(60.0, max(0.0, g(38, 10))), 1)
+        shares = {"work": 0.5, "communication": 0.2, "social": 0.08, "video": 0.12, "news": 0.05, "games": 0.0,
+                  "other": 0.05}
+        return {"period_min": 60.0, "active_min": active, "late_night_min": active if hour < 5 else 0.0,
+                "category_min": {k: round(active * v, 1) for k, v in shares.items()},
+                "switches_per_hour": round(max(0.0, g(16, 4)), 1),
+                "longest_stretch_min": round(min(active, max(0.0, g(22, 8))), 1),
+                "breaks": max(0, int(round(g(1, 0.7)))), "paused": False}
+
+    def firefly_payload(self) -> dict:
+        g = self.rng.gauss
+        return {"game": "firefly", "device": "mac", "duration_s": 60.0,
+                "reaction_ms_median": round(max(180.0, g(320, 25)), 1),
+                "reaction_ms_iqr": round(max(10.0, g(55, 10)), 1),
+                "lapses": max(0, int(round(g(1, 1)))), "false_taps": max(0, int(round(g(0.5, 0.7))))}
+
+    async def mac_hour(self, hour: int | None = None) -> bool:
+        h = datetime.now().hour if hour is None else hour
+        return await self.http.post([("obs.screen_activity", self.screen_payload(h)),
+                                     ("obs.play_session", self.firefly_payload())])
+
     def phq9_items(self, item9: bool = False) -> list[int]:
         items = [self.rng.choice([0, 0, 1, 1, 2]) for _ in range(8)]
         return [*items, 1 if item9 else 0]
@@ -59,6 +87,7 @@ class LaptopSim:
         first = True
         while not stop.is_set():
             await self.session()
+            await self.mac_hour()
             if first and (phq9 or item9):
                 await self.phq9(item9=item9)
             first = False

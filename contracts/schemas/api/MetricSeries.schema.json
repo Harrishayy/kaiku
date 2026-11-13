@@ -85,7 +85,8 @@
       "enum": [
         "robot",
         "glasses",
-        "laptop"
+        "laptop",
+        "wearable"
       ],
       "title": "Source",
       "type": "string"

@@ -81,6 +81,11 @@
       "schema": "obs/phq9.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/phq9"
     },
+    "obs.play_session": {
+      "payload_model": "PlaySession",
+      "schema": "obs/play_session.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/play_session"
+    },
     "obs.presence": {
       "payload_model": "Presence",
       "schema": "obs/presence.schema.json",
@@ -96,6 +101,11 @@
       "schema": "obs/safety_flag.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/safety_flag"
     },
+    "obs.screen_activity": {
+      "payload_model": "ScreenActivity",
+      "schema": "obs/screen_activity.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/screen_activity"
+    },
     "obs.self_report": {
       "payload_model": "SelfReport",
       "schema": "obs/self_report.schema.json",
@@ -105,6 +115,11 @@
       "payload_model": "SpeechFeatures",
       "schema": "obs/speech_features.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/speech_features"
+    },
+    "obs.wearable_daily": {
+      "payload_model": "WearableDaily",
+      "schema": "obs/wearable_daily.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/wearable_daily"
     },
     "raw.head.ear": {
       "payload_model": "RawEar",

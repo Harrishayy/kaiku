@@ -7,6 +7,7 @@ Breaking changes bump SCHEMA_VERSION (envelope `v`). Always note changes in docs
 from __future__ import annotations
 
 import re
+from datetime import date as date_
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -24,6 +25,10 @@ NudgeArm = Literal["breathe", "drum", "daylight_walk", "friend_ping", "icbt_exer
 NUDGE_ARMS: tuple[str, ...] = ("breathe", "drum", "daylight_walk", "friend_ping", "icbt_exercise")
 Activity = Literal["breathe", "drum", "walk", "friend_ping", "icbt"]
 Eyes = Literal["neutral", "happy", "sleepy", "wide", "listening", "thinking", "soft"]
+SelfReportChannel = Literal["robot", "phone", "mac", "web", "glasses_voice"]
+PlayGame = Literal["firefly", "breathe", "tell"]
+PlayDevice = Literal["phone", "mac", "web"]
+SCREEN_CATEGORIES: tuple[str, ...] = ("work", "communication", "social", "video", "news", "games", "other")
 
 
 # --------------------------------------------------------------------------- obs/* (uplinked)
@@ -39,6 +44,9 @@ class SelfReport(Strict):
     item: DialItem
     value: int = Field(ge=1, le=5)
     context: Literal["ritual", "adhoc", "post_activity"] = "ritual"
+    channel: SelfReportChannel = Field(
+        "robot", description="where the dial was answered: robot ear, phone/Mac/web weather check, or spoken on the "
+                             "glasses (parsed on the phone, no transcript kept). Always counts toward the robot source")
 
 
 class HrvSession(Strict):
@@ -96,12 +104,18 @@ class NudgeOutcome(Strict):
 
 
 class Outing(Strict):
-    """A walk / time outdoors. daylight_min only from the optional DAT camera app."""
+    """A walk / time outdoors. Everything is computed on the phone / glasses; only these numbers are uplinked.
+
+    daylight_min only with a camera (DAT camera app or the iPhone DAT bridge: sparse frames -> brightness, frames
+    discarded). cadence / gait / head-up come from the glasses IMU via the DAT SDK (`method: dat_imu`, beta)."""
 
     minutes: float = Field(ge=0)
     steps: int | None = Field(default=None, ge=0)
-    method: Literal["location", "steps", "dat_camera"]
+    method: Literal["location", "steps", "dat_camera", "dat_imu"]
     daylight_min: float | None = Field(default=None, ge=0)
+    cadence_spm: float | None = Field(default=None, ge=0, le=250, description="walking cadence, steps per minute")
+    gait_regularity: float | None = Field(default=None, ge=0, le=1, description="step-interval regularity, 1 = metronome")
+    head_up_ratio: float | None = Field(default=None, ge=0, le=1, description="share of walking time looking ahead/up")
 
 
 class FriendLink(Strict):
@@ -121,6 +135,81 @@ class LaptopSession(Strict):
     reaction_ms_iqr: float | None = Field(default=None, ge=0)
     lapses: int | None = Field(default=None, ge=0, description="responses > 500 ms or misses")
     duration_s: float = Field(ge=0)
+
+
+class ScreenCategoryMinutes(Strict):
+    """Minutes by broad category, from a LOCAL bundle-id -> category table on the Mac. Never titles/URLs/content."""
+
+    work: float = Field(0, ge=0)
+    communication: float = Field(0, ge=0)
+    social: float = Field(0, ge=0)
+    video: float = Field(0, ge=0)
+    news: float = Field(0, ge=0)
+    games: float = Field(0, ge=0)
+    other: float = Field(0, ge=0)
+
+
+class ScreenActivity(Strict):
+    """Usage rhythm (D26), one per period (hourly) from the Mac app. Computed on the Mac from the frontmost app's
+    bundle id + idle time only: no window titles, URLs, keystrokes or screenshots ever leave it (or are kept).
+    `paused: true` = the person paused sensing for (part of) this period; the numbers then cover the rest only."""
+
+    period_min: float = Field(gt=0, le=1440, description="length of the period this summarises (60 = hourly)")
+    active_min: float = Field(ge=0, le=1440, description="minutes with input activity (not idle)")
+    late_night_min: float = Field(0, ge=0, le=1440, description="active minutes between 00:00 and 05:00 local")
+    category_min: ScreenCategoryMinutes = Field(default_factory=ScreenCategoryMinutes)
+    switches_per_hour: float = Field(0, ge=0, le=3600, description="frontmost-app switches per active hour")
+    longest_stretch_min: float = Field(0, ge=0, le=1440, description="longest unbroken active stretch")
+    breaks: int = Field(0, ge=0, description="idle gaps >= 5 min")
+    paused: bool = False
+
+    @model_validator(mode="after")
+    def _within_period(self):
+        tol = 0.5
+        for name in ("active_min", "late_night_min", "longest_stretch_min"):
+            if getattr(self, name) > self.period_min + tol:
+                raise ValueError(f"{name} cannot exceed period_min")
+        if sum(getattr(self.category_min, c) for c in SCREEN_CATEGORIES) > self.period_min + tol:
+            raise ValueError("category minutes cannot add up to more than period_min")
+        return self
+
+
+class PlaySession(Strict):
+    """One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is
+    computed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.
+    Counts toward the "laptop" (display: Apps) source wherever it was played."""
+
+    game: PlayGame
+    device: PlayDevice
+    duration_s: float = Field(ge=0, le=3600)
+    reaction_ms_median: float | None = Field(default=None, ge=0, le=5000, description="firefly: correct taps")
+    reaction_ms_iqr: float | None = Field(default=None, ge=0, le=5000)
+    lapses: int | None = Field(default=None, ge=0, description="firefly: responses > 500 ms or missed fireflies")
+    false_taps: int | None = Field(default=None, ge=0, description="firefly: taps on a moth (no-go)")
+    speech_rate: float | None = Field(default=None, ge=0, le=15, description="tell: syllables per second")
+    pause_ratio: float | None = Field(default=None, ge=0, le=1, description="tell")
+    pitch_variability: float | None = Field(default=None, ge=0, le=20, description="tell: semitones SD")
+    hr_before_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
+    hr_after_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
+
+
+class WearableDaily(Strict):
+    """Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.
+    Posted once per morning; `date` = that local morning: sleep = the night that ended this morning, steps /
+    exercise / resting HR / HRV = the previous 24 h. Only these aggregates leave the phone (no raw samples).
+    Optional source: people without a watch simply never send it."""
+
+    date: date_
+    sleep_min: float | None = Field(default=None, ge=0, le=1440, description="minutes asleep last night")
+    sleep_midpoint_min: float | None = Field(
+        default=None, ge=-720, le=720,
+        description="midpoint of last night's sleep, minutes from local midnight (-30 = 23:30, 210 = 03:30)")
+    sleep_regularity: float | None = Field(default=None, ge=0, le=1, description="1 = same sleep times every night")
+    resting_hr_bpm: float | None = Field(default=None, gt=20, lt=250)
+    hrv_sdnn_ms: float | None = Field(default=None, ge=0, le=500)
+    steps: int | None = Field(default=None, ge=0, le=200_000)
+    exercise_min: float | None = Field(default=None, ge=0, le=1440)
+    device: Literal["apple_watch", "other_watch", "phone_only"]
 
 
 class Phq9(Strict):

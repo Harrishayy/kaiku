@@ -49,7 +49,7 @@ export interface EnvelopeDictStrAny {
   };
   quality?: number | null;
   sim?: boolean;
-  source: "head" | "sensors" | "hub" | "friendlink" | "glasses" | "laptop" | "cloud" | "sim";
+  source: "head" | "sensors" | "hub" | "friendlink" | "glasses" | "laptop" | "phone" | "cloud" | "sim";
   ts?: string;
   type: string;
   v?: 1;
@@ -91,7 +91,7 @@ export interface Explanation {
  * via the `definition` "SourceNote".
  */
 export interface SourceNote {
-  source: "robot" | "glasses" | "laptop";
+  source: "robot" | "glasses" | "laptop" | "wearable";
   summary: string;
 }
 /**
@@ -104,7 +104,7 @@ export interface SourceVerdict {
   evidence?: VerdictEvidence[];
   home_id: string;
   last_data_at?: string | null;
-  source: "robot" | "glasses" | "laptop";
+  source: "robot" | "glasses" | "laptop" | "wearable";
   verdict: "better" | "as_usual" | "worse" | "insufficient";
 }
 /**
@@ -195,7 +195,7 @@ export interface MetricSpec {
    */
   family?: string;
   /**
-   * payload field, or @count / @local_minutes
+   * payload field (nested with a dot, e.g. category_min.communication), or @count / @local_minutes
    */
   field: string;
   label: string;
@@ -210,6 +210,10 @@ export interface MetricSpec {
    * obs type, e.g. obs.hrv_session
    */
   obs: string;
+  /**
+   * plain, gentle sentence shown to the PERSON on /me ('Your days') for a day this metric was beyond the usual in its worse direction; empty = never shown. Wording rules: root AGENTS.md (no clinical words)
+   */
+  person_hard?: string;
   quality_min?: number | null;
   unit?: string;
   /**
@@ -446,6 +450,17 @@ export interface FriendlinkCmd {
   ping?: FriendPing | null;
 }
 /**
+ * Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.
+ * It never wilts and there is no streak counter.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Garden".
+ */
+export interface Garden {
+  plants?: number;
+  resting?: boolean;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "HeadCmd".
  */
@@ -548,6 +563,18 @@ export interface HelpStat {
    */
   mean_effect?: number | null;
   tries: number;
+}
+/**
+ * One line for "Your days": a good moment or a gentle note about a harder day. Plain, friendly, never clinical.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Highlight".
+ */
+export interface Highlight {
+  date: string;
+  kind: "good" | "hard";
+  source: "robot" | "glasses" | "laptop" | "wearable";
+  text: string;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -670,17 +697,39 @@ export interface Log {
   msg?: string;
 }
 /**
+ * Kaiku's ambient mood (plan 02 §2): a pure function of the consensus state, computed once in the cloud so every
+ * surface shows the same thing. Never sad or worried at the person: stable -> idle/happy, watch -> cozy,
+ * needs_call -> cozy + the nurse-chat offer, safety -> "crisis" (clients show the scripted crisis screen from
+ * config/safety_phrases.toml: no animation, no character lines; line_key is then null).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Mascot".
+ */
+export interface Mascot {
+  /**
+   * key in config/voice_lines.toml (GET /v1/voice/{key})
+   */
+  line_key?: string | null;
+  mood: "idle" | "happy" | "cozy" | "crisis";
+}
+/**
  * Person-facing view. Plain language, never alarming.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "MeResponse".
  */
 export interface MeResponse {
+  garden?: Garden;
+  /**
+   * last 7 days, newest first
+   */
+  highlights?: Highlight[];
   home_id: string;
   /**
    * short plain-language lines
    */
   last_week?: string[];
+  mascot?: Mascot;
   next_suggestion?: NudgeResponse | null;
   phq9_due?: boolean;
   sim?: boolean;
@@ -706,7 +755,7 @@ export interface MetricSeries {
   label: string;
   metric: string;
   points: TimelinePoint[];
-  source: "robot" | "glasses" | "laptop";
+  source: "robot" | "glasses" | "laptop" | "wearable";
   unit?: string;
   worse_when: "up" | "down";
 }
@@ -752,14 +801,29 @@ export interface NudgeOutcome {
   reward?: number | null;
 }
 /**
- * A walk / time outdoors. daylight_min only from the optional DAT camera app.
+ * A walk / time outdoors. Everything is computed on the phone / glasses; only these numbers are uplinked.
+ *
+ * daylight_min only with a camera (DAT camera app or the iPhone DAT bridge: sparse frames -> brightness, frames
+ * discarded). cadence / gait / head-up come from the glasses IMU via the DAT SDK (`method: dat_imu`, beta).
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "Outing".
  */
 export interface Outing {
+  /**
+   * walking cadence, steps per minute
+   */
+  cadence_spm?: number | null;
   daylight_min?: number | null;
-  method: "location" | "steps" | "dat_camera";
+  /**
+   * step-interval regularity, 1 = metronome
+   */
+  gait_regularity?: number | null;
+  /**
+   * share of walking time looking ahead/up
+   */
+  head_up_ratio?: number | null;
+  method: "location" | "steps" | "dat_camera" | "dat_imu";
   minutes: number;
   steps?: number | null;
 }
@@ -786,7 +850,7 @@ export interface PatientSummary {
 export interface SourceBadge {
   confidence: number;
   last_data_at?: string | null;
-  source: "robot" | "glasses" | "laptop";
+  source: "robot" | "glasses" | "laptop" | "wearable";
   verdict: "better" | "as_usual" | "worse" | "insufficient";
 }
 /**
@@ -833,6 +897,52 @@ export interface Phq9History {
   entries: Phq9Entry[];
   next_due?: string | null;
   patient_id: string;
+}
+/**
+ * One short game with Kaiku (firefly go/no-go, breathe, tell-Kaiku), on the phone, Mac or web. Every feature is
+ * computed on the device; no audio, video or transcript is stored or sent. Fields a game doesn't produce are None.
+ * Counts toward the "laptop" (display: Apps) source wherever it was played.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PlaySession".
+ */
+export interface PlaySession {
+  device: "phone" | "mac" | "web";
+  duration_s: number;
+  /**
+   * firefly: taps on a moth (no-go)
+   */
+  false_taps?: number | null;
+  game: "firefly" | "breathe" | "tell";
+  /**
+   * breathe, with a watch
+   */
+  hr_after_bpm?: number | null;
+  /**
+   * breathe, with a watch
+   */
+  hr_before_bpm?: number | null;
+  /**
+   * firefly: responses > 500 ms or missed fireflies
+   */
+  lapses?: number | null;
+  /**
+   * tell
+   */
+  pause_ratio?: number | null;
+  /**
+   * tell: semitones SD
+   */
+  pitch_variability?: number | null;
+  reaction_ms_iqr?: number | null;
+  /**
+   * firefly: correct taps
+   */
+  reaction_ms_median?: number | null;
+  /**
+   * tell: syllables per second
+   */
+  speech_rate?: number | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -947,12 +1057,67 @@ export interface SafetyFlag {
   trigger: "phq9_item9" | "phrase" | "manual";
 }
 /**
+ * Usage rhythm (D26), one per period (hourly) from the Mac app. Computed on the Mac from the frontmost app's
+ * bundle id + idle time only: no window titles, URLs, keystrokes or screenshots ever leave it (or are kept).
+ * `paused: true` = the person paused sensing for (part of) this period; the numbers then cover the rest only.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ScreenActivity".
+ */
+export interface ScreenActivity {
+  /**
+   * minutes with input activity (not idle)
+   */
+  active_min: number;
+  /**
+   * idle gaps >= 5 min
+   */
+  breaks?: number;
+  category_min?: ScreenCategoryMinutes;
+  /**
+   * active minutes between 00:00 and 05:00 local
+   */
+  late_night_min?: number;
+  /**
+   * longest unbroken active stretch
+   */
+  longest_stretch_min?: number;
+  paused?: boolean;
+  /**
+   * length of the period this summarises (60 = hourly)
+   */
+  period_min: number;
+  /**
+   * frontmost-app switches per active hour
+   */
+  switches_per_hour?: number;
+}
+/**
+ * Minutes by broad category, from a LOCAL bundle-id -> category table on the Mac. Never titles/URLs/content.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ScreenCategoryMinutes".
+ */
+export interface ScreenCategoryMinutes {
+  communication?: number;
+  games?: number;
+  news?: number;
+  other?: number;
+  social?: number;
+  video?: number;
+  work?: number;
+}
+/**
  * One dial answer (turn the ear). The ritual asks mood, energy, last night's sleep.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "SelfReport".
  */
 export interface SelfReport {
+  /**
+   * where the dial was answered: robot ear, phone/Mac/web weather check, or spoken on the glasses (parsed on the phone, no transcript kept). Always counts toward the robot source
+   */
+  channel?: "robot" | "phone" | "mac" | "web" | "glasses_voice";
   context?: "ritual" | "adhoc" | "post_activity";
   item: "mood" | "energy" | "sleep";
   value: number;
@@ -984,4 +1149,51 @@ export interface SpeechFeatures {
 export interface TimelineResponse {
   patient_id: string;
   series: MetricSeries[];
+}
+/**
+ * GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.
+ * Audio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "VoiceLinesResponse".
+ */
+export interface VoiceLinesResponse {
+  lang: "en" | "fi" | "sv";
+  lines: {
+    [k: string]: string;
+  };
+  model: string;
+  /**
+   * Gemini prebuilt voice name (config/kaiku.toml [voice])
+   */
+  voice: string;
+}
+/**
+ * Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.
+ * Posted once per morning; `date` = that local morning: sleep = the night that ended this morning, steps /
+ * exercise / resting HR / HRV = the previous 24 h. Only these aggregates leave the phone (no raw samples).
+ * Optional source: people without a watch simply never send it.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WearableDaily".
+ */
+export interface WearableDaily {
+  date: string;
+  device: "apple_watch" | "other_watch" | "phone_only";
+  exercise_min?: number | null;
+  hrv_sdnn_ms?: number | null;
+  resting_hr_bpm?: number | null;
+  /**
+   * midpoint of last night's sleep, minutes from local midnight (-30 = 23:30, 210 = 03:30)
+   */
+  sleep_midpoint_min?: number | null;
+  /**
+   * minutes asleep last night
+   */
+  sleep_min?: number | null;
+  /**
+   * 1 = same sleep times every night
+   */
+  sleep_regularity?: number | null;
+  steps?: number | null;
 }
