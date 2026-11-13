@@ -23,7 +23,9 @@ env: ## create .env from .env.example if missing
 	@[ -f .env ] || (cp .env.example .env && echo "created .env — fill in secrets")
 
 # ---------------------------------------------------------------- contracts
-.PHONY: contracts test-contracts agents criteria tune
+.PHONY: contracts test-contracts agents criteria tune design
+design: ## regenerate design/generated (tokens.css, Tokens.swift) + design/mascot.svg from design/*.json
+	$(RUN) python design/gen.py
 criteria: ## validate config/criteria.toml and print the effective rule version + metrics per source
 	$(RUN) python -c "from kaiku_contracts.criteria import load_criteria as L; c=L(); print(c.rule_version); [print(f'  {s:8} ', ', '.join(m.name+('' if m.weight==1 else f'x{m.weight:g}') for m in c.metrics_for(s)), '| rules:', ', '.join(r.name for r in c.rules_for(s)) or '-') for s in c.active_sources()]"
 tune: ## simulate consensus quality for a criteria file: make tune [CRITERIA=path] [COMPARE=path] [N=40]
@@ -70,7 +72,9 @@ web-build: ## static-export the Next.js app to apps/web/out (served by the cloud
 	@if [ -f apps/web/package.json ]; then cd apps/web && pnpm install --silent && pnpm build; fi
 
 # ---------------------------------------------------------------- quality
-.PHONY: test lint fmt doctor demo-reset check
+.PHONY: test lint fmt doctor demo-reset check smoke
+smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
+	./scripts/smoke.sh
 test: ## all Python tests (+ web typecheck if installed)
 	$(RUN) pytest
 	@if [ -d apps/web/node_modules ]; then cd apps/web && pnpm -s typecheck; fi

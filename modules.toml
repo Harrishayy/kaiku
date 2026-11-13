@@ -147,6 +147,14 @@ summary = "criteria.toml (how each data input decides state), kaiku.toml (settin
 removable = false
 
 [[module]]
+name = "design"
+path = "design"
+owner = "D"
+kind = "library"
+summary = "Look ground truth: tokens.json, mascot.spec.json (+ generated mascot.svg, tokens.css, Tokens.swift), motion.md"
+removable = false
+
+[[module]]
 name = "hardware"
 path = "hardware"
 owner = "A"

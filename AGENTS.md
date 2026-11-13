@@ -28,6 +28,7 @@ state against their own baseline; a **deterministic consensus engine** combines 
 | **How each data input decides state** (metrics, directions, weights, thresholds, source votes, state rule) | **`config/criteria.toml`** (validated by `kaiku_contracts/criteria.py`; tune via `make criteria`, `make tune`, `/tune/`) | rule version `consensus-v1+<hash>` |
 | Model IDs, timings, perception thresholds, ports | `config/kaiku.toml` (+ env `KAIKU_<SECTION>_<KEY>`) | — |
 | Crisis phrases + scripted message | `config/safety_phrases.toml` | — |
+| Look: colours, type, spacing, motion, mascot geometry + states | `design/tokens.json`, `design/mascot.spec.json`, `design/motion.md` | `design/mascot.svg`, `design/generated/` via `make design` |
 | Decisions and why | `docs/decisions.md` | — |
 | Plan, story, schedule | `docs/plans/NN-*.md` (newest number = current; done plans are marked ✅ DONE, never rewritten) | — |
 | What happened | `docs/progress.md` (append-only) | — |
@@ -92,6 +93,7 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop sources; synthetic patients; cloud seeder |
 | tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker |
 | config | [`config/`](config/AGENTS.md) | all | docs | no | criteria.toml (how each data input decides state), kaiku.toml (settings), safety phrases, mosquitto.conf |
+| design | [`design/`](design/AGENTS.md) | D | library | no | Look ground truth: tokens.json, mascot.spec.json (+ generated mascot.svg, tokens.css, Tokens.swift), motion.md |
 | hardware | [`hardware/`](hardware/AGENTS.md) | A | docs | yes | CAD (with provenance), wiring, BOM |
 | demo | [`demo/`](demo/AGENTS.md) | D | docs | yes | Live demo script, video shot list, reset script |
 | docs | [`docs/`](docs/AGENTS.md) | all | docs | no | Progress log, decisions, safety, privacy, tracks, validation, submission text, templates |
@@ -110,7 +112,7 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 `make setup` · `make broker` · `make sim [NODES=head,sensors,friendlink,glasses,laptop]` · `make hub` ·
 `make tail TOPIC=...` · `make record` / `make replay FILE=` · `make cloud-local` · `make seed` · `make web` ·
 `make test` · `make check` · `make doctor` · `make contracts` · `make agents` · `make criteria` · `make tune` ·
-`make cloud-deploy` · `make demo-reset`
+`make cloud-deploy` · `make demo-reset` · `make design`
 
 ## Tech rules
 - Python ≥ 3.11 via **uv** only (`uv add --package <member> <dep>`; uv workspace: `contracts/python`, `hub`,
