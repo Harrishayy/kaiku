@@ -19,6 +19,7 @@
   --k-honey-soft: #F5E6C4;
   --k-crisis: #B3261E;
   --k-crisis-soft: #F9DEDA;
+  --k-crisis-ink: #FFFFFF;
   --k-focus: #2F6FA8;
   --k-mascot-body: #FBF3E4;
   --k-mascot-shade: #E6D2B8;
@@ -114,6 +115,7 @@
     --k-honey-soft: #40331C;
     --k-crisis: #F2867C;
     --k-crisis-soft: #4A2320;
+    --k-crisis-ink: #2A0F0C;
     --k-focus: #8DB8E8;
     --k-mascot-body: #EFE3CF;
     --k-mascot-shade: #C7B192;
@@ -148,6 +150,7 @@
   --k-honey-soft: #40331C;
   --k-crisis: #F2867C;
   --k-crisis-soft: #4A2320;
+  --k-crisis-ink: #2A0F0C;
   --k-focus: #8DB8E8;
   --k-mascot-body: #EFE3CF;
   --k-mascot-shade: #C7B192;

@@ -93,6 +93,27 @@ def test_text_colours_are_readable_in_both_themes():
             for bg in ("bg", "surface"):
                 assert _contrast(c[fg], c[bg]) >= 4.5, f"{theme}: {fg} on {bg} is {_contrast(c[fg], c[bg]):.2f}"
         assert _contrast(c["clay-ink"], c["clay"]) >= 4.5, f"{theme}: button text on clay"
+        assert _contrast(c["crisis-ink"], c["crisis"]) >= 4.5, f"{theme}: crisis button text"
+
+
+def test_copy_tables_match():
+    copy = json.loads((DESIGN / "copy.json").read_text())
+    langs = [k for k in copy if not k.startswith("$")]
+    assert "en" in langs
+    for lang in langs:
+        assert set(copy[lang]) == set(copy["en"]), f"copy.json {lang}: keys differ from en"
+        for k, v in copy[lang].items():
+            assert v.strip(), f"copy.json {lang}.{k} is empty"
+            for ph in ("{name}", "{n}"):
+                assert (ph in v) == (ph in copy["en"][k]), f"copy.json {lang}.{k}: placeholder {ph} mismatch"
+
+
+def test_copy_has_no_banned_words():
+    copy = json.loads((DESIGN / "copy.json").read_text())
+    banned = ("diagnos", "relapse", "predict", "disorder", "symptom", "patient", "depression", "masennus")
+    for lang in (k for k in copy if not k.startswith("$")):
+        for k, v in copy[lang].items():
+            assert not any(b in v.lower() for b in banned), f"copy.json {lang}.{k}: clinical word"
 
 
 def test_motion_budget():

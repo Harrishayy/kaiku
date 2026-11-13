@@ -58,6 +58,7 @@ Each state has a **pose** (static values held for the whole state, also the Redu
 | `sleepy` | after 23:00 local | half lids (14), ear droops +24°, glow 0.5, a "z" drifts up; yawns every 10–16 s | 3 s loop |
 | `walking` | Live Activity / glasses card on a walk | feet show, bob twice per stride (~120 spm), ±2° waddle, ear bounces | 1 s loop |
 | `cozy` | ambient mood `watch` / `needs_call`; "I'm here" | scarf on, content lids (7), relaxed ear +12°, warm glow, slow blink | 5 s loop |
+| `speaking` | Kaiku talking (Talk tab, voice replies) | glow pulses with the voice, ear bobs ±5°; no mouth | 1.2 s loop |
 | `peek` | notch / island / card edge | rises from below a clipping edge to `translate [0, 38]` (ear + eyes show), once, then holds | 700 ms once |
 
 `peek` only moves the root; it **composes** with another state's pose for the other parts (01:10 notch =
@@ -69,8 +70,8 @@ Each state has a **pose** (static values held for the whole state, also the Redu
 ## Interactions (`mascot.spec.json` → `interactions`)
 - **Tap** → ear flick: rotate `0 → −28 → 10 → −4 → 0` over 620 ms (`settle`), added on top of the current ear angle,
   plus a tiny sound (optional, respects silent mode). Ignore taps while a flick is running.
-- **Weather check dial** → the ear follows the dial: value 0..10 maps linearly to −32..+32°, animated with
-  `Spring.gentle`. One haptic tick per whole step.
+- **Weather check dial** → the ear follows the dial: value 1..5 (the `obs.self_report` range) maps linearly to
+  −32..+32°, 16° per step, animated with `Spring.gentle`. One haptic tick per step.
 - **Look** → eyes follow the cursor on Mac / device tilt on iPhone (CoreMotion, small): max translate (4, 3),
   `Spring.gentle`, returns to centre after 2 s still.
 - **Time of day** → glow colour and intensity interpolate between `tokens.json → glow.stops` by local hour

@@ -25,6 +25,12 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   spacing, sizes, type (web fonts + Apple rounded), motion durations/easings/springs, blink + breath numbers.
 - `mascot.spec.json` — **ground truth** for the mascot: parts (ids, shapes, colour token refs, pivots, clips), blink
   modes, per-state pose + keyframe tracks + events, interactions, ambient-mood → state map, robot eye crop.
+- `copy.json` — **ground truth** for on-screen UI copy (en + fi, same keys; `{name}`/`{n}` placeholders). Apps
+  render keys, never inline strings or dev notes.
+- `ia.md` — the app's information architecture: tabs (Today · Play · Talk · Your days · You), every screen with its
+  components, states and copy keys, games (intro → play → gentle end, what each records), Mac/island/web extras.
+- `layout.md` — overflow-proofing rules: stress case (fi + long name + 1.35× text + 320 pt), wrapping/truncation,
+  scrolling, text scaling, safe areas.
 - `motion.md` — how Kaiku moves: principles, easings, blink schedule, breathing, per-state table, haptics, Reduce
   Motion rules, robot parity.
 - `gen.py` — stdlib generator; writes the three generated files below. `--check` for staleness, `--out` for a dir.
@@ -50,7 +56,10 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   `honey`, `crisis`) keep ≥ 4.5:1 on `bg` and `surface` in both themes; `clay-ink` on `clay` too.
 - **No red except `crisis`**, and `crisis` is only used on the crisis screen.
 - Required part ids exist: body, shadow, eye-l, eye-r, lid-l, lid-r, ear, glow, mouth-happy, mouth-yawn, scarf, z.
-- All ten plan states exist. No state shows Kaiku sad or worried. Character motion ≥ 300 ms (blink excepted).
+- `copy.json` languages have identical keys and placeholders, and contain no clinical words. No screen shows dev
+  text (obs types, file names, config paths).
+- Every screen holds the `layout.md` stress case without clipping.
+- All ten plan states exist (plus `speaking`). No state shows Kaiku sad or worried. Character motion ≥ 300 ms (blink excepted).
 - Breath guide duration = 60000 / `guide-breath.breaths-per-minute`.
 - Transform order per part: translate → rotate → scale about the part's pivot (see `mascot.spec.json`).
 
@@ -74,11 +83,14 @@ None. No `config/*.toml` keys, no env vars.
 ## Tests
 `uv run pytest design/tests` (also part of `make test`): generated files fresh, generator writes to any dir, SVG has
 every named part, states reference real parts/props/easings with keys 0..1, colour refs exist in both themes, AA
-contrast for text tokens, motion budget and breath timing.
+contrast for text tokens (incl. crisis button), motion budget and breath timing, copy tables in sync + no
+clinical words.
 
 ## Known issues
 - `mascot.svg` ids are global when inlined; inline it at most once per page or prefix ids when stamping copies.
 - CSS `var()` inside SVG `style` works when the SVG is inlined; as `<img>` it uses the light fallbacks (no dark).
 - Fonts: web uses Fredoka (display) + Nunito (body) + DM Mono (receipts/numbers) from Google Fonts; Apple uses
   SF Pro Rounded via `.rounded` design. The two families differ slightly by design.
+- `copy.json` has no Swedish yet; the persona already speaks sv.
+- `play_session` game `"pebbles"` is not in the contracts enum yet (backend adds it); fields in `ia.md`.
 - `Tokens.swift` is type-checked with `swiftc -typecheck` by hand, not in CI.

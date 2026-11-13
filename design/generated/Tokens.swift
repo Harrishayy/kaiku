@@ -27,6 +27,7 @@ public enum KaikuTokens {
         public static let honeySoft = SwiftUI.Color(kaikuLight: 0xF5E6C4, dark: 0x40331C)
         public static let crisis = SwiftUI.Color(kaikuLight: 0xB3261E, dark: 0xF2867C)
         public static let crisisSoft = SwiftUI.Color(kaikuLight: 0xF9DEDA, dark: 0x4A2320)
+        public static let crisisInk = SwiftUI.Color(kaikuLight: 0xFFFFFF, dark: 0x2A0F0C)
         public static let focus = SwiftUI.Color(kaikuLight: 0x2F6FA8, dark: 0x8DB8E8)
         public static let mascotBody = SwiftUI.Color(kaikuLight: 0xFBF3E4, dark: 0xEFE3CF)
         public static let mascotShade = SwiftUI.Color(kaikuLight: 0xE6D2B8, dark: 0xC7B192)

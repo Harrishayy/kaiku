@@ -69,3 +69,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `SOURCE_LABELS` from `contracts/ts`).
 - Next: A1/A2/A3 + W build against these types and the local cloud; remove `[planned_producers]` lines as each real
   producer lands; pre-render voice once a key is set; decide wearable weights with tester data.
+
+## 2026-11-14 10:40 — Claude Code (workstream D) — design (phase 2: full app UI)
+- Did: `design/copy.json` (UI copy ground truth, en + fi, same keys), `design/ia.md` (tabs Today · Play · Talk · Your days · You; every screen with components, states, copy keys; onboarding, games, Mac window/menu bar/notch, island/Live Activity/glasses, /me, clinician), `design/layout.md` (overflow rules + stress case). Spec: new `speaking` state; dial map is now 1..5 (matches `SelfReport.value` and persona). Tokens: `crisis-ink` (dark-mode crisis button contrast). Tests: copy tables in sync + no clinical words + crisis contrast.
+- Design artifact v2 (same URL): https://claude.ai/artifact/BPXa6itqswDUpfzsdRE1MV. Adds a component library (every state), app map, 27 iPhone screens, playable Firefly + Pebble path + Tell Kaiku (hold to talk), Talk states, a Mac window with a working sidebar, three notch states, a "Stress test" toggle (fi + long name + 1.35× + 320 pt), and a "Show build notes" toggle (off by default). Devices contain only end-user copy. Stress-testing found and fixed: list shrinking instead of scrolling, cramped composer, untranslated weekdays, empty state showing behind content.
+- Verified: `make check` green (290 passed), `swiftc -typecheck` on Tokens.swift, headless Chrome render in light/dark/stress, scripted game smoke run.
+- Contract changes: none. For B: please add `"pebbles"` to the `play_session` game enum; fields `span_max`, `accuracy`, `duration_s`.
+- Broken/blocked: no Swedish UI copy yet.
+- Next: A1/W build screens from `design/ia.md` + `copy.json`, check each against the `layout.md` stress case.
