@@ -150,3 +150,40 @@ def test_every_emitted_type_is_a_registered_obs():
         found |= set(re.findall(r'emit\(\s*"(obs\.[a-z_]+)"', f.read_text()))
     assert found, "no emits found"
     assert found <= set(OBS), found - set(OBS)
+
+
+# ---------------------------------------------------------------- cloud tool forwarding (plan 03 §3)
+class FakeCloud:
+    def __init__(self, reply):
+        self.reply, self.calls = reply, []
+
+    async def companion_tool(self, name, args, session_id=None):
+        self.calls.append((name, args, session_id))
+        return self.reply
+
+
+async def test_memory_tool_is_forwarded_to_cloud(hub):
+    hub.cloud = FakeCloud({"ok": True, "name": "remember", "result": {"id": 7}})
+    hub._session_id = "s1"
+    out = await hub.on_tool("remember", {"category": "people", "text": "sister is Maija"})
+    assert out == {"ok": True, "id": 7}
+    assert hub.cloud.calls == [("remember", {"category": "people", "text": "sister is Maija"}, "s1")]
+
+
+async def test_refused_memory_tool_returns_error_not_crash(hub):
+    hub.cloud = FakeCloud({"ok": False, "name": "remember", "error": "not something I keep"})
+    out = await hub.on_tool("remember", {"category": "health", "text": "x"})
+    assert out["ok"] is False and out["error"]
+
+
+async def test_crisis_in_tool_args_runs_the_deterministic_crisis_path(hub):
+    hub.cloud = FakeCloud({"ok": False, "name": "remember", "crisis": True, "result": {}})
+    await hub.on_tool("remember", {"category": "plans", "text": "..."})
+    assert hub.voice.verbatim, "scripted crisis message must be spoken verbatim"
+    assert "obs.safety_flag" in types(hub)
+
+
+async def test_cloud_offline_tool_degrades_softly(hub):
+    hub.cloud = FakeCloud(None)
+    assert (await hub.on_tool("recall", {"topic": "walk"}))["ok"] is False
+    assert (await hub.on_tool("end_session", {}))["ok"] is True  # still ends politely

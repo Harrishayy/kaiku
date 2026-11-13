@@ -21,7 +21,7 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 | file | twin of | talks | publishes / posts | listens to |
 |---|---|---|---|---|
 | `nodes/head_sim.py` | Atech head | MQTT | `raw/head/tap`, `raw/head/ear`, `raw/head/pan` (5 Hz), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
-| `nodes/sensors_sim.py` | UNO Q | MQTT | `raw/sensors/distance` (5 Hz), `raw/sensors/ppg` (25 @ 100 Hz, only between `ppg start/stop`), `light`, `hall`, `button`, `health/sensors` | `cmd/sensors`, `obs/ritual` |
+| `nodes/sensors_sim.py` | UNO Q (+ its camera's YOLO boxes) | MQTT | `raw/sensors/distance` (5 Hz), `raw/hub/face` (5 Hz, one per person within 180 cm, growing as they approach; `--two` / key `2` = two people), `raw/sensors/ppg` (25 @ 100 Hz, only between `ppg start/stop`), `light`, `hall`, `button`, `health/sensors` | `cmd/sensors`, `obs/ritual` |
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
 | `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: dat_imu, cadence_spm, gait_regularity, head_up_ratio, daylight_min}` + `obs.intervention_response{activity: walk}` | — |
 | `nodes/laptop_sim.py` | laptop `/session` + `/phq9` + Mac app (source 3, "Apps") | HTTPS | `obs.laptop_session`, `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0), hourly `obs.screen_activity`, `obs.play_session{game: firefly, device: mac}` | — |
@@ -56,7 +56,7 @@ Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their 
 ## Run standalone
 `make sim` (all six twins, auto) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
 `[`/`]` ear, `e` press ear, `p` arrive/leave, `s` start ritual, `x` long-press top button = manual safety trigger,
-`f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `m` Mac hour (screen activity +
+`2` second person in view, `f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `m` Mac hour (screen activity +
 firefly), `o` phone morning (watch summary + weather check), `q` quit).
 Single twin: `uv run python -m sim.nodes.head_sim --tempo 110` · `uv run python -m sim.nodes.laptop_sim --once --phq9-item9`
 · `uv run python -m sim.nodes.phone_sim --once [--no-watch]`.
@@ -70,14 +70,15 @@ seeds the deployed cloud.
 ## Config & env
 `MQTT_*`, `KAIKU_HOME_ID`, `KAIKU_CLOUD_URL` (default `http://localhost:8000`), `KAIKU_HOME_TOKEN` (Bearer for the
 HTTPS twins and the seeder), `KAIKU_ADMIN_TOKEN` (seeder admin calls). `KAIKU_RITUAL_DRUM_S` etc. shorten the auto
-drum. `run.py` flags: `--every`, `--phq9`, `--phq9-item9`, `--tempo`, `--mood`, `--arrive-after`.
+drum. `run.py` flags: `--every`, `--phq9`, `--phq9-item9`, `--tempo`, `--mood`, `--arrive-after`, `--two`.
+`sensors_sim` alone: `--no-faces`, `--two`.
 
 ## Health signal
 MQTT twins heartbeat on `health/<node>` with `details.sim = true`. HTTPS twins log `posted` / `cloud_unreachable`.
 `seed_demo` exits non-zero if the cloud is unreachable or rejects anything.
 
 ## Tests
-`uv run pytest sim/tests` (PPG heart rate + RSA, approach curve, head dial/drum/post-mood protocol and PPG gating on
+`uv run pytest sim/tests` (PPG heart rate + RSA, approach curve, face boxes grow on approach / two people, head dial/drum/post-mood protocol and PPG gating on
 a real broker, glasses/laptop envelopes + auth via `httpx.MockTransport`, fail-soft when the cloud is down). The
 generator and every demo patient's end state are tested in `cloud/tests`.
 

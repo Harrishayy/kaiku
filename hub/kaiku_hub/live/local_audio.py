@@ -14,8 +14,8 @@ import sys
 from .base import Music, Voice
 
 
-def _tts_cmd() -> list[str] | None:
-    if os.environ.get("KAIKU_LOCAL_TTS", "0") != "1":
+def _tts_cmd(force: bool = False) -> list[str] | None:
+    if not force and os.environ.get("KAIKU_LOCAL_TTS", "0") != "1":
         return None
     if shutil.which("say"):
         return ["say"]

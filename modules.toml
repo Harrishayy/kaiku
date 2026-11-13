@@ -35,7 +35,8 @@ emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session
          "obs.light_level", "obs.ritual", "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome",
          "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors", "cmd.friendlink",
          "raw.hub.face", "health"]
-http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}"]
+http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}", "GET /v1/voice/{line_key}",
+        "POST /v1/companion/session"]
 
 [[module]]
 name = "cloud"
@@ -128,7 +129,7 @@ summary = "Twins of every hardware node + glasses/laptop/phone sources; syntheti
 removable = true
 consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session"]
 emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.sensors.ppg", "raw.sensors.distance",
-         "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "obs.friend_link", "obs.outing",
+         "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "obs.friend_link", "obs.outing",
          "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
          "obs.play_session", "obs.wearable_daily", "obs.self_report", "cmd.hub", "health"]
 http = ["POST /v1/events", "POST /v1/admin/recompute", "POST /v1/admin/reset", "POST /v1/companion/tool",

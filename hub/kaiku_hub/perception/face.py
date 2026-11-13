@@ -64,8 +64,8 @@ class FaceTracker:
                 h, w = gray.shape
                 faces = cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(40, 40))
                 del frame, gray  # never keep frames
-                if len(faces):
-                    x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                # one payload per face (largest 3): the attention ladder counts people per frame
+                for x, y, fw, fh in sorted(faces, key=lambda f: -f[2] * f[3])[:3]:
                     payload = {
                         "x_norm": round(((x + fw / 2) / w) * 2 - 1, 3),
                         "y_norm": round(((y + fh / 2) / h) * 2 - 1, 3),

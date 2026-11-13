@@ -28,6 +28,25 @@ cache_dir = "logs/voice_cache"           # rendered audio (wav), keyed by model+
 timeout_s = 20
 lang_codes = { en = "en-US", fi = "fi-FI", sv = "sv-SE" }
 
+[attention]
+# Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
+face_source = "laptop"   # laptop (hub camera, OpenCV) | unoq_yolo (UNO Q App Lab boxes on raw/hub/face) | off
+lost_s = 2.0             # face gone shorter than this = detector flicker, same visit
+approach_size = 0.12     # face width / frame width: "coming closer"
+at_desk_size = 0.22      # ... "at the desk"
+frame_s = 0.3            # detections this close in time are one camera frame (two faces = two messages)
+two_face_min_sep = 0.25  # x_norm distance that makes two detections two people
+camera_hfov_deg = 60     # fixed camera; face x_norm -1..1 -> pan -30..+30 deg
+pan_deadband_deg = 4
+pan_smoothing = 0.4
+pan_speed = 0.4
+track_hz = 5
+regreet_h = 3            # greet at most once per 3 h
+night_start = "23:00"    # no greeting in [night_start, night_end) unless the person starts; equal = off
+night_end = "07:00"
+quiet_h = 2              # "not now" / "quiet" keeps Kaiku quiet this long
+voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
+
 [mqtt]
 host = "localhost"
 port = 1883

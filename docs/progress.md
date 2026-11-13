@@ -100,3 +100,28 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Next (hub / apps): call `POST /v1/companion/session` before Live; use `live_token.token` as the Live API key
   (v1beta) when present, else own fallback; forward `executor: cloud` tool calls to `/v1/companion/tool` with the
   `session_id`; on `crisis: true` stop Live and play `result.script`; post `/v1/companion/episode` for offline sessions.
+
+## 2026-11-14 — Claude Code (workstream I3) — hub, sim, config [attention] (robot: see → greet → talk)
+- Did: plan 04 build steps 1–2. `hub/kaiku_hub/attention.py`: pure attention ladder nobody → appeared → approaching →
+  at_desk → glance (eyes) → purr → keyed greeting by time of day (`greet.*`) → ritual offer; head pan toward the face
+  (EMA + deadband + ≤ 5 Hz), eyes `look`; cooldowns in new `config/kaiku.toml [attention]` (re-greet 3 h, night
+  23:00–07:00, "not now" quiet 2 h, two faces → `greet.two` with no offer, done today → no offer, flicker < 2 s).
+  Face sources: `laptop` (existing OpenCV tracker, now one message per face) or `unoq_yolo`
+  (`devices/unoq_yolo.py`: consumes UNO Q `raw.hub.face` boxes, `camera_enable`, `box_to_face`; interface in
+  `hub/AGENTS.md`). `live/lines.py`: keyed lines from `GET /v1/voice/{key}` with `say`/text fallback. GREET offers
+  instead of greeting twice; "no"/"not now" ends the ritual. Gemini Live: `gemini-3.8-live`, `[voice].name`,
+  v1beta, `enable_affective_dialog`, `proactivity.proactive_audio` (checked in geminiDocs + validated against
+  installed google-genai 3.3.0 types); one session per ritual, instruction/tools from `POST /v1/companion/session`
+  with fallback to local `tools.py`; 4 s stall → scripted line locally. Sim: sensors twin publishes face boxes that
+  grow on approach (`--two`, key `2`).
+- Verified: `make check` green. End to end on an isolated broker/cloud (seeded): sim person walks up → `attention`
+  nobody→appeared→approaching→at_desk, `cmd.head` eyes wide → purr → pan 13.9°→9.1° + look tracking → greeting
+  (cloud voice 503 without key → text fallback) → `ritual_start attention` → offer → full ritual completed, obs
+  uplinked, no errors. Real clock was 23:20 → default config correctly only glanced/tracked; `--two` → "te kaksi",
+  no offer. No real Live smoke: no GEMINI_API_KEY here.
+- Contract changes: none.
+- Broken/blocked: config owner — add `[greet.two]` (en/fi/sv) to `config/voice_lines.toml` (hub uses a built-in
+  fallback until then). Contracts — `HeadCmd` has no ear command ("ear up" = `eyes: listening` for now). A — UNO Q
+  App Lab YOLO publisher per `devices/unoq_yolo.py`; pan sign convention. I1 — hub expects
+  `POST /v1/companion/session` → `{system_instruction, tools?, model?, voice?, persona_version?}`.
+- Next: real Live smoke with a key; MediaPipe face detector for the laptop path; body sync while speaking.

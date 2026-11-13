@@ -190,3 +190,8 @@ sv = "Vi ses snart."
 en = "That's fine. Not today."
 fi = "Ei se haittaa. Ei tänään."
 sv = "Det gör inget. Inte i dag."
+
+[greet.two]
+en = "Oh, hello you two!"
+fi = "No hei, te kaksi!"
+sv = "Nämen, hej ni två!"

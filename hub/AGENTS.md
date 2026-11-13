@@ -5,8 +5,9 @@
 > emits/consumes changes).
 
 ## Purpose
-The robot's brain, running on the hub laptop. Turns local raw streams into derived `obs.*` (perception), runs the
-morning ritual state machine `IDLE → GREET → DIAL(mood, energy, sleep) → BREATHE → DRUM(+ post-activity mood) →
+The robot's brain, running on the hub laptop. Notices people with a deterministic **attention ladder**
+(`nobody → appeared → approaching → at_desk`: glance → purr → keyed greeting → ritual offer), turns local raw
+streams into derived `obs.*` (perception), runs the morning ritual state machine `IDLE → GREET → DIAL(mood, energy, sleep) → BREATHE → DRUM(+ post-activity mood) →
 [PHQ9 if due] → NUDGE → CLOSE`, runs the deterministic crisis gate (no LLM), drives the voice/music adapters, and
 ships observations to the cloud (offline-safe). Raw data never leaves the home. Glasses and laptop apps do NOT come
 through the hub — they post to the cloud directly.
@@ -20,16 +21,18 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `kaiku/v1/<home>/raw/head/tap` | drum step (tempo, force, regularity) |
 | `kaiku/v1/<home>/raw/head/ear` | dial answers (`value` = dial position 1–5, each `pressed` answers the current question: mood → energy → sleep); post-drum mood; spoken PHQ-9 (dial 1→0 … 4–5→3); press when idle → ad-hoc mood |
 | `kaiku/v1/<home>/raw/sensors/ppg` | breathe step HRV (only streamed between `cmd/sensors {ppg:start/stop}`) |
-| `kaiku/v1/<home>/raw/sensors/distance` | presence → arrival → ritual start |
+| `kaiku/v1/<home>/raw/sensors/distance` | presence → `obs/presence` + the attention ladder (no camera = presence alone means "at desk") |
 | `kaiku/v1/<home>/raw/sensors/light` | `obs/light_level` (hourly mean) |
 | `kaiku/v1/<home>/raw/sensors/button` (`id: "top"`) | short press → start ritual; hold ≥ 2 s → crisis (manual) |
-| `kaiku/v1/<home>/raw/hub/face` | greet step: head looks at the face |
+| `kaiku/v1/<home>/raw/hub/face` (source ≠ `hub`) | attention ladder (one message per face per frame; UNO Q YOLO or sim) + greet step looks at the face |
 | `kaiku/v1/<home>/cmd/hub` | `start_ritual`, `say` (text utterance, safety-gated), `suggest_nudge`, `set_ritual_time`, `clinician_message`, `phq9_due` |
 | `kaiku/v1/<home>/cmd/friendlink` | `ping` → LoRa gateway |
 | `kaiku/v1/<home>/obs/#` (non-hub sources) | `obs/phq9` with `item9_positive` → crisis; relays other local obs (e.g. friendlink sim) to the cloud |
 | `kaiku/v1/<home>/health/+` | node heartbeats → `PUT /v1/health/{home}` |
 | `GET /v1/commands?home_id&since` | cloud → hub commands (republished on `cmd/hub`) |
 | `GET /v1/nudge?home_id` | bandit arm (falls back to clinician suggestion, then uniform random) |
+| `GET /v1/voice/{key}?lang=` | greeting audio in the one Kaiku voice (404/503/offline → `say`/text fallback) |
+| `POST /v1/companion/session` | `{surface: robot, home_id, intent: ritual}` → Live system instruction + tools (404/offline → local `tools.py`) |
 
 ## Emits (topics/endpoints)
 | Topic / endpoint | When |
@@ -45,7 +48,7 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `obs/light_level` | each light window |
 | `obs/friend_link` | LoRa ping sent/received |
 | `obs/safety_flag` | any crisis trigger (priority uplink, deduped per trigger for 60 s) |
-| `cmd/head`, `cmd/sensors` | eyes, pan, chest, purr; `ppg: start/stop` |
+| `cmd/head`, `cmd/sensors` | attention: `eyes` glance/`listening`, `look` + `pan{target_deg}` tracking (smoothed, deadband, ≤ 5 Hz), `purr`, `home`; ritual: eyes, pan_mode, chest, purr; `ppg: start/stop`; `camera_enable` (unoq_yolo) |
 | `health/hub` | retained heartbeat every 5 s (ritual state, uplink queue/lag/error, adapters) |
 | `POST /v1/events` | batched obs (Bearer `KAIKU_HOME_TOKEN` if set) |
 | `PUT /v1/health/{home_id}` | every 10 s: all node heartbeats + uplink queue/lag |
@@ -58,6 +61,7 @@ kaiku_hub/
   main.py          Hub: wiring + RitualContext impl (say/head/sensors/emit/get_nudge), bus handlers,
                    crisis(); emit() is the ONLY way obs leave (validate -> bus -> uplink; PHQ-9 safety check)
   settings.py      config/kaiku.toml + env -> Settings dataclass (all timings/thresholds/model IDs)
+  attention.py     attention ladder (pure, deterministic): faces + presence + quiet + time -> head/say/offer actions
   state.py         small persistent JSON: last arrival, today's dial, pending nudge, phq9_due, ritual time
   rituals/
     machine.py     generic step runner: applies / enter / handle / on_deadline / on_timeout / exit, skip,
@@ -65,9 +69,12 @@ kaiku_hub/
     steps.py       Greet, Dial, Breathe, Drum, Phq9, Nudge, Close + default_steps(settings)
   perception/      taps.py, hrv.py (PpgBuffer.pre_post / session), presence.py, light.py, speech.py, face.py
   safety/gate.py   SafetyGate (phrases en/fi/sv, PHQ-9 item 9), ButtonLongPress, CrisisScript (verbatim)
-  live/            base.py (Voice/Music interfaces), factory.py (env -> adapter), text.py, gemini_live.py,
-                   lyria.py, local_audio.py, tools.py (function-calling tools + system prompt)
-  devices/         atech_adapter.py (stub), lora_serial.py (friend link), camera.py
+  live/            base.py (Voice/Music interfaces; open_session/close_session per ritual), factory.py,
+                   text.py, gemini_live.py (gemini-3.8-live, affective dialog, proactive audio, [voice].name),
+                   lines.py (keyed lines: cloud voice cache -> local TTS/text), lyria.py, local_audio.py,
+                   tools.py (local fallback tools + system prompt)
+  devices/         atech_adapter.py (stub), lora_serial.py (friend link), camera.py,
+                   unoq_yolo.py (face source: UNO Q App Lab boxes; interface for owner A + box_to_face)
   uplink.py        SQLite offline queue, batches, backoff, safety_flag priority lane, obs-only
   cloudlink.py     command polling (since), nudge lookup with fallback, node-health reports
 tests/             unit + contract tests per area; test_integration.py = full ritual over a real mosquitto
@@ -84,6 +91,8 @@ tests/             unit + contract tests per area; test_integration.py = full ri
 - **Swap voice/music vendor:** implement `live/base.Voice` / `Music` in a new file, select it in
   `live/factory.py` by `KAIKU_VOICE` / `KAIKU_MUSIC`. Must fail soft (fall back to text/local). Model IDs in
   `config/kaiku.toml [models]` only. Tool names/semantics live in `live/tools.py`; `Hub.on_tool` maps them.
+- **New face source:** anything that publishes `raw.hub.face` (one message per face per frame, source ≠ `hub`)
+  works with no hub change; select local sources by `[attention] face_source` in `Hub.__init__`.
 - **Add a device adapter:** `devices/<vendor>.py` converting vendor I/O ↔ contract messages, selected by env
   (`KAIKU_HEAD=atech|sim` style), with a sim twin in `sim/nodes/`.
 - **Remove a piece:** steps, adapters and perception modules are independent; delete + drop from
@@ -101,6 +110,15 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   question with the dial position at that moment (order mood → energy → sleep); the post-activity mood is
   asked right AFTER `obs.drum_session` is emitted; spoken PHQ-9 accepts presses (dial 1→0, 2→1, 3→2, 4–5→3).
 - A PHQ-9 is only emitted when all 9 items are answered (never partial).
+- **Attention ladder** (`attention.py`, numbers in `[attention]`): greet at most once per `regreet_h`; no purr or
+  greeting in quiet mode ("not now"/"quiet", `quiet_h`) or in `[night_start, night_end)` unless the person started
+  (spoke, pressed ear/button); ≥ 2 faces → `greet.two`, never a ritual offer; ritual done today → greeting, no
+  offer (demo mode ignores "done today"); face lost < `lost_s` doesn't end the visit; while a ritual runs the ladder
+  sends nothing (the ritual owns the body). Offer = ritual starts with `ritual_reason="attention"`: GREET asks
+  instead of greeting twice, "no"/"not now" ends the ritual (`skipped`).
+- **Gemini Live is per ritual:** the session opens at ritual start and closes at the end (mic streams only then).
+  Every input transcript hits `on_utterance` (safety gate) first; a crisis closes the session before anything else
+  plays. If the model doesn't start speaking within 4 s of a scripted prompt, the line is spoken locally.
 
 ## Run standalone
 ```bash
@@ -116,15 +134,22 @@ Without a broker the hub runs but sees no sensors. Without `KAIKU_CLOUD_URL` it 
 ```bash
 make broker                    # terminal 1
 make sim                       # terminal 2 (head + sensors + friendlink sims; glasses/laptop post to the cloud)
-KAIKU_VOICE=text make hub      # terminal 3 — sims walk up, the ritual starts; or type `start`
+KAIKU_VOICE=text make hub      # terminal 3 — a sim person walks up: head turns, greeting, ritual offer; or type `start`
 make tail TOPIC='kaiku/v1/+/obs/#'   # terminal 4
 ```
 
 Fast ritual for testing: `KAIKU_RITUAL_GREET_S=2 KAIKU_RITUAL_DIAL_S=20 KAIKU_RITUAL_BREATHE_S=15 KAIKU_RITUAL_DRUM_S=10 make hub`.
 Spoken PHQ-9: `KAIKU_RITUAL_PHQ9_MODE=spoken` and send `cmd.hub {phq9_due: true}` (or say "start_phq9" via Gemini).
 Start immediately: `make hub ARGS=--start`.
+Greeting at night (23:00–07:00 is quiet by default): `KAIKU_ATTENTION_NIGHT_START=00:00 KAIKU_ATTENTION_NIGHT_END=00:00`.
+Re-greet within 3 h for demos: `KAIKU_ATTENTION_REGREET_H=0`. Two people: `make sim ARGS=--two` (or key `2`).
+Attention log lines: `attention` (state changes + face count), `voice_line` (key, `source: cloud|cache|local_tts|text`),
+`ritual_start attention`, `live_session` (`cloud`/`local` instruction).
 
 ## Config & env
+- `config/kaiku.toml [attention]`: `face_source = laptop|unoq_yolo|off`, ladder sizes, `lost_s`, `frame_s`,
+  `two_face_min_sep`, `camera_hfov_deg`, pan deadband/smoothing/speed, `track_hz`, `regreet_h`, night window,
+  `quiet_h`, `voice_timeout_s`. `[voice] name` (one voice) is passed to Gemini Live.
 - `config/kaiku.toml`: `[ritual]` timings (`greet_s`, `dial_s`, `breathe_s`, `drum_s`, `drum_idle_end_s`,
   `post_mood_s`, `hrv_window_s`, `nudge_s`, `cooldown_s`, `phq9_mode`, `phq9_every_days`), `[perception]`
   thresholds (incl. `tap_force_max_g`, `light_window_min`), `[uplink]`, `[music]` BPM clamp, `[models]` IDs
@@ -160,17 +185,36 @@ uv run pytest hub/tests      # ~10 s; the MQTT integration test needs mosquitto 
   data, poison batch dropped, safety flag first + immediate.
 - `test_cloudlink.py`, `test_hub.py`: commands dedupe/`since`, nudge fallback, crisis paths through the Hub
   (and that they load no LLM modules), sim flag propagation, contract check of every emitted obs type.
+- `test_attention.py`: full ladder order (glance → purr → greeting → offer), state steps, greeting by time of day,
+  flicker (< 2 s no reset, > 2 s homes), two faces (+ one-face jitter ≠ two), quiet mode, night boundaries
+  (22:59/23:00/06:59/07:00), person-started at night, re-greet 2:59 vs 3:01, ritual done today, ritual running,
+  presence without camera, pan smoothing + deadband, track rate limit, TOML time env overrides.
+- `test_greeting.py`: voice lines (cloud audio, memory cache, 404/503/offline → text, fallback keys), companion
+  session (404/ok/offline), Live config fields (+ validated by the installed `google-genai` types), UNO Q box →
+  RawFace, Hub: approach → greeting + offer → "not now" ends it + quiet; two people no offer; done today no offer;
+  own `raw.hub.face` echo ignored.
 - `test_integration.py`: real mosquitto + fake head/sensors (dial protocol) → full v2 ritual → self_report ×4,
   hrv, drum, intervention_response, nudge obs.
 
 ## Known issues
-- `gemini_live.py` / `lyria.py` are written against the google-genai SDK as we understand it but are
-  **untested**: verify model IDs, method names and audio formats in current docs before the demo.
+- `gemini_live.py` field names are checked against the Gemini docs and the installed `google-genai` types, but
+  no real Live session has run yet (no key in the build environment). `lyria.py` is untested.
+- `POST /v1/companion/session` is being built by I1; until it lands the hub logs `companion_session_fallback` and
+  uses the local `SYSTEM_PROMPT` + `tools.py`. The response's `tools` are used as given (plain function
+  declarations or Gemini tool blocks); unknown tool names are answered `{ok: false}` by `Hub.on_tool`.
+- `greet.two` is not in `config/voice_lines.toml` yet: the hub speaks a built-in fallback text
+  (`live/lines.py FALLBACK_TEXT`) and the cloud returns 404 for its audio until the config owner adds it.
+- `HeadCmd` has no ear command: "ear up" is approximated with `eyes: listening`. Pan sign: `+target_deg` = toward
+  the camera image's right; the head firmware maps it to its motor direction.
+- **UNO Q face boxes (owner A):** see `devices/unoq_yolo.py` docstring — one `raw.hub.face` per box per frame at
+  ~5 Hz, source `sensors`, `x_norm/y_norm` = box centre in −1..1, `size` = box width / frame width (use
+  `box_to_face`), obey `cmd.sensors {camera_enable}`, never send frames. Then set `[attention] face_source = "unoq_yolo"`.
+- The laptop face source (`perception/face.py`) is OpenCV Haar (`uv sync --extra camera`), not MediaPipe yet.
 - `devices/atech_adapter.py` is a stub until the Atech spike (D6) says whether the head can speak MQTT.
 - `speech.py` is rough (energy VAD); it only tracks change against the person's own baseline.
   The hub doesn't capture mic audio for it yet (Gemini Live owns the mic). TODO: tap the same audio stream.
 - `local_audio.py` has no pre-recorded lines or music loop yet; offline mode prints (and optionally TTS-speaks) lines.
-- Face tracking emits `look` targets during greet only. Pan control and homing belong to the head firmware.
+- Pan motor control and homing belong to the head firmware; the hub sends absolute targets only.
 - The phrase list will miss things and can false-trigger on quoted speech. See `docs/safety.md`.
 - Ritual-time invitations (`set_ritual_time`) only fire while the hub is running, checked every 20 s.
 - Env overrides (`KAIKU_RITUAL_DRUM_S=…`) only work for keys that exist in `config/kaiku.toml`.

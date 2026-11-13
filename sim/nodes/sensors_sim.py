@@ -1,9 +1,12 @@
-"""Sim twin of the UNO Q sensor node: distance (presence), PPG on demand, light, hall, top button."""
+"""Sim twin of the UNO Q sensor node: distance (presence), PPG on demand, light, hall, top button, and the UNO Q
+camera's face boxes (App Lab YOLO): one `raw.hub.face` per person per frame at 5 Hz while someone is within
+FACE_CM, growing as they approach (hub/kaiku_hub/devices/unoq_yolo.py has the interface)."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 import random
 import time
 from datetime import datetime
@@ -16,17 +19,20 @@ from .signals import PpgSynth, approach_curve, daylight_lux
 FAR_CM = 200.0
 NEAR_CM = 50.0
 PPG_BATCH = 25
+FACE_CM = 180.0  # the camera "sees" someone closer than this
 
 
 class SensorsSim:
     def __init__(self, *, arrive_after_s: float | None = 3.0, dwell_s: float = 600.0, hr_bpm: float = 68.0,
-                 seed: int | None = None):
+                 seed: int | None = None, faces: bool = True):
         self.arrive_after_s = arrive_after_s
         self.dwell_s = dwell_s
         self.rng = random.Random(seed)
         self.ppg = PpgSynth(hr_bpm=hr_bpm, seed=seed)
         self.ppg_on = False
         self.camera = False
+        self.faces = faces
+        self.people = 1  # keyboard `2` toggles a second person
         self._arrived_at: float | None = None
         self._left_at: float | None = None
         self._t0 = time.monotonic()
@@ -45,6 +51,24 @@ class SensorsSim:
     def leave(self) -> None:
         if self._arrived_at is not None:
             self._left_at = time.monotonic()
+
+    def toggle_second_person(self) -> int:
+        self.people = 1 if self.people == 2 else 2
+        return self.people
+
+    def face_boxes(self, cm: float, now: float) -> list[dict]:
+        """RawFace payloads for what the camera would see at this distance (empty when nobody is close)."""
+        if not self.faces or cm >= FACE_CM:
+            return []
+        closeness = max(0.0, min(1.0, (FACE_CM - cm) / (FACE_CM - NEAR_CM)))
+        size = 0.05 + 0.30 * closeness
+        x = 0.5 - 0.4 * closeness + 0.05 * math.sin(now * 0.7)  # walks in from the right, settles near centre
+        out = [{"x_norm": round(x, 3), "y_norm": round(-0.1 + self.rng.gauss(0, 0.01), 3), "size": round(size, 3),
+                "confidence": 0.9}]
+        if self.people == 2:
+            out.append({"x_norm": round(x - 0.7, 3), "y_norm": -0.05, "size": round(size * 0.9, 3),
+                        "confidence": 0.85})
+        return out
 
     async def button(self, hold_s: float = 0.2, id: str = "top") -> None:
         await self.bus.publish("raw.sensors.button", {"id": id, "pressed": True})
@@ -82,7 +106,10 @@ class SensorsSim:
                 self.arrive()
             if self.is_near and self._arrived_at and now - self._arrived_at > self.dwell_s:
                 self.leave()
-            await self.bus.publish("raw.sensors.distance", {"cm": round(max(0.0, self.distance_cm(now)), 1)})
+            cm = max(0.0, self.distance_cm(now))
+            await self.bus.publish("raw.sensors.distance", {"cm": round(cm, 1)})
+            for box in self.face_boxes(cm, now):
+                await self.bus.publish("raw.hub.face", box)
             await asyncio.sleep(0.2)
 
     async def _ppg_loop(self) -> None:
@@ -123,9 +150,13 @@ def main() -> None:
     ap.add_argument("--arrive-after", type=float, default=3.0, help="seconds until someone approaches (-1 = never)")
     ap.add_argument("--dwell", type=float, default=600.0)
     ap.add_argument("--hr", type=float, default=68.0)
+    ap.add_argument("--no-faces", action="store_true", help="don't publish camera face boxes")
+    ap.add_argument("--two", action="store_true", help="two people walk up together")
     a = ap.parse_args()
-    asyncio.run(SensorsSim(arrive_after_s=None if a.arrive_after < 0 else a.arrive_after, dwell_s=a.dwell,
-                           hr_bpm=a.hr).run())
+    sim = SensorsSim(arrive_after_s=None if a.arrive_after < 0 else a.arrive_after, dwell_s=a.dwell, hr_bpm=a.hr,
+                     faces=not a.no_faces)
+    sim.people = 2 if a.two else 1
+    asyncio.run(sim.run())
 
 
 if __name__ == "__main__":

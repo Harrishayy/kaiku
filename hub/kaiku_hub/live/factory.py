@@ -11,13 +11,14 @@ from .text import TextVoice
 log = get_logger("hub")
 
 
-def make_voice(mode: str, *, model_id: str = "", language: str = "en", read_stdin: bool = True) -> Voice:
+def make_voice(mode: str, *, model_id: str = "", language: str = "en", read_stdin: bool = True,
+               voice_name: str = "") -> Voice:
     if mode == "gemini":
         from . import gemini_live
 
         ok, why = gemini_live.available(model_id)
         if ok:
-            return gemini_live.GeminiLiveVoice(model_id, language)
+            return gemini_live.GeminiLiveVoice(model_id, language, voice_name=voice_name)
         log.warning("voice_fallback", f"gemini unavailable: {why}; using text mode")
         return TextVoice(read_stdin=read_stdin)
     if mode == "text":

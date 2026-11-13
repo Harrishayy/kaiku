@@ -48,6 +48,46 @@ class CloudLink:
             log.warning("nudge_fallback", self.last_error)
             return None
 
+    async def companion_session(self, intent: str = "ritual", timeout_s: float = 4.0) -> dict[str, Any] | None:
+        """POST /v1/companion/session {surface: robot, home_id, intent} -> {system_instruction, tools, model, voice,
+        ...} (plan 03 §3). None when the cloud is offline or doesn't have the endpoint yet (404): the caller falls
+        back to the local SYSTEM_PROMPT + live/tools.py."""
+        if not self.url:
+            return None
+        try:
+            async with self._client(timeout_s) as c:
+                r = await c.post("/v1/companion/session",
+                                 json={"surface": "robot", "home_id": self.home_id, "intent": intent})
+            if r.status_code != 200:
+                log.info("companion_session_fallback", f"HTTP {r.status_code}")
+                return None
+            data = r.json()
+        except Exception as e:
+            log.info("companion_session_fallback", f"{type(e).__name__}")
+            return None
+        if not isinstance(data, dict) or not isinstance(data.get("system_instruction"), str):
+            log.warning("companion_session_fallback", "response without system_instruction")
+            return None
+        return data
+
+    async def companion_tool(self, name: str, args: dict[str, Any], session_id: str | None = None,
+                             timeout_s: float = 4.0) -> dict[str, Any] | None:
+        """Forward a cloud-executed tool call (remember/forget/recall/suggest_nudge/end_session) to
+        POST /v1/companion/tool. None when offline: the caller tells the model the tool is unavailable."""
+        if not self.url:
+            return None
+        try:
+            async with self._client(timeout_s) as c:
+                r = await c.post("/v1/companion/tool", json={"home_id": self.home_id, "surface": "robot",
+                                                             "session_id": session_id, "name": name, "args": args})
+            if r.status_code != 200:
+                log.info("companion_tool_unavailable", f"HTTP {r.status_code}", tool=name)
+                return None
+            return r.json()
+        except Exception as e:
+            log.info("companion_tool_unavailable", type(e).__name__, tool=name)
+            return None
+
     async def poll_commands(self) -> list[Envelope[Any]]:
         if not self.url:
             return []

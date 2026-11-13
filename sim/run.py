@@ -6,7 +6,8 @@ Keyboard (with --keyboard):  t tap · [ / ] ear down/up · e press ear · p pers
                              s start ritual · x long-press top button (manual safety trigger)
                              f friend presses lamp button · w glasses walk done · l laptop session
                              9 laptop PHQ-9 · m Mac hour (screen activity + firefly)
-                             o phone morning (watch summary + weather check) · q quit
+                             o phone morning (watch summary + weather check)
+                             2 toggle a second person (camera sees two faces) · q quit
 """
 
 from __future__ import annotations
@@ -70,6 +71,8 @@ async def _keyboard(nodes: dict, stop: asyncio.Event) -> None:
                 elif ch == "p" and sensors:
                     sensors.leave() if sensors.is_near else sensors.arrive()
                     print(f"presence: {'near' if sensors.is_near else 'leaving'}", file=sys.stderr)
+                elif ch == "2" and sensors:
+                    print(f"people in view: {sensors.toggle_second_person()}", file=sys.stderr)
                 elif ch == "x" and sensors:
                     await sensors.button(hold_s=2.5)
                 elif ch == "f" and friend:
@@ -95,6 +98,7 @@ async def amain(names: list[str], keyboard: bool, args: argparse.Namespace) -> N
         nodes["head"] = HeadSim(auto=not keyboard, tempo_bpm=args.tempo, mood=args.mood)
     if "sensors" in names:
         nodes["sensors"] = SensorsSim(arrive_after_s=None if keyboard or args.arrive_after < 0 else args.arrive_after)
+        nodes["sensors"].people = 2 if args.two else 1
     if "friendlink" in names:
         nodes["friendlink"] = FriendlinkSim()
     if "glasses" in names:
@@ -132,6 +136,7 @@ def main() -> None:
     ap.add_argument("--tempo", type=float, default=96.0, help="auto drum tempo")
     ap.add_argument("--mood", type=int, choices=range(1, 6), help="auto mood dial value")
     ap.add_argument("--arrive-after", type=float, default=3.0, help="auto presence after N s (-1 never)")
+    ap.add_argument("--two", action="store_true", help="sensors: two people walk up (camera sees two faces)")
     ap.add_argument("--every", type=float, default=300.0, help="glasses/laptop/phone: seconds between posts (auto)")
     ap.add_argument("--phq9", action="store_true", help="laptop: also send a PHQ-9 at start")
     ap.add_argument("--phq9-item9", action="store_true", help="laptop: PHQ-9 with item 9 > 0 (+ safety_flag)")

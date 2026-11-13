@@ -73,6 +73,12 @@ class Settings:
     # models (VERIFY in docs; never hard-code in code)
     gemini_live_model: str = ""
     lyria_model: str = ""
+    # attention ladder ([attention]; AttentionConfig picks the keys it knows)
+    attention: dict = field(default_factory=dict)
+    face_source: str = "laptop"  # laptop | unoq_yolo | off
+    voice_name: str = ""
+    local_tts: bool = False  # KAIKU_LOCAL_TTS=1: speak scripted lines locally (and play cloud audio) in text mode
+    voice_timeout_s: float = 3.0
     # safety
     helpline_name: str = "MIELI Crisis Helpline"
     helpline_number: str = "09 2525 0111"
@@ -124,6 +130,11 @@ class Settings:
             bpm_max=_f(c, "music", "bpm_max", 200),
             gemini_live_model=str(c.get("models", {}).get("gemini_live", "")),
             lyria_model=str(c.get("models", {}).get("lyria_realtime", "")),
+            attention=dict(c.get("attention", {})),
+            face_source=str(c.get("attention", {}).get("face_source", "laptop")),
+            voice_name=str(c.get("voice", {}).get("name", "")),
+            local_tts=env.get("KAIKU_LOCAL_TTS", "0") == "1",
+            voice_timeout_s=_f(c, "attention", "voice_timeout_s", 3.0),
             helpline_name=c.get("safety", {}).get("helpline_name", "MIELI Crisis Helpline"),
             helpline_number=c.get("safety", {}).get("helpline_number", "09 2525 0111"),
             emergency_number=c.get("safety", {}).get("emergency_number", "112"),

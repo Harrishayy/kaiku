@@ -19,7 +19,7 @@ from ..perception.taps import TapAnalyzer
 from .machine import Event, RitualContext, Status, Step
 
 YES = re.compile(r"\b(yes|yeah|yep|sure|ok|okay|kyllä|joo|juu|ja|gärna)\b", re.I)
-NO = re.compile(r"\b(no|nope|not today|ei|nej)\b", re.I)
+NO = re.compile(r"\b(no|nope|not today|not now|ei|nej)\b", re.I)
 NUMBER_1_5 = re.compile(r"\b([1-5])\b")
 NUMBER_0_3 = re.compile(r"\b([0-3])\b")
 
@@ -71,14 +71,24 @@ def _clamp_1_5(v: Any) -> int:
     return max(1, min(5, int(v)))
 
 
+OFFER_LINE = "Shall we do our little check-in together? Press my ear or say yes."
+
+
 class Greet(Step):
+    """Greets, or, when the attention ladder already greeted (ctx.ritual_reason == "attention"), offers the
+    ritual. Any answer or ear press goes on; "no" / "not today" ends the ritual politely (never pushes)."""
+
     name = "greet"
 
     async def enter(self, ctx: RitualContext) -> None:
+        self._last_look = 0.0
+        if getattr(ctx, "ritual_reason", "") == "attention":
+            await ctx.head(eyes="listening", pan_mode="track")
+            await ctx.say(OFFER_LINE)
+            return
         await ctx.head(eyes="wide", pan_mode="track")
         g = GREETINGS.get(ctx.settings.greeting_language, GREETINGS["en"])
         await ctx.say(f"{g} It's good to see you.")
-        self._last_look = 0.0
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
         if event.kind == "face":
@@ -87,6 +97,11 @@ class Greet(Step):
                 self._last_look = now
                 await ctx.head(look={"x": event.data["x_norm"], "y": event.data["y_norm"]})
             return None
+        if event.kind == "utterance" and NO.search(event.data.get("text", "")) and not YES.search(
+                event.data.get("text", "")):
+            self.stop_ritual = True
+            await ctx.say("That's fine. Not today.")
+            return "skipped"
         if event.kind in ("utterance", "ear"):
             return "completed"
         return None

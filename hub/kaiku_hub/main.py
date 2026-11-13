@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import re
 import signal
 import sys
 import time
@@ -20,15 +21,20 @@ from typing import Any
 
 import httpx
 from kaiku_contracts import ContractError, Envelope, ParsedTopic, make
+from kaiku_contracts.companion_tools import TOOLS as REGISTRY
 from kaiku_contracts.config import load_dotenv
 from kaiku_contracts.jlog import get_logger
 
 from . import __version__
+from .attention import Attention, AttentionConfig
 from .bus import Bus
 from .cloudlink import CloudLink, local_nudge
 from .devices.atech_adapter import AtechAdapter
 from .devices.lora_serial import LoraSerialAdapter
+from .devices.unoq_yolo import UnoqYoloFaces
 from .live import Music, Voice, make_music, make_voice
+from .live.lines import LinePlayer
+from .live.tools import SYSTEM_PROMPT, TOOLS
 from .perception import face
 from .perception.light import LightAggregator
 from .perception.presence import PresenceTracker
@@ -39,9 +45,12 @@ from .state import HubState
 from .uplink import Uplink
 
 log = get_logger("hub")
+CLOUD_TOOLS = frozenset(n for n, t in REGISTRY.items() if t.get("executor") == "cloud")
 
 SIM_WINDOW_S = 60.0
 CRISIS_DEDUPE_S = 60.0
+ATTENTION_HZ = 5.0
+QUIET = re.compile(r"\b(not now|quiet|be quiet|hiljaa|ei nyt|tyst|inte nu)\b", re.I)
 
 
 class Hub:
@@ -57,7 +66,7 @@ class Hub:
         self.settings = s = settings or Settings.load()
         self.state = HubState(s.state_path)
         self.voice = voice or make_voice(s.voice, model_id=s.gemini_live_model, language=s.language,
-                                         read_stdin=read_stdin)
+                                         read_stdin=read_stdin, voice_name=s.voice_name)
         self.music = music or make_music(s.music, model_id=s.lyria_model, bpm_min=s.bpm_min, bpm_max=s.bpm_max)
         self.bus = Bus("hub", home_id=s.home_id, version=__version__, details=self._details)
         self.uplink = Uplink(url=s.cloud_url, token=s.home_token, queue_path=s.queue_path,
@@ -72,7 +81,12 @@ class Hub:
         self.machine = RitualMachine(self, default_steps(s), step_timeout_s=s.step_timeout_s)
         self.lora = LoraSerialAdapter(self.emit)
         self.atech = AtechAdapter() if s.head == "atech" else None
-        self.face = face.FaceTracker(self._on_face) if face.available() else None
+        self.attention = Attention(AttentionConfig.from_dict(s.attention))
+        self.lines = LinePlayer(cloud_url=s.cloud_url, token=s.home_token, timeout_s=s.voice_timeout_s,
+                                play_audio=s.voice in ("gemini", "local") or s.local_tts, transport=transport)
+        self.face = face.FaceTracker(self._on_face) if s.face_source == "laptop" and face.available() else None
+        self.unoq_faces = UnoqYoloFaces(self.sensors) if s.face_source == "unoq_yolo" else None
+        self.ritual_reason = ""
         self.node_health: dict[str, dict] = {}
         self._sim_until = 0.0
         self._last_ritual_end = -1e9
@@ -136,13 +150,33 @@ class Hub:
         if self.machine.running:
             return False
         log.info("ritual_start", reason)
+        self.ritual_reason = reason
         task = self.machine.start()
         if task:
             task.add_done_callback(self._ritual_done)
+            if self.voice.wants_session:
+                self._tasks.append(asyncio.create_task(self._open_live(), name="live-open"))
         return task is not None
+
+    async def _open_live(self) -> None:
+        """Gemini Live for this ritual: cloud instruction + tools (plan 03 §3), else the local prompt + tools."""
+        sess = await self.cloud.companion_session("ritual")
+        self._session_id = (sess or {}).get("session_id")
+        if sess:
+            instruction, tools = sess["system_instruction"], sess.get("tools") or TOOLS
+            model, voice, origin = sess.get("model") or None, sess.get("voice") or None, "cloud"
+        else:
+            instruction, tools, model, voice, origin = SYSTEM_PROMPT, TOOLS, None, None, "local"
+        if not self.machine.running:
+            return
+        ok = await self.voice.open_session(instruction, tools, model=model, voice=voice)
+        log.info("live_session", origin, opened=ok, persona=(sess or {}).get("persona_version", "local"))
 
     def _ritual_done(self, task: asyncio.Task) -> None:
         self._last_ritual_end = time.monotonic()
+        self.ritual_reason = ""
+        if self.voice.wants_session:
+            asyncio.get_running_loop().create_task(self.voice.close_session())
         if task.cancelled():
             return
         if task.exception() is not None:
@@ -186,6 +220,13 @@ class Hub:
             await self.crisis(trig)
             return
         cmd = text.strip().lower()
+        now = datetime.now().astimezone()
+        if not self.machine.running or self.machine.state == "greet":
+            if QUIET.search(cmd):
+                self.attention.quiet(now)
+                log.info("quiet_mode", f"{self.attention.cfg.quiet_h} h")
+            elif not self.machine.running:
+                self.attention.person_started(now)
         if cmd in ("start", "aloita"):
             self.start_ritual("text")
         elif cmd in ("skip", "ohita"):
@@ -194,7 +235,23 @@ class Hub:
             self.machine.feed(Event("utterance", {"text": text}))
 
     async def on_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Voice-model tool calls. Requests only; the hub decides."""
+        """Voice-model tool calls. Requests only; the hub decides. Cloud tools (memory, nudge, end) are forwarded."""
+        if name in CLOUD_TOOLS:
+            res = await self.cloud.companion_tool(name, args, getattr(self, "_session_id", None))
+            if res is None:
+                if name == "end_session":
+                    self.machine.feed(Event("skip"))
+                    return {"ok": True}
+                return {"ok": False, "error": "not available right now"}
+            if res.get("crisis"):
+                await self.crisis(Trigger("phrase", "tool_args", None))
+                return {"ok": False, "error": "stopped"}
+            if name == "end_session":
+                self.machine.feed(Event("skip"))
+            return {"ok": bool(res.get("ok")), **(res.get("result") or {}),
+                    **({"error": res["error"]} if res.get("error") else {})}
+        if name == "start_activity":  # registry name -> ritual step (steps are ordered)
+            name = {"breathe": "start_breathing", "drum": "start_drum"}.get(str(args.get("kind")), "suggest_nudge")
         if name == "send_friend_ping":
             await self.lora.ping()
             return {"ok": True}
@@ -227,6 +284,7 @@ class Hub:
             if self.machine.running:
                 self.machine.feed(Event("ear", p))
             elif p.get("pressed"):
+                self.attention.person_started(datetime.now().astimezone())
                 await self.emit("obs.self_report",
                                 {"item": "mood", "value": max(1, min(5, int(p["value"]))), "context": "adhoc"})
         elif name == "sensors/ppg":
@@ -244,10 +302,12 @@ class Hub:
             if trig:
                 await self.crisis(trig)
             elif short and not self.machine.running:
+                self.attention.person_started(datetime.now().astimezone())
                 self.start_ritual("button")
             elif p["pressed"]:
                 self._tasks.append(asyncio.create_task(self._watch_long_press()))
-        elif name == "hub/face":
+        elif name == "hub/face" and env.source != "hub":  # UNO Q YOLO / sim boxes (our own echo is ignored)
+            self.attention.add_face(p, datetime.now().astimezone())
             self.machine.feed(Event("face", p))
 
     async def _watch_long_press(self) -> None:
@@ -260,24 +320,49 @@ class Hub:
     async def _on_distance(self, cm: float) -> None:
         now = datetime.now().astimezone()
         arrival = self.presence.update(cm, now)
+        self.attention.set_present(self.presence.present)
         if self.face is not None:
             (self.face.start() if self.presence.present else self.face.stop())
         if not arrival:
             return
         self.state.last_arrival = now
-        await self.emit("obs.presence", arrival)
-        cooled = time.monotonic() - self._last_ritual_end >= self.settings.ritual_cooldown_s
-        today_done = self.state.ritual_done_on(now.date())
-        if cooled and (arrival["first_of_day"] or (self.settings.demo_mode or not today_done)):
-            self.start_ritual("presence")
+        await self.emit("obs.presence", arrival)  # greeting + ritual offer come from the attention ladder
 
     def _on_face(self, payload: dict) -> None:
+        """Laptop camera (perception/face.py) -> attention + ritual, and raw/hub/face for other listeners."""
+        self.attention.add_face(payload, datetime.now().astimezone())
+        self.machine.feed(Event("face", payload))
+
         async def pub() -> None:
             with contextlib.suppress(ContractError):
                 await self.bus.publish("raw.hub.face", payload)
-            self.machine.feed(Event("face", payload))
 
         asyncio.get_running_loop().create_task(pub())
+
+    # ================================================================ attention ladder
+    async def attention_step(self, now: datetime | None = None) -> None:
+        now = now or datetime.now().astimezone()
+        done = self.state.ritual_done_on(now.date()) and not self.settings.demo_mode
+        prev = self.attention.state
+        actions = self.attention.tick(now, ritual_done_today=done, ritual_running=self.machine.running)
+        if self.attention.state != prev:
+            log.info("attention", f"{prev} -> {self.attention.state}", faces=self.attention.face_count(now))
+        for kind, arg in actions:
+            if kind == "head":
+                await self.head(**arg)
+            elif kind == "say":
+                await self.lines.say_line(arg, self.settings.greeting_language)
+            elif kind == "offer":
+                if time.monotonic() - self._last_ritual_end >= self.settings.ritual_cooldown_s:
+                    self.start_ritual("attention")
+
+    async def _attention_loop(self) -> None:
+        while True:
+            await asyncio.sleep(1.0 / ATTENTION_HZ)
+            try:
+                await self.attention_step()
+            except Exception as e:  # never let the reflex loop die
+                log.error("attention_failed", f"{type(e).__name__}: {e}")
 
     async def on_cmd(self, t: ParsedTopic, env: Envelope[Any]) -> None:
         if str(env.id) in self._seen_cmds:
@@ -365,8 +450,12 @@ class Hub:
             asyncio.create_task(self.uplink.run(), name="uplink"),
             asyncio.create_task(self.cloud.run(self._republish_cloud_cmd, self._health_snapshot), name="cloudlink"),
             asyncio.create_task(self._ritual_time_loop(), name="ritual-time"),
+            asyncio.create_task(self._attention_loop(), name="attention"),
         ]
+        if self.unoq_faces:
+            self._tasks.append(asyncio.create_task(self.unoq_faces.start(), name="unoq-faces"))
         log.info("hub_started", f"home={self.settings.home_id}", head=self.settings.head, sensors=self.settings.sensors,
+                 faces=self.settings.face_source if (self.face or self.unoq_faces) else "off",
                  voice=self.voice.name, music=self.music.name, cloud=self.settings.cloud_url or "offline")
 
     async def stop(self) -> None:
@@ -377,6 +466,9 @@ class Hub:
         self._tasks.clear()
         if self.face:
             self.face.stop()
+        if self.unoq_faces:
+            with contextlib.suppress(Exception):
+                await self.unoq_faces.stop()
         for closer in (self.voice.stop, self.music.stop, self.lora.stop):
             with contextlib.suppress(Exception):
                 await closer()

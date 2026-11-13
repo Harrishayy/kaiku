@@ -31,6 +31,16 @@ class Voice:
     async def interrupt(self) -> None:
         return None
 
+    # A conversation session (Gemini Live) is opened per ritual, never kept open (mic only while consented).
+    wants_session = False
+
+    async def open_session(self, system_instruction: str, tools: list[dict[str, Any]],
+                           model: str | None = None, voice: str | None = None) -> bool:
+        return False
+
+    async def close_session(self) -> None:
+        return None
+
     async def stop(self) -> None:
         return None
 

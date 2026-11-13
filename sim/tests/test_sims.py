@@ -178,3 +178,18 @@ async def test_http_sims_fail_soft_when_cloud_down():
     reqs = []
     lap2 = LaptopSim(seed=2, transport=_mock(reqs, status=422), url="http://cloud")
     assert await lap2.session() is False and len(reqs) == 1  # 4xx is not retried
+
+
+def test_sensors_face_boxes_grow_as_person_approaches():
+    from kaiku_contracts import make
+
+    s = SensorsSim(arrive_after_s=None, seed=3)
+    assert s.face_boxes(200.0, 0.0) == []                     # too far for the camera
+    far, near = s.face_boxes(170.0, 0.0), s.face_boxes(55.0, 0.0)
+    assert len(far) == len(near) == 1 and near[0]["size"] > far[0]["size"] > 0
+    s.toggle_second_person()
+    two = s.face_boxes(60.0, 0.0)
+    assert len(two) == 2 and abs(two[0]["x_norm"] - two[1]["x_norm"]) > 0.5
+    for box in far + near + two:
+        make("raw.hub.face", box, source="sensors")
+    assert SensorsSim(arrive_after_s=None, faces=False).face_boxes(60.0, 0.0) == []
