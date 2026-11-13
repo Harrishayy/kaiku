@@ -1,0 +1,27 @@
+# Deterministic crisis phrase list (section 10). Matching is case-insensitive substring on
+# normalised text. This list WILL miss things — see docs/safety.md. Review with a clinician.
+# Keep phrases short and unambiguous. Add, never silently remove; note changes in docs/progress.md.
+
+[en]
+phrases = [
+  "kill myself", "end my life", "want to die", "suicide", "suicidal",
+  "hurt myself", "self harm", "self-harm", "no reason to live", "better off dead",
+  "can't go on", "cannot go on", "i'm not ok", "i am not ok", "im not ok",
+]
+
+[fi]
+phrases = [
+  "tappaa itseni", "itsemurha", "haluan kuolla", "lopettaa elämäni",
+  "satuttaa itseäni", "ei ole syytä elää", "en jaksa enää", "en ole kunnossa",
+]
+
+[sv]
+phrases = [
+  "ta livet av mig", "självmord", "vill dö", "skada mig själv",
+  "inget skäl att leva", "orkar inte längre", "jag är inte okej",
+]
+
+[script]
+# Pre-written, never generated. Spoken/displayed verbatim.
+en = "I'm really glad you told me. I'm going to stop what we're doing. You don't have to handle this alone. You can call the MIELI Crisis Helpline any time on 09 2525 0111. If you are in immediate danger, call 112. I'm letting your care team know."
+fi = "Olen todella iloinen, että kerroit. Lopetan nyt sen, mitä teimme. Sinun ei tarvitse jäädä tämän kanssa yksin. MIELI ry:n kriisipuhelin päivystää numerossa 09 2525 0111. Jos olet välittömässä vaarassa, soita 112. Ilmoitan hoitotiimillesi."

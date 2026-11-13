@@ -1,0 +1,63 @@
+# Non-secret settings. Secrets go in .env (local) or Modal secret `kaiku-secrets` (cloud).
+# Env vars override: KAIKU_<SECTION>_<KEY> (e.g. KAIKU_RITUAL_DRUM_S=30).
+
+[home]
+id = "demo-aino"
+language = "en"            # en | fi  (D9: Finnish greeting + English conversation)
+greeting_language = "fi"
+
+[models]
+# VERIFY current IDs in the Gemini docs (geminiDocs MCP) before coding. Model names change.
+gemini_live = "VERIFY-gemini-live-model-id"
+lyria_realtime = "VERIFY-lyria-realtime-model-id"
+gemini_vision = "VERIFY-gemini-flash-model-id"
+# VERIFY Hugging Face repo id + licence acceptance (D5: smallest instruct variant first)
+gemma_hf_repo = "VERIFY-gemma-4-e4b-instruct-repo"
+gemma_hosted = "VERIFY-hosted-gemma-model-id"
+
+[mqtt]
+host = "localhost"
+port = 1883
+heartbeat_s = 5
+
+[uplink]
+batch_s = 2
+max_batch = 200
+queue_path = "logs/uplink_queue.sqlite"
+timeout_s = 10
+
+[ritual]
+greet_s = 20
+dial_s = 45             # whole DIAL step: mood, energy, last night's sleep (3 ear turns)
+breathe_s = 90
+breathe_bpm = 6
+drum_s = 45
+nudge_s = 30
+step_timeout_s = 120
+phq9_mode = "laptop"    # laptop | spoken | both  (D10; spoken = PHQ9 step in the ritual when due)
+phq9_every_days = 14
+drum_idle_end_s = 6    # end DRUM early after this long without taps
+post_mood_s = 15       # after drumming: window for the quick post-activity mood dial
+hrv_window_s = 30      # HRV pre/post window at start/end of BREATHE
+cooldown_s = 60        # min gap between rituals (demo mode)
+
+[perception]
+presence_near_cm = 80
+presence_first_of_day_after_h = 4
+tap_refractory_ms = 80
+tap_force_max_g = 4.0   # force_mean = clip(peak_g / this, 0, 1)
+light_window_min = 60
+ppg_band_hz = [0.7, 3.5]
+ppg_min_clean_ratio = 0.7
+quality_min = 0.5
+
+# Consensus / metric criteria (how each data input is used) live in config/criteria.toml.
+
+[music]
+bpm_min = 60     # VERIFY Lyria RealTime allowed BPM range
+bpm_max = 200
+
+[safety]
+helpline_name = "MIELI Crisis Helpline"
+helpline_number = "09 2525 0111"
+emergency_number = "112"

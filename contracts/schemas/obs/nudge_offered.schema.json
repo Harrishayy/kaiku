@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "NudgeOffered": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "title": "Arm",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 280,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arm",
+        "reason"
+      ],
+      "title": "NudgeOffered",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/NudgeOffered"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.nudge_offered>",
+  "type": "object"
+}

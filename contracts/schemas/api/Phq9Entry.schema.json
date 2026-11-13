@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "item9_positive": {
+      "title": "Item9 Positive",
+      "type": "boolean"
+    },
+    "mode": {
+      "enum": [
+        "spoken",
+        "laptop"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "total": {
+      "maximum": 27,
+      "minimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ts",
+    "total",
+    "item9_positive",
+    "mode"
+  ],
+  "title": "Phq9Entry",
+  "type": "object"
+}

@@ -1,0 +1,44 @@
+# Root dev environment: one `uv sync` gives every Python module + tools + sims.
+[project]
+name = "kaiku-dev"
+version = "0.1.0"
+description = "Kaiku dev workspace (tools, sims, all Python modules)"
+requires-python = ">=3.11"
+dependencies = [
+    "kaiku-contracts",
+    "kaiku-hub",
+    "kaiku-cloud",
+    "aiomqtt>=2.3",
+    "httpx>=0.27",
+    "numpy>=1.26",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["contracts/python", "hub", "cloud"]
+
+[tool.uv.sources]
+kaiku-contracts = { workspace = true }
+kaiku-hub = { workspace = true }
+kaiku-cloud = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["contracts/tests", "hub/tests", "cloud/tests", "tools/tests", "sim/tests"]
+addopts = "-q --import-mode=importlib"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["apps", "firmware"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]

@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "group": {
+      "enum": [
+        "body",
+        "behaviour",
+        "self_report",
+        "voice",
+        "safety"
+      ],
+      "title": "Group",
+      "type": "string"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "since": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Since"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "z": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Z"
+    }
+  },
+  "required": [
+    "metric",
+    "group",
+    "summary"
+  ],
+  "title": "EvidenceItem",
+  "type": "object"
+}

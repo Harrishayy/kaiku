@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "SourceBadge": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Data At"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "verdict",
+        "confidence"
+      ],
+      "title": "SourceBadge",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acknowledged": {
+      "default": false,
+      "title": "Acknowledged",
+      "type": "boolean"
+    },
+    "agreement": {
+      "enum": [
+        "agree",
+        "disagree",
+        "low_coverage"
+      ],
+      "title": "Agreement",
+      "type": "string"
+    },
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "headline": {
+      "title": "Headline",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "last_activity_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Activity At"
+    },
+    "safety_since": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Since"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceBadge"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "display_name",
+    "state",
+    "agreement",
+    "headline",
+    "sources"
+  ],
+  "title": "PatientSummary",
+  "type": "object"
+}

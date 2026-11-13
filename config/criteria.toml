@@ -1,0 +1,356 @@
+# ============================================================================================================
+# CONSENSUS CRITERIA — how every data input is used to decide a person's state.   (ground truth; tune here)
+# ============================================================================================================
+# Validated by kaiku_contracts/criteria.py — `make criteria` checks it and prints the effective rule version.
+# Try a change before applying it:   make tune                      (simulation: precision/recall/lead time/ablation)
+#                                    make tune CRITERIA=my.toml     (compare a candidate file)
+# Live cloud, no redeploy:           GET/PUT /v1/admin/criteria, POST /v1/admin/criteria/preview (who would change state)
+# The rule version shown everywhere is "<name>+<hash>": every edit is traceable, no manual bump needed.
+# A metric's consensus source (robot / glasses / laptop) comes from its obs type (contracts/.../sources.py).
+#
+# HOW A STATE IS DECIDED
+#   1. per metric, per day: aggregate the obs field (agg) -> daily value; skip readings with quality < quality_min
+#   2. baseline: median + MAD of the previous baseline_days (needs baseline_min_days, else metric insufficient)
+#   3. robust z = (day - median) / max(1.4826 * MAD, min_mad); "drifting" if z is beyond z_threshold in the
+#      worse_when direction on >= drift_days of the last drift_window days with data
+#   4. source verdict: worse if sum(weight of drifting metrics) >= worse_min_weight OR any enabled [[rule]] fires;
+#      better if improving weight >= better_min_weight and nothing worse; else as_usual;
+#      insufficient if confidence (days with data / expected) x mean quality < min_confidence
+#   5. state: safety (open safety_flag) > needs_call (>= needs_call_min_worse sufficient sources worse)
+#      > watch (>= watch_min_worse, or only one sufficient source) > stable
+# ============================================================================================================
+
+name = "consensus-v1"
+
+[defaults]
+timezone = "Europe/Helsinki"
+baseline_days = 14
+baseline_min_days = 7
+z_threshold = 1.5
+drift_days = 3
+drift_window = 5
+min_mad = 0.0
+quality_min = 0.5
+baseline_lag_days = 7     # baseline ends N days before today, so a slow drift can't become its own baseline
+rule_max_age_days = 21    # [[rule]] observations older than this stop firing (PHQ-9 is every 14 days)
+
+# ---------------------------------------------------------------- sources: who gets a vote, and how easily
+[sources.robot]
+enabled = true
+worse_min_weight = 2.5      # D20: > two robot signals (half-weight ones count 0.5); tuned with make tune
+better_min_weight = 2.0
+expected_per_week = 7       # daily ritual
+min_confidence = 0.4
+
+[sources.glasses]
+enabled = true
+worse_min_weight = 1.0      # D15: minutes + steps are correlated, so one drifting signal is enough
+better_min_weight = 1.0
+expected_per_week = 3
+min_confidence = 0.4
+
+[sources.laptop]
+enabled = true
+worse_min_weight = 1.0
+better_min_weight = 2.0
+expected_per_week = 3
+min_confidence = 0.4
+
+# ---------------------------------------------------------------- state: how verdicts combine
+[state]
+needs_call_min_worse = 2
+watch_min_worse = 1
+watch_if_single_sufficient = true
+min_sufficient_for_stable = 2
+hysteresis_stable_days = 3
+correlated_families = ["self_report"]   # dial (robot) + PHQ-9 (laptop) are both self-report -> caveat
+count_correlated_as_one = false         # true = those two alone can't make needs_call
+
+# ---------------------------------------------------------------- metrics: one block per signal
+# fields: name label unit family obs field [where] agg worse_when weight enabled counts_for_better missing
+#         + optional overrides: z_threshold drift_days drift_window baseline_days baseline_min_days min_mad quality_min
+
+# ===== robot (source 1) =====
+[[metric]]
+name = "mood"
+label = "Mood dial"
+unit = "1–5"
+family = "self_report"
+obs = "obs.self_report"
+field = "value"
+where = { item = "mood", context = "ritual" }
+agg = "mean"
+worse_when = "down"
+min_mad = 0.5
+
+[[metric]]
+name = "energy"
+label = "Energy dial"
+unit = "1–5"
+family = "self_report"
+obs = "obs.self_report"
+field = "value"
+where = { item = "energy", context = "ritual" }
+agg = "mean"
+worse_when = "down"
+min_mad = 0.5
+
+[[metric]]
+name = "sleep"
+label = "Last night's sleep (dial)"
+unit = "1–5"
+family = "self_report"
+obs = "obs.self_report"
+field = "value"
+where = { item = "sleep", context = "ritual" }
+agg = "mean"
+worse_when = "down"
+min_mad = 0.5
+
+[[metric]]
+name = "rmssd"
+label = "HRV before breathing (RMSSD)"
+unit = "ms"
+family = "physiology"
+obs = "obs.hrv_session"
+field = "rmssd_pre_ms"
+agg = "mean"
+worse_when = "down"
+min_mad = 3.0
+
+[[metric]]
+name = "hr"
+label = "Resting heart rate"
+unit = "bpm"
+family = "physiology"
+obs = "obs.hrv_session"
+field = "hr_bpm"
+agg = "mean"
+worse_when = "up"
+weight = 0.5                # correlated with rmssd: half a vote
+min_mad = 2.0
+
+[[metric]]
+name = "drum_tempo"
+label = "Drum tempo"
+unit = "bpm"
+family = "behaviour"
+obs = "obs.drum_session"
+field = "tempo_bpm"
+agg = "mean"
+worse_when = "down"
+min_mad = 4.0
+
+[[metric]]
+name = "drum_force"
+label = "Drum force"
+unit = "0–1"
+family = "behaviour"
+obs = "obs.drum_session"
+field = "force_mean"
+agg = "mean"
+worse_when = "down"
+min_mad = 0.04
+
+[[metric]]
+name = "drum_duration"
+label = "Drumming time"
+unit = "s"
+family = "behaviour"
+obs = "obs.drum_session"
+field = "duration_s"
+agg = "sum"
+worse_when = "down"
+weight = 0.5
+min_mad = 5.0
+
+[[metric]]
+name = "drum_regularity"
+label = "Drum regularity"
+unit = "0–1"
+family = "behaviour"
+obs = "obs.drum_session"
+field = "regularity"
+agg = "mean"
+worse_when = "down"
+enabled = false             # direction unclear clinically; enable once we have tester data
+min_mad = 0.05
+
+[[metric]]
+name = "getup"
+label = "First seen (get-up time)"
+unit = "min after midnight"
+family = "behaviour"
+obs = "obs.presence"
+field = "@local_minutes"
+where = { first_of_day = true }
+agg = "first"
+worse_when = "up"
+min_mad = 15.0
+
+[[metric]]
+name = "light"
+label = "Room light"
+unit = "lux"
+family = "behaviour"
+obs = "obs.light_level"
+field = "lux_est"
+agg = "mean"
+worse_when = "down"
+weight = 0.5                # curtains-closed proxy; noisy
+min_mad = 30.0
+
+[[metric]]
+name = "speech_rate"
+label = "Speech rate (robot)"
+unit = "syll/s"
+family = "voice"
+obs = "obs.speech_features"
+field = "syllables_per_s"
+agg = "mean"
+worse_when = "down"
+min_mad = 0.2
+
+[[metric]]
+name = "speech_pauses"
+label = "Pauses in speech (robot)"
+unit = "ratio"
+family = "voice"
+obs = "obs.speech_features"
+field = "pause_ratio"
+agg = "mean"
+worse_when = "up"
+min_mad = 0.03
+
+[[metric]]
+name = "friend_contact"
+label = "Friend-link contacts"
+unit = "per day"
+family = "behaviour"
+obs = "obs.friend_link"
+field = "@count"
+agg = "count"
+worse_when = "down"
+missing = "zero"
+enabled = false             # stretch hardware; too sparse to baseline
+
+# ===== glasses (source 2) =====
+[[metric]]
+name = "outing_min"
+label = "Time outdoors"
+unit = "min"
+family = "behaviour"
+obs = "obs.outing"
+field = "minutes"
+agg = "sum"
+worse_when = "down"
+missing = "skip"            # D20: "zero" (no walk = 0 min) caused most false alarms in simulation
+min_mad = 8.0
+
+[[metric]]
+name = "steps"
+label = "Steps on walks"
+unit = "steps"
+family = "behaviour"
+obs = "obs.outing"
+field = "steps"
+agg = "sum"
+worse_when = "down"
+weight = 0.5
+min_mad = 500.0
+
+# ===== laptop (source 3) =====
+[[metric]]
+name = "voice_rate"
+label = "Speech rate (laptop)"
+unit = "syll/s"
+family = "voice"
+obs = "obs.laptop_session"
+field = "speech_rate"
+agg = "mean"
+worse_when = "down"
+min_mad = 0.2
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "voice_pauses"
+label = "Pauses in speech (laptop)"
+unit = "ratio"
+family = "voice"
+obs = "obs.laptop_session"
+field = "pause_ratio"
+agg = "mean"
+worse_when = "up"
+min_mad = 0.03
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "pitch_var"
+label = "Pitch variability"
+unit = "semitones"
+family = "voice"
+obs = "obs.laptop_session"
+field = "pitch_variability"
+agg = "mean"
+worse_when = "down"
+min_mad = 0.3
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "expressivity"
+label = "Facial expressivity"
+unit = "0–1"
+family = "voice"
+obs = "obs.laptop_session"
+field = "expressivity_index"
+agg = "mean"
+worse_when = "down"
+min_mad = 0.05
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "reaction"
+label = "Reaction time (median)"
+unit = "ms"
+family = "cognition"
+obs = "obs.laptop_session"
+field = "reaction_ms_median"
+agg = "mean"
+worse_when = "up"
+min_mad = 20.0
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[metric]]
+name = "lapses"
+label = "Reaction lapses"
+unit = "count"
+family = "cognition"
+obs = "obs.laptop_session"
+field = "lapses"
+agg = "mean"
+worse_when = "up"
+weight = 0.5
+min_mad = 1.0
+
+# PHQ-9 is too sparse (every 14 days) to baseline; it acts through the rules below and is charted separately.
+
+# ---------------------------------------------------------------- rules: direct "worse" triggers
+baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
+
+[[rule]]
+name = "phq9_rise"
+label = "PHQ-9 rose ≥ 5 points since the previous one"
+family = "self_report"
+obs = "obs.phq9"
+field = "total"
+kind = "rise_vs_previous"   # at_least | at_most | rise_vs_previous | drop_vs_previous
+threshold = 5
+
+[[rule]]
+name = "phq9_high"
+label = "PHQ-9 ≥ 10"
+family = "self_report"
+obs = "obs.phq9"
+field = "total"
+kind = "at_least"
+threshold = 10

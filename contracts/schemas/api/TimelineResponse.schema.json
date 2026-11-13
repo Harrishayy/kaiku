@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "MetricSeries": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/TimelinePoint"
+          },
+          "title": "Points",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "worse_when": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Worse When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "label",
+        "source",
+        "worse_when",
+        "points"
+      ],
+      "title": "MetricSeries",
+      "type": "object"
+    },
+    "TimelinePoint": {
+      "additionalProperties": false,
+      "properties": {
+        "band_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Band High"
+        },
+        "band_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Band Low"
+        },
+        "baseline_median": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Median"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "date",
+        "value"
+      ],
+      "title": "TimelinePoint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "patient_id": {
+      "title": "Patient Id",
+      "type": "string"
+    },
+    "series": {
+      "items": {
+        "$ref": "#/$defs/MetricSeries"
+      },
+      "title": "Series",
+      "type": "array"
+    }
+  },
+  "required": [
+    "patient_id",
+    "series"
+  ],
+  "title": "TimelineResponse",
+  "type": "object"
+}

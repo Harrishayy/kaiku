@@ -1,0 +1,227 @@
+{
+  "$defs": {
+    "InterventionResponse": {
+      "additionalProperties": false,
+      "description": "Immediate before/after effect of one activity (feeds the bandit learner).",
+      "properties": {
+        "activity": {
+          "enum": [
+            "breathe",
+            "drum",
+            "walk",
+            "friend_ping",
+            "icbt"
+          ],
+          "title": "Activity",
+          "type": "string"
+        },
+        "delta": {
+          "$ref": "#/$defs/MeasuresDelta"
+        },
+        "post": {
+          "$ref": "#/$defs/Measures"
+        },
+        "pre": {
+          "$ref": "#/$defs/Measures"
+        }
+      },
+      "required": [
+        "activity"
+      ],
+      "title": "InterventionResponse",
+      "type": "object"
+    },
+    "Measures": {
+      "additionalProperties": false,
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "hr_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hr Bpm"
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mood"
+        },
+        "rmssd_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rmssd Ms"
+        }
+      },
+      "title": "Measures",
+      "type": "object"
+    },
+    "MeasuresDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "hr_bpm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hr Bpm"
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mood"
+        },
+        "rmssd_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rmssd Ms"
+        }
+      },
+      "title": "MeasuresDelta",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/InterventionResponse"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.intervention_response>",
+  "type": "object"
+}

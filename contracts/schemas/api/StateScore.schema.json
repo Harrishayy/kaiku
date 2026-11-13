@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "precision": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Precision"
+    },
+    "recall": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Recall"
+    }
+  },
+  "required": [
+    "precision",
+    "recall"
+  ],
+  "title": "StateScore",
+  "type": "object"
+}

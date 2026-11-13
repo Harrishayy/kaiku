@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "last_data_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Data At"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "better",
+        "as_usual",
+        "worse",
+        "insufficient"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "verdict",
+    "confidence"
+  ],
+  "title": "SourceBadge",
+  "type": "object"
+}

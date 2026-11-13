@@ -1,0 +1,545 @@
+{
+  "$defs": {
+    "Criteria": {
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/Defaults"
+        },
+        "metric": {
+          "items": {
+            "$ref": "#/$defs/MetricSpec"
+          },
+          "title": "Metric",
+          "type": "array"
+        },
+        "name": {
+          "default": "consensus-v1",
+          "title": "Name",
+          "type": "string"
+        },
+        "rule": {
+          "items": {
+            "$ref": "#/$defs/RuleSpec"
+          },
+          "title": "Rule",
+          "type": "array"
+        },
+        "sources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SourceSpec"
+          },
+          "title": "Sources",
+          "type": "object"
+        },
+        "state": {
+          "$ref": "#/$defs/StateSpec"
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "title": "Criteria",
+      "type": "object"
+    },
+    "Defaults": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_days": {
+          "default": 14,
+          "description": "rolling median + MAD window",
+          "maximum": 90,
+          "minimum": 3,
+          "title": "Baseline Days",
+          "type": "integer"
+        },
+        "baseline_lag_days": {
+          "default": 7,
+          "description": "baseline ends this many days before today, so a slow drift doesn't drag its own baseline along",
+          "minimum": 0,
+          "title": "Baseline Lag Days",
+          "type": "integer"
+        },
+        "baseline_min_days": {
+          "default": 7,
+          "description": "fewer days of data -> metric 'insufficient'",
+          "minimum": 2,
+          "title": "Baseline Min Days",
+          "type": "integer"
+        },
+        "drift_days": {
+          "default": 3,
+          "description": "drifting if beyond threshold on >= drift_days ...",
+          "minimum": 1,
+          "title": "Drift Days",
+          "type": "integer"
+        },
+        "drift_window": {
+          "default": 5,
+          "description": "... of the last drift_window available days",
+          "minimum": 1,
+          "title": "Drift Window",
+          "type": "integer"
+        },
+        "min_mad": {
+          "default": 0.0,
+          "description": "noise floor for MAD in metric units (avoids huge z on flat data)",
+          "minimum": 0,
+          "title": "Min Mad",
+          "type": "number"
+        },
+        "quality_min": {
+          "default": 0.5,
+          "description": "ignore readings with envelope.quality below this",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Quality Min",
+          "type": "number"
+        },
+        "rule_max_age_days": {
+          "default": 21,
+          "description": "[[rule]] observations older than this no longer fire",
+          "minimum": 1,
+          "title": "Rule Max Age Days",
+          "type": "integer"
+        },
+        "timezone": {
+          "default": "Europe/Helsinki",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "z_threshold": {
+          "default": 1.5,
+          "description": "|robust z| in the worse direction",
+          "exclusiveMinimum": 0,
+          "title": "Z Threshold",
+          "type": "number"
+        }
+      },
+      "title": "Defaults",
+      "type": "object"
+    },
+    "MetricSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "default": "mean",
+          "enum": [
+            "mean",
+            "median",
+            "min",
+            "max",
+            "sum",
+            "first",
+            "last",
+            "count"
+          ],
+          "title": "Agg",
+          "type": "string"
+        },
+        "baseline_days": {
+          "anyOf": [
+            {
+              "minimum": 3,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Days"
+        },
+        "baseline_min_days": {
+          "anyOf": [
+            {
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Min Days"
+        },
+        "counts_for_better": {
+          "default": true,
+          "title": "Counts For Better",
+          "type": "boolean"
+        },
+        "drift_days": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drift Days"
+        },
+        "drift_window": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drift Window"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "family": {
+          "default": "behaviour",
+          "description": "e.g. self_report | physiology | behaviour | voice | cognition",
+          "title": "Family",
+          "type": "string"
+        },
+        "field": {
+          "description": "payload field, or @count / @local_minutes",
+          "title": "Field",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "min_mad": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Mad"
+        },
+        "missing": {
+          "default": "skip",
+          "description": "days without data: ignore, or count as 0 (sum/count metrics)",
+          "enum": [
+            "skip",
+            "zero"
+          ],
+          "title": "Missing",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "obs": {
+          "description": "obs type, e.g. obs.hrv_session",
+          "title": "Obs",
+          "type": "string"
+        },
+        "quality_min": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality Min"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "weight": {
+          "default": 1.0,
+          "description": "counts toward the source's worse/better weight",
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "where": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "description": "payload filters (equality / any-of)",
+          "title": "Where",
+          "type": "object"
+        },
+        "worse_when": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Worse When",
+          "type": "string"
+        },
+        "z_threshold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z Threshold"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "obs",
+        "field",
+        "worse_when"
+      ],
+      "title": "MetricSpec",
+      "type": "object"
+    },
+    "RuleSpec": {
+      "additionalProperties": false,
+      "description": "A direct trigger: when it fires, the metric's source counts as 'worse' regardless of baselines.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "family": {
+          "default": "self_report",
+          "title": "Family",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "kind": {
+          "description": "at_least: value >= threshold · at_most: value <= threshold · rise/drop_vs_previous: change vs the previous observation >= threshold",
+          "enum": [
+            "at_least",
+            "at_most",
+            "rise_vs_previous",
+            "drop_vs_previous"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "obs": {
+          "title": "Obs",
+          "type": "string"
+        },
+        "threshold": {
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "obs",
+        "field",
+        "kind",
+        "threshold"
+      ],
+      "title": "RuleSpec",
+      "type": "object"
+    },
+    "SourceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "better_min_weight": {
+          "default": 2.0,
+          "description": "sum of improving-metric weights needed for 'better'",
+          "exclusiveMinimum": 0,
+          "title": "Better Min Weight",
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expected_per_week": {
+          "default": 7,
+          "description": "days with data per week expected (confidence)",
+          "exclusiveMinimum": 0,
+          "title": "Expected Per Week",
+          "type": "number"
+        },
+        "min_confidence": {
+          "default": 0.4,
+          "description": "below -> 'insufficient' (excluded from the vote)",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "worse_min_weight": {
+          "default": 2.0,
+          "description": "sum of drifting-metric weights needed for 'worse'",
+          "exclusiveMinimum": 0,
+          "title": "Worse Min Weight",
+          "type": "number"
+        }
+      },
+      "title": "SourceSpec",
+      "type": "object"
+    },
+    "StateSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "correlated_families": {
+          "description": "if every 'worse' source is worse only via one of these families, add the independence caveat",
+          "items": {
+            "type": "string"
+          },
+          "title": "Correlated Families",
+          "type": "array"
+        },
+        "count_correlated_as_one": {
+          "default": false,
+          "description": "if true, sources worse only via the same correlated family count as ONE worse source",
+          "title": "Count Correlated As One",
+          "type": "boolean"
+        },
+        "hysteresis_stable_days": {
+          "default": 3,
+          "description": "needs_call holds until acknowledged or N stable days",
+          "minimum": 0,
+          "title": "Hysteresis Stable Days",
+          "type": "integer"
+        },
+        "min_sufficient_for_stable": {
+          "default": 2,
+          "description": "fewer sufficient sources can never be 'stable'",
+          "minimum": 1,
+          "title": "Min Sufficient For Stable",
+          "type": "integer"
+        },
+        "needs_call_min_worse": {
+          "default": 2,
+          "description": "sufficient sources 'worse' needed for needs_call",
+          "minimum": 1,
+          "title": "Needs Call Min Worse",
+          "type": "integer"
+        },
+        "watch_if_single_sufficient": {
+          "default": true,
+          "description": "only one source has enough data -> watch",
+          "title": "Watch If Single Sufficient",
+          "type": "boolean"
+        },
+        "watch_min_worse": {
+          "default": 1,
+          "description": "sufficient sources 'worse' needed for watch",
+          "minimum": 1,
+          "title": "Watch Min Worse",
+          "type": "integer"
+        }
+      },
+      "title": "StateSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "PUT /v1/admin/criteria (apply) and POST /v1/admin/criteria/preview (dry run). criteria=None resets to file.",
+  "properties": {
+    "by": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "By"
+    },
+    "criteria": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Criteria"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "criteria"
+  ],
+  "title": "CriteriaUpdate",
+  "type": "object"
+}

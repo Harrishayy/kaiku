@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "RawPpg": {
+      "additionalProperties": false,
+      "properties": {
+        "fs_hz": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Fs Hz",
+          "type": "number"
+        },
+        "samples": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Samples",
+          "type": "array"
+        },
+        "t0_ms": {
+          "minimum": 0,
+          "title": "T0 Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t0_ms",
+        "fs_hz",
+        "samples"
+      ],
+      "title": "RawPpg",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/RawPpg"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<raw.sensors.ppg>",
+  "type": "object"
+}

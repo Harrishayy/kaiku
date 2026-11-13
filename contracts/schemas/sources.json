@@ -1,0 +1,24 @@
+{
+  "consensus_sources": [
+    "robot",
+    "glasses",
+    "laptop"
+  ],
+  "source_of": {
+    "obs.drum_session": "robot",
+    "obs.friend_link": "robot",
+    "obs.hrv_session": "robot",
+    "obs.intervention_response": "learner",
+    "obs.laptop_session": "laptop",
+    "obs.light_level": "robot",
+    "obs.nudge_offered": "learner",
+    "obs.nudge_outcome": "learner",
+    "obs.outing": "glasses",
+    "obs.phq9": "laptop",
+    "obs.presence": "robot",
+    "obs.ritual": "adherence",
+    "obs.safety_flag": "override",
+    "obs.self_report": "robot",
+    "obs.speech_features": "robot"
+  }
+}

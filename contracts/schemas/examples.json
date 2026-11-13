@@ -1,0 +1,181 @@
+{
+  "cmd.friendlink": {
+    "ping": {
+      "pattern": "glow"
+    }
+  },
+  "cmd.head": {
+    "eyes": "wide",
+    "pan_mode": "track"
+  },
+  "cmd.hub": {
+    "start_ritual": true
+  },
+  "cmd.sensors": {
+    "ppg": "start"
+  },
+  "health": {
+    "details": {},
+    "status": "ok",
+    "uptime_s": 12.0,
+    "version": "0.1.0"
+  },
+  "log": {
+    "event": "ppg_low_quality",
+    "level": "warning",
+    "msg": "only 55% clean beats"
+  },
+  "obs.drum_session": {
+    "duration_s": 45.0,
+    "force_mean": 0.55,
+    "regularity": 0.8,
+    "taps": 72,
+    "tempo_bpm": 96.0
+  },
+  "obs.friend_link": {
+    "ack": true,
+    "direction": "sent"
+  },
+  "obs.hrv_session": {
+    "breath_bpm": 6.0,
+    "duration_s": 90.0,
+    "hr_bpm": 68.0,
+    "rmssd_post_ms": 42.0,
+    "rmssd_pre_ms": 31.0
+  },
+  "obs.intervention_response": {
+    "activity": "breathe",
+    "delta": {
+      "mood": 1.0,
+      "rmssd_ms": 11.0
+    },
+    "post": {
+      "mood": 4,
+      "rmssd_ms": 42.0
+    },
+    "pre": {
+      "mood": 3,
+      "rmssd_ms": 31.0
+    }
+  },
+  "obs.laptop_session": {
+    "duration_s": 118.0,
+    "expressivity_index": 0.55,
+    "lapses": 1,
+    "pause_ratio": 0.24,
+    "pitch_variability": 2.1,
+    "reaction_ms_iqr": 64.0,
+    "reaction_ms_median": 312.0,
+    "speech_rate": 3.6
+  },
+  "obs.light_level": {
+    "lux_est": 240.0,
+    "window_min": 60.0
+  },
+  "obs.nudge_offered": {
+    "arm": "daylight_walk",
+    "reason": "Walks helped on 3 of your last 4 grey days."
+  },
+  "obs.nudge_outcome": {
+    "accepted": true,
+    "arm": "daylight_walk",
+    "next_day": {
+      "activity": 25.0,
+      "energy": 3,
+      "mood": 4
+    },
+    "reward": 0.75
+  },
+  "obs.outing": {
+    "method": "location",
+    "minutes": 22.0,
+    "steps": 2400
+  },
+  "obs.phq9": {
+    "item9_positive": false,
+    "items": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0
+    ],
+    "mode": "laptop",
+    "total": 7
+  },
+  "obs.presence": {
+    "distance_cm": 62.0,
+    "dwell_s": 14.0,
+    "first_of_day": true
+  },
+  "obs.ritual": {
+    "duration_s": 45.0,
+    "status": "completed",
+    "step": "drum"
+  },
+  "obs.safety_flag": {
+    "handled_locally": true,
+    "severity": "high",
+    "trigger": "manual"
+  },
+  "obs.self_report": {
+    "context": "ritual",
+    "item": "mood",
+    "value": 3
+  },
+  "obs.speech_features": {
+    "duration_s": 30.0,
+    "pause_ratio": 0.22,
+    "syllables_per_s": 3.9
+  },
+  "raw.head.ear": {
+    "delta": 1,
+    "pressed": false,
+    "value": 4
+  },
+  "raw.head.pan": {
+    "deg": -12.5,
+    "homed": true,
+    "moving": false
+  },
+  "raw.head.tap": {
+    "force": 1.8,
+    "src": "imu",
+    "t_ms": 123456
+  },
+  "raw.hub.face": {
+    "confidence": 0.93,
+    "size": 0.3,
+    "x_norm": -0.2,
+    "y_norm": 0.1
+  },
+  "raw.sensors.button": {
+    "id": "top",
+    "pressed": true
+  },
+  "raw.sensors.distance": {
+    "cm": 58.0
+  },
+  "raw.sensors.hall": {
+    "at_home": true
+  },
+  "raw.sensors.light": {
+    "lux_est": 210.0,
+    "raw": 410
+  },
+  "raw.sensors.ppg": {
+    "fs_hz": 100.0,
+    "samples": [
+      512,
+      530,
+      561,
+      590,
+      600
+    ],
+    "t0_ms": 1000
+  }
+}

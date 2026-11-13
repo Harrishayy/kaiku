@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "HelpStat": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "title": "Activity",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "mean_effect": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean reward 0..1",
+          "title": "Mean Effect"
+        },
+        "tries": {
+          "minimum": 0,
+          "title": "Tries",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "activity",
+        "label",
+        "tries"
+      ],
+      "title": "HelpStat",
+      "type": "object"
+    },
+    "NudgeResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "title": "Arm",
+          "type": "string"
+        },
+        "probs": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Probs",
+          "type": "object"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arm",
+        "reason"
+      ],
+      "title": "NudgeResponse",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Person-facing view. Plain language, never alarming.",
+  "properties": {
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "last_week": {
+      "description": "short plain-language lines",
+      "items": {
+        "type": "string"
+      },
+      "title": "Last Week",
+      "type": "array"
+    },
+    "next_suggestion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NudgeResponse"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "phq9_due": {
+      "default": false,
+      "title": "Phq9 Due",
+      "type": "boolean"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "what_helps": {
+      "items": {
+        "$ref": "#/$defs/HelpStat"
+      },
+      "title": "What Helps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "summary"
+  ],
+  "title": "MeResponse",
+  "type": "object"
+}

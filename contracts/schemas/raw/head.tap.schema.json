@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "RawTap": {
+      "additionalProperties": false,
+      "properties": {
+        "force": {
+          "description": "peak acceleration, g",
+          "minimum": 0,
+          "title": "Force",
+          "type": "number"
+        },
+        "src": {
+          "default": "imu",
+          "enum": [
+            "imu",
+            "knock"
+          ],
+          "title": "Src",
+          "type": "string"
+        },
+        "t_ms": {
+          "minimum": 0,
+          "title": "T Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t_ms",
+        "force"
+      ],
+      "title": "RawTap",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/RawTap"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<raw.head.tap>",
+  "type": "object"
+}

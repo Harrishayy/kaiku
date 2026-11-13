@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "SourceNote": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "summary"
+      ],
+      "title": "SourceNote",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Plain-language explanation of a consensus. Gemma or template. An explanation, not a decision.",
+  "properties": {
+    "by": {
+      "enum": [
+        "gemma",
+        "template"
+      ],
+      "title": "By",
+      "type": "string"
+    },
+    "caveats": {
+      "maxLength": 600,
+      "title": "Caveats",
+      "type": "string"
+    },
+    "disagreement_note": {
+      "anyOf": [
+        {
+          "maxLength": 400,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Disagreement Note"
+    },
+    "generated_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generated At"
+    },
+    "headline": {
+      "maxLength": 200,
+      "title": "Headline",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "per_source": {
+      "items": {
+        "$ref": "#/$defs/SourceNote"
+      },
+      "title": "Per Source",
+      "type": "array"
+    },
+    "suggested_actions": {
+      "items": {
+        "enum": [
+          "flag_booster",
+          "flag_icbt_referral",
+          "send_message",
+          "check_in_call",
+          "none"
+        ],
+        "type": "string"
+      },
+      "title": "Suggested Actions",
+      "type": "array"
+    },
+    "text": {
+      "maxLength": 1200,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "headline",
+    "text",
+    "suggested_actions",
+    "caveats",
+    "by"
+  ],
+  "title": "Explanation",
+  "type": "object"
+}

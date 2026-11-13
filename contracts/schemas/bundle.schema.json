@@ -1,0 +1,3165 @@
+{
+  "$defs": {
+    "ActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "flag_booster",
+            "flag_icbt_referral",
+            "acknowledge",
+            "send_message"
+          ],
+          "type": "string"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "clinician name/initials (demo)"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "ActionRequest",
+      "type": "object"
+    },
+    "ActionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "flag_booster",
+            "flag_icbt_referral",
+            "acknowledge",
+            "send_message"
+          ],
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "patient_id": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "patient_id",
+        "action",
+        "state"
+      ],
+      "title": "ActionResult",
+      "type": "object"
+    },
+    "ClinicianMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ClinicianMessage",
+      "type": "object"
+    },
+    "CommandsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/Envelope_dict_str__Any__"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "commands"
+      ],
+      "title": "CommandsResponse",
+      "type": "object"
+    },
+    "Consensus": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "agreement": {
+          "enum": [
+            "agree",
+            "disagree",
+            "low_coverage"
+          ],
+          "type": "string"
+        },
+        "computed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Explanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "safety_since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceVerdict"
+          },
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "state",
+        "rule_version",
+        "sources",
+        "agreement",
+        "computed_at"
+      ],
+      "title": "Consensus",
+      "type": "object"
+    },
+    "Criteria": {
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/Defaults"
+        },
+        "metric": {
+          "items": {
+            "$ref": "#/$defs/MetricSpec"
+          },
+          "type": "array"
+        },
+        "name": {
+          "default": "consensus-v1",
+          "type": "string"
+        },
+        "rule": {
+          "items": {
+            "$ref": "#/$defs/RuleSpec"
+          },
+          "type": "array"
+        },
+        "sources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SourceSpec"
+          },
+          "type": "object"
+        },
+        "state": {
+          "$ref": "#/$defs/StateSpec"
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "title": "Criteria",
+      "type": "object"
+    },
+    "CriteriaPreview": {
+      "additionalProperties": false,
+      "description": "Who would change state under the candidate criteria (nothing is saved).",
+      "properties": {
+        "candidate_rule_version": {
+          "type": "string"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/PreviewChange"
+          },
+          "type": "array"
+        },
+        "current_rule_version": {
+          "type": "string"
+        },
+        "eval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvalResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "simulation under the candidate, if requested"
+        },
+        "unchanged": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "current_rule_version",
+        "candidate_rule_version",
+        "changes",
+        "unchanged"
+      ],
+      "title": "CriteriaPreview",
+      "type": "object"
+    },
+    "CriteriaResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/admin/criteria — the criteria in effect (file default, or a live override).",
+      "properties": {
+        "criteria": {
+          "$ref": "#/$defs/Criteria"
+        },
+        "origin": {
+          "enum": [
+            "file",
+            "override"
+          ],
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "updated_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "criteria",
+        "rule_version",
+        "origin"
+      ],
+      "title": "CriteriaResponse",
+      "type": "object"
+    },
+    "CriteriaUpdate": {
+      "additionalProperties": false,
+      "description": "PUT /v1/admin/criteria (apply) and POST /v1/admin/criteria/preview (dry run). criteria=None resets to file.",
+      "properties": {
+        "by": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "criteria": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Criteria"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "criteria"
+      ],
+      "title": "CriteriaUpdate",
+      "type": "object"
+    },
+    "Defaults": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_days": {
+          "default": 14,
+          "description": "rolling median + MAD window",
+          "maximum": 90,
+          "minimum": 3,
+          "type": "integer"
+        },
+        "baseline_lag_days": {
+          "default": 7,
+          "description": "baseline ends this many days before today, so a slow drift doesn't drag its own baseline along",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "baseline_min_days": {
+          "default": 7,
+          "description": "fewer days of data -> metric 'insufficient'",
+          "minimum": 2,
+          "type": "integer"
+        },
+        "drift_days": {
+          "default": 3,
+          "description": "drifting if beyond threshold on >= drift_days ...",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "drift_window": {
+          "default": 5,
+          "description": "... of the last drift_window available days",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_mad": {
+          "default": 0.0,
+          "description": "noise floor for MAD in metric units (avoids huge z on flat data)",
+          "minimum": 0,
+          "type": "number"
+        },
+        "quality_min": {
+          "default": 0.5,
+          "description": "ignore readings with envelope.quality below this",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "rule_max_age_days": {
+          "default": 21,
+          "description": "[[rule]] observations older than this no longer fire",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "timezone": {
+          "default": "Europe/Helsinki",
+          "type": "string"
+        },
+        "z_threshold": {
+          "default": 1.5,
+          "description": "|robust z| in the worse direction",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "title": "Defaults",
+      "type": "object"
+    },
+    "DrumSession": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "force_mean": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "regularity": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "taps": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tempo_bpm": {
+          "maximum": 400,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "tempo_bpm",
+        "force_mean",
+        "duration_s",
+        "regularity",
+        "taps"
+      ],
+      "title": "DrumSession",
+      "type": "object"
+    },
+    "Envelope_dict_str__Any__": {
+      "additionalProperties": false,
+      "properties": {
+        "home_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "head",
+            "sensors",
+            "hub",
+            "friendlink",
+            "glasses",
+            "laptop",
+            "cloud",
+            "sim"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "v": {
+          "const": 1,
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "type",
+        "payload"
+      ],
+      "title": "Envelope[dict[str, Any]]",
+      "type": "object"
+    },
+    "EvalResult": {
+      "additionalProperties": false,
+      "description": "Simulation on synthetic patients with known onset. Not clinical accuracy.",
+      "properties": {
+        "ablation": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StateScore"
+          },
+          "description": "needs_call score with one source removed",
+          "type": "object"
+        },
+        "false_needs_call_per_patient_month": {
+          "type": "number"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "median_lead_time_days": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "n_patients": {
+          "type": "integer"
+        },
+        "per_state": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StateScore"
+          },
+          "type": "object"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "sim": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "n_patients",
+        "rule_version",
+        "per_state",
+        "false_needs_call_per_patient_month",
+        "median_lead_time_days",
+        "generated_at"
+      ],
+      "title": "EvalResult",
+      "type": "object"
+    },
+    "EventsBatch": {
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/Envelope_dict_str__Any__"
+          },
+          "maxItems": 500,
+          "type": "array"
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "title": "EventsBatch",
+      "type": "object"
+    },
+    "EventsResult": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "integer"
+        },
+        "duplicates": {
+          "type": "integer"
+        },
+        "rejected": {
+          "description": "[{id, error}]",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accepted",
+        "duplicates"
+      ],
+      "title": "EventsResult",
+      "type": "object"
+    },
+    "Explanation": {
+      "additionalProperties": false,
+      "description": "Plain-language explanation of a consensus. Gemma or template. An explanation, not a decision.",
+      "properties": {
+        "by": {
+          "enum": [
+            "gemma",
+            "template"
+          ],
+          "type": "string"
+        },
+        "caveats": {
+          "maxLength": 600,
+          "type": "string"
+        },
+        "disagreement_note": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "generated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "headline": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "per_source": {
+          "items": {
+            "$ref": "#/$defs/SourceNote"
+          },
+          "type": "array"
+        },
+        "suggested_actions": {
+          "items": {
+            "enum": [
+              "flag_booster",
+              "flag_icbt_referral",
+              "send_message",
+              "check_in_call",
+              "none"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 1200,
+          "type": "string"
+        }
+      },
+      "required": [
+        "headline",
+        "text",
+        "suggested_actions",
+        "caveats",
+        "by"
+      ],
+      "title": "Explanation",
+      "type": "object"
+    },
+    "FriendLink": {
+      "additionalProperties": false,
+      "properties": {
+        "ack": {
+          "type": "boolean"
+        },
+        "direction": {
+          "enum": [
+            "sent",
+            "received"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "ack"
+      ],
+      "title": "FriendLink",
+      "type": "object"
+    },
+    "FriendPing": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "default": "glow",
+          "maxLength": 32,
+          "type": "string"
+        }
+      },
+      "title": "FriendPing",
+      "type": "object"
+    },
+    "FriendlinkCmd": {
+      "additionalProperties": false,
+      "properties": {
+        "ping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FriendPing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "FriendlinkCmd",
+      "type": "object"
+    },
+    "HeadCmd": {
+      "additionalProperties": false,
+      "properties": {
+        "bpm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for pan_mode=sway or chest=breathe"
+        },
+        "chest": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "breathe",
+                "glow",
+                "pulse"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "eyes": {
+          "anyOf": [
+            {
+              "enum": [
+                "neutral",
+                "happy",
+                "sleepy",
+                "wide",
+                "listening",
+                "thinking",
+                "soft"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "home": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "look": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LookAt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PanTarget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pan_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "track",
+                "still",
+                "sway"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "purr": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Purr"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "HeadCmd",
+      "type": "object"
+    },
+    "Health": {
+      "additionalProperties": false,
+      "properties": {
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "down"
+          ],
+          "type": "string"
+        },
+        "uptime_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "version",
+        "uptime_s"
+      ],
+      "title": "Health",
+      "type": "object"
+    },
+    "HealthOverview": {
+      "additionalProperties": false,
+      "description": "GET /v1/health — every home's last NodeHealthReport, for the /health page.",
+      "properties": {
+        "homes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/NodeHealthReport"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "homes"
+      ],
+      "title": "HealthOverview",
+      "type": "object"
+    },
+    "Healthz": {
+      "additionalProperties": false,
+      "properties": {
+        "db": {
+          "type": "boolean"
+        },
+        "llm": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "down"
+          ],
+          "type": "string"
+        },
+        "time": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "version",
+        "schema_version",
+        "db",
+        "llm",
+        "time"
+      ],
+      "title": "Healthz",
+      "type": "object"
+    },
+    "HelpStat": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "mean_effect": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean reward 0..1"
+        },
+        "tries": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "activity",
+        "label",
+        "tries"
+      ],
+      "title": "HelpStat",
+      "type": "object"
+    },
+    "HrvSession": {
+      "additionalProperties": false,
+      "properties": {
+        "breath_bpm": {
+          "exclusiveMinimum": 0,
+          "maximum": 30,
+          "type": "number"
+        },
+        "duration_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "hr_bpm": {
+          "exclusiveMaximum": 250,
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "rmssd_post_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "rmssd_pre_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "hr_bpm",
+        "duration_s",
+        "breath_bpm"
+      ],
+      "title": "HrvSession",
+      "type": "object"
+    },
+    "HubCmd": {
+      "additionalProperties": false,
+      "properties": {
+        "clinician_message": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClinicianMessage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "phq9_due": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ask PHQ-9 in the next ritual (spoken mode)"
+        },
+        "say": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "text-mode user utterance (sim/demo)"
+        },
+        "set_ritual_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_ritual": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "suggest_nudge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SuggestNudge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "HubCmd",
+      "type": "object"
+    },
+    "InterventionResponse": {
+      "additionalProperties": false,
+      "description": "Immediate before/after effect of one activity (feeds the bandit learner).",
+      "properties": {
+        "activity": {
+          "enum": [
+            "breathe",
+            "drum",
+            "walk",
+            "friend_ping",
+            "icbt"
+          ],
+          "type": "string"
+        },
+        "delta": {
+          "$ref": "#/$defs/MeasuresDelta"
+        },
+        "post": {
+          "$ref": "#/$defs/Measures"
+        },
+        "pre": {
+          "$ref": "#/$defs/Measures"
+        }
+      },
+      "required": [
+        "activity"
+      ],
+      "title": "InterventionResponse",
+      "type": "object"
+    },
+    "LaptopSession": {
+      "additionalProperties": false,
+      "description": "2-minute laptop session. All features computed in the browser; nothing recorded.\nAny feature may be None if that part was skipped or unsupported (e.g. no webcam).",
+      "properties": {
+        "duration_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "expressivity_index": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "lapses": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "responses > 500 ms or misses"
+        },
+        "pause_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pitch_variability": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "semitones SD"
+        },
+        "reaction_ms_iqr": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reaction_ms_median": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "speech_rate": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "syllables per second"
+        }
+      },
+      "required": [
+        "duration_s"
+      ],
+      "title": "LaptopSession",
+      "type": "object"
+    },
+    "LightLevel": {
+      "additionalProperties": false,
+      "properties": {
+        "lux_est": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "window_min": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "lux_est",
+        "window_min"
+      ],
+      "title": "LightLevel",
+      "type": "object"
+    },
+    "LiveEventsResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/events?home_id=&since=&limit= — recent obs for the /live page.",
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/Envelope_dict_str__Any__"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "title": "LiveEventsResponse",
+      "type": "object"
+    },
+    "Log": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
+          "type": "string"
+        },
+        "msg": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "event"
+      ],
+      "title": "Log",
+      "type": "object"
+    },
+    "LookAt": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "LookAt",
+      "type": "object"
+    },
+    "MeResponse": {
+      "additionalProperties": false,
+      "description": "Person-facing view. Plain language, never alarming.",
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "last_week": {
+          "description": "short plain-language lines",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "next_suggestion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NudgeResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "phq9_due": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "what_helps": {
+          "items": {
+            "$ref": "#/$defs/HelpStat"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "summary"
+      ],
+      "title": "MeResponse",
+      "type": "object"
+    },
+    "Measures": {
+      "additionalProperties": false,
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hr_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "rmssd_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Measures",
+      "type": "object"
+    },
+    "MeasuresDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hr_bpm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "rmssd_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "MeasuresDelta",
+      "type": "object"
+    },
+    "MetricSeries": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/TimelinePoint"
+          },
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "type": "string"
+        },
+        "worse_when": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "label",
+        "source",
+        "worse_when",
+        "points"
+      ],
+      "title": "MetricSeries",
+      "type": "object"
+    },
+    "MetricSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "default": "mean",
+          "enum": [
+            "mean",
+            "median",
+            "min",
+            "max",
+            "sum",
+            "first",
+            "last",
+            "count"
+          ],
+          "type": "string"
+        },
+        "baseline_days": {
+          "anyOf": [
+            {
+              "minimum": 3,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "baseline_min_days": {
+          "anyOf": [
+            {
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "counts_for_better": {
+          "default": true,
+          "type": "boolean"
+        },
+        "drift_days": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drift_window": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "family": {
+          "default": "behaviour",
+          "description": "e.g. self_report | physiology | behaviour | voice | cognition",
+          "type": "string"
+        },
+        "field": {
+          "description": "payload field, or @count / @local_minutes",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "min_mad": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "missing": {
+          "default": "skip",
+          "description": "days without data: ignore, or count as 0 (sum/count metrics)",
+          "enum": [
+            "skip",
+            "zero"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "type": "string"
+        },
+        "obs": {
+          "description": "obs type, e.g. obs.hrv_session",
+          "type": "string"
+        },
+        "quality_min": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unit": {
+          "default": "",
+          "type": "string"
+        },
+        "weight": {
+          "default": 1.0,
+          "description": "counts toward the source's worse/better weight",
+          "minimum": 0,
+          "type": "number"
+        },
+        "where": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "description": "payload filters (equality / any-of)",
+          "type": "object"
+        },
+        "worse_when": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "type": "string"
+        },
+        "z_threshold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "obs",
+        "field",
+        "worse_when"
+      ],
+      "title": "MetricSpec",
+      "type": "object"
+    },
+    "NextDay": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "active minutes that day (outings)"
+        },
+        "energy": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "NextDay",
+      "type": "object"
+    },
+    "NodeHealthReport": {
+      "additionalProperties": false,
+      "description": "PUT /v1/health/{home_id} — hub reports its nodes' heartbeats (derived status only).",
+      "properties": {
+        "nodes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Health"
+          },
+          "type": "object"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "uplink_lag_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "uplink_queue": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodes",
+        "reported_at"
+      ],
+      "title": "NodeHealthReport",
+      "type": "object"
+    },
+    "NudgeOffered": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 280,
+          "type": "string"
+        }
+      },
+      "required": [
+        "arm",
+        "reason"
+      ],
+      "title": "NudgeOffered",
+      "type": "object"
+    },
+    "NudgeOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "type": "string"
+        },
+        "next_day": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextDay"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reward": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "arm",
+        "accepted"
+      ],
+      "title": "NudgeOutcome",
+      "type": "object"
+    },
+    "NudgeResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "type": "string"
+        },
+        "probs": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arm",
+        "reason"
+      ],
+      "title": "NudgeResponse",
+      "type": "object"
+    },
+    "Outing": {
+      "additionalProperties": false,
+      "description": "A walk / time outdoors. daylight_min only from the optional DAT camera app.",
+      "properties": {
+        "daylight_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "method": {
+          "enum": [
+            "location",
+            "steps",
+            "dat_camera"
+          ],
+          "type": "string"
+        },
+        "minutes": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "minutes",
+        "method"
+      ],
+      "title": "Outing",
+      "type": "object"
+    },
+    "PanTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "speed": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "target_deg": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "target_deg"
+      ],
+      "title": "PanTarget",
+      "type": "object"
+    },
+    "PatientSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged": {
+          "default": false,
+          "type": "boolean"
+        },
+        "agreement": {
+          "enum": [
+            "agree",
+            "disagree",
+            "low_coverage"
+          ],
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "last_activity_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "safety_since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceBadge"
+          },
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name",
+        "state",
+        "agreement",
+        "headline",
+        "sources"
+      ],
+      "title": "PatientSummary",
+      "type": "object"
+    },
+    "PatientsResponse": {
+      "additionalProperties": false,
+      "description": "Ranked: safety, needs_call, watch, stable (see STATE_RANK).",
+      "properties": {
+        "patients": {
+          "items": {
+            "$ref": "#/$defs/PatientSummary"
+          },
+          "type": "array"
+        },
+        "rule_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "patients",
+        "rule_version"
+      ],
+      "title": "PatientsResponse",
+      "type": "object"
+    },
+    "Phq9": {
+      "additionalProperties": false,
+      "description": "PHQ-9 (every 14 days). items[8] is item 9; > 0 triggers the safety path.",
+      "properties": {
+        "item9_positive": {
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "spoken",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "total": {
+          "maximum": 27,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "items",
+        "item9_positive",
+        "mode"
+      ],
+      "title": "Phq9",
+      "type": "object"
+    },
+    "Phq9Entry": {
+      "additionalProperties": false,
+      "properties": {
+        "item9_positive": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "spoken",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "total": {
+          "maximum": 27,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ts",
+        "total",
+        "item9_positive",
+        "mode"
+      ],
+      "title": "Phq9Entry",
+      "type": "object"
+    },
+    "Phq9History": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/Phq9Entry"
+          },
+          "type": "array"
+        },
+        "next_due": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "patient_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "patient_id",
+        "entries"
+      ],
+      "title": "Phq9History",
+      "type": "object"
+    },
+    "Presence": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_cm": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "dwell_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "first_of_day": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distance_cm",
+        "first_of_day",
+        "dwell_s"
+      ],
+      "title": "Presence",
+      "type": "object"
+    },
+    "PreviewChange": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "from_sources": {
+          "additionalProperties": {
+            "enum": [
+              "better",
+              "as_usual",
+              "worse",
+              "insufficient"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "from_state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        },
+        "patient_id": {
+          "type": "string"
+        },
+        "to_sources": {
+          "additionalProperties": {
+            "enum": [
+              "better",
+              "as_usual",
+              "worse",
+              "insufficient"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "to_state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "patient_id",
+        "display_name",
+        "from_state",
+        "to_state",
+        "from_sources",
+        "to_sources"
+      ],
+      "title": "PreviewChange",
+      "type": "object"
+    },
+    "Purr": {
+      "additionalProperties": false,
+      "properties": {
+        "ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ms"
+      ],
+      "title": "Purr",
+      "type": "object"
+    },
+    "RawButton": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "type": "string"
+        },
+        "pressed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "pressed"
+      ],
+      "title": "RawButton",
+      "type": "object"
+    },
+    "RawDistance": {
+      "additionalProperties": false,
+      "properties": {
+        "cm": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "cm"
+      ],
+      "title": "RawDistance",
+      "type": "object"
+    },
+    "RawEar": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "type": "integer"
+        },
+        "pressed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "value",
+        "delta"
+      ],
+      "title": "RawEar",
+      "type": "object"
+    },
+    "RawFace": {
+      "additionalProperties": false,
+      "description": "Face position only. Images are never published, stored or transmitted.",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "size": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "x_norm": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "y_norm": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "x_norm",
+        "y_norm",
+        "size",
+        "confidence"
+      ],
+      "title": "RawFace",
+      "type": "object"
+    },
+    "RawHall": {
+      "additionalProperties": false,
+      "properties": {
+        "at_home": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "at_home"
+      ],
+      "title": "RawHall",
+      "type": "object"
+    },
+    "RawLight": {
+      "additionalProperties": false,
+      "properties": {
+        "lux_est": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "raw": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "raw",
+        "lux_est"
+      ],
+      "title": "RawLight",
+      "type": "object"
+    },
+    "RawPan": {
+      "additionalProperties": false,
+      "properties": {
+        "deg": {
+          "type": "number"
+        },
+        "homed": {
+          "type": "boolean"
+        },
+        "moving": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deg",
+        "homed",
+        "moving"
+      ],
+      "title": "RawPan",
+      "type": "object"
+    },
+    "RawPpg": {
+      "additionalProperties": false,
+      "properties": {
+        "fs_hz": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "type": "number"
+        },
+        "samples": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "t0_ms": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t0_ms",
+        "fs_hz",
+        "samples"
+      ],
+      "title": "RawPpg",
+      "type": "object"
+    },
+    "RawTap": {
+      "additionalProperties": false,
+      "properties": {
+        "force": {
+          "description": "peak acceleration, g",
+          "minimum": 0,
+          "type": "number"
+        },
+        "src": {
+          "default": "imu",
+          "enum": [
+            "imu",
+            "knock"
+          ],
+          "type": "string"
+        },
+        "t_ms": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t_ms",
+        "force"
+      ],
+      "title": "RawTap",
+      "type": "object"
+    },
+    "Ritual": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "enum": [
+            "started",
+            "completed",
+            "skipped",
+            "aborted"
+          ],
+          "type": "string"
+        },
+        "step": {
+          "enum": [
+            "greet",
+            "dial",
+            "breathe",
+            "drum",
+            "phq9",
+            "nudge",
+            "close"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "status"
+      ],
+      "title": "Ritual",
+      "type": "object"
+    },
+    "RuleSpec": {
+      "additionalProperties": false,
+      "description": "A direct trigger: when it fires, the metric's source counts as 'worse' regardless of baselines.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "family": {
+          "default": "self_report",
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "at_least: value >= threshold · at_most: value <= threshold · rise/drop_vs_previous: change vs the previous observation >= threshold",
+          "enum": [
+            "at_least",
+            "at_most",
+            "rise_vs_previous",
+            "drop_vs_previous"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "type": "string"
+        },
+        "obs": {
+          "type": "string"
+        },
+        "threshold": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "obs",
+        "field",
+        "kind",
+        "threshold"
+      ],
+      "title": "RuleSpec",
+      "type": "object"
+    },
+    "SafetyFlag": {
+      "additionalProperties": false,
+      "properties": {
+        "handled_locally": {
+          "type": "boolean"
+        },
+        "severity": {
+          "const": "high",
+          "default": "high",
+          "type": "string"
+        },
+        "trigger": {
+          "enum": [
+            "phq9_item9",
+            "phrase",
+            "manual"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "trigger",
+        "handled_locally"
+      ],
+      "title": "SafetyFlag",
+      "type": "object"
+    },
+    "SelfReport": {
+      "additionalProperties": false,
+      "description": "One dial answer (turn the ear). The ritual asks mood, energy, last night's sleep.",
+      "properties": {
+        "context": {
+          "default": "ritual",
+          "enum": [
+            "ritual",
+            "adhoc",
+            "post_activity"
+          ],
+          "type": "string"
+        },
+        "item": {
+          "enum": [
+            "mood",
+            "energy",
+            "sleep"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "item",
+        "value"
+      ],
+      "title": "SelfReport",
+      "type": "object"
+    },
+    "SensorsCmd": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_enable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ppg": {
+          "anyOf": [
+            {
+              "enum": [
+                "start",
+                "stop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "SensorsCmd",
+      "type": "object"
+    },
+    "SourceBadge": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "verdict",
+        "confidence"
+      ],
+      "title": "SourceBadge",
+      "type": "object"
+    },
+    "SourceNote": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "summary"
+      ],
+      "title": "SourceNote",
+      "type": "object"
+    },
+    "SourceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "better_min_weight": {
+          "default": 2.0,
+          "description": "sum of improving-metric weights needed for 'better'",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "expected_per_week": {
+          "default": 7,
+          "description": "days with data per week expected (confidence)",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "min_confidence": {
+          "default": 0.4,
+          "description": "below -> 'insufficient' (excluded from the vote)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "worse_min_weight": {
+          "default": 2.0,
+          "description": "sum of drifting-metric weights needed for 'worse'",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "title": "SourceSpec",
+      "type": "object"
+    },
+    "SourceVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "computed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/VerdictEvidence"
+          },
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "verdict",
+        "confidence",
+        "computed_at"
+      ],
+      "title": "SourceVerdict",
+      "type": "object"
+    },
+    "SpeechFeatures": {
+      "additionalProperties": false,
+      "description": "Robot-side speech features from the local mic. No audio, no transcript.",
+      "properties": {
+        "duration_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "pause_ratio": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "syllables_per_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wpm": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "pause_ratio",
+        "duration_s"
+      ],
+      "title": "SpeechFeatures",
+      "type": "object"
+    },
+    "StateScore": {
+      "additionalProperties": false,
+      "properties": {
+        "precision": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "precision",
+        "recall"
+      ],
+      "title": "StateScore",
+      "type": "object"
+    },
+    "StateSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "correlated_families": {
+          "description": "if every 'worse' source is worse only via one of these families, add the independence caveat",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "count_correlated_as_one": {
+          "default": false,
+          "description": "if true, sources worse only via the same correlated family count as ONE worse source",
+          "type": "boolean"
+        },
+        "hysteresis_stable_days": {
+          "default": 3,
+          "description": "needs_call holds until acknowledged or N stable days",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_sufficient_for_stable": {
+          "default": 2,
+          "description": "fewer sufficient sources can never be 'stable'",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "needs_call_min_worse": {
+          "default": 2,
+          "description": "sufficient sources 'worse' needed for needs_call",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "watch_if_single_sufficient": {
+          "default": true,
+          "description": "only one source has enough data -> watch",
+          "type": "boolean"
+        },
+        "watch_min_worse": {
+          "default": 1,
+          "description": "sufficient sources 'worse' needed for watch",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "title": "StateSpec",
+      "type": "object"
+    },
+    "SuggestNudge": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "breathe",
+            "drum",
+            "daylight_walk",
+            "friend_ping",
+            "icbt_exercise"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "arm"
+      ],
+      "title": "SuggestNudge",
+      "type": "object"
+    },
+    "TimelinePoint": {
+      "additionalProperties": false,
+      "properties": {
+        "band_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "band_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "baseline_median": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "date",
+        "value"
+      ],
+      "title": "TimelinePoint",
+      "type": "object"
+    },
+    "TimelineResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "patient_id": {
+          "type": "string"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/MetricSeries"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "patient_id",
+        "series"
+      ],
+      "title": "TimelineResponse",
+      "type": "object"
+    },
+    "VerdictEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "drifting days in the window",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "type": "string"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "type": "string"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "days"
+      ],
+      "title": "VerdictEvidence",
+      "type": "object"
+    }
+  },
+  "title": "KaikuContracts",
+  "type": "object"
+}

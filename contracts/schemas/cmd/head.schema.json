@@ -1,0 +1,275 @@
+{
+  "$defs": {
+    "HeadCmd": {
+      "additionalProperties": false,
+      "properties": {
+        "bpm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for pan_mode=sway or chest=breathe",
+          "title": "Bpm"
+        },
+        "chest": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "breathe",
+                "glow",
+                "pulse"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chest"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "eyes": {
+          "anyOf": [
+            {
+              "enum": [
+                "neutral",
+                "happy",
+                "sleepy",
+                "wide",
+                "listening",
+                "thinking",
+                "soft"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eyes"
+        },
+        "home": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Home"
+        },
+        "look": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LookAt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PanTarget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pan_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "track",
+                "still",
+                "sway"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pan Mode"
+        },
+        "purr": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Purr"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "HeadCmd",
+      "type": "object"
+    },
+    "LookAt": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1,
+          "minimum": -1,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": -1,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "LookAt",
+      "type": "object"
+    },
+    "PanTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "speed": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Speed",
+          "type": "number"
+        },
+        "target_deg": {
+          "title": "Target Deg",
+          "type": "number"
+        }
+      },
+      "required": [
+        "target_deg"
+      ],
+      "title": "PanTarget",
+      "type": "object"
+    },
+    "Purr": {
+      "additionalProperties": false,
+      "properties": {
+        "ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "title": "Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ms"
+      ],
+      "title": "Purr",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/HeadCmd"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<cmd.head>",
+  "type": "object"
+}

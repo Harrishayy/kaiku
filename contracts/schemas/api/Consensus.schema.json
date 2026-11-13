@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "Explanation": {
+      "additionalProperties": false,
+      "description": "Plain-language explanation of a consensus. Gemma or template. An explanation, not a decision.",
+      "properties": {
+        "by": {
+          "enum": [
+            "gemma",
+            "template"
+          ],
+          "title": "By",
+          "type": "string"
+        },
+        "caveats": {
+          "maxLength": 600,
+          "title": "Caveats",
+          "type": "string"
+        },
+        "disagreement_note": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disagreement Note"
+        },
+        "generated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generated At"
+        },
+        "headline": {
+          "maxLength": 200,
+          "title": "Headline",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "per_source": {
+          "items": {
+            "$ref": "#/$defs/SourceNote"
+          },
+          "title": "Per Source",
+          "type": "array"
+        },
+        "suggested_actions": {
+          "items": {
+            "enum": [
+              "flag_booster",
+              "flag_icbt_referral",
+              "send_message",
+              "check_in_call",
+              "none"
+            ],
+            "type": "string"
+          },
+          "title": "Suggested Actions",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 1200,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "headline",
+        "text",
+        "suggested_actions",
+        "caveats",
+        "by"
+      ],
+      "title": "Explanation",
+      "type": "object"
+    },
+    "SourceNote": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "summary"
+      ],
+      "title": "SourceNote",
+      "type": "object"
+    },
+    "SourceVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "computed_at": {
+          "format": "date-time",
+          "title": "Computed At",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/VerdictEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "home_id": {
+          "title": "Home Id",
+          "type": "string"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Data At"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "verdict",
+        "confidence",
+        "computed_at"
+      ],
+      "title": "SourceVerdict",
+      "type": "object"
+    },
+    "VerdictEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "drifting days in the window",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z"
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "days"
+      ],
+      "title": "VerdictEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acknowledged_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Acknowledged By"
+    },
+    "agreement": {
+      "enum": [
+        "agree",
+        "disagree",
+        "low_coverage"
+      ],
+      "title": "Agreement",
+      "type": "string"
+    },
+    "computed_at": {
+      "format": "date-time",
+      "title": "Computed At",
+      "type": "string"
+    },
+    "explanation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Explanation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "rule_version": {
+      "title": "Rule Version",
+      "type": "string"
+    },
+    "safety_since": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Since"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceVerdict"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "home_id",
+    "state",
+    "rule_version",
+    "sources",
+    "agreement",
+    "computed_at"
+  ],
+  "title": "Consensus",
+  "type": "object"
+}

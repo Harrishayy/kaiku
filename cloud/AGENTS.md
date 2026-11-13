@@ -1,0 +1,187 @@
+# cloud — AGENTS.md
+
+> Read the root `AGENTS.md` first. Owner C · kind service. Update this file in the same commit as any change to this
+> module's interface, structure or invariants.
+
+## Purpose
+The Modal service. It ingests `obs.*` from all three sources (robot via the hub, glasses and laptop browser apps
+directly), keeps them in SQLite, computes per-source verdicts and the deterministic **consensus** (stable / watch /
+needs_call / safety), explains it (template, hosted Gemma, or Gemma 4 on a Modal GPU — the explanation never
+changes the state), learns which nudge helps (bandit), runs the consensus-accuracy simulation, and serves the
+Next.js export. How each input is used is defined in `config/criteria.toml` (see "Tuning the consensus").
+
+## Boundaries
+May import `kaiku_contracts` + fastapi, numpy, httpx, modal — never hub, apps, sim or tools. Request/response shapes
+are `kaiku_contracts.api`: change them there (contract change), never ad hoc here. `sim/patients` and
+`sim/seed_demo.py` import `kaiku_cloud.jobs.synth` (sim is a harness); never the reverse.
+
+## Consumes (topics/endpoints)
+- `POST /v1/events` — `{events: [Envelope]}` of `obs.*` only (max 500), idempotent by `id`. From hub, glasses
+  (`source: glasses`) and laptop (`source: laptop`).
+- `PUT /v1/health/{home_id}` — `NodeHealthReport` from each hub.
+- `POST /v1/patients/{id}/actions` — `{action: flag_booster|flag_icbt_referral|acknowledge|send_message, note?, by?}`.
+
+## Emits (topics/endpoints)
+| route | returns |
+|---|---|
+| `GET /healthz` | `Healthz` |
+| `GET /v1/patients` | `PatientsResponse` ranked safety › needs_call › watch › stable, with per-source badges |
+| `GET /v1/patients/{id}/consensus` | `Consensus`: state, rule_version, 3 `SourceVerdict`s, agreement, `Explanation` |
+| `GET /v1/patients/{id}/timeline?metrics=&days=30` | `TimelineResponse`: `series[]` with `source`, `worse_when`, baseline band |
+| `GET /v1/patients/{id}/phq9` | `Phq9History` + `next_due` |
+| `GET /v1/me?home_id=` | `MeResponse` — person view: plain-language summary, what helps, next suggestion |
+| `GET /v1/nudge?home_id=` | `NudgeResponse` (Thompson sampling) |
+| `GET /v1/commands?home_id=&since=` · `WS /v1/stream/{home_id}?token=` | `cmd.hub` envelopes (clinician_message, phq9_due); delivered once |
+| `GET /v1/events?home_id=&since=&limit=` | `LiveEventsResponse` (newest first) |
+| `GET /v1/health` | `HealthOverview` |
+| `GET /v1/eval` | `EvalResult` (per-state precision/recall, false needs_call per patient-month, lead time, ablation) |
+| `POST /v1/admin/recompute?eval=true` · `POST /v1/admin/reset` | recompute (+ simulation) · delete simulated data |
+| `GET /v1/admin/criteria` · `PUT /v1/admin/criteria` · `POST /v1/admin/criteria/preview?eval=1` | criteria in effect · apply/reset a live override · dry-run (`CriteriaResponse` / `CriteriaPreview`) |
+| `/` | static Next.js export (`apps/web/out`) when built; `/v1/*` and `/healthz` always win |
+
+All models: `contracts/python/kaiku_contracts/api.py` (TS: `contracts/ts`). Interactive docs at `/docs`.
+
+Timeline series = the enabled `[[metric]]` blocks of `config/criteria.toml` (each with `metric`, `label`, `unit`,
+`source`, `worse_when`). PHQ-9 is charted from `/v1/patients/{id}/phq9`.
+
+## Map
+```
+app.py                    Modal: one ASGI container (single SQLite writer), Volume, 15-min recompute, nightly
+                          simulation (.map over simulate_shard), Gemma vLLM GPU class when KAIKU_LLM=gemma_modal
+kaiku_cloud/
+  settings.py             env (DB path, tokens, LLM), config/kaiku.toml [ritual] accessors, TZ from criteria
+  service.py              use-cases: effective criteria (file|override), recompute, preview, consensus (+LLM cache),
+                          timeline, phq9, me, nudge
+  api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
+  store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv)
+  analytics/
+    metrics.py            generic daily extraction from Criteria [[metric]] (field / @count / @local_minutes,
+                          where filters, agg, missing=zero). NO metric is defined in code
+    data.py               PatientData under a Criteria: series, per-source coverage, [[rule]] readings (pure)
+    baseline.py           median + MAD; scale = max(1.4826·MAD, min_mad); window ends a lag before the scored day
+    drift.py              robust z, direction-aware, every threshold via crit.param(metric, …)
+    verdict.py            per source: weighted drifting vs worse_min_weight, [[rule]] triggers, confidence
+    consensus.py          [state] rule + day-by-day replay (hysteresis) + correlated-family caveat / count-as-one
+    bandit.py             Thompson sampling; reward = 0.5 immediate (intervention_response) + 0.5 next day
+  llm/
+    explain.py            Consensus → Explanation; LLM JSON validated, retried once, banned words → template
+    template.py           deterministic explanation (default, always available)
+    gemma_hosted.py       hosted Gemma adapter       gemma_vllm.py   Modal GPU adapter     prompts/explain.md
+  jobs/
+    synth.py              synthetic patients: DEMO_PATIENTS (8, pinned by tests) + evaluation cohort (10 scenarios
+                          incl. glasses+laptop-only drift), all with known ground truth
+    simulate.py           per-state precision/recall, false needs_call / patient-month, lead time, ablation;
+                          CLI for offline tuning (`make tune`)
+    nightly.py            recompute all (+ simulation) inside the API process
+tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py
+```
+
+## Extension points
+- **Add / retune / disable a metric or rule:** edit `config/criteria.toml` only (see "Tuning the consensus").
+  Drift, verdicts, timeline and simulation pick it up with no code change. A field the extractor can't read yet
+  (new derived field) is a contracts change in `kaiku_contracts/criteria.py` first.
+- **Add a consensus source:** map its obs types in `kaiku_contracts/sources.py` (contract change), add
+  `[sources.<name>]` + `[[metric]]` blocks to `config/criteria.toml`, extend `jobs/synth.py`.
+  `verdict.py` / `consensus.py` are source-agnostic — no change.
+- **Swap / add an LLM:** write `generate(prompt) -> str` (raise `LlmUnavailable` when it can't answer), register it
+  in `llm/explain.py:BACKENDS` under the `KAIKU_LLM` value. The template stays the fallback.
+- **New route:** add the response model to `kaiku_contracts/api.py` first, then the route; list it in `modules.toml`.
+- **Remove:** the bandit, LLM adapters and simulation can each be deleted without touching the consensus.
+
+## Invariants
+- The consensus is deterministic and fully determined by (events, actions, Criteria). **Gemma explains; it never
+  decides or changes `state`.** `safety` only comes from `obs.safety_flag`; analytics can at most produce `needs_call`.
+- No metric names, directions, weights or thresholds in analytics code (synth scenario assertions aside).
+- Thin data is never "stable": < 2 sufficient sources → `watch` with `agreement: low_coverage`.
+- Only `obs.*` is accepted; duplicates by envelope `id` are ignored. With `KAIKU_HOME_TOKEN` set, every
+  `POST /v1/events` needs `Authorization: Bearer <token>` (hub, glasses, laptop alike).
+- One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
+- No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient).
+
+## Tuning the consensus
+Ground truth for HOW every data input is used: **`config/criteria.toml`** (schema + validation:
+`contracts/python/kaiku_contracts/criteria.py`). Never put a metric definition, direction, weight or threshold in
+cloud code — read it from the `Criteria` object (`crit.metrics_for`, `crit.rules_for`, `crit.param`, `crit.sources`,
+`crit.state`). The rule version shown everywhere is `crit.rule_version` (name + hash), so every edit is traceable.
+
+The loop:
+1. **Offline:** edit a copy of `config/criteria.toml`, then
+   `uv run python -m kaiku_cloud.jobs.simulate --compare my.toml` (`make tune CRITERIA=my.toml`) — side-by-side
+   per-state precision/recall, false needs_call per patient-month, lead time and the lose-one-source ablation.
+   Exits 2 if the file is invalid.
+2. **Preview on real (seeded or live) patients:** `POST /v1/admin/criteria/preview` with `api.CriteriaUpdate`
+   (`?eval=1` adds the simulation) → `api.CriteriaPreview`: who would change state/verdicts. Nothing is saved.
+3. **Apply live, no redeploy:** `PUT /v1/admin/criteria` stores a validated override in the DB and recomputes everyone;
+   `{"criteria": null}` resets to the file. `GET /v1/admin/criteria` shows what's in effect (`origin: file|override`).
+   Invalid criteria → 422 with the validation message. Admin token applies when `KAIKU_ADMIN_TOKEN` is set.
+4. **Make it permanent:** copy the values into `config/criteria.toml`, commit, note the new rule version + the
+   simulation numbers in `docs/decisions.md`.
+Effective criteria are loaded once per recompute; the file is re-read when its mtime changes (local dev, no
+restart). A live override wins over the file until reset. The demo scenarios are pinned by tests — if a tuning
+change flips one, decide deliberately (fix the scenario or the criteria).
+Current numbers and the open lead-time vs precision trade-off: `docs/decisions.md` (latest tuning D-entry).
+
+## Run standalone
+```bash
+make cloud-local                 # uvicorn on :8000, DB at logs/kaiku.sqlite
+make seed                        # 8 simulated patients covering every state (prints state per patient)
+open http://localhost:8000/docs
+```
+On Modal (`modal setup` once):
+```bash
+make cloud-dev                   # modal serve (temporary URL, hot reload)
+make cloud-deploy                # builds the web app, then modal deploy → public URL
+KAIKU_CLOUD_URL=https://<url> make seed
+cd cloud && uv run modal run app.py   # simulation fanned out with .map
+```
+`web` runs as exactly one container (single SQLite writer); DB on the `kaiku-data` Volume, committed after each
+write request. A 15-minute schedule and a nightly cron (03:00 Helsinki, + simulation) call `/v1/admin/recompute`.
+
+## Run with sim
+```bash
+make cloud-local & make seed                 # history for all states
+make broker & make sim & make hub            # live robot data lands on demo-aino's robot card
+```
+Demo patients (`jobs/synth.py`): `demo-aino` needs_call (robot + laptop worse, glasses as usual → disagree) ·
+`sim-eero` stable · `sim-juho` noisy → stable · `sim-helmi` robot-only → watch · `sim-kaisa` robot only → watch
+(low_coverage) · `sim-lauri` PHQ-9 item 9 → safety · `sim-mirja` glasses-only → watch · `sim-onni` improving → stable.
+
+## Config & env
+| var | default | meaning |
+|---|---|---|
+| `KAIKU_DB_PATH` | `logs/kaiku.sqlite` (`/data/kaiku.sqlite` on Modal) | SQLite file |
+| `KAIKU_HOME_TOKEN` | unset → auth off | pairing token: `Bearer` on `POST /v1/events` (every source), `/v1/commands`, `PUT /v1/health`; browser apps get it from their `?t=` link |
+| `KAIKU_ADMIN_TOKEN` | unset → open | Bearer token for `/v1/admin/*` |
+| `KAIKU_LLM` | `template` | `template` · `gemma_hosted` (needs `GEMINI_API_KEY` + `[models].gemma_hosted`) · `gemma_modal` |
+| `KAIKU_WEB_DIR` | `apps/web/out` if present | static site to serve |
+| `KAIKU_MODAL_SECRET` | `kaiku-secrets` | Modal secret to attach (deploy still works if missing) |
+| `KAIKU_GEMMA_REPO` | `[models].gemma_hf_repo` | HF repo for the vLLM class |
+| `KAIKU_CRITERIA` | `config/criteria.toml` | consensus criteria file (re-read on change) |
+
+Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
+PHQ-9 cadence/mode: `config/kaiku.toml [ritual] phq9_every_days`, `phq9_mode` (spoken|both → the cloud queues
+`cmd.hub {phq9_due}` for the hub).
+Modal secret: `modal secret create kaiku-secrets KAIKU_HOME_TOKEN=... KAIKU_ADMIN_TOKEN=... GEMINI_API_KEY=... HF_TOKEN=...`
+
+## Health signal
+`GET /healthz` → `{status, version, schema_version, db, llm, time}`. JSON-lines logs on stdout (`modal app logs kaiku`).
+
+## Tests
+```bash
+uv run pytest cloud/tests   # rule table, hysteresis, acknowledge, low coverage, correlated caveat / count-as-one,
+                            # criteria edits alone change outcomes, every demo patient's state, LLM fallback +
+                            # banned words, bandit, simulation + tuning CLI, every API route incl. criteria + auth
+uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml] [--n 40]   # offline tuning
+```
+
+## Known issues
+- Clinician routes (`/v1/patients*`, actions, `/v1/me`) have no auth (demo). Don't put real patient data in it.
+- One shared `KAIKU_HOME_TOKEN` for all homes (demo); per-home pairing tokens are a post-event task.
+- Baseline windows use Europe/Helsinki calendar days (`[defaults] timezone` in criteria.toml).
+- `gemma_vllm` / the `Gemma` class have not run on a real GPU deploy yet; model IDs are VERIFY placeholders.
+- Simulation numbers come from our own generator (`jobs/synth.py`): they show the method and its failure modes
+  (see the ablation), not clinical validity.
+- Every demo patient's end state is a test (`test_demo_patient_lands_in_intended_state`). If a rule or generator
+  change flips one, fix the scenario deliberately — the live demo depends on it.
+- Re-seeding on a later day is a no-op (ids don't depend on the date): `make seed ARGS=--reset` re-anchors to today.
+- `homes.summary` rows written by v1 code are ignored and recomputed on first read.

@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "Envelope_dict_str__Any__": {
+      "additionalProperties": false,
+      "properties": {
+        "home_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "title": "Home Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        },
+        "sim": {
+          "default": false,
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "head",
+            "sensors",
+            "hub",
+            "friendlink",
+            "glasses",
+            "laptop",
+            "cloud",
+            "sim"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "type",
+        "payload"
+      ],
+      "title": "Envelope[dict[str, Any]]",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/events?home_id=&since=&limit= — recent obs for the /live page.",
+  "properties": {
+    "events": {
+      "items": {
+        "$ref": "#/$defs/Envelope_dict_str__Any__"
+      },
+      "title": "Events",
+      "type": "array"
+    }
+  },
+  "required": [
+    "events"
+  ],
+  "title": "LiveEventsResponse",
+  "type": "object"
+}

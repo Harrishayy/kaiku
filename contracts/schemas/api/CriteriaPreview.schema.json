@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "EvalResult": {
+      "additionalProperties": false,
+      "description": "Simulation on synthetic patients with known onset. Not clinical accuracy.",
+      "properties": {
+        "ablation": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StateScore"
+          },
+          "description": "needs_call score with one source removed",
+          "title": "Ablation",
+          "type": "object"
+        },
+        "false_needs_call_per_patient_month": {
+          "title": "False Needs Call Per Patient Month",
+          "type": "number"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "median_lead_time_days": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Median Lead Time Days"
+        },
+        "n_patients": {
+          "title": "N Patients",
+          "type": "integer"
+        },
+        "per_state": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StateScore"
+          },
+          "title": "Per State",
+          "type": "object"
+        },
+        "rule_version": {
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "sim": {
+          "default": true,
+          "title": "Sim",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "n_patients",
+        "rule_version",
+        "per_state",
+        "false_needs_call_per_patient_month",
+        "median_lead_time_days",
+        "generated_at"
+      ],
+      "title": "EvalResult",
+      "type": "object"
+    },
+    "PreviewChange": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "from_sources": {
+          "additionalProperties": {
+            "enum": [
+              "better",
+              "as_usual",
+              "worse",
+              "insufficient"
+            ],
+            "type": "string"
+          },
+          "title": "From Sources",
+          "type": "object"
+        },
+        "from_state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "title": "From State",
+          "type": "string"
+        },
+        "patient_id": {
+          "title": "Patient Id",
+          "type": "string"
+        },
+        "to_sources": {
+          "additionalProperties": {
+            "enum": [
+              "better",
+              "as_usual",
+              "worse",
+              "insufficient"
+            ],
+            "type": "string"
+          },
+          "title": "To Sources",
+          "type": "object"
+        },
+        "to_state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "title": "To State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "patient_id",
+        "display_name",
+        "from_state",
+        "to_state",
+        "from_sources",
+        "to_sources"
+      ],
+      "title": "PreviewChange",
+      "type": "object"
+    },
+    "StateScore": {
+      "additionalProperties": false,
+      "properties": {
+        "precision": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Precision"
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recall"
+        }
+      },
+      "required": [
+        "precision",
+        "recall"
+      ],
+      "title": "StateScore",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Who would change state under the candidate criteria (nothing is saved).",
+  "properties": {
+    "candidate_rule_version": {
+      "title": "Candidate Rule Version",
+      "type": "string"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/PreviewChange"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "current_rule_version": {
+      "title": "Current Rule Version",
+      "type": "string"
+    },
+    "eval": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvalResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "simulation under the candidate, if requested"
+    },
+    "unchanged": {
+      "title": "Unchanged",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "current_rule_version",
+    "candidate_rule_version",
+    "changes",
+    "unchanged"
+  ],
+  "title": "CriteriaPreview",
+  "type": "object"
+}

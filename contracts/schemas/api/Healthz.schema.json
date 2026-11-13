@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "db": {
+      "title": "Db",
+      "type": "boolean"
+    },
+    "llm": {
+      "title": "Llm",
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "degraded",
+        "down"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "time": {
+      "format": "date-time",
+      "title": "Time",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "version",
+    "schema_version",
+    "db",
+    "llm",
+    "time"
+  ],
+  "title": "Healthz",
+  "type": "object"
+}

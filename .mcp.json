@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "geminiDocs": {
+      "type": "http",
+      "url": "https://gemini-api-docs-mcp.dev"
+    },
+    "wearables": {
+      "type": "http",
+      "url": "https://mcp.developer.meta.com/wearables"
+    }
+  }
+}

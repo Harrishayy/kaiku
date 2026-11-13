@@ -1,0 +1,27 @@
+[project]
+name = "kaiku-hub"
+version = "0.1.0"
+description = "Kaiku hub: orchestrator, perception, rituals, safety, uplink"
+requires-python = ">=3.11"
+dependencies = [
+    "kaiku-contracts",
+    "aiomqtt>=2.3",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+live = ["google-genai>=1.0", "sounddevice>=0.5"]
+camera = ["opencv-python-headless>=4.10"]
+lora = ["pyserial>=3.5"]
+
+[tool.uv.sources]
+kaiku-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kaiku_hub"]

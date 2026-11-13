@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "VerdictEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "drifting days in the window",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z"
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "days"
+      ],
+      "title": "VerdictEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "computed_at": {
+      "format": "date-time",
+      "title": "Computed At",
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/VerdictEvidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "last_data_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Data At"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "better",
+        "as_usual",
+        "worse",
+        "insufficient"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "verdict",
+    "confidence",
+    "computed_at"
+  ],
+  "title": "SourceVerdict",
+  "type": "object"
+}

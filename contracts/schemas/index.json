@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "types": {
+    "cmd.friendlink": {
+      "payload_model": "FriendlinkCmd",
+      "schema": "cmd/friendlink.schema.json",
+      "topic": "kaiku/v1/<home_id>/cmd/friendlink"
+    },
+    "cmd.head": {
+      "payload_model": "HeadCmd",
+      "schema": "cmd/head.schema.json",
+      "topic": "kaiku/v1/<home_id>/cmd/head"
+    },
+    "cmd.hub": {
+      "payload_model": "HubCmd",
+      "schema": "cmd/hub.schema.json",
+      "topic": "kaiku/v1/<home_id>/cmd/hub"
+    },
+    "cmd.sensors": {
+      "payload_model": "SensorsCmd",
+      "schema": "cmd/sensors.schema.json",
+      "topic": "kaiku/v1/<home_id>/cmd/sensors"
+    },
+    "health": {
+      "payload_model": "Health",
+      "schema": "health.schema.json",
+      "topic": "kaiku/v1/<home_id>/health/<source>"
+    },
+    "log": {
+      "payload_model": "Log",
+      "schema": "log.schema.json",
+      "topic": "kaiku/v1/<home_id>/log/<source>"
+    },
+    "obs.drum_session": {
+      "payload_model": "DrumSession",
+      "schema": "obs/drum_session.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/drum_session"
+    },
+    "obs.friend_link": {
+      "payload_model": "FriendLink",
+      "schema": "obs/friend_link.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/friend_link"
+    },
+    "obs.hrv_session": {
+      "payload_model": "HrvSession",
+      "schema": "obs/hrv_session.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/hrv_session"
+    },
+    "obs.intervention_response": {
+      "payload_model": "InterventionResponse",
+      "schema": "obs/intervention_response.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/intervention_response"
+    },
+    "obs.laptop_session": {
+      "payload_model": "LaptopSession",
+      "schema": "obs/laptop_session.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/laptop_session"
+    },
+    "obs.light_level": {
+      "payload_model": "LightLevel",
+      "schema": "obs/light_level.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/light_level"
+    },
+    "obs.nudge_offered": {
+      "payload_model": "NudgeOffered",
+      "schema": "obs/nudge_offered.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/nudge_offered"
+    },
+    "obs.nudge_outcome": {
+      "payload_model": "NudgeOutcome",
+      "schema": "obs/nudge_outcome.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/nudge_outcome"
+    },
+    "obs.outing": {
+      "payload_model": "Outing",
+      "schema": "obs/outing.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/outing"
+    },
+    "obs.phq9": {
+      "payload_model": "Phq9",
+      "schema": "obs/phq9.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/phq9"
+    },
+    "obs.presence": {
+      "payload_model": "Presence",
+      "schema": "obs/presence.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/presence"
+    },
+    "obs.ritual": {
+      "payload_model": "Ritual",
+      "schema": "obs/ritual.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/ritual"
+    },
+    "obs.safety_flag": {
+      "payload_model": "SafetyFlag",
+      "schema": "obs/safety_flag.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/safety_flag"
+    },
+    "obs.self_report": {
+      "payload_model": "SelfReport",
+      "schema": "obs/self_report.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/self_report"
+    },
+    "obs.speech_features": {
+      "payload_model": "SpeechFeatures",
+      "schema": "obs/speech_features.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/speech_features"
+    },
+    "raw.head.ear": {
+      "payload_model": "RawEar",
+      "schema": "raw/head.ear.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/head/ear"
+    },
+    "raw.head.pan": {
+      "payload_model": "RawPan",
+      "schema": "raw/head.pan.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/head/pan"
+    },
+    "raw.head.tap": {
+      "payload_model": "RawTap",
+      "schema": "raw/head.tap.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/head/tap"
+    },
+    "raw.hub.face": {
+      "payload_model": "RawFace",
+      "schema": "raw/hub.face.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/hub/face"
+    },
+    "raw.sensors.button": {
+      "payload_model": "RawButton",
+      "schema": "raw/sensors.button.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/button"
+    },
+    "raw.sensors.distance": {
+      "payload_model": "RawDistance",
+      "schema": "raw/sensors.distance.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/distance"
+    },
+    "raw.sensors.hall": {
+      "payload_model": "RawHall",
+      "schema": "raw/sensors.hall.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/hall"
+    },
+    "raw.sensors.light": {
+      "payload_model": "RawLight",
+      "schema": "raw/sensors.light.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/light"
+    },
+    "raw.sensors.ppg": {
+      "payload_model": "RawPpg",
+      "schema": "raw/sensors.ppg.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/ppg"
+    }
+  }
+}

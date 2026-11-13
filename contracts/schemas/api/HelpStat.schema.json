@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "activity": {
+      "title": "Activity",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "mean_effect": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "mean reward 0..1",
+      "title": "Mean Effect"
+    },
+    "tries": {
+      "minimum": 0,
+      "title": "Tries",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "activity",
+    "label",
+    "tries"
+  ],
+  "title": "HelpStat",
+  "type": "object"
+}

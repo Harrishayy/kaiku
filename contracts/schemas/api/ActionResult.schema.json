@@ -1,0 +1,41 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "flag_booster",
+        "flag_icbt_referral",
+        "acknowledge",
+        "send_message"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "patient_id": {
+      "title": "Patient Id",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ok",
+    "patient_id",
+    "action",
+    "state"
+  ],
+  "title": "ActionResult",
+  "type": "object"
+}

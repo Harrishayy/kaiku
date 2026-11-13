@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "enum": [
+        "breathe",
+        "drum",
+        "daylight_walk",
+        "friend_ping",
+        "icbt_exercise"
+      ],
+      "title": "Arm",
+      "type": "string"
+    },
+    "probs": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Probs",
+      "type": "object"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "arm",
+    "reason"
+  ],
+  "title": "NudgeResponse",
+  "type": "object"
+}

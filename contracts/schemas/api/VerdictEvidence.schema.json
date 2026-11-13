@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "days": {
+      "description": "drifting days in the window",
+      "minimum": 0,
+      "title": "Days",
+      "type": "integer"
+    },
+    "direction": {
+      "enum": [
+        "up",
+        "down"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "summary": {
+      "default": "",
+      "title": "Summary",
+      "type": "string"
+    },
+    "z": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Z"
+    }
+  },
+  "required": [
+    "metric",
+    "direction",
+    "days"
+  ],
+  "title": "VerdictEvidence",
+  "type": "object"
+}

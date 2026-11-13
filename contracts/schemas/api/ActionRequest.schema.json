@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "flag_booster",
+        "flag_icbt_referral",
+        "acknowledge",
+        "send_message"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "by": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "clinician name/initials (demo)",
+      "title": "By"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "maxLength": 500,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "title": "ActionRequest",
+  "type": "object"
+}

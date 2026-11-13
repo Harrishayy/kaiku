@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "band_high": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Band High"
+    },
+    "band_low": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Band Low"
+    },
+    "baseline_median": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Median"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Value"
+    }
+  },
+  "required": [
+    "date",
+    "value"
+  ],
+  "title": "TimelinePoint",
+  "type": "object"
+}

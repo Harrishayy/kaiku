@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "Health": {
+      "additionalProperties": false,
+      "properties": {
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "down"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "uptime_s": {
+          "minimum": 0,
+          "title": "Uptime S",
+          "type": "number"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "version",
+        "uptime_s"
+      ],
+      "title": "Health",
+      "type": "object"
+    },
+    "NodeHealthReport": {
+      "additionalProperties": false,
+      "description": "PUT /v1/health/{home_id} — hub reports its nodes' heartbeats (derived status only).",
+      "properties": {
+        "nodes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Health"
+          },
+          "title": "Nodes",
+          "type": "object"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "title": "Reported At",
+          "type": "string"
+        },
+        "uplink_lag_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uplink Lag S"
+        },
+        "uplink_queue": {
+          "default": 0,
+          "title": "Uplink Queue",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodes",
+        "reported_at"
+      ],
+      "title": "NodeHealthReport",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/health — every home's last NodeHealthReport, for the /health page.",
+  "properties": {
+    "homes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/NodeHealthReport"
+      },
+      "title": "Homes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "homes"
+  ],
+  "title": "HealthOverview",
+  "type": "object"
+}

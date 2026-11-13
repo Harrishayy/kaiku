@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "from_sources": {
+      "additionalProperties": {
+        "enum": [
+          "better",
+          "as_usual",
+          "worse",
+          "insufficient"
+        ],
+        "type": "string"
+      },
+      "title": "From Sources",
+      "type": "object"
+    },
+    "from_state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "From State",
+      "type": "string"
+    },
+    "patient_id": {
+      "title": "Patient Id",
+      "type": "string"
+    },
+    "to_sources": {
+      "additionalProperties": {
+        "enum": [
+          "better",
+          "as_usual",
+          "worse",
+          "insufficient"
+        ],
+        "type": "string"
+      },
+      "title": "To Sources",
+      "type": "object"
+    },
+    "to_state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "To State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "display_name",
+    "from_state",
+    "to_state",
+    "from_sources",
+    "to_sources"
+  ],
+  "title": "PreviewChange",
+  "type": "object"
+}

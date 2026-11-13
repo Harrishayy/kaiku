@@ -1,0 +1,16 @@
+[project]
+name = "kaiku-contracts"
+version = "0.1.0"
+description = "Kaiku message contracts: envelope, payload models, topics, validation"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.7"]
+
+[project.optional-dependencies]
+bus = ["aiomqtt>=2.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kaiku_contracts"]
