@@ -1,4 +1,8 @@
-# Kaiku — Agent Handoff & Build Plan (v2)
+# Plan 01 — Foundation (v2) · ✅ DONE
+
+> **Status: DONE (built 2026-11-13/14).** Contracts v2, sims, hub ritual, cloud consensus, web app are in the repo.
+> This plan stays as the reference for the system it describes (architecture, contracts, safety, demo, submission).
+> New work continues in [`02-companion-apps.md`](02-companion-apps.md); later plans follow in number order.
 
 > **Audience:** any coding agent (Claude Code, Codex, Gemini CLI, Cursor, Muse Code) or human joining the team.
 > **Event:** Junction 2026, Hype Areena, Espoo. Final submission **Sunday 15 Nov, 10:00 (Helsinki)**. Whole team at our table for peer review from 10:30.

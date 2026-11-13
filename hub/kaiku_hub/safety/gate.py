@@ -1,4 +1,4 @@
-"""Crisis triggers (section 10 of handoff.md):
+"""Crisis triggers (section 10 of docs/plans/01-foundation.md):
 
 - phrase:      crisis phrase in any utterance / transcript (config/safety_phrases.toml, fi/en/sv)
 - phq9_item9:  PHQ-9 item 9 answered > 0

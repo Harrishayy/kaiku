@@ -10,7 +10,7 @@ from .envelope import Envelope
 PREFIX = "kaiku/v1"
 Kind = Literal["raw", "obs", "cmd", "health", "log"]
 
-# QoS / retain per kind (section 5.2 of handoff.md)
+# QoS / retain per kind (section 5.2 of docs/plans/01-foundation.md)
 QOS: dict[str, int] = {"raw": 0, "obs": 1, "cmd": 1, "health": 1, "log": 0}
 RETAIN: dict[str, bool] = {"raw": False, "obs": False, "cmd": False, "health": True, "log": False}
 

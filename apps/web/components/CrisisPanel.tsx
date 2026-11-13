@@ -1,5 +1,5 @@
 /**
- * Deterministic crisis message (handoff.md section 10). Pre-written, never generated.
+ * Deterministic crisis message (docs/plans/01-foundation.md section 10). Pre-written, never generated.
  * Text mirrors config/safety_phrases.toml [script].
  */
 

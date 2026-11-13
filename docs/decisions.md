@@ -1,7 +1,7 @@
 # Decisions (ADR-style)
 
 Format: `## D<n> — <title> (<date>, <who>)` · Decision · Why · Alternatives. Open questions D1–D9 and
-their defaults are in handoff.md §12 — record the actual answer here when it's made.
+their defaults are in docs/plans/01-foundation.md §12 — record the actual answer here when it's made.
 
 ## D10 — Pydantic models are the contract source of truth (2026-11-13)
 - Decision: author contracts in `contracts/python/kaiku_contracts/` (pydantic v2); generate JSON Schema +
@@ -88,3 +88,34 @@ their defaults are in handoff.md §12 — record the actual answer here when it'
   `.gemini/settings.json` `context.fileName = ["AGENTS.md"]`. Codex reads root → launch directory (open the module's
   `AGENTS.md` when launched at the root). Cursor: reads `AGENTS.md`; nested loading unverified.
 - Enforced by `tools/agents_sync.py` in `make test`.
+
+## D22 — One companion character, Kaiku, on every surface (2026-11-14, team request)
+- The mascot is the robot's own face (eyes, single ear, chest glow), drawn from one spec in `design/`. Transient
+  states are local to each interaction; the ambient mood comes from the cloud as a pure function of state and
+  never looks sad or worried at the person. Details: `docs/plans/02-companion-apps.md` §2.
+
+## D23 — Design direction: warm, simple, quiet (2026-11-14)
+- Cream / ink-brown / clay accent / sage / sky, rounded type, no red outside the crisis screen, Reduce Motion respected.
+  Tokens live in `design/tokens.json`; CSS and Swift are generated from it.
+
+## D24 — Native SwiftUI multiplatform app for iPhone + Mac; cloud SQLite stays the one database (2026-11-14)
+- Why native, not a web wrapper: the Meta DAT SDK (glasses camera/mic/IMU/speech), HealthKit (watch data),
+  ActivityKit (Dynamic Island) and macOS frontmost-app sensing are native-only. One XcodeGen project with a
+  shared `KaikuKit` package keeps iPhone and Mac identical. Sync = every device pairs to the same `home_id`.
+
+## D25 — Fourth, optional consensus source `wearable` (2026-11-14)
+- HealthKit daily summary (sleep, resting HR, HRV, steps) from Apple Watch or any watch writing to Apple Health.
+  Optional: a missing source is "insufficient" and simply not counted, so people without a watch lose nothing.
+
+## D26 — Laptop usage rhythm, not content (2026-11-14, supersedes the "track content consumed" idea)
+- The Mac app records minutes by broad category from the frontmost app's bundle id, late-night minutes, switches,
+  stretches and breaks. No titles, URLs, keystrokes or screenshots; opt-in per signal, pausable, shown in "What
+  Kaiku saw today". Written fresh at the event; no code from any earlier personal project (hackathon rule 10).
+
+## D27 — Unified voice and script (2026-11-14)
+- One Gemini prebuilt voice (`config/kaiku.toml [voice]`) and one keyed script (`config/voice_lines.toml`) for robot,
+  apps and glasses; cloud `GET /v1/voice/{line_key}` serves cached audio. Crisis text stays scripted.
+
+## D28 — Plans live in `docs/plans/NN-*.md` (2026-11-14)
+- `handoff.md` became `docs/plans/01-foundation.md` (✅ DONE, kept as reference). New plans get the next number;
+  done plans are marked, never rewritten. The "Hexarp" draft was dropped; the name is Kaiku.

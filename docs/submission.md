@@ -1,7 +1,7 @@
 # Junction submission text
 
 > Ground truth for what we submit. Before FINAL, check every claim against what actually runs and soften the rest
-> (handoff §15). The platform draft may still say "Hexarp" — update it to **Kaiku**.
+> (docs/plans/01-foundation.md §15). The product name is **Kaiku**.
 
 **Project name:** Kaiku
 

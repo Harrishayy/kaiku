@@ -1,6 +1,6 @@
 """Kaiku cloud API (FastAPI). Local: `make cloud-local` (uvicorn kaiku_cloud.api.main:app). Modal: cloud/app.py.
 
-Routes are listed in handoff.md §6.7 (ground truth for shapes: kaiku_contracts.api). The static web app (Next.js export) is mounted at `/` last,
+Routes are listed in docs/plans/01-foundation.md §6.7 (ground truth for shapes: kaiku_contracts.api). The static web app (Next.js export) is mounted at `/` last,
 so /v1/* and /healthz always win.
 """
 

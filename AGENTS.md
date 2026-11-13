@@ -3,7 +3,7 @@
 Kaiku helps people stay well at home after TMS depression treatment (Junction 2026, Aalto "Beyond the Clinic").
 **Three independent sources** — home robot, Meta glasses, laptop apps — each give a verdict about the person's
 state against their own baseline; a **deterministic consensus engine** combines them on one clinician dashboard.
-`handoff.md` is the full plan; this file is the condensed law. Every module folder has its own `AGENTS.md`.
+`docs/plans/` holds the plans in order (`01-foundation.md` done, `02-companion-apps.md` current, later plans after it); this file is the condensed law. Every module folder has its own `AGENTS.md`.
 **Public MIT repo: never write API keys, tokens, Wi-Fi passwords or credit codes into any file.**
 
 ## Start here (in order)
@@ -29,7 +29,7 @@ state against their own baseline; a **deterministic consensus engine** combines 
 | Model IDs, timings, perception thresholds, ports | `config/kaiku.toml` (+ env `KAIKU_<SECTION>_<KEY>`) | — |
 | Crisis phrases + scripted message | `config/safety_phrases.toml` | — |
 | Decisions and why | `docs/decisions.md` | — |
-| Plan, story, schedule | `handoff.md` | — |
+| Plan, story, schedule | `docs/plans/NN-*.md` (newest number = current; done plans are marked ✅ DONE, never rewritten) | — |
 | What happened | `docs/progress.md` (append-only) | — |
 
 **Sync rule (non-negotiable):** a change is not done until the ground truth that describes it is updated in the
@@ -60,7 +60,9 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    **"insufficient"**, never "stable".
 9. **Small, testable, logged.** JSON logs via `kaiku_contracts.jlog`. Unit tests for logic, contract tests for
    every message a module emits. Never log secrets, audio, images, transcripts.
-10. **Hackathon rules.** All code written during the event. MIT. No pre-event code for this idea.
+10. **Don't overengineer; visible results first.** Smallest end-to-end slice that works, then depth. If it isn't in
+    the demo path (`docs/plans/04-mind-depth.md` → Scope guard), it's STRETCH.
+11. **Hackathon rules.** All code written during the event. MIT. No pre-event code for this idea.
 
 ## Adding / removing components
 - **New module** (e.g. a 4th source, a new app): copy `docs/templates/module/AGENTS.template.md` into the new folder as `AGENTS.md`, fill it in,
