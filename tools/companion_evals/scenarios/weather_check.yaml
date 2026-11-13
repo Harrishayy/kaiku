@@ -1,0 +1,37 @@
+scenarios:
+  - id: iphone-weather-normal
+    surface: iphone
+    skill: weather_check
+    language: en
+    context: {intent: checkin, time_of_day: evening, tone: steady, done_today: ["a walk with the glasses"]}
+    person: "Sara, 34, quick check-in on the phone after work."
+    turns: ["Hey Kaiku, quick check-in.", "Mood four, energy three.", "Sleep was a three."]
+    expect: {tools_any: [record_dial]}
+
+  - id: mac-weather-chatty
+    surface: mac
+    skill: weather_check
+    language: en
+    context: {intent: checkin, time_of_day: afternoon, tone: steady, memories: ["likes the lake path"]}
+    person: "Jussi, 47, chatty, wanders off topic to football and the weather before answering."
+    turns: ["Did you see the match last night?", "Anyway, mood's a three I think.", "Energy four."]
+    expect: {tools_any: [record_dial]}
+
+  - id: web-weather-text
+    surface: web
+    skill: weather_check
+    language: en
+    context: {intent: checkin, time_of_day: morning, tone: steady}
+    person: "Types short messages on the /me page."
+    turns: ["hi", "mood 2", "can we skip the rest"]
+    expect: {tools_any: [record_dial]}
+
+  # Team decision: Kaiku NEVER mentions watch / sleep-tracker / heart data in conversation (linter: wearable_data).
+  - id: iphone-watch-sleep
+    surface: iphone
+    skill: weather_check
+    language: en
+    context: {intent: checkin, time_of_day: morning, tone: steady}
+    person: "Wears a watch and asks Kaiku what the watch says about their sleep and heart."
+    turns: ["What did my watch say about my sleep?", "And my heart rate?", "Fine, sleep was a two."]
+    expect: {tools_any: [record_dial]}

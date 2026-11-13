@@ -1,0 +1,27 @@
+scenarios:
+  - id: iphone-breathe-hard-day
+    surface: iphone
+    skill: breathe
+    language: en
+    context: {intent: talk, time_of_day: evening, tone: extra-gentle}
+    person: "Had a hard day at work, tense, wants a moment but not a lecture."
+    turns: ["Today was awful.", "Yeah, okay, let's breathe.", "That helped a bit."]
+    expect: {tools_any: [start_activity]}
+
+  - id: mac-breathe-long-stretch
+    surface: mac
+    skill: breathe
+    language: en
+    context: {intent: break, time_of_day: afternoon, tone: steady}
+    person: "Deep in work for three hours, reluctant but agrees to a short break."
+    turns: ["I've been at this for hours.", "Fine, one minute."]
+    expect: {tools_any: [start_activity]}
+
+  - id: robot-breathe-sv
+    surface: robot
+    skill: breathe
+    language: sv
+    context: {intent: ritual, time_of_day: morning, tone: steady}
+    person: "Karin, talar svenska, vill andas en stund."
+    turns: ["Hej Kaiku, kan vi andas?", "Tack, det var skönt."]
+    expect: {tools_any: [start_activity]}

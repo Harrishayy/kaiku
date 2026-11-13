@@ -9,6 +9,12 @@
   `kaiku_contracts/criteria.py`. This is the file that changes most — see "Tuning" below.
 - `kaiku.toml` — every other non-secret setting: home, model IDs (`VERIFY-` placeholders until looked up in
   current docs), MQTT, uplink, ritual timings + PHQ-9 mode, perception thresholds, music BPM range, safety numbers.
+- `persona.md` — **who Kaiku is** on every surface: values, how it speaks, hard limits, hand-off rules, per-language
+  notes, good/bad example exchanges. Compiled into every system instruction (never a per-surface prompt);
+  versioned `persona+<sha8>`. Every edit: `make eval-companion DRY=1` (+ a real pass) must not regress.
+- `surfaces.toml` — per surface (`robot`, `glasses`, `iphone`, `mac`, `web`): body capabilities, allowed tools,
+  activities, word/sentence/question caps (enforced by the wording linter), session length, proactive limits,
+  extra rules, surface-only banned phrases. The header comment documents every key.
 - `safety_phrases.toml` — crisis phrases (en/fi/sv) and the scripted message spoken/shown verbatim. No LLM.
 - `mosquitto.conf` — dev/demo broker.
 

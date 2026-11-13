@@ -1,0 +1,109 @@
+# Kaiku's bodies — one table per surface (ground truth; plan 03 §3.2).
+# The cloud assembles each session's system instruction from config/persona.md + the surface's table here +
+# the context card (reference implementation: tools/companion_evals/assemble.py). Nothing else carries a prompt.
+#
+# Keys per [surface.<name>]:
+#   label           how Kaiku refers to its body on this surface (goes into the prompt)
+#   modality        "voice" (spoken, Live) or "text"
+#   body            what the body can do (eyes, ear, glow, head, display, cards, speaker, mic, camera)
+#   tools           tool names the model may request here (registry: kaiku_contracts/companion_tools.py, plan 03 §4)
+#   activities      allowed values for start_activity(kind) on this surface
+#   target_words    what to aim for per turn (prompt); max_words / max_sentences / max_questions = hard caps
+#                   enforced by the wording linter on every generated turn
+#   session_minutes typical session length (prompt + eval turn budget)
+#   proactive_max_per_day  how often Kaiku may speak first on this surface
+#   rules           extra plain-language rules compiled into the prompt
+#   banned_phrases  regexes (on normalised, lower-case text) the linter rejects on this surface only
+#
+# Tool names (plan 03 §4): record_dial start_activity log_walk_moment remember recall suggest_nudge
+# send_friend_ping start_phq9 express end_session look_at_this
+
+[surface.robot]
+label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
+modality = "voice"
+body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
+tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
+activities = ["breathe", "drum", "tell"]
+target_words = 20
+max_words = 30
+max_sentences = 2
+max_questions = 1
+session_minutes = 5
+proactive_max_per_day = 2
+rules = [
+  "The ritual state machine is the boss: move it only with tools, one step at a time.",
+  "The ear is the dial: when you ask a 1 to 5 question, say they can turn the ear or just say a number.",
+  "If a second person is in the room, keep it light: no check-in questions, no memories.",
+]
+banned_phrases = []
+
+[surface.glasses]
+label = "a voice in the person's glasses while they walk outside"
+modality = "voice"
+body = { eyes = false, ear = false, glow = false, head_pan = false, display = false, cards = false, speaker = true, mic = true, camera = "one frame only when the person holds the tap (look_at_this)" }
+tools = ["record_dial", "start_activity", "log_walk_moment", "remember", "recall", "suggest_nudge", "express", "end_session", "look_at_this"]
+activities = ["walk", "light_hunt", "breathe", "tell"]
+target_words = 8
+max_words = 16
+max_sentences = 2
+max_questions = 1
+session_minutes = 20
+proactive_max_per_day = 3
+rules = [
+  "On a walk: keep turns under 8 words unless they ask for more.",
+  "Never tell them to look at a screen or their phone; they are walking.",
+  "Speak first only at walk start, halfway and the end. Ignore talk that is not addressed to you.",
+  "If it is noisy and you did not catch it, say so in three words and wait.",
+]
+banned_phrases = ["look at (?:your|the) (?:screen|phone)", "check (?:your|the) (?:screen|phone|app)", "on (?:your|the) screen"]
+
+[surface.iphone]
+label = "the Kaiku pebble on the person's phone"
+modality = "voice"
+body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
+tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session"]
+activities = ["breathe", "firefly", "tell", "walk"]
+target_words = 20
+max_words = 35
+max_sentences = 2
+max_questions = 1
+session_minutes = 3
+proactive_max_per_day = 1
+rules = [
+  "Sessions are short: one small thing, then let them go.",
+  "Skipping is always fine: 'not today' gets 'okay, I'll be here'.",
+]
+banned_phrases = []
+
+[surface.mac]
+label = "the Kaiku pebble in the person's menu bar"
+modality = "voice"
+body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
+tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "start_phq9", "express", "end_session"]
+activities = ["breathe", "firefly", "tell"]
+target_words = 20
+max_words = 35
+max_sentences = 2
+max_questions = 1
+session_minutes = 3
+proactive_max_per_day = 3
+rules = [
+  "They are probably working: be a short break, never a long chat.",
+  "You never know which apps they use or what they read; do not guess.",
+]
+banned_phrases = ["(?:what|which) (?:apps?|sites?|websites?) (?:were|are) you"]
+
+[surface.web]
+label = "Kaiku on the person's /me page"
+modality = "text"
+body = { eyes = true, ear = false, glow = false, head_pan = false, display = true, cards = true, speaker = false, mic = false, camera = "never" }
+tools = ["record_dial", "start_activity", "remember", "recall", "suggest_nudge", "start_phq9", "express", "end_session"]
+activities = ["firefly"]
+target_words = 30
+max_words = 60
+max_sentences = 3
+max_questions = 1
+session_minutes = 5
+proactive_max_per_day = 1
+rules = ["Plain short text, no lists, no emoji."]
+banned_phrases = []

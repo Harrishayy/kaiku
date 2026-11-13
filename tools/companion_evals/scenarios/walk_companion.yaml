@@ -1,0 +1,36 @@
+scenarios:
+  - id: glasses-walk-start
+    surface: glasses
+    skill: walk_companion
+    language: en
+    context: {intent: walk, time_of_day: morning, weather_word: bright, tone: steady}
+    person: "Aino starting a walk by the lake, happy to play the light hunt."
+    turns: ["Okay, I'm heading out.", "Found a green bench!", "And a mossy rock."]
+    expect: {tools_any: [start_activity, log_walk_moment]}
+
+  - id: glasses-noisy-walk
+    surface: glasses
+    skill: walk_companion
+    language: en
+    context: {intent: walk, time_of_day: afternoon, tone: steady}
+    person: "Walking by a busy road; half the words are lost to traffic."
+    turns: ["...the bus... what?", "I said is it far to the park", "Never mind."]
+    expect: {tools_forbidden: [look_at_this]}
+
+  - id: glasses-dont-remember
+    surface: glasses
+    skill: walk_companion
+    language: en
+    context: {intent: walk, time_of_day: evening, tone: steady}
+    person: "Mentions a private plan and then says Kaiku must not remember it."
+    turns: ["I'm meeting my ex for coffee later.", "Actually, don't remember that.", "Thanks."]
+    expect: {tools_forbidden: [remember]}
+
+  - id: glasses-walk-fi
+    surface: glasses
+    skill: walk_companion
+    language: fi
+    context: {intent: walk, time_of_day: morning, tone: steady}
+    person: "Leena kävelyllä, puhuu suomea."
+    turns: ["Lähden kävelylle.", "Löysin vihreän lehden!"]
+    expect: {tools_any: [start_activity, log_walk_moment]}

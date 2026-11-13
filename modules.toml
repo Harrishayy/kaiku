@@ -135,7 +135,7 @@ name = "tools"
 path = "tools"
 owner = "B"
 kind = "harness"
-summary = "bus tail / record / replay, doctor, agents sync checker"
+summary = "bus tail / record / replay, doctor, agents sync checker, companion evals (persona/wording/safety scorecard)"
 removable = true
 
 [[module]]
@@ -143,7 +143,7 @@ name = "config"
 path = "config"
 owner = "all"
 kind = "docs"
-summary = "criteria.toml (how each data input decides state), kaiku.toml (settings), safety phrases, mosquitto.conf"
+summary = "criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), safety phrases, mosquitto.conf"
 removable = false
 
 [[module]]

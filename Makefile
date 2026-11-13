@@ -72,7 +72,7 @@ web-build: ## static-export the Next.js app to apps/web/out (served by the cloud
 	@if [ -f apps/web/package.json ]; then cd apps/web && pnpm install --silent && pnpm build; fi
 
 # ---------------------------------------------------------------- quality
-.PHONY: test lint fmt doctor demo-reset check smoke
+.PHONY: test lint fmt doctor demo-reset check smoke eval-companion
 smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
 	./scripts/smoke.sh
 test: ## all Python tests (+ web typecheck if installed)
@@ -84,6 +84,8 @@ fmt: ## ruff format + fix
 	$(RUN) ruff check --fix . && $(RUN) ruff format .
 doctor: ## environment + live system health report
 	$(RUN) python tools/doctor.py
+eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
+	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing
 demo-reset: ## reset demo state (< 30 s)
 	./demo/reset.sh
