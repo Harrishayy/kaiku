@@ -40,3 +40,12 @@ hardware/cad/out/
 
 # demo screen recordings (apps/apple/scripts/record_app_demo.sh)
 demo/recordings/
+
+# challenge briefs (contain venue credentials and credit codes; keep local only)
+docs/tracks/*.pdf
+# LaTeX build files (hardware/assembly_guide: keep .tex, figures/ and the PDF)
+hardware/assembly_guide/*.aux
+hardware/assembly_guide/*.log
+hardware/assembly_guide/*.fls
+hardware/assembly_guide/*.fdb_latexmk
+hardware/assembly_guide/*.out

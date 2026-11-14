@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 240,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detail"
+    },
+    "evidence": {
+      "description": "recorded days / observations / attempts behind this node",
+      "minimum": 0,
+      "title": "Evidence",
+      "type": "integer"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "person",
+        "signal_group",
+        "measure",
+        "activity",
+        "routine",
+        "care_action",
+        "shared_topic"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "label": {
+      "maxLength": 120,
+      "title": "Label",
+      "type": "string"
+    },
+    "layer": {
+      "default": "structure",
+      "description": "learned = found in this person's record; structure = how the record is organised",
+      "enum": [
+        "learned",
+        "structure"
+      ],
+      "title": "Layer",
+      "type": "string"
+    },
+    "tone": {
+      "default": "unknown",
+      "enum": [
+        "better",
+        "worse",
+        "similar",
+        "unknown"
+      ],
+      "title": "Tone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "label",
+    "evidence"
+  ],
+  "title": "InsightNode",
+  "type": "object"
+}

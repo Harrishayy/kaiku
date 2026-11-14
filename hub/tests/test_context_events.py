@@ -226,7 +226,7 @@ async def test_hub_breathing_event_from_its_own_obs(hub):
     hub.context._last = -1e18  # ignore a possible "[it's late]" at session start
     await hub.emit("obs.intervention_response", {"activity": "breathe", "pre": {"hr_bpm": 70.0},
                                                  "post": {"hr_bpm": 66.0}, "delta": {"hr_bpm": -4.0}})
-    assert hub.voice.context[-1] == "[breathing · heart calmer]"
+    assert hub.voice.context[-1] == "[source: robot] [breathing · heart calmer]"
     await hub.machine.abort()
 
 

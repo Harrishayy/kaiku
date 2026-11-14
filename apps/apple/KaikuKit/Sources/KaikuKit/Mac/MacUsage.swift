@@ -248,7 +248,7 @@ extension AppModel {
         let env = Envelope(ts: at, home_id: pr.homeID, source: KaikuPlatform.source, type: "obs.screen_activity",
                            payload: p, sim: sim)
         guard let any = try? AnyEnvelope(env) else { return }
-        await queue.enqueue(any)
+        await queue.enqueue(any, server: pr.baseURL)
         await flush()
     }
 }

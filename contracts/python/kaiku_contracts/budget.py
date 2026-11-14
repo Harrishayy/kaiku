@@ -1,14 +1,15 @@
 """Hard spend cap for every paid model call (Gemini API / Vertex, Modal GPU) — shared by cloud, hub, evals, tools.
 
 One small SQLite ledger (default `logs/spend.sqlite`; `KAIKU_SPEND_DB` overrides, e.g. `/data/spend.sqlite` on Modal).
-Before a call: `guard(provider, model, est_usd)` raises BudgetExceeded if it would cross the cap. After the call:
-`charge(...)` records the estimated cost. Prices in `config/kaiku.toml [budget.prices]` are deliberately
+Before a call: `charge(...)` atomically admits and reserves its estimated cost, or raises BudgetExceeded.
+`guard(...)` is an advisory preflight only; it does not reserve funds. Prices in `config/kaiku.toml [budget.prices]` are deliberately
 *conservative* (rounded up), so the ledger over-counts rather than under-counts. Team rule: total under $10.
 Callers treat BudgetExceeded exactly like "model unavailable" → their deterministic fallback.
 """
 
 from __future__ import annotations
 
+import math
 import os
 import sqlite3
 import threading
@@ -78,7 +79,8 @@ def _day_start() -> float:
 
 
 def guard(provider: str, model: str, est_usd: float) -> None:
-    """Raise BudgetExceeded if this call could cross the total or daily cap."""
+    """Advisory preflight; callers must reserve with charge before starting paid work."""
+    _validate_cost(est_usd)
     lim = limits()
     total, today = spent(), spent(_day_start())
     if total + est_usd > lim["total"]:
@@ -88,9 +90,29 @@ def guard(provider: str, model: str, est_usd: float) -> None:
 
 
 def charge(provider: str, model: str, usd: float, *, task: str = "", component: str = "", units: str = "") -> None:
+    """Atomically reserve an estimate before provider work, across processes sharing this ledger.
+
+    Reservations survive failures and process exits: a dispatched request may still bill. Separate
+    ledgers enforce separate caps; this is not a distributed account-wide billing limit.
+    """
+    _validate_cost(usd)
     with _LOCK, _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        lim = limits()
+        total, today = c.execute(
+            "SELECT COALESCE(SUM(usd),0), COALESCE(SUM(CASE WHEN ts>=? THEN usd ELSE 0 END),0) FROM spend",
+            (_day_start(),)).fetchone()
+        if total + usd > lim["total"]:
+            raise BudgetExceeded(f"total budget ${lim['total']:.2f} reached (spent ${total:.2f}) — {provider}:{model}")
+        if today + usd > lim["daily"]:
+            raise BudgetExceeded(f"daily budget ${lim['daily']:.2f} reached (today ${today:.2f}) — {provider}:{model}")
         c.execute("INSERT INTO spend VALUES (?,?,?,?,?,?,?)", (time.time(), provider, model, task, component,
                                                                float(usd), units))
+
+
+def _validate_cost(usd: float) -> None:
+    if not math.isfinite(usd) or usd < 0:
+        raise ValueError("estimated cost must be finite and non-negative")
 
 
 def report() -> dict[str, Any]:
@@ -112,12 +134,9 @@ if __name__ == "__main__":  # `make spend`
 
 def metered(provider: str, model: str, est_usd: float, fn, *args: Any, task: str = "", component: str = "",
             **kwargs: Any) -> Any:
-    """guard → call → charge the (conservative) estimate. Failed calls are charged too: they may still bill."""
-    guard(provider, model, est_usd)
-    try:
-        return fn(*args, **kwargs)
-    finally:
-        charge(provider, model, est_usd, task=task, component=component)
+    """Atomically reserve, then call. Failed calls retain their estimate: they may still bill."""
+    charge(provider, model, est_usd, task=task, component=component)
+    return fn(*args, **kwargs)
 
 
 def text_estimate(model: str, prompt_chars: int, max_out_tokens: int = 800) -> float:

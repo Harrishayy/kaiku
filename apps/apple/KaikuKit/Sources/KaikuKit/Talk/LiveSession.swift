@@ -22,6 +22,10 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         case ready
         case userText(String)
         case kaikuText(String)
+        case userTranscriptComplete
+        case kaikuTranscriptComplete
+        /// A frame has model media; after turnComplete this starts a new model generation.
+        case modelOutput
         /// 24 kHz little-endian PCM16 from the model.
         case audio(Data)
         /// The person started talking over Kaiku: the server dropped the rest of the turn. Flush playback now.
@@ -90,6 +94,22 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         t.resume()
         send(Self.setup(session: session, options: options))
         receive()
+        keepAlive(t)
+    }
+
+    /// A WebSocket ping every 20 s: a silently dead network (Wi-Fi → cellular, tunnel, sleep) otherwise looks like
+    /// Kaiku simply not answering until TCP gives up minutes later. A failed ping reports `closed` → reconnect.
+    private func keepAlive(_ t: URLSessionWebSocketTask) {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 20) { [weak self, weak t] in
+            guard let self, let t, self.task === t else { return }
+            t.sendPing { [weak self] error in
+                guard let self, self.task === t else { return }
+                if error != nil {
+                    if self.closeReason == nil { self.closeReason = "ping failed" }
+                    self.reportClosed()
+                } else { self.keepAlive(t) }
+            }
+        }
     }
 
     public func close() {
@@ -109,6 +129,14 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
 
     public func sendAudio(_ pcm16k: Data) {
         send(["realtimeInput": ["audio": ["data": pcm16k.base64EncodedString(), "mimeType": "audio/pcm;rate=16000"]]])
+    }
+
+    /// One still picture of what the glasses camera sees (Gemini Live docs, "Sending video": individual JPEG
+    /// frames in `realtimeInput.video`, at most one a second). Frames alone never start a model turn.
+    public func sendVideo(_ jpeg: Data) { send(Self.video(jpeg)) }
+
+    static func video(_ jpeg: Data) -> [String: Any] {
+        ["realtimeInput": ["video": ["data": jpeg.base64EncodedString(), "mimeType": "image/jpeg"]]]
     }
 
     public func sendText(_ text: String) { send(["realtimeInput": ["text": text]]) }
@@ -193,7 +221,12 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         if let sc = m["serverContent"] as? [String: Any] {
             if sc["interrupted"] as? Bool == true { out.append(.interrupted) }
             if let it = (sc["inputTranscription"] as? [String: Any])?["text"] as? String, !it.isEmpty { out.append(.userText(it)) }
+            if let parts = (sc["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]], !parts.isEmpty {
+                out.append(.modelOutput)
+            }
             if let ot = (sc["outputTranscription"] as? [String: Any])?["text"] as? String, !ot.isEmpty { out.append(.kaikuText(ot)) }
+            if (sc["inputTranscription"] as? [String: Any])?["finished"] as? Bool == true { out.append(.userTranscriptComplete) }
+            if (sc["outputTranscription"] as? [String: Any])?["finished"] as? Bool == true { out.append(.kaikuTranscriptComplete) }
             if let parts = (sc["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] {
                 for p in parts {
                     if let inline = p["inlineData"] as? [String: Any], let b64 = inline["data"] as? String,
@@ -264,6 +297,7 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         let text = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         closeReason = "\(closeCode.rawValue) \(text)"
         kaikuLog.notice("live_closed \(closeCode.rawValue) \(text, privacy: .public)")
+        GlassesLog.shared.log("live_socket_closed", ["code": closeCode.rawValue, "reason": text])
         reportClosed()
     }
 }

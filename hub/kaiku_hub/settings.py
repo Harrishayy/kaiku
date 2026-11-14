@@ -30,7 +30,7 @@ def _f(cfg: dict, section: str, key: str, default: float) -> float:
 class Settings:
     home_id: str = "demo-aino"
     language: str = "en"
-    greeting_language: str = "fi"
+    greeting_language: str = "en"
     # adapters
     head: str = "sim"
     sensors: str = "sim"
@@ -45,6 +45,11 @@ class Settings:
     uplink_timeout_s: float = 10.0
     queue_path: Path = field(default_factory=lambda: resolve_path("logs/uplink_queue.sqlite"))
     state_path: Path = field(default_factory=lambda: resolve_path("logs/hub_state.json"))
+    # local session store ([hub]); None = off (the default for bare Settings(), so tests never write into logs/)
+    store_path: Path | None = None
+    store_retention_days: float = 30
+    store_max_mb: float = 200
+    engagement_enabled: bool = True
     # ritual timings (s)
     greet_s: float = 20
     dial_s: float = 45
@@ -66,10 +71,14 @@ class Settings:
     # perception
     presence_near_cm: float = 80
     first_of_day_after_h: float = 4
+    presence_leave_s: float | None = None  # None = same as the 1 s arrival confirm
+    presence_stale_s: float | None = None  # None = never expire a silent distance stream
+    quality_min: float = 0.5
     tap_refractory_ms: float = 80
     tap_force_max_g: float = 4.0
     ppg_band_hz: tuple[float, float] = (0.7, 3.5)
     ppg_min_clean_ratio: float = 0.7
+    light_enabled: bool = False
     light_window_min: float = 60
     # music
     bpm_min: float = 60
@@ -81,6 +90,8 @@ class Settings:
     attention: dict = field(default_factory=dict)
     face_source: str = "laptop"  # laptop | unoq_yolo | off
     voice_name: str = ""
+    mind_timeout_s: float = 120.0
+    hub_transcripts: bool = False
     local_tts: bool = False  # KAIKU_LOCAL_TTS=1: speak scripted lines locally (and play cloud audio) in text mode
     voice_timeout_s: float = 3.0
     # safety
@@ -94,10 +105,11 @@ class Settings:
         c = load_config()
         env = os.environ
         band = c.get("perception", {}).get("ppg_band_hz", [0.7, 3.5])
+        h = c.get("hub", {})
         return cls(
             home_id=env.get("KAIKU_HOME_ID") or c.get("home", {}).get("id", "demo-aino"),
             language=c.get("home", {}).get("language", "en"),
-            greeting_language=c.get("home", {}).get("greeting_language", "fi"),
+            greeting_language=c.get("home", {}).get("greeting_language", "en"),
             head=env.get("KAIKU_HEAD", "sim"),
             sensors=env.get("KAIKU_SENSORS", "sim"),
             voice=env.get("KAIKU_VOICE", "text"),
@@ -110,6 +122,14 @@ class Settings:
             uplink_timeout_s=_f(c, "uplink", "timeout_s", 10),
             queue_path=resolve_path(c.get("uplink", {}).get("queue_path", "logs/uplink_queue.sqlite")),
             state_path=resolve_path(env.get("KAIKU_HUB_STATE_PATH", "logs/hub_state.json")),
+            store_path=(resolve_path(str(h.get("store_path") or "logs/hub_sessions.sqlite"))
+                        if h.get("store_enabled", True) else None),
+            store_retention_days=_f(c, "hub", "store_retention_days", 30),
+            store_max_mb=_f(c, "hub", "store_max_mb", 200),
+            engagement_enabled=bool(h.get("engagement_enabled", True)),
+            presence_leave_s=_f(c, "hub", "presence_leave_s", 6),
+            presence_stale_s=_f(c, "hub", "presence_stale_s", 5),
+            quality_min=_f(c, "perception", "quality_min", 0.5),
             greet_s=_f(c, "ritual", "greet_s", 20),
             dial_s=_f(c, "ritual", "dial_s", 45),
             post_mood_s=_f(c, "ritual", "post_mood_s", 15),
@@ -132,6 +152,7 @@ class Settings:
             tap_force_max_g=_f(c, "perception", "tap_force_max_g", 4.0),
             ppg_band_hz=(float(band[0]), float(band[1])),
             ppg_min_clean_ratio=_f(c, "perception", "ppg_min_clean_ratio", 0.7),
+            light_enabled=bool(c.get("perception", {}).get("light_enabled", False)),
             light_window_min=_f(c, "perception", "light_window_min", 60),
             bpm_min=_f(c, "music", "bpm_min", 60),
             bpm_max=_f(c, "music", "bpm_max", 200),
@@ -140,6 +161,8 @@ class Settings:
             attention=dict(c.get("attention", {})),
             face_source=str(c.get("attention", {}).get("face_source", "laptop")),
             voice_name=str(c.get("voice", {}).get("name", "")),
+            mind_timeout_s=_f(c, "live", "mind_timeout_s", 120.0),
+            hub_transcripts=bool(c.get("live", {}).get("hub_transcripts", False)),
             local_tts=env.get("KAIKU_LOCAL_TTS", "0") == "1",
             voice_timeout_s=_f(c, "attention", "voice_timeout_s", 3.0),
             helpline_name=c.get("safety", {}).get("helpline_name", "MIELI Crisis Helpline"),

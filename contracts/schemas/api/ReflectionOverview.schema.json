@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "SourceCount": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "description": "e.g. 'walks', 'minutes outside', 'drum sessions'",
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "title": "SourceCount",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Reflections with Kaiku at summary level: how many sounded low / neutral / bright and what they were about.\nPresent only when the person shares with the care team. Never their words.",
+  "properties": {
+    "bright": {
+      "minimum": 0,
+      "title": "Bright",
+      "type": "integer"
+    },
+    "declined": {
+      "description": "the person asked to stop or did not want to talk",
+      "minimum": 0,
+      "title": "Declined",
+      "type": "integer"
+    },
+    "low": {
+      "minimum": 0,
+      "title": "Low",
+      "type": "integer"
+    },
+    "neutral": {
+      "minimum": 0,
+      "title": "Neutral",
+      "type": "integer"
+    },
+    "reflections": {
+      "description": "reflections with a summary in the last 7 days",
+      "minimum": 0,
+      "title": "Reflections",
+      "type": "integer"
+    },
+    "shared": {
+      "title": "Shared",
+      "type": "boolean"
+    },
+    "summary": {
+      "maxLength": 300,
+      "title": "Summary",
+      "type": "string"
+    },
+    "themes": {
+      "description": "theme -> reflections it came up in",
+      "items": {
+        "$ref": "#/$defs/SourceCount"
+      },
+      "title": "Themes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "shared",
+    "reflections",
+    "low",
+    "neutral",
+    "bright",
+    "declined",
+    "summary"
+  ],
+  "title": "ReflectionOverview",
+  "type": "object"
+}

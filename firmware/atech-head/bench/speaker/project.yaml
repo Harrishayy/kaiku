@@ -6,12 +6,16 @@ modules:
   - {id: speaker, instance: spk, ports: [1, 2]}
 code:
   loop: |
-    static bool done = false;
-    if (!done && millis() > 2000) {
-      done = true;
+    // Speaker calls return at once (audio runs in a task): playNote QUEUES, playTone/playRTTTL INTERRUPT.
+    // So queue the ladder with playNote and start the tune only once it has finished.
+    static int stage = 0; static uint32_t t = 0;
+    if (stage == 0 && millis() > 2000) {
       spk.setVolume(0.3);
       const int hz[] = {262, 330, 392, 523};
-      for (int i = 0; i < 4; i++) { spk.playTone(hz[i], 250); Serial.printf("{\"event\":\"tone\",\"hz\":%d}\n", hz[i]); }
+      for (int i = 0; i < 4; i++) { spk.playNote(hz[i], 250); Serial.printf("{\"event\":\"tone\",\"hz\":%d}\n", hz[i]); }
+      stage = 1; t = millis();
+    } else if (stage == 1 && millis() - t > 300 && !spk.isPlaying()) {
       spk.playRTTTL("kaiku:d=8,o=5,b=140:c,e,g,c6");
       Serial.println("{\"event\":\"rtttl\"}");
+      stage = 2;
     }

@@ -39,7 +39,7 @@
   ],
   "tools": {
     "ask_mind": {
-      "description": "Ask Kaiku's mind when unsure, when you need a fact the person told you before, or for a care or hard emotional question. Returns an answer to say in your own words (may say to ask the person or the care team). kind: fact | care | memory | plan | emotional.",
+      "description": "Ask Kaiku's shared Gemma mind for missing or conflicting personal knowledge, planning, care or deeper emotional reasoning. Use prepared context directly when sufficient. Returns an answer to say in your own words (may say to ask the person or the care team). kind: fact | care | memory | plan | emotional.",
       "executor": "cloud",
       "parameters": {
         "properties": {
@@ -192,7 +192,7 @@
       ]
     },
     "look_at_this": {
-      "description": "Ask for ONE camera frame from the glasses (only while the person holds the tap).",
+      "description": "Check whether you can see through the glasses camera right now, and get one fresh picture if you can. Only works while the person has turned on Let Kaiku see; otherwise the result says you cannot see.",
       "executor": "device",
       "parameters": {
         "properties": {},
@@ -258,7 +258,7 @@
       ]
     },
     "remember": {
-      "description": "Keep a short fact the person agreed to share (stored only if allowed; they can see and delete it). Never health details.",
+      "description": "Keep a short fact the person told you and wants kept (stored only if allowed; they can see and delete it). Never health details. In a conversation always pass `said`: the person's own words it comes from. Without it, or if it does not contain the fact, nothing is stored.",
       "executor": "cloud",
       "parameters": {
         "properties": {
@@ -272,6 +272,10 @@
               "plans",
               "preference"
             ],
+            "type": "string"
+          },
+          "said": {
+            "maxLength": 300,
             "type": "string"
           },
           "text": {
@@ -301,8 +305,7 @@
         "type": "object"
       },
       "surfaces": [
-        "robot",
-        "iphone"
+        "robot"
       ]
     },
     "start_activity": {

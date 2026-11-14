@@ -33,6 +33,19 @@ fi = "Hei, yökyöpeli. Minä olen tässä."
 sv = "Hej, nattuggla. Jag är här."
 style = "quiet, soft, sleepy"
 
+# ---------------------------------------------------------------- first hello (app setup, first run)
+[welcome.hello]
+en = "Hello. I'm Kaiku. It's really good to meet you."
+fi = "Hei. Olen Kaiku. Tosi mukava tavata."
+sv = "Hej. Jag är Kaiku. Vad fint att träffa dig."
+style = "warm, unhurried, a small smile in the voice"
+
+[welcome.done]
+en = "That's all a check-in is. I'll be here whenever you want me."
+fi = "Muuta kirjautuminen ei vaadi. Olen täällä aina kun haluat."
+sv = "Mer än så är inte en incheckning. Jag finns här när du vill."
+style = "warm, quiet, pleased"
+
 # ---------------------------------------------------------------- weather check (daily dial)
 [checkin.ask]
 en = "How's the weather inside today?"

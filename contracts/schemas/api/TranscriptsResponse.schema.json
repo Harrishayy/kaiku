@@ -57,6 +57,19 @@
     "TranscriptTurn": {
       "additionalProperties": false,
       "properties": {
+        "complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "true when transcription explicitly finished; false when interrupted/not final; null or absent for unknown legacy status. Audio turnComplete does not establish transcription completion.",
+          "title": "Complete"
+        },
         "role": {
           "enum": [
             "person",

@@ -66,6 +66,11 @@ class Defaults(_M):
     baseline_lag_days: int = Field(7, ge=0, description="baseline ends this many days before today, so a slow "
                                    "drift doesn't drag its own baseline along")
     rule_max_age_days: int = Field(21, ge=1, description="[[rule]] observations older than this no longer fire")
+    early_baseline_min_days: int = Field(0, ge=0, description="0 = off. While a metric's record is younger than "
+                                         "baseline_days + baseline_lag_days and has no full baseline yet, use a "
+                                         "provisional baseline from at least this many days")
+    early_baseline_lag_days: int = Field(3, ge=1, description="lag of that provisional baseline (shorter than "
+                                         "baseline_lag_days, so the first days can be compared at all)")
 
     @model_validator(mode="after")
     def _window(self):
@@ -73,11 +78,16 @@ class Defaults(_M):
             raise ValueError("drift_days must be <= drift_window")
         if self.baseline_min_days > self.baseline_days:
             raise ValueError("baseline_min_days must be <= baseline_days")
+        if self.early_baseline_min_days and not 2 <= self.early_baseline_min_days <= self.baseline_min_days:
+            raise ValueError("early_baseline_min_days must be 0 (off) or between 2 and baseline_min_days")
+        if self.early_baseline_lag_days > self.baseline_lag_days and self.early_baseline_min_days:
+            raise ValueError("early_baseline_lag_days must be <= baseline_lag_days")
         return self
 
 
 class SourceSpec(_M):
     enabled: bool = True
+    max_age_days: int = Field(3, ge=1, description="latest qualifying observation older than this -> insufficient")
     worse_min_weight: float = Field(2.0, gt=0, description="sum of drifting-metric weights needed for 'worse'")
     better_min_weight: float = Field(2.0, gt=0, description="sum of improving-metric weights needed for 'better'")
     expected_per_week: float = Field(7, gt=0, description="days with data per week expected (confidence)")
@@ -89,6 +99,9 @@ class StateSpec(_M):
     watch_min_worse: int = Field(1, ge=1, description="sufficient sources 'worse' needed for watch")
     watch_if_single_sufficient: bool = Field(True, description="only one source has enough data -> watch")
     min_sufficient_for_stable: int = Field(2, ge=1, description="fewer sufficient sources can never be 'stable'")
+    min_history_days_for_stable: int = Field(0, ge=0, description="0 = off. A record with fewer calendar days than "
+                                             "this can never be 'stable' (the personal baseline is still forming): "
+                                             "it reads 'watch' with agreement low_coverage")
     hysteresis_stable_days: int = Field(3, ge=0, description="needs_call holds until acknowledged or N stable days")
     correlated_families: list[str] = Field(
         default_factory=lambda: ["self_report"],
@@ -109,6 +122,7 @@ class MetricSpec(_M):
                                    "or @count / @local_minutes")
     where: dict[str, Scalar | list[Scalar]] = Field(default_factory=dict, description="payload filters (equality / any-of)")
     agg: Agg = "mean"
+    day_field: str | None = Field(None, description="payload ISO date used for daily grouping; envelope timestamp orders snapshots")
     worse_when: Literal["up", "down"]
     weight: float = Field(1.0, ge=0, description="counts toward the source's worse/better weight")
     enabled: bool = True
@@ -132,6 +146,8 @@ class MetricSpec(_M):
         if self.obs not in OBS:
             raise ValueError(f"metric {self.name}: unknown obs type {self.obs!r}")
         fields = OBS[self.obs].model_fields
+        if self.day_field and not field_exists(OBS[self.obs], self.day_field):
+            raise ValueError(f"metric {self.name}: unknown day_field {self.day_field!r}")
         if not field_exists(OBS[self.obs], self.field) and self.field not in DERIVED_FIELDS:
             raise ValueError(f"metric {self.name}: {self.obs} has no field {self.field!r} "
                              f"(fields: {', '.join(fields)}; derived: {', '.join(sorted(DERIVED_FIELDS))})")

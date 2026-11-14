@@ -14,7 +14,7 @@ from typing import Any
 from kaiku_contracts.criteria import Criteria
 from kaiku_contracts.sources import CONSENSUS_SOURCES, SOURCE_OF
 
-from .metrics import Series, daily_metrics, local_date, parse_ts
+from .metrics import Series, daily_metrics, observation_day, parse_ts
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ def build(home_id: str, events: list[dict[str, Any]], crit: Criteria, actions: l
                     safety_flags=[], acks=[], last_activity_at=None, sim=False, first_day=None)
     for e in events:
         ts = parse_ts(e["ts"])
-        day = local_date(ts)
+        day = observation_day(e, crit)
         if d.last_activity_at is None or ts > d.last_activity_at:
             d.last_activity_at = ts
         if d.first_day is None or day < d.first_day:

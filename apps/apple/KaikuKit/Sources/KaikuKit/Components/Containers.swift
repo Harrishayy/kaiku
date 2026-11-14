@@ -23,9 +23,10 @@ public struct KScreen<Content: View>: View {
     @Environment(\.dynamicTypeSize) private var dts
     @Environment(\.kaikuStaticLayout) private var staticLayout
     @State private var width: CGFloat = 0
+    @Environment(AppModel.self) private var app: AppModel?
 
     public init(_ title: String? = nil, subtitle: String? = nil, back: (() -> Void)? = nil, scrolls: Bool = true,
-                maxWidth: CGFloat = 680, spacing: CGFloat = KaikuTokens.Space.s5, @ViewBuilder content: () -> Content) {
+                maxWidth: CGFloat = KaikuTokens.Size.contentMax, spacing: CGFloat = KaikuTokens.Space.s5, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.back = back
@@ -66,14 +67,17 @@ public struct KScreen<Content: View>: View {
     }
 
     private var inner: some View {
-        // iPhone breathes a little more than the Mac pane: +6 pt between blocks, room above the floating tab bar.
-        VStack(alignment: .leading, spacing: KaikuPlatform.isPhone ? spacing + 6 : spacing) {
+        // One section gap on every screen and both platforms (design/layout.md); room above the floating tab bar.
+        VStack(alignment: .leading, spacing: spacing) {
             // Fixed (game) screens give the field the room at accessibility sizes: back + pill only.
-            if back == nil, let t = headerTitle, scrolls {
+            // Every tab root (scrolling or fixed, like Talk) starts with the same page header.
+            if back == nil, let t = headerTitle {
                 PageHeader(title: t, subtitle: subtitle)
             } else {
                 ScreenHeader(title: headerTitle, back: back)
             }
+            // Offline is said once, in the same place, on every scrolling screen (queued work is safe).
+            if scrolls, app?.offline == true, app?.isPaired == true { OfflineBanner() }
             content
         }
         .padding(.horizontal, KaikuPlatform.sidePadding)
@@ -104,7 +108,8 @@ public struct PageHeader: View {
                 Text(Self.eyebrow.uppercased(with: Locale(identifier: L10n.shared.language.rawValue)))
                     .kText(.caption, weight: .semibold).tracking(0.8)
                     .foregroundStyle(KaikuTokens.Colors.clay)
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .wraps()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: KaikuTokens.Space.s2)
                 if KaikuPlatform.isPhone { NotOKPill() }
             }
@@ -115,7 +120,7 @@ public struct PageHeader: View {
                 .accessibilityAddTraits(.isHeader)
             if let subtitle {
                 Text(subtitle).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-                    .padding(.top, 2)
+                    .padding(.top, KaikuTokens.Space.s1 / 2)
             }
         }
         .padding(.bottom, KaikuTokens.Space.s1)
@@ -133,8 +138,8 @@ public struct SectionHeader: View {
     }
     public var body: some View {
         HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
-            if let icon { RowIcon(symbol: icon, tint: tone.ink, side: 30) }
-            VStack(alignment: .leading, spacing: 1) {
+            if let icon { RowIcon(symbol: icon, tint: tone.ink) }
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                 Text(title).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                 if let subtitle { Text(subtitle).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
             }
@@ -210,9 +215,9 @@ public struct BackButton: View {
     public var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .bold))
+                .kText(.footnote, weight: .bold)
                 .foregroundStyle(onDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.ink)
-                .frame(width: 40, height: 40)
+                .frame(width: KaikuTokens.Size.control, height: KaikuTokens.Size.control)
                 .background(Circle().fill(onDark ? KaikuTokens.Colors.nightInk.opacity(0.12) : KaikuTokens.Colors.surface))
                 .overlay(Circle().strokeBorder(onDark ? KaikuTokens.Colors.nightInk.opacity(0.25) : KaikuTokens.Colors.line, lineWidth: 1))
                 .frame(minWidth: KaikuTokens.Size.tapMin, minHeight: KaikuTokens.Size.tapMin)
@@ -229,12 +234,12 @@ public struct KCard<Content: View>: View {
     let padding: CGFloat
     let tint: Color
     let content: Content
-    public init(padding: CGFloat = KaikuPlatform.isPhone ? KaikuTokens.Space.s5 - 4 : KaikuTokens.Space.s4, tint: Color = KaikuTokens.Colors.surface, @ViewBuilder content: () -> Content) {
+    public init(padding: CGFloat = KaikuTokens.Space.s4, tint: Color = KaikuTokens.Colors.surface, @ViewBuilder content: () -> Content) {
         self.padding = padding
         self.tint = tint
         self.content = content()
     }
-    public init(padding: CGFloat = KaikuPlatform.isPhone ? KaikuTokens.Space.s5 - 4 : KaikuTokens.Space.s4, tone: KTone, @ViewBuilder content: () -> Content) {
+    public init(padding: CGFloat = KaikuTokens.Space.s4, tone: KTone, @ViewBuilder content: () -> Content) {
         self.init(padding: padding, tint: tone.soft, content: content)
     }
     var plain: Bool { tint == KaikuTokens.Colors.surface }
@@ -244,7 +249,7 @@ public struct KCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(tint)
-                    .shadow(color: KaikuTokens.Colors.ink.opacity(plain ? 0.05 : 0), radius: 10, y: 4)
+                    .kaikuShadow(plain ? KaikuTokens.Elevation.card : KaikuShadow(radius: 0, y: 0, opacity: 0))
             )
             .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
                 .strokeBorder(plain ? KaikuTokens.Colors.line : .clear, lineWidth: 1))
@@ -266,13 +271,12 @@ public struct KSection<Content: View>: View {
         VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
             if let title {
                 SectionHeader(title, subtitle: subtitle, icon: icon, tone: tone)
-                    .padding(.horizontal, KaikuTokens.Space.s1)
             }
             VStack(spacing: 0) { content }
                 .clipShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
                 .background(
                     RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.surface)
-                        .shadow(color: KaikuTokens.Colors.ink.opacity(0.05), radius: 10, y: 4)
+                        .kaikuShadow(KaikuTokens.Elevation.card)
                 )
                 .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
                     .strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
@@ -282,7 +286,9 @@ public struct KSection<Content: View>: View {
 
 public struct KDivider: View {
     public init() {}
-    public var body: some View { Rectangle().fill(KaikuTokens.Colors.line).frame(height: 1).padding(.leading, 64) }
+    public var body: some View { Rectangle().fill(KaikuTokens.Colors.line).frame(height: 1)
+            .padding(.leading, KaikuTokens.Space.s4 + KaikuTokens.Size.iconTile + KaikuTokens.Space.s3)
+    }
 }
 
 public enum KRowAccessory { case chevron, check, none, value(String) }
@@ -303,7 +309,7 @@ public struct KRow: View {
         HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
             // At accessibility sizes the icon goes: the text column needs the width (layout.md → Wrapping).
             if let icon, !dts.isAccessibilitySize { RowIcon(symbol: icon, tint: tint) }
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                 Text(title).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                 if let detail { Text(detail).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
                 if case .value(let v) = accessory, v.count > 14 {
@@ -314,17 +320,17 @@ public struct KRow: View {
             .layoutPriority(1)
             switch accessory {
             case .chevron:
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(KaikuTokens.Colors.muted)
+                KChevron()
             case .check:
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(KaikuTokens.Colors.sage)
+                Image(systemName: "checkmark.circle.fill").kText(.title3).foregroundStyle(KaikuTokens.Colors.sage)
             case .value(let v) where v.count <= 14:
                 Text(v).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).lineLimit(1).fixedSize()
             default: EmptyView()
             }
         }
         .padding(.horizontal, KaikuTokens.Space.s4)
-        .padding(.vertical, KaikuPlatform.isPhone ? KaikuTokens.Space.s3 + 2 : KaikuTokens.Space.s3 - 2)
-        .frame(minHeight: KaikuPlatform.isPhone ? 62 : 54)
+        .padding(.vertical, KaikuTokens.Space.s3)
+        .frame(minHeight: KaikuTokens.Size.rowMin)
         .contentShape(Rectangle())
     }
 }
@@ -333,14 +339,14 @@ public struct KRow: View {
 public struct RowIcon: View {
     let symbol: String
     let tint: Color
-    var side: CGFloat = 36
-    public init(symbol: String, tint: Color, side: CGFloat = 36) { self.symbol = symbol; self.tint = tint; self.side = side }
+    var side: CGFloat = KaikuTokens.Size.iconTile
+    public init(symbol: String, tint: Color, side: CGFloat = KaikuTokens.Size.iconTile) { self.symbol = symbol; self.tint = tint; self.side = side }
     public var body: some View {
         Image(systemName: symbol)
             .font(.system(size: side * 0.47, weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: side, height: side)
-            .background(RoundedRectangle(cornerRadius: side * 0.31, style: .continuous).fill(KTone.of(tint)?.soft ?? tint.opacity(0.14)))
+            .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.sm, style: .continuous).fill(KTone.of(tint)?.soft ?? tint.opacity(0.14)))
             .accessibilityHidden(true)
     }
 }
@@ -377,12 +383,12 @@ public struct KToggleRow: View {
         .toggleStyle(.switch)
         .tint(KaikuTokens.Colors.sage)
         .padding(.horizontal, KaikuTokens.Space.s4)
-        .padding(.vertical, KaikuPlatform.isPhone ? KaikuTokens.Space.s3 + 2 : KaikuTokens.Space.s3 - 2)
-        .frame(minHeight: KaikuPlatform.isPhone ? 62 : 54)
+        .padding(.vertical, KaikuTokens.Space.s3)
+        .frame(minHeight: KaikuTokens.Size.rowMin)
     }
 
     private var labels: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
             Text(title).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
             if let detail { Text(detail).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
         }
@@ -391,36 +397,81 @@ public struct KToggleRow: View {
 }
 
 /// Speech bubble (Kaiku or me). Kaiku's has the artifact's tucked corner toward the mascot; mine is clay-soft.
+/// `maxWidth` caps the bubble inside a chat column; `footnote` is a quiet second line (e.g. "interrupted").
 public struct Bubble: View {
     public enum From { case kaiku, me }
     let text: String
     let from: From
     var big = false
     var centered = false
-    public init(_ text: String, from: From = .kaiku, big: Bool = false, centered: Bool = false) {
+    var maxWidth: CGFloat? = nil
+    var footnote: String? = nil
+    public init(_ text: String, from: From = .kaiku, big: Bool = false, centered: Bool = false,
+                maxWidth: CGFloat? = nil, footnote: String? = nil) {
         self.text = text; self.from = from; self.big = big; self.centered = centered
+        self.maxWidth = maxWidth; self.footnote = footnote
     }
     @Environment(\.dynamicTypeSize) private var dts
     var shape: UnevenRoundedRectangle {
-        from == .me
-            ? UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous)
-            : UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous)
+        let r = KaikuTokens.Radius.md, tucked = KaikuTokens.Radius.xs
+        return from == .me
+            ? UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: r, bottomTrailingRadius: tucked, topTrailingRadius: r, style: .continuous)
+            : UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: tucked, bottomTrailingRadius: r, topTrailingRadius: r, style: .continuous)
     }
-    public var body: some View {
-        HStack {
-            if from == .me && !centered { Spacer(minLength: dts.isAccessibilitySize ? 16 : 40) }
+    private var bubble: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
             Text(text)
                 .kText(big ? .callout : .body, weight: big ? .medium : nil)
                 .foregroundStyle(KaikuTokens.Colors.ink)
                 .wraps()
-                .padding(.horizontal, KaikuTokens.Space.s4)
-                .padding(.vertical, KaikuTokens.Space.s3)
-                .background(shape.fill(from == .me ? KaikuTokens.Colors.claySoft : KaikuTokens.Colors.surface)
-                    .shadow(color: KaikuTokens.Colors.ink.opacity(from == .me ? 0 : 0.05), radius: 8, y: 3))
-                .overlay(shape.strokeBorder(from == .me ? .clear : KaikuTokens.Colors.line, lineWidth: 1))
-                .contentTransition(.identity)   // a cross-fade of two lengths left ghost text
-            if from == .kaiku && !centered { Spacer(minLength: dts.isAccessibilitySize ? 0 : 24) }
+            if let footnote { Text(footnote).kText(.caption).foregroundStyle(KaikuTokens.Colors.ink2).wraps() }
         }
+        .padding(.horizontal, KaikuTokens.Space.s4)
+        .padding(.vertical, KaikuTokens.Space.s3)
+        .background(shape.fill(from == .me ? KaikuTokens.Colors.claySoft : KaikuTokens.Colors.surface)
+            .kaikuShadow(from == .me ? KaikuShadow(radius: 0, y: 0, opacity: 0) : KaikuTokens.Elevation.card))
+        .overlay(shape.strokeBorder(from == .me ? .clear : KaikuTokens.Colors.line, lineWidth: 1))
+        .contentTransition(.identity)   // a cross-fade of two lengths left ghost text
+    }
+    public var body: some View {
+        if let maxWidth {
+            bubble
+                .frame(maxWidth: maxWidth, alignment: from == .me ? .trailing : .leading)
+                .frame(maxWidth: .infinity, alignment: from == .me ? .trailing : .leading)
+        } else {
+            HStack {
+                if from == .me && !centered { Spacer(minLength: dts.isAccessibilitySize ? KaikuTokens.Space.s4 : KaikuTokens.Space.s6) }
+                bubble
+                if from == .kaiku && !centered { Spacer(minLength: dts.isAccessibilitySize ? 0 : KaikuTokens.Space.s5) }
+            }
+        }
+    }
+}
+
+/// The row chevron: follows Dynamic Type (one definition for every list row and card link).
+public struct KChevron: View {
+    var tint: Color = KaikuTokens.Colors.muted
+    public init(tint: Color = KaikuTokens.Colors.muted) { self.tint = tint }
+    public var body: some View {
+        Image(systemName: "chevron.right").kText(.caption, weight: .bold).foregroundStyle(tint).accessibilityHidden(true)
+    }
+}
+
+/// Small label chip: ink text on a tone's soft fill (AA at caption size), capsule. One chip for the whole app.
+public struct KChip: View {
+    let text: String
+    var tone: KTone = .clay
+    var icon: String? = nil
+    public init(_ text: String, tone: KTone = .clay, icon: String? = nil) { self.text = text; self.tone = tone; self.icon = icon }
+    public var body: some View {
+        HStack(spacing: KaikuTokens.Space.s1) {
+            if let icon { Image(systemName: icon).foregroundStyle(tone.ink).accessibilityHidden(true) }
+            Text(text).foregroundStyle(KaikuTokens.Colors.ink).lineLimit(1)
+        }
+        .kText(.caption, weight: .semibold)
+        .padding(.horizontal, KaikuTokens.Space.s2)
+        .padding(.vertical, KaikuTokens.Space.s1)
+        .background(Capsule().fill(tone.soft))
     }
 }
 
@@ -432,7 +483,7 @@ public struct MascotWithBubble: View {
     let dial: Double?
     var big = false
     @Environment(\.dynamicTypeSize) private var dts
-    public init(state: MascotState, text: String, size: CGFloat = 132, dial: Double? = nil, big: Bool = false) {
+    public init(state: MascotState, text: String, size: CGFloat = KaikuTokens.Size.mascotM, dial: Double? = nil, big: Bool = false) {
         self.state = state; self.text = text; self.size = size; self.dial = dial; self.big = big
     }
     public var body: some View {

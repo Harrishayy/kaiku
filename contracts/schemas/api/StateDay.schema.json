@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "description": "The deterministic consensus replayed for one day of the record.",
+  "properties": {
+    "agreement": {
+      "enum": [
+        "agree",
+        "disagree",
+        "low_coverage"
+      ],
+      "title": "Agreement",
+      "type": "string"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "early": {
+      "description": "fewer days on record than min_history_days_for_stable: never stable yet",
+      "title": "Early",
+      "type": "boolean"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "date",
+    "state",
+    "agreement",
+    "early"
+  ],
+  "title": "StateDay",
+  "type": "object"
+}

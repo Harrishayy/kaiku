@@ -17,6 +17,10 @@ class Voice:
     """Speech in/out. `on_utterance` receives user text (transcripts go through the safety gate first)."""
 
     name = "off"
+    # Streaming adapters scan every fragment for safety, then dispatch one completed utterance.
+    on_partial_utterance: UtteranceHandler | None = None
+    on_completed_utterance: UtteranceHandler | None = None
+    on_speech_features: Callable[[dict], Awaitable[None]] | None = None
 
     async def start(self, on_utterance: UtteranceHandler, on_tool: ToolHandler | None = None) -> None:
         return None

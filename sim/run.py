@@ -132,7 +132,7 @@ async def amain(names: list[str], keyboard: bool, args: argparse.Namespace) -> N
 def main() -> None:
     load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--nodes", default="head,sensors,friendlink,glasses,laptop,phone",
+    ap.add_argument("--nodes", default="head,sensors,glasses,laptop,phone",
                     help="comma list: head,sensors,friendlink,glasses,laptop,phone")
     ap.add_argument("--keyboard", action="store_true", help="drive the sims by hand instead of auto mode")
     ap.add_argument("--tempo", type=float, default=96.0, help="auto drum tempo")

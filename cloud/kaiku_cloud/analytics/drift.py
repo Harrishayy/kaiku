@@ -7,7 +7,7 @@ last baseline_days); IMPROVED symmetrically; NORMAL otherwise; INSUFFICIENT if t
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Literal
 
@@ -28,6 +28,8 @@ class MetricDrift:
     scored_days: int
     value_last: float | None
     baseline: Baseline | None
+    z_flag: float | None = None  # worse-signed z of the most recent day that COUNTED toward drifting/improved
+    flag_direction: str | None = None  # raw "up"/"down" of that change (from the vote's own days, not the latest day)
 
     @property
     def direction(self) -> str:
@@ -36,9 +38,18 @@ class MetricDrift:
 
 
 def baseline_of(m: MetricSpec, series: dict[date, float], day: date, crit: Criteria) -> Baseline | None:
-    return baseline_for(series, day, window=int(crit.param(m, "baseline_days")),
-                        min_days=int(crit.param(m, "baseline_min_days")), min_mad=float(crit.param(m, "min_mad")),
-                        lag=crit.defaults.baseline_lag_days)
+    """The metric's baseline for `day`. A young record with no full baseline yet gets a provisional one
+    (criteria [defaults].early_baseline_*): fewer days, shorter lag — so the first weeks can be compared at all."""
+    d = crit.defaults
+    window, min_mad = int(crit.param(m, "baseline_days")), float(crit.param(m, "min_mad"))
+    b = baseline_for(series, day, window=window, min_days=int(crit.param(m, "baseline_min_days")), min_mad=min_mad,
+                     lag=d.baseline_lag_days)
+    if b is None and d.early_baseline_min_days and series \
+            and (day - min(series)).days < window + d.baseline_lag_days:
+        b = baseline_for(series, day, window=window, min_days=d.early_baseline_min_days, min_mad=min_mad,
+                         lag=d.early_baseline_lag_days)
+        b = b and replace(b, early=True)
+    return b
 
 
 def worse_z(value: float, base: Baseline, worse_when: str) -> float:
@@ -66,4 +77,10 @@ def drift_for(m: MetricSpec, series: dict[date, float], day: date, crit: Criteri
     worse = sum(z >= thr for z in zs)
     better = sum(z <= -thr for z in zs)
     status: DriftStatus = "drifting" if worse >= need else "improved" if better >= need else "normal"
-    return MetricDrift(m.name, status, round(zs[-1], 2), worse, better, len(zs), value_last, base_last)
+    z_flag = flag_dir = None
+    if status != "normal":  # evidence must describe the days that voted, not whatever the latest day happens to be
+        z_flag = round(next(z for z in reversed(zs) if (z >= thr if status == "drifting" else z <= -thr)), 2)
+        worse_dir, other = m.worse_when, "down" if m.worse_when == "up" else "up"
+        flag_dir = worse_dir if status == "drifting" else other
+    return MetricDrift(m.name, status, round(zs[-1], 2), worse, better, len(zs), value_last, base_last, z_flag,
+                       flag_dir)

@@ -1,6 +1,7 @@
 """Plan 02: /v1/me mascot + highlights + garden, and the /v1/voice endpoints (no TTS key in tests)."""
 
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from kaiku_cloud import companion, voice
@@ -10,6 +11,36 @@ from kaiku_contracts import make
 from kaiku_contracts.criteria import load_criteria
 
 PATIENT = {p.home_id: p for p in DEMO_PATIENTS}
+
+
+@pytest.mark.parametrize("provider_fails", [False, True])
+def test_tts_admits_each_attempt_and_fails_soft_when_retry_budget_is_spent(client, tmp_path, monkeypatch, provider_fails):
+    from kaiku_contracts import budget, genai_client
+
+    monkeypatch.setenv("KAIKU_SPEND_DB", str(tmp_path / "spend.sqlite"))
+    monkeypatch.setenv("KAIKU_VOICE_CACHE", str(tmp_path / "voice-cache"))
+    text, _ = voice._spec("greet.morning", "en")
+    estimate = budget.estimate(voice.tts_model(), in_tokens=len(text) // 3 + 50, out_tokens=600)
+    monkeypatch.setenv("KAIKU_BUDGET_TOTAL_USD", str(estimate))
+    monkeypatch.setenv("KAIKU_BUDGET_DAILY_USD", str(estimate))
+    attempts = []
+
+    def provider(**kwargs):
+        attempts.append(kwargs)
+        assert kwargs["store"] is False
+        assert budget.spent() == pytest.approx(estimate)
+        if provider_fails:
+            raise OSError("synthetic provider unavailable")
+        return SimpleNamespace(output_audio=SimpleNamespace(data=b"RIFFsynthetic"))
+
+    monkeypatch.setattr(genai_client, "available", lambda: True)
+    monkeypatch.setattr(genai_client, "backend", lambda: "developer")
+    monkeypatch.setattr(genai_client, "make_client", lambda **kwargs: SimpleNamespace(
+        interactions=SimpleNamespace(create=provider)))
+    monkeypatch.setattr(voice.time, "sleep", lambda seconds: None)
+    response = client.get("/v1/voice/greet.morning?lang=en")
+    assert response.status_code == (503 if provider_fails else 200)
+    assert len(attempts) == 1 and budget.spent() == pytest.approx(estimate)
 
 
 def seed(client, *homes):

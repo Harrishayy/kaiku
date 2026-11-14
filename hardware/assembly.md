@@ -1,5 +1,7 @@
 # Assembly
 
+> **Illustrated step-by-step version:** [`assembly_guide/kaiku_assembly.pdf`](assembly_guide/kaiku_assembly.pdf).
+
 How to put Kaiku together, either on the **cardboard body (MVP)** or the **printed body**. The parts come from
 `hardware/cad/` (see its README for the print plan). Positions below are in mm. Every number comes from
 `hardware/cad/kaiku_cad.py`, so if a parameter changes, regenerate the files rather than editing this page.
@@ -24,16 +26,16 @@ The layout from `docs/kaiku_robot_electronics_specs.md` uses all 12:
 | Speaker | 1–2 | body, right-wall grille |
 | Color Display (eyes) | 3–4 | head, tuning window |
 | Knob (dial ear) | 5–6 | head, left ear |
-| DC Motor (pan) | 7 | under the pan base |
+| Button ("I'm not OK" / push to talk) | 7 | lid, square opening |
 | Microphone | 9–10 | head, right ear |
-| Button ("I'm not OK" / push to talk) | 11 | lid, square opening |
-| LED Grid ×2 (breathing glow) | 13, 14 | body, behind the chest louvres |
+| LED Grid left / right (breathing glow) | 11 / 14 | body, behind the chest louvres (port 11 stayed dark on the bench: `hardware/wiring.md`) |
+| DC Motor (pan) | 13 | under the pan base |
 
 So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on the UNO Q. The purr mount in the CAD
 stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
 module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
 
-The UNO Q side: KY-031 knock (D2), KY-035 hall (A1: the 49E is analog, D32), KY-054 light (A0), KY-053 ADC for the
+The UNO Q side (D39: no KY-035 hall, no KY-054 light): KY-031 knock (D2), KY-053 ADC for the
 KY-039 pulse (SDA/SCL), and the Modulino Buzzer on Qwiic. Pin ground truth: `hardware/wiring.md`.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
@@ -44,7 +46,8 @@ KY-039 pulse (SDA/SCL), and the Modulino Buzzer on Qwiic. Pin ground truth: `har
 3. Glue the sleeve's top edge to the underside of **pan_base**, centred under the small hole (the pinion pokes
    through it). The motor's end face then touches the flange.
 4. Glue the **magnet** into the pocket under the **turntable** gear.
-5. Glue (or tape) the **KY-035 hall sensor** under the pan base flange, 18 mm in front of the axle centre. That
+5. *Only if you have a KY-035 and a 6×3 mm magnet (not in this build, D39):* glue the magnet in the gear pocket and
+   tape the **KY-035 hall sensor** under the pan base flange, 18 mm in front of the axle centre. That
    is the spot the magnet passes over at "home" (head facing front).
 6. Drop the turntable over the axle. Its gear should mesh with the pinion, and it should turn freely; a drop of
    grease helps. Spin the motor by hand to check the mesh.
@@ -102,7 +105,7 @@ panels directly from this table (4 mm board; the generator recomputes for other 
    - Glue the neck's **pan base** on top, with the motor sleeve through the pan hole.
    - Glue the **finger cradle** over the Ø9 hole, then tape the **KY-039** under that hole, LED facing up.
    - Drop the **button** module into its square hole.
-   - Tape the **KY-054** light sensor under the Ø5 hole, facing up. Tape the **KY-053** ADC to the floor next
+   - Tape the **KY-053** ADC to the floor next
      to the UNO Q.
 4. Pass all the cables to the board and the UNO Q, put the lid on, and plug the power and USB cables in through
    the back.
@@ -117,6 +120,6 @@ ledge and lifts out using its finger hole.
 
 - Turn the head by hand through its whole range (about ±100°). The cable bundle in the axle must not pull.
   Leave a loop inside the body.
-- Home the head: turn it until it faces front and check the hall sensor triggers. The firmware works out the pan
+- Home the head: **face it forward before powering on**; that position is 0° (no hall sensor, D39). The firmware works out the pan
   angle from timed moves between homings (there is no IMU; `docs/kaiku_robot_electronics_specs.md`).
 - Update `hardware/wiring.md` with the actual port numbers as you plug things in.

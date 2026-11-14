@@ -213,3 +213,148 @@ their defaults are in docs/plans/01-foundation.md §12 — record the actual ans
   care team see it. Default off follows `docs/privacy.md` ("never shown to clinicians") until the person opts in.
   The demo seed turns it on for Aino only (her choice in the story); `sim-eero` shows the "Not shared" card.
 - Thresholds: `config/kaiku.toml [week]`.
+
+## D35 — Gemma organises the shared record; Gemini Live carries the conversation (2026-11-14)
+- Decision: Gemini Live consumes a compact, permission-filtered context card and confirmed tool results for
+  immediate voice interaction. It calls `ask_mind` when information is missing, conflicting or requires deeper
+  reasoning. Gemma is the primary model behind that tool and the batch graph-consolidation job. Do not put a
+  second model call in front of every greeting, known fact or activity acknowledgement.
+- Graph structure starts with recorded, consented facts and deterministic links. Gemma proposes bounded
+  merge/expiry changes; code validates ownership, identifiers and admissible changes before applying them.
+  Raw observations remain unchanged. The monitoring consensus and crisis path remain deterministic.
+- Input provenance means the actual envelope source/channel, time and simulation flag, not merely a consensus
+  group. A phone walk can contribute to the walking signal without establishing a Meta connection. The
+  context compiler exposes permitted activities, never clinician scores or private transcript contents.
+- Efficiency: no model inference per sensor sample; no model inference to assemble a session card. Reuse the
+  prepared record, send bounded new-activity context during an active session, consolidate changed graphs in
+  batches, and cache explanations by their semantic evidence. Session duration and estimated spending stay
+  bounded. Cached Gemini TTS supplies fixed voice lines; OS dictation/synthesis is not a voice fallback.
+- Deployment truth: the verified Gemma path is hosted Gemma through the Gemini API. The self-hosted Modal
+  adapter exists but is not evidence that the demo's calls stayed on a private GPU. The Gemma challenge permits
+  hosted access; private deployment or fine-tuning must only be claimed after its own validation.
+- This supersedes the Gemini-first reasoning preference in plan 06, and narrows “Gemma only explains” to the
+  monitoring verdict: Gemma also organises permitted companion knowledge, but never decides a health state.
+
+```mermaid
+flowchart LR
+  Devices[Phone, web, glasses and robot] -->|Local features, explicit capture consent| Queue[Typed events and durable retry queues]
+  Queue -->|Scoped authentication, immutable IDs| DB[(Observations and permitted memory)]
+  DB --> Rules[Deterministic baselines, consensus and safety]
+  Rules --> Care[Clinician evidence and trends]
+  DB --> Gemma[Gemma: grounded reasoning and graph organisation]
+  Gemma -->|Validated proposals and citations| Context[Compact permission-filtered context]
+  DB --> Context
+  Context --> Live[Gemini Live: real-time voice companion]
+  Live <-->|Consented live audio| Devices
+  Live -->|Validated tools and consented episode persistence| DB
+  Gemma -->|Monitoring evidence only| Care
+```
+
+- Runtime distinction: the development API serves the existing LAN database. The Modal API configuration
+  retains one warm CPU container and one SQLite writer when deployed. The separate optional Gemma GPU app
+  scales to zero; it is not on the verified hosted-Gemma request path. Keeping an H100 continuously warm
+  would incur idle GPU cost and is not needed for the hosted path. Neither a local server nor a declared
+  Modal configuration proves that a public API is deployed.
+- Browser device capture requires HTTPS or localhost. A plain HTTP LAN address serves the clinician page
+  and camera-free activities, but browsers cannot capture camera/microphone there. Native iPhone capture
+  is governed by iOS permissions separately. Each screen checks the actual capability before offering capture.
+
+## D36 — Honest delivery, freshness and corrected daily summaries (2026-11-14)
+- Person and clinician data require separate scoped credentials; explicit local demo mode is the exception.
+  A command remains queued until the robot acknowledges successful application. A stored safety flag is not
+  a promise that somebody has read it or will contact the person. The fixed crisis script no longer makes
+  that unverified promise; the safety guidance itself is unchanged.
+- Phone/web ad-hoc mood, energy and sleep check-ins count alongside ritual check-ins. Activity before/after
+  ratings remain separate. Sources stop voting when older than their configured `max_age_days`.
+- Health daily summaries use their target payload date, ordered by actual capture timestamp; a revised
+  snapshot gets a new immutable event ID and the latest capture wins. Offline older snapshots cannot replace
+  newer summaries. See `config/criteria.toml` for the exact settings.
+
+## D37 — Optional task capture records observable measurements, not emotions (2026-11-14)
+- Reaction timing comes from the task itself. Spoken tasks measure pace, pauses and pitch only when the
+  microphone is explicitly enabled. Optional camera capture starts with the task, stops on cancellation or
+  backgrounding, and sends only local aggregate features with method, usable-face coverage and sample count.
+- Web MediaPipe blendshape variability and iPhone Vision landmark variability are different methods. They
+  must not share a baseline or be presented as equivalent emotional measurements. Low or absent face coverage
+  is missing evidence; it must not become a zero expressivity score. Movement can also reflect camera motion.
+- The clinician task inspector exposes provenance and participation. No new facial-feature consensus metric
+  is enabled. Record chat receives capture coverage, not facial indices or inferred emotional labels. There is
+  no per-frame Gemini call, raw-media upload or background ambient recording in this task-capture path.
+- Companion evaluation exposed an ordinary hard-day response that offered a care-team hand-off before a small
+  activity. The shared persona now offers one optional activity first, requires agreement before launching it,
+  and reserves medical hand-offs for relevant requests. It does not offer message delivery that has no tool.
+
+## D38 — Phone/glasses voice is independent of robot setup (2026-11-14, lead)
+- A phone conversation needs the companion API and Gemini Live, not a paired robot. Meta registration identifies
+  the glasses; Bluetooth routes the phone's microphone/speaker session. Neither connection provisions a person's
+  backend profile. These states must be shown separately, with the actual audio route visible during Talk.
+- QR-first setup is replaced by companion-service discovery. The API advertises `_kaiku-api._tcp`, distinct from
+  robot hardware, and exposes a public identity/capability descriptor. It contains no home IDs or credentials.
+  The local harness starts its announcement only after readiness and removes it when the server exits.
+- Only the configured demo service may bootstrap automatically. Other nearby candidates require selection.
+  Fresh local profiles have stable per-service installation IDs; previously saved profiles remain intact.
+  Discovery never forwards another service's credentials or grants access to an existing person's record.
+  Authenticated deployments still require scoped provisioning; an unconfigured server stays closed.
+- Robot, phone and glasses retain separate device capabilities and surface-specific tools. Shared memory does
+  not permit a phone to claim robot sensors or actions. Physical robot acceptance is deferred at the lead's request.
+
+## D39 — Robot sensors after the first bench run: no KY-054, no KY-035 (2026-11-14, Edwin)
+- **No KY-054 light sensor:** room light comes from the camera (`[unoq] light_source = "camera"`, exposure locked,
+  ring light off). The camera bench passed on the board (`/dev/video2`, so `camera_index = 2`).
+- **No KY-035 hall sensor** (no magnet available): home = the head's position at power-on (face it forward before
+  powering up). `HAS_HALL 0` in both firmwares: the Atech `home` drives back to the dead-reckoned 0°, soft limit ±80°
+  (from ±100°); the UNO Q never polls the floating A1. Face tracking is relative (camera in the head), so drift
+  doesn't affect looking at the person. The CAD keeps the magnet pocket and the sensor spot: with a 6×3 mm magnet and
+  a KY-035, set `HAS_HALL 1` and nothing else changes.
+- **KY-039 + KY-053 kept**, pending a retest in the printed finger cradle: the electronics pass, but in open room light
+  no heartbeat was found (the Garmin read 44 bpm; the sensor showed only a ~117 bpm light-flicker artefact). If the
+  cradle doesn't fix it, HR/HRV is "not measured" (or the camera backup), never guessed. The bench now requires a
+  steady 30–220 bpm beat, so noise can't pass again.
+
+- Integration note: upstream used D35; retained here as D39 because D35 already names the shared Gemma/Gemini decision.
+
+## D40 — Use the supported capture profile, not the sensor wish list (2026-11-14)
+- The present hub profile disables light observations/context, even though the camera bench can estimate
+  luminance. Unvalidated robot pulse, knock force, retired browser metrics and unavailable glasses camera/IMU
+  features do not appear as measured default records or enabled scoring inputs. Historical contracts stay readable.
+- Optional Apple Health measurements remain distinct from robot pulse. A phone's steps and outing duration do
+  not establish outdoor location, measured daylight or a physical Meta connection. First interaction is not a
+  claim about waking up. Default simulations and reference histories follow these limits.
+- Suggestions are restricted to implemented configured activities. An old reward row cannot re-enable an
+  unavailable action. English is the current companion/UI language; crisis matching retains its existing coverage.
+
+## D41 — Preserve received transcript words and represent unknown finality (2026-11-14)
+- Provider audio completion and per-speaker transcription completion are separate events. Ordered native event
+  consumption keeps late ASR attached to its original bubble; new speech/model generations separate legacy
+  marker-free turns. Typed text cannot steal an outstanding spoken turn.
+- Optional `TranscriptTurn.complete` is true only for an explicit final marker, false for known interruption or
+  truncation, and null for unknown legacy/provider completion. No absent marker is promoted to a final guarantee.
+  The real configured-provider probe returned audio/text but no explicit final markers. This remains an acceptance
+  limitation; the UI does not misleadingly label every ordinary unknown turn incomplete.
+
+## D42 — Early collection needs useful evidence, not a premature usual (2026-11-14)
+- A short record can show emerging repeated activities before the full usual-period window exists. Routine
+  attendance uses the actual collection horizon, still requires the configured minimum occurrences, and says
+  emerging rather than inventing missing historical weeks. Baseline/consensus thresholds remain unchanged.
+- First/latest seven-day comparisons retain dates, measured-day counts and units. Co-occurring changes across
+  mood, energy and outings are an observed association, not proof that an activity caused an improvement.
+- Gemma selects supported evidence for the practitioner review; code renders numeric facts and direction.
+  The visible routine graph contains permitted activity/routine edges only. Private people, memories, episodes
+  and transcripts do not become clinician-visible because the person opted into the shared activity graph.
+
+## D43 — Glasses camera frames may go to Gemini Live, and nowhere else (2026-11-14)
+- The lead asked for active vision on walks and agreed to adjust the rule. The Meta Device Access Toolkit (iOS,
+  MWDAT 1.0.1) gives a registered app a camera stream from Ray-Ban Meta glasses (`DeviceSession.addCamera` →
+  `camera.stream`, 360 × 640 at 2 fps is the lowest setting) after a camera permission granted in the Meta AI app.
+- Rule 5 now has one exception: with the separate opt-in "Let Kaiku see through the glasses during walks" (off by
+  default, reversible mid-walk, with a visible indicator and Pause), about one JPEG frame a second goes from the
+  iPhone directly to the walk's open Gemini Live conversation (`realtimeInput.video`). Nothing is sent when the
+  conversation is muted, paused, closed, re-paired, or everything is paused.
+- Frames are never stored, logged, queued, or sent to the Kaiku cloud. No observation is derived from them:
+  `daylight_min` stays unfilled and disabled, because auto-exposed frame brightness is not a light measurement.
+  Provider-side Live retention is the same as for audio (privacy.md).
+- Verified: frame gating (unit test), the toolkit stream path with Mock Device Kit in the simulator, and one real
+  Gemini Live call where a generated picture of a sign plus an injected spoken question produced an answer naming
+  the word on the sign. Not yet verified: real glasses frames, Wi-Fi/Bluetooth transport on the lead's phone, quality
+  outdoors. Raw frames arrive only while the app is in the foreground; with the phone locked the voice continues
+  and seeing pauses.

@@ -1,48 +1,22 @@
-// Run: pnpm test. Pure helpers behind the person + clinician pages (copy, mascot, receipt, QR, clinician view model).
+// Run: pnpm test. Pure helpers behind the dashboard brand mark and the clinician view model.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fill, greetKey, mergeTables, nameFromHome, parseLang, translate } from '../lib/copy.ts';
 import { ambientState, cssValue, glowAt, walkParts, type MascotSpec } from '../lib/mascot.ts';
-import { localMidnightIso, sawToday, togetherDays } from '../lib/saw.ts';
-import { pairingUrl, qrPath } from '../lib/qr.ts';
-import { consensusChip, consensusSentence, evidenceRows, num, sourceMissing, sparkline, verdictChip } from '../lib/clinician.ts';
+import { consensusSentence, evidenceRows, num, sourceMissing, sparkline } from '../lib/clinician.ts';
 
 const json = (p: string) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 const design = json('../../../design/copy.json');
-const web = json('../lib/copy-web.json');
 const spec = json('../../../design/mascot.spec.json') as MascotSpec;
 const tokens = json('../../../design/tokens.json');
 
-test('web copy: en and fi have the same keys and placeholders, no clinical words, no dev text', () => {
-  assert.deepEqual(Object.keys(web.en).sort(), Object.keys(web.fi).sort());
-  const ph = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join();
-  const banned = /diagnos|relapse|predict|disorder|symptom|patient|depression|masennus|obs\.|config\/|\.toml|TODO|VERIFY/i;
-  for (const k of Object.keys(web.en)) {
-    assert.equal(ph(web.en[k]), ph(web.fi[k]), k);
-    assert.ok(!banned.test(web.en[k]) && !banned.test(web.fi[k]), k);
-  }
-});
-
-test('copy: design wins over web, fi falls back to en, a missing key never shows its name', () => {
-  const t = mergeTables({ en: { a: 'design' }, fi: {} }, { en: { a: 'web', b: 'B {n}' }, fi: { b: 'Bfi {n}' } });
-  assert.equal(translate(t, 'en', 'a'), 'design');
-  assert.equal(translate(t, 'fi', 'a'), 'design');
-  assert.equal(translate(t, 'fi', 'b', { n: 3 }), 'Bfi 3');
-  assert.equal(translate(t, 'en', 'nope'), '');
-  assert.equal(fill('{x} {y}', { x: 1 }), '1 {y}');
-  const all = mergeTables(design, web);
-  for (const k of ['me.hi', 'today.card.weather.t', 'mem.forgetall', 'saw.never', 'me.together.n', 'game.firefly.t'])
-    assert.ok(translate(all, 'fi', k), k);
-});
-
-test('copy: language parsing, greeting by hour, name from home id', () => {
-  assert.equal(parseLang('fi-FI'), 'fi');
-  assert.equal(parseLang('sv'), null);
-  assert.equal(greetKey(8), 'today.greet.morning');
-  assert.equal(greetKey(23), 'today.greet.late');
-  assert.equal(greetKey(3), 'today.greet.late');
-  assert.equal(nameFromHome('demo-aino'), 'Aino');
+test('labels: every state and verdict the dashboard shows comes from design/copy.json, approved wording only', () => {
+  for (const k of ['state.stable', 'state.watch', 'state.needs_call', 'state.safety', 'state.insufficient', 'verdict.better', 'verdict.as_usual', 'verdict.worse', 'verdict.insufficient', 'common.simulated'])
+    assert.equal(typeof design.en[k], 'string', k);
+  assert.equal(design.en['verdict.worse'], 'Change from usual');
+  const labels = readFileSync(new URL('../lib/labels.ts', import.meta.url), 'utf8');
+  assert.ok(!/Worse than usual|relapse|diagnos/i.test(labels));
+  assert.match(labels, /agreement === 'low_coverage'\) return \{ label: label\('state.insufficient'\)/);
 });
 
 test('mascot: ambient mood maps through the spec; crisis has no mascot', () => {
@@ -66,45 +40,11 @@ test('mascot: glow interpolates between tokens.json stops and wraps at 24 h', ()
   assert.ok(late.intensity < 0.55 && late.intensity > 0.45);
 });
 
-test('saw today: counts and minutes only, stable order', () => {
-  const lines = sawToday([
-    { type: 'obs.outing', payload: { minutes: 20.4 } },
-    { type: 'obs.outing', payload: { minutes: 10 } },
-    { type: 'obs.self_report', payload: {} },
-    { type: 'obs.self_report', payload: {} },
-    { type: 'obs.ritual', payload: { step: 'close', status: 'completed' } },
-    { type: 'obs.ritual', payload: { step: 'dial', status: 'completed' } },
-    { type: 'obs.screen_activity', payload: {} },
-    { type: 'obs.nudge_offered', payload: {} },
-  ]);
-  assert.deepEqual(lines, [
-    { key: 'saw.l.ritual' },
-    { key: 'saw.l.dial', vars: { n: 2 } },
-    { key: 'saw.l.walk', vars: { n: 30 } },
-    { key: 'saw.mac' },
-  ]);
-  assert.match(localMidnightIso(), /Z$/);
-  assert.equal(togetherDays([{ date: 'a', kind: 'good' }, { date: 'a', kind: 'good' }, { date: 'b', kind: 'hard' }]), 1);
-});
-
-test('qr: a pairing link encodes to a square module path', () => {
-  const url = pairingUrl('https://kaiku.example', 'demo-aino', 'tok');
-  assert.equal(url, 'https://kaiku.example/me/?home=demo-aino&t=tok');
-  const { size, d } = qrPath(url);
-  assert.ok(size >= 25 && d.startsWith('M'));
-});
-
 const verdict = (source: 'robot' | 'glasses' | 'laptop' | 'wearable', v: 'better' | 'as_usual' | 'worse' | 'insufficient', extra = {}) => ({
   home_id: 'h', source, verdict: v, confidence: 0.8, computed_at: '', last_data_at: v === 'insufficient' ? null : '2026-11-13T10:00:00Z', ...extra,
 });
 
-test('clinician: consensus wording, never "fine" for missing data', () => {
-  assert.equal(consensusChip('needs_call', 'agree').label, 'Needs a call');
-  assert.equal(consensusChip('watch', 'agree').label, 'Worth a check-in');
-  assert.equal(consensusChip('watch', 'low_coverage').label, 'Not enough data');
-  assert.equal(consensusChip('stable', 'agree').label, 'Stable');
-  assert.equal(verdictChip('insufficient').label, 'Not enough data');
-  assert.equal(verdictChip(undefined).cls, 'ins');
+test('clinician: missing data is never read as fine; numbers keep their precision', () => {
   assert.equal(sourceMissing(verdict('wearable', 'insufficient') as never, [], 'wearable'), true);
   assert.equal(num(543.2), '543');
   assert.equal(num(0.3333), '0.33');
@@ -131,10 +71,10 @@ test('clinician: evidence rows join timeline numbers and rule readings, worse fi
   assert.equal(rows[0].today, '16');
   assert.equal(rows[1].label, 'Energy dial');
   assert.equal(rows[1].today, '2');
-  assert.equal(rows[1].usual, '3.5 (2.4–4.6)');
+  assert.equal(rows[1].usual, '3.5 (2.4 to 4.6)');
   assert.equal(rows[1].z, '−4.0');
   assert.equal(rows[2].worse, false);
-  assert.equal(consensusSentence(c), '2 of 3 sources with data show a change from usual');
+  assert.equal(consensusSentence(c), '2 of 3 signal groups with data show a change from usual');
   const sp = sparkline((series as { points: never[] }[])[0].points);
   assert.ok(sp && sp.band && sp.line.split(' ').length === 2);
 });

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .companion_tools import Intent, MemoryCategory, MindKind, Skill, Surface
 from .criteria import Criteria
 from .envelope import Envelope
-from .payloads import Health, NudgeArm
+from .payloads import Health, NudgeArm, PlaySession
 from .sources import ConsensusSource
 
 State = Literal["stable", "watch", "needs_call", "safety"]
@@ -22,6 +23,16 @@ STATE_RANK: dict[str, int] = {"safety": 0, "needs_call": 1, "watch": 2, "stable"
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class APIDiscoveryResponse(ApiModel):
+    """Public service identity, never a robot connection or authorization credential."""
+
+    service: Literal["kaiku-api"] = "kaiku-api"
+    schema_version: Literal[1] = 1
+    mode: Literal["demo", "authenticated", "unconfigured"]
+    auth_required: bool
+    capabilities: list[Literal["companion_voice", "observations", "monitoring"]] = Field(default_factory=list)
 
 
 class EventsBatch(ApiModel):
@@ -36,6 +47,46 @@ class EventsResult(ApiModel):
 
 class CommandsResponse(ApiModel):
     commands: list[Envelope[dict[str, Any]]]
+
+
+class CommandAckResult(ApiModel):
+    """POST /v1/commands/{command_id}/ack?home_id= after successful application."""
+
+    ok: bool
+    id: UUID
+
+
+class ClinicianAskRequest(ApiModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class RecordCitation(ApiModel):
+    id: str
+    label: str
+    detail: str = ""
+    metric: str | None = None
+    source: str | None = None
+    observed_at: date | None = None
+    value: float | None = None
+    unit: str | None = None
+    baseline: float | None = None
+    simulated: bool = Field(default=False, description="rests on simulated observations")
+
+
+class ClinicianAskResponse(ApiModel):
+    patient_id: str
+    answer: str = Field(max_length=2400)
+    citations: list[RecordCitation] = Field(default_factory=list)
+    by: Literal["gemma", "template"]
+    model: str | None = None
+    cached: bool = False
+    computed_at: datetime
+
+
+class TaskObservationsResponse(ApiModel):
+    patient_id: str
+    observations: list[Envelope[PlaySession]] = Field(default_factory=list, max_length=100)
+    computed_at: datetime
 
 
 # ----------------------------------------------------------------- consensus (handoff §6.4)
@@ -85,6 +136,8 @@ class Consensus(ApiModel):
     explanation: Explanation | None = None
     acknowledged_by: str | None = None
     safety_since: datetime | None = None
+    simulated: bool = Field(default=False, description="the record contains simulated observations (provenance "
+                                                       "flag; never written into headline or text)")
     computed_at: datetime
 
 
@@ -121,6 +174,7 @@ class TimelinePoint(ApiModel):
     baseline_median: float | None = None
     band_low: float | None = None
     band_high: float | None = None
+    early: bool = Field(default=False, description="this day's baseline is a provisional one of a young record")
 
 
 class MetricSeries(ApiModel):
@@ -154,6 +208,8 @@ class ActionRequest(ApiModel):
     action: ActionName
     note: str | None = Field(default=None, max_length=500)
     by: str | None = Field(default=None, max_length=80, description="clinician name/initials (demo)")
+    ts: datetime | None = Field(default=None, description="when the action really happened (default: now). Never in "
+                                                          "the future; lets a call be logged after the fact")
 
 
 class ActionResult(ApiModel):
@@ -343,7 +399,17 @@ ToneCue = Literal["steady", "gentle", "extra-gentle"]
 EpisodeOutcome = Literal["completed", "skipped", "ended_early", "crisis", "offline"]
 
 
+class LastReflection(ApiModel):
+    """How the latest talk with Kaiku went: a level and themes, never the words."""
+
+    when: str = Field(description='e.g. "yesterday evening", "this morning"')
+    valence: Literal["low", "neutral", "bright"] | None = None
+    themes: list[str] = Field(default_factory=list, max_length=3)
+    declined: bool = Field(default=False, description="they did not want to talk or asked to stop")
+
+
 class ContextCard(ApiModel):
+    source_context: list[str] = Field(default_factory=list, max_length=4, description="prepared source-labelled activity facts; no clinical metrics or raw content")
     """What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,
     scores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus."""
 
@@ -361,11 +427,17 @@ class ContextCard(ApiModel):
     tone: ToneCue = "steady"
     care_info: str | None = None
     focus: str | None = Field(default=None, description="today's focus, chosen by the daily reflection from fixed options")
+    last_reflection: LastReflection | None = None
+    today_facts: list[str] = Field(default_factory=list, max_length=4, description='plain facts the person recorded '
+                                   'themselves today, in everyday words ("a short night"); never a number or a judgement')
+    recent_reflection: str | None = Field(default=None, description="how the latest reflection with Kaiku went, as a "
+                                          "level and themes only (never the words), so Kaiku can be gentle about it")
     others_present: bool = False
     dont_remember: bool = False
 
 
 class CompanionSessionRequest(ApiModel):
+    resume_session_id: str | None = Field(None, description="reuse an open session belonging to this home and surface")
     surface: Surface
     home_id: str
     intent: Intent = "talk"
@@ -390,9 +462,11 @@ class CompanionTool(ApiModel):
 
 class CompanionSessionResponse(ApiModel):
     """POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
-    when the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines)."""
+    when Live is unavailable: the device reports unavailability and keeps the microphone closed."""
 
     session_id: str = Field(description="pass to /v1/companion/tool and /v1/companion/episode")
+    context_refresh_seconds: int | None = Field(None, ge=1, description="poll interval for consented source updates during an active conversation")
+    max_session_seconds: int | None = Field(None, ge=1, description="client-enforced maximum active session duration")
     model: str
     voice: str
     system_instruction: str
@@ -404,7 +478,7 @@ class CompanionSessionResponse(ApiModel):
     live_setup: dict[str, Any] | None = Field(
         default=None, description="Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, "
         "voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame "
-        "{setup: live_setup}; the server uses the token's copy either way.")
+        "{setup: live_setup}; clients must apply this complete setup.")
 
 
 class CompanionToolCall(ApiModel):
@@ -463,6 +537,9 @@ TranscriptRole = Literal["person", "kaiku"]
 class TranscriptTurn(ApiModel):
     role: TranscriptRole
     text: str = Field(max_length=2000)
+    complete: bool | None = Field(
+        default=None,
+        description="true when transcription explicitly finished; false when interrupted/not final; null or absent for unknown legacy status. Audio turnComplete does not establish transcription completion.")
 
 
 class EpisodeIn(ApiModel):
@@ -509,7 +586,7 @@ class TranscriptsResponse(ApiModel):
 
 
 # ----------------------------------------------------------------- Gemini-first mind (plan 06 §1–§3)
-MindRoute = Literal["memory", "flash", "argon", "fallback"]
+MindRoute = Literal["memory", "gemma", "flash", "argon", "fallback"]
 
 
 class MindAnswer(ApiModel):
@@ -726,4 +803,290 @@ class KnowledgeGraph(ApiModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     withheld: list[GraphNodeType] = Field(default_factory=list)
+    computed_at: datetime
+
+
+# ------------------------------------------------------------------ practitioner insight (the intelligence layer)
+Trend = Literal["better", "worse", "similar", "unknown"]
+InsightActor = Literal["code", "gemma", "template"]
+
+
+class ReviewFinding(ApiModel):
+    """One claim in the review. `meaning`/`consider` are interpretation (Gemma when `by` = gemma: validated, no
+    numbers, no state words); `facts` are rendered by code from the cited records and carry every number."""
+
+    theme: Literal["change", "improvement", "steady", "routine", "what_helps", "coverage"]
+    title: str = Field(max_length=120)
+    meaning: str = Field(max_length=400, description="what it likely means, in plain words")
+    consider: str | None = Field(default=None, max_length=300, description="what the practitioner could consider")
+    facts: list[str] = Field(default_factory=list, description="verified record facts, numbers rendered by code")
+    cites: list[str] = Field(default_factory=list, description="ids into PatientInsight.evidence")
+    by: Literal["gemma", "template"]
+
+
+class PatientReview(ApiModel):
+    """Gemma's review of the person: what changed, what it likely means, what to consider. Never decides state."""
+
+    headline: str = Field(max_length=240)
+    overview: str | None = Field(default=None, max_length=700, description="Gemma's reading of the whole record: "
+                                 "what started, what followed, what has come back, what has not. Null when the "
+                                 "template answered; `PatientInsight.course.summary` is the code-written arc")
+    overview_cites: list[str] = Field(default_factory=list, description="evidence ids the overview rests on")
+    findings: list[ReviewFinding] = Field(default_factory=list, max_length=8)
+    by: Literal["gemma", "template"]
+    model: str | None = None
+    cached: bool = False
+    day_of_record: int = Field(default=0, ge=0, description="calendar days since the first observation")
+    early_record: bool = Field(default=False, description="baselines are provisional or missing: read every "
+                                                         "comparison with lower confidence")
+    fallback_reason: str | None = Field(
+        default=None, description="content-free category when the template answered instead of the model, e.g. "
+                                  "not_requested | provider_unavailable | invalid_json | no_valid_findings | cooldown")
+    generated_at: datetime
+
+
+class AgentStep(ApiModel):
+    """One step the cloud really ran to build this insight. Counts and categories only; never record content."""
+
+    step: Literal["retrieve", "consensus", "compare", "course", "select", "interpret", "overview", "validate",
+                  "graph", "render"]
+    label: str = Field(max_length=80)
+    actor: InsightActor
+    status: Literal["ok", "cached", "skipped", "rejected", "fallback"]
+    model: str | None = None
+    latency_ms: float | None = None
+    cache_hit: bool = False
+    items: int | None = Field(default=None, ge=0, description="how many records / findings / nodes this step handled")
+    rejected: dict[str, int] = Field(default_factory=dict, description="validator category -> count")
+    detail: str = Field(default="", max_length=300)
+
+
+class MetricComparison(ApiModel):
+    """One measure: this week vs the week before vs the person's own usual. Medians of recorded days."""
+
+    metric: str
+    label: str
+    unit: str = ""
+    source: ConsensusSource
+    worse_when: Literal["up", "down"]
+    this_week: float | None = None
+    previous_week: float | None = None
+    usual: float | None = Field(default=None, description="personal baseline median for the latest scored day")
+    early_baseline: bool = Field(default=False, description="the usual is a provisional baseline of a young record")
+    baseline_days: int | None = Field(default=None, ge=0, description="recorded days behind the usual")
+    this_week_text: str | None = None
+    previous_week_text: str | None = None
+    usual_text: str | None = None
+    days_this_week: int = Field(ge=0, le=7)
+    days_previous_week: int = Field(ge=0, le=7)
+    vs_previous: Trend
+    vs_usual: Trend
+    sustained: Literal["change_from_usual", "better_than_usual", "as_usual", "not_enough_data"] = Field(
+        description="the rule engine's reading over recent days (criteria thresholds), not a one-week difference")
+    meaning: str = Field(max_length=300)
+
+
+class GroupComparison(ApiModel):
+    source: ConsensusSource
+    label: str
+    verdict: Verdict
+    confidence: float = Field(ge=0, le=1)
+    days_this_week: int = Field(ge=0, le=7)
+    days_previous_week: int = Field(ge=0, le=7)
+    trend: Trend = Field(description="this week vs the week before across this group's measures")
+    meaning: str = Field(max_length=300)
+    metrics: list[MetricComparison] = Field(default_factory=list)
+
+
+class PeriodComparison(ApiModel):
+    this_week_start: date
+    this_week_end: date
+    previous_week_start: date
+    previous_week_end: date
+    day_of_record: int = Field(default=0, ge=0)
+    early_baseline: bool = Field(default=False, description="at least one usual here is a provisional baseline")
+    summary: str = Field(max_length=400)
+    improved: list[str] = Field(default_factory=list, description="metric names better than the week before")
+    changed: list[str] = Field(default_factory=list, description="metric names worse than the week before")
+    groups: list[GroupComparison] = Field(default_factory=list)
+
+
+class HelpEffect(ApiModel):
+    """What the learner has seen for one activity. A reported response, not proof that the activity caused it."""
+
+    activity: str
+    label: str
+    tries: int = Field(ge=0)
+    mean_effect: float | None = Field(default=None, ge=0, le=1, description="mean reward 0..1 (0.5 = neutral)")
+    low: float | None = Field(default=None, ge=0, le=1, description="90% interval of the learner's estimate")
+    high: float | None = Field(default=None, ge=0, le=1)
+    certainty: Literal["early", "building", "consistent"]
+    text: str = Field(max_length=240)
+
+
+class LearnedRoutine(ApiModel):
+    routines: list[Routine] = Field(default_factory=list)
+    helps: list[HelpEffect] = Field(default_factory=list)
+    kept: int = Field(ge=0)
+    partly: int = Field(ge=0)
+    slipped: int = Field(ge=0)
+    summary: str = Field(max_length=300)
+    day_of_record: int = Field(default=0, ge=0)
+    early_record: bool = False
+    caveat: str = Field(default="", max_length=300, description="how far the reported responses can be trusted")
+
+
+class InsightNode(ApiModel):
+    id: str
+    kind: Literal["person", "signal_group", "measure", "activity", "routine", "care_action", "shared_topic"]
+    layer: Literal["learned", "structure"] = Field(default="structure", description="learned = found in this "
+                                                   "person's record; structure = how the record is organised")
+    label: str = Field(max_length=120)
+    detail: str | None = Field(default=None, max_length=240)
+    evidence: int = Field(ge=0, description="recorded days / observations / attempts behind this node")
+    tone: Trend = "unknown"
+
+
+class InsightEdge(ApiModel):
+    src: str
+    dst: str
+    rel: Literal["has_signal", "measures", "did", "keeps", "of", "helped", "moved_first", "followed",
+                 "moved_together", "kept_through", "slipped_during", "after", "talked_about"]
+    layer: Literal["learned", "structure"] = "structure"
+    label: str = Field(max_length=80)
+    weight: float = Field(ge=0, le=1)
+    evidence: int = Field(ge=0)
+
+
+class InsightGraph(ApiModel):
+    """What a practitioner may see of what Kaiku has learned: signal groups, measures, observed activities, routines
+    and what helped. Built from observations; conversation counts join only when the person shares. Never people,
+    places, likes, plans, memories or transcripts."""
+
+    nodes: list[InsightNode] = Field(default_factory=list)
+    edges: list[InsightEdge] = Field(default_factory=list)
+    layers: list[Literal["learned", "structure"]] = Field(default_factory=list, description="layers present")
+    shared: bool = Field(description="the person shares conversation-derived activity counts with the care team")
+    basis: list[Literal["observations", "shared_conversations"]] = Field(default_factory=list)
+    note: str = Field(default="", max_length=240)
+
+
+class ObsTypeCoverage(ApiModel):
+    type: str = Field(description="obs.* type")
+    label: str
+    count: int = Field(ge=0)
+    days: int = Field(ge=0)
+    last_at: datetime | None = None
+    captured_by: list[str] = Field(default_factory=list, description="envelope sources that sent it (hub, phone, …)")
+    simulated: int = Field(default=0, ge=0, description="how many of these observations carry sim=true")
+
+
+class GroupCoverage(ApiModel):
+    source: ConsensusSource
+    label: str
+    sufficient: bool = Field(description="enough recent usable data for this group to give a verdict")
+    days_last_14: int = Field(ge=0, le=14)
+    last_at: datetime | None = None
+    types: list[ObsTypeCoverage] = Field(default_factory=list)
+
+
+class DataCoverage(ApiModel):
+    first_day: date | None = None
+    last_day: date | None = None
+    span_days: int = Field(ge=0)
+    recorded_days: int = Field(ge=0)
+    observations: int = Field(ge=0)
+    baseline_ready: bool = Field(description="at least one measure has a personal baseline")
+    day_of_record: int = Field(default=0, ge=0, description="calendar days since the first observation")
+    early_baseline: bool = Field(default=False, description="baselines in use are provisional (young record)")
+    simulated: bool = Field(description="every observation in this record carries sim=true")
+    summary: str = Field(max_length=300)
+    groups: list[GroupCoverage] = Field(default_factory=list)
+    other: list[ObsTypeCoverage] = Field(default_factory=list, description="activity responses, ritual steps, flags")
+
+
+class CourseEvent(ApiModel):
+    """One dated point in the course of change. Text, dates and numbers are written by code."""
+
+    date: date
+    kind: Literal["onset", "lowest", "care_action", "phq9", "back_in_range", "still_away"]
+    group: ConsensusSource | None = None
+    metric_id: str | None = None
+    label: str = Field(max_length=120)
+    text: str = Field(max_length=300)
+
+
+class Course(ApiModel):
+    """How the record has moved against the person's own usual: what moved first, what followed, what has come
+    back, what has not. Temporal order only, never a cause. Computed by code from the daily series."""
+
+    phase: Literal["settling", "steady", "dip", "recovering", "recovered"]
+    summary: str = Field(max_length=700)
+    events: list[CourseEvent] = Field(default_factory=list)
+
+
+class DayAccount(ApiModel):
+    """One day in plain words, built by code from every source: what was done, what was away from usual, how the
+    reflection went (level and themes only, when shared)."""
+
+    date: date
+    text: str = Field(max_length=400)
+    parts: list[str] = Field(default_factory=list)
+
+
+class ReflectionOverview(ApiModel):
+    """Reflections with Kaiku at summary level: how many sounded low / neutral / bright and what they were about.
+    Present only when the person shares with the care team. Never their words."""
+
+    shared: bool
+    reflections: int = Field(ge=0, description="reflections with a summary in the last 7 days")
+    low: int = Field(ge=0)
+    neutral: int = Field(ge=0)
+    bright: int = Field(ge=0)
+    declined: int = Field(ge=0, description="the person asked to stop or did not want to talk")
+    themes: list[SourceCount] = Field(default_factory=list, description="theme -> reflections it came up in")
+    summary: str = Field(max_length=300)
+
+
+class StateDay(ApiModel):
+    """The deterministic consensus replayed for one day of the record."""
+
+    date: date
+    state: State
+    agreement: Agreement
+    early: bool = Field(description="fewer days on record than min_history_days_for_stable: never stable yet")
+
+
+class CareAction(ApiModel):
+    ts: datetime
+    action: ActionName
+    note: str | None = None
+    by: str | None = None
+
+
+class PatientInsight(ApiModel):
+    """GET /v1/patients/{id}/insight — everything the intelligence layer knows that a practitioner may see, in one
+    payload: Gemma's evidence-cited review, the steps that produced it, week-over-week comparison, the learned
+    routine, the permitted graph and data coverage. State comes from the deterministic consensus only."""
+
+    patient_id: str
+    display_name: str
+    state: State
+    agreement: Agreement
+    rule_version: str
+    review: PatientReview
+    evidence: list[RecordCitation] = Field(default_factory=list, description="every record a finding cites")
+    trace: list[AgentStep] = Field(default_factory=list)
+    comparison: PeriodComparison
+    routine: LearnedRoutine
+    graph: InsightGraph
+    coverage: DataCoverage
+    day_of_record: int = Field(default=0, ge=0, description="calendar days since the first observation")
+    min_history_days_for_stable: int = Field(default=0, ge=0, description="criteria: days before `stable` is possible")
+    early_record: bool = Field(default=False, description="provisional or missing baselines: lower confidence")
+    course: Course | None = None
+    days: list[DayAccount] = Field(default_factory=list, description="the last 14 days, newest first")
+    reflections: ReflectionOverview | None = None
+    state_history: list[StateDay] = Field(default_factory=list, description="oldest first, one row per day replayed")
+    actions: list[CareAction] = Field(default_factory=list, description="care-team action log, oldest first")
     computed_at: datetime

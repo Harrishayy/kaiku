@@ -64,7 +64,7 @@ def generate(prompt: str, *, tier: Tier = "fast", system: str | None = None, sch
     """Text (or JSON when `schema` is given) from a Gemini model. Raises LlmUnavailable on any failure."""
     model = model or model_for(tier)
     key = _ready(model, tier)
-    kw: dict[str, Any] = {"model": model, "input": prompt}
+    kw: dict[str, Any] = {"model": model, "input": prompt, "store": False}
     if system:
         kw["system_instruction"] = system
     if schema:
@@ -128,7 +128,7 @@ def image(prompt: str, *, task: str = "image", home_id: str | None = None, aspec
                 return budget.metered("gemini", model, est, _platform_image, client, model, prompt, aspect_ratio,
                                       task=task, component="cloud")
             out = budget.metered("gemini", model, est, lambda: client.interactions.create(
-                model=model, input=prompt, response_format={"type": "image", "aspect_ratio": aspect_ratio}),
+                model=model, input=prompt, store=False, response_format={"type": "image", "aspect_ratio": aspect_ratio}),
                 task=task, component="cloud")
             img = getattr(out, "output_image", None)
             data = getattr(img, "data", None)

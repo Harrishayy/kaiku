@@ -28,7 +28,9 @@ HIGHLIGHT_DAYS = 7
 MAX_HARD = 3
 MAX_HIGHLIGHTS = 12
 PLAY_TEXT = {"firefly": "You caught fireflies together.", "breathe": "You breathed with Kaiku.",
-             "tell": "You told Kaiku about your day.", "pebbles": "You played pebbles together."}
+             "tell": "You told Kaiku about your day.", "pebbles": "You played pebbles together.",
+             "lantern": "You lit the night sky with Kaiku's lantern.", "seeds": "You sorted seeds on Kaiku's shelf.",
+             "watering": "You grew flowers together."}
 
 
 def time_of_day(hour: int) -> str:

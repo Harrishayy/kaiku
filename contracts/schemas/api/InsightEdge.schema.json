@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "dst": {
+      "title": "Dst",
+      "type": "string"
+    },
+    "evidence": {
+      "minimum": 0,
+      "title": "Evidence",
+      "type": "integer"
+    },
+    "label": {
+      "maxLength": 80,
+      "title": "Label",
+      "type": "string"
+    },
+    "layer": {
+      "default": "structure",
+      "enum": [
+        "learned",
+        "structure"
+      ],
+      "title": "Layer",
+      "type": "string"
+    },
+    "rel": {
+      "enum": [
+        "has_signal",
+        "measures",
+        "did",
+        "keeps",
+        "of",
+        "helped",
+        "moved_first",
+        "followed",
+        "moved_together",
+        "kept_through",
+        "slipped_during",
+        "after",
+        "talked_about"
+      ],
+      "title": "Rel",
+      "type": "string"
+    },
+    "src": {
+      "title": "Src",
+      "type": "string"
+    },
+    "weight": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "src",
+    "dst",
+    "rel",
+    "label",
+    "weight",
+    "evidence"
+  ],
+  "title": "InsightEdge",
+  "type": "object"
+}

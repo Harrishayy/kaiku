@@ -9,6 +9,7 @@ options:
   createIntermediateGroups: true
 settings:
   base:
+    KAIKU_SERVICE_URL: ""   # Optional verified companion service; robot hardware is independent.
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
@@ -44,6 +45,8 @@ targets:
       - package: MWDAT
         product: MWDATMotion
       - package: MWDAT
+        product: MWDATCamera
+      - package: MWDAT
         product: MWDATMockDevice
       - target: Kaiku Widgets
         embed: true
@@ -62,18 +65,23 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
-        INFOPLIST_KEY_NSCameraUsageDescription: "To scan the pairing code on Kaiku's screen. Nothing is saved."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you allow it: measure face movement during activities on this device. No images are saved or sent."
         INFOPLIST_KEY_LSApplicationQueriesSchemes: tel
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this phone only, to keep you safe. Nothing is saved."
         INFOPLIST_KEY_NSHealthShareUsageDescription: "Sleep, resting heart rate and steps, as daily totals for your care team. Only if you turn on Watch."
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: "Only used to add sample data while testing."
         INFOPLIST_KEY_NSMotionUsageDescription: "Counts steps on a walk with Kaiku."
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "To walk with your Meta glasses."
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "To reach your Kaiku at home on this Wi-Fi."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "To find nearby Kaiku companion services for phone and glasses conversations."
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
     info:
       path: iOS/Info.plist
       properties:
+        KaikuServiceURL: $(KAIKU_SERVICE_URL)
+        # _bonjour._tcp: the Meta toolkit's camera stream runs over Wi-Fi to the glasses (DAT docs, iOS step 1).
+        NSBonjourServices: [_kaiku-api._tcp, _bonjour._tcp]
+        NSLocalNetworkUsageDescription: "Find nearby Kaiku companion services for voice, and reach your Meta glasses' camera when you let Kaiku see."
+        NSBluetoothAlwaysUsageDescription: "To walk with your Meta glasses."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UIBackgroundModes: [audio, fetch, bluetooth-central]
@@ -142,11 +150,15 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Kaiku
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.healthcare-fitness
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you allow it during activities. Face movement is processed on this Mac. No images are saved or sent."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this Mac only, to keep you safe. Nothing is saved."
         ENABLE_HARDENED_RUNTIME: NO
     info:
       path: Mac/Info.plist
       properties:
+        KaikuServiceURL: $(KAIKU_SERVICE_URL)
+        NSBonjourServices: [_kaiku-api._tcp]
+        NSLocalNetworkUsageDescription: "Find nearby Kaiku companion services for voice. Robot hardware is separate."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:

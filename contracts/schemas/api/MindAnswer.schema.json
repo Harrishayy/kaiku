@@ -51,6 +51,7 @@
     "route": {
       "enum": [
         "memory",
+        "gemma",
         "flash",
         "argon",
         "fallback"

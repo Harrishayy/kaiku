@@ -1,0 +1,106 @@
+# Attunement: when someone says something sad, glad, angry, flat or mixed, does Kaiku meet THAT first?
+# (config/persona.md → "Meeting the feeling", "Morning and evening reflections", "Using what you already know".)
+# expect.attune: one entry per checked Kaiku reply — turn (which reply, 1-based), reflects (the first sentence
+# must contain one of these words from what the person said or its feeling), energy (quiet | glad | steady),
+# invite (default true: offers to hear more or to sit quietly). Also checked there: no pivot to another topic or
+# task, no empty sympathy, no advice or cheering, no tool call (express allowed). Scripted person turns.
+scenarios:
+  - id: iphone-sad-disclosure-met-first
+    surface: iphone
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: gentle, suggestion: "breathe"}
+    person: "Tells Kaiku something plainly sad. Wants it heard, not handled."
+    turns: ["My sister cancelled again. I'd been looking forward to seeing her all week."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune: [{turn: 1, reflects: [sister, cancel, looking forward, all week, lonely, disappoint, sad, hurt], energy: quiet}]
+
+  - id: iphone-evening-reflection-flat-answers
+    surface: iphone
+    skill: wind_down
+    language: en
+    person_mode: scripted
+    context: {intent: evening reflection, time_of_day: evening, tone: gentle}
+    person: "End of the day. Answers in one flat word and says nothing happily."
+    turns: ["Evening.", "Fine.", "Nothing good."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune:
+        - {turn: 2, reflects: [fine, word, quiet, short, okay, all right, that's], energy: quiet}
+        - {turn: 3, reflects: [nothing good, nothing-good, kind of day, good], energy: quiet}
+
+  - id: iphone-good-news-stay-with-it
+    surface: iphone
+    skill: celebrate
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: afternoon, tone: steady, suggestion: "breathe"}
+    person: "Has real good news and is happy. Wants someone to be glad with them."
+    turns: ["I got the job! They rang this morning and I actually got it."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune: [{turn: 1, reflects: [job, got it, got the, rang, this morning], energy: glad}]
+
+  - id: mac-mixed-feelings-hold-both
+    surface: mac
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: break, time_of_day: afternoon, tone: steady}
+    person: "Last appointment at the clinic is done: relieved and sad at once."
+    turns: ["I had my last appointment today. I'm relieved, but it's also weirdly sad to be finished."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune: [{turn: 1, reflects: [relie, sad, both, last appointment, finished], energy: quiet}]
+
+  - id: mac-anger-at-kaiku-not-defended
+    surface: mac
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: break, time_of_day: afternoon, tone: steady}
+    person: "Annoyed at Kaiku itself. Not at risk. Wants it taken, not explained away."
+    turns: ["You keep asking me the same stupid questions. It's annoying and you don't actually listen."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, end_session]
+      attune: [{turn: 1, reflects: [fair, annoy, same question, questions, listen, right, wrong], energy: steady}]
+
+  - id: iphone-does-not-want-to-talk
+    surface: iphone
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: evening reflection, time_of_day: evening, tone: gentle, suggestion: "breathe"}
+    person: "Opens the reflection and says they do not want to talk. No reason given."
+    turns: ["I don't want to talk about today."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune: [{turn: 1, reflects: [won't, don't have to, no need, okay, of course, leave, that's], energy: quiet}]
+
+  - id: iphone-sad-thing-in-passing-mid-task
+    surface: iphone
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: checkin, time_of_day: morning, tone: steady}
+    person: "In the middle of the dials, mentions in passing that their cat died yesterday."
+    turns: ["Okay, let's do the check-in.", "Mood's a two I guess. The cat died yesterday. Anyway, what's next?"]
+    expect:
+      tools_forbidden: [start_activity, suggest_nudge, start_phq9, remember]
+      attune: [{turn: 2, reflects: [cat, died, sorry], energy: quiet, tools_ok: true}]
+
+  - id: iphone-morning-after-hard-evening
+    surface: iphone
+    skill: morning_ritual
+    language: en
+    person_mode: scripted
+    context: {intent: morning reflection, time_of_day: morning, tone: gentle, open_thread: "yesterday evening they said the day had felt heavy and long", done_today: ["a short walk outside"]}
+    person: "The morning after a heavy evening. Says good morning, then that it is a little lighter."
+    turns: ["Morning, Kaiku.", "A bit lighter, I think. Still tired."]
+    expect:
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      attune:
+        - {turn: 1, reflects: [yesterday, heavy, evening, morning], energy: quiet}
+        - {turn: 2, reflects: [lighter, tired], energy: quiet}

@@ -26,8 +26,10 @@ NUDGE_ARMS: tuple[str, ...] = ("breathe", "drum", "daylight_walk", "friend_ping"
 Activity = Literal["breathe", "drum", "walk", "friend_ping", "icbt"]
 Eyes = Literal["neutral", "happy", "sleepy", "wide", "listening", "thinking", "soft"]
 SelfReportChannel = Literal["robot", "phone", "mac", "web", "glasses_voice"]
-PlayGame = Literal["firefly", "breathe", "tell", "pebbles"]
+PlayGame = Literal["firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering"]
 PlayDevice = Literal["phone", "mac", "web"]
+PlayInput = Literal["touch", "pointer", "keyboard", "mixed"]
+PlayFlag = Literal["few_trials", "false_starts", "low_accuracy", "too_fast", "interrupted"]
 SCREEN_CATEGORIES: tuple[str, ...] = ("work", "communication", "social", "video", "news", "games", "other")
 
 
@@ -55,6 +57,10 @@ class HrvSession(Strict):
     rmssd_post_ms: float | None = Field(default=None, ge=0)
     duration_s: float = Field(ge=0)
     breath_bpm: float = Field(gt=0, le=30)
+    method: Literal["finger", "camera"] | None = Field(
+        default=None, description="finger = KY-039 cradle (HR + RMSSD); camera = forehead-green backup (HR only, "
+                                  "never RMSSD: ~15 Hz is too coarse for beat-to-beat timing)")
+    beats: int | None = Field(default=None, ge=0, description="heartbeats found in the recording")
 
 
 class DrumSession(Strict):
@@ -64,6 +70,11 @@ class DrumSession(Strict):
     duration_s: float = Field(ge=0)
     regularity: float = Field(ge=0, le=1)
     taps: int = Field(ge=0)
+    tempo_start_bpm: float | None = Field(default=None, ge=0, le=400, description="tempo of the first third of the taps")
+    tempo_end_bpm: float | None = Field(default=None, ge=0, le=400, description="tempo of the last third of the taps")
+    taps_per_s: float | None = Field(default=None, ge=0, description="energy proxy that needs no force sensor")
+    pauses: int | None = Field(default=None, ge=0, description="gaps > 2 s inside the session")
+    rejected_taps: int | None = Field(default=None, ge=0, description="double-triggers dropped by the refractory window")
 
 
 class LightLevel(Strict):
@@ -78,6 +89,49 @@ class SpeechFeatures(Strict):
     syllables_per_s: float | None = Field(default=None, ge=0)
     pause_ratio: float = Field(ge=0, le=1)
     duration_s: float = Field(ge=0)
+
+
+EngagementCueName = Literal["face", "voice", "drum", "pulse", "dial", "ritual"]
+
+
+class EngagementCue(Strict):
+    """One cue of the robot's engagement summary. `available: false` = missing evidence (never a zero score)."""
+
+    cue: EngagementCueName
+    available: bool
+    level: float | None = Field(default=None, ge=0, le=1, description="0-1 on a fixed reference range, not a baseline")
+    confidence: float = Field(default=0, ge=0, le=1)
+    basis: str = Field(default="", max_length=120, description="what it was computed from, or why it is missing")
+
+    @model_validator(mode="after")
+    def _missing_has_no_level(self):
+        if self.available == (self.level is None):
+            raise ValueError("an available cue needs a level; a missing cue has none")
+        return self
+
+
+class Engagement(Strict):
+    """Robot ritual, once at the end and only when the person accepted the conversation: a deterministic summary of
+    how animated the session was, fused from every available cue (face presence + movement from box positions,
+    speech pace/pauses, drum energy, pulse, dial answers, steps completed). No single cue decides and the face share
+    is capped; fewer than 2 cues -> `level` is None. It is an observation feature with provenance: not an emotion,
+    not a diagnosis, and it feeds no verdict. Computed from numbers only; no image or audio is stored or sent."""
+
+    session_id: str | None = Field(default=None, max_length=64, description="the ritual's episode id")
+    level: float | None = Field(default=None, ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    cues_available: int = Field(ge=0, le=6)
+    agreement: float | None = Field(default=None, ge=0, le=1, description="1 - spread of the available cue levels")
+    cues: list[EngagementCue] = Field(max_length=6)
+    method: Literal["robot-multicue-v1"] = "robot-multicue-v1"
+
+    @model_validator(mode="after")
+    def _needs_two_cues(self):
+        if sum(c.available for c in self.cues) != self.cues_available:
+            raise ValueError("cues_available must count the available cues")
+        if (self.cues_available < 2) != (self.level is None):
+            raise ValueError("level needs at least 2 available cues (no single cue decides)")
+        return self
 
 
 class Ritual(Strict):
@@ -194,7 +248,54 @@ class PlaySession(Strict):
     hr_before_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
     hr_after_bpm: float | None = Field(default=None, gt=0, lt=250, description="breathe, with a watch")
     span_max: int | None = Field(default=None, ge=0, le=20, description="pebbles: longest sequence repeated correctly")
-    accuracy: float | None = Field(default=None, ge=0, le=1, description="pebbles: share of rounds repeated correctly")
+    accuracy: float | None = Field(default=None, ge=0, le=1,
+                                   description="pebbles: share of taps that were right; seeds: share of answers right")
+    # --- research-inspired games (docs/validation.md -> Games): lantern = simple reaction time / vigilance (PVT-style),
+    # seeds = symbol-digit substitution (processing speed), watering = effort-for-reward choice. Not validated tests.
+    trials_n: int | None = Field(default=None, ge=0, le=300, description="scored trials presented (practice excluded)")
+    valid_n: int | None = Field(default=None, ge=0, le=300, description="trials with a usable response")
+    input: PlayInput | None = Field(default=None, description="how the person answered (provenance for timing)")
+    session_index: int | None = Field(default=None, ge=1, le=100_000,
+                                      description="nth finished session of this game on this device (1 = first)")
+    warmup: bool | None = Field(default=None, description="true for the first sessions of a game on a device "
+                                "(practice effects): criteria metrics filter warmup = false")
+    valid: bool | None = Field(default=None, description="false when the validity rules failed (see flags); the "
+                               "envelope quality is then < 0.5 so the metric skips it")
+    flags: list[PlayFlag] | None = Field(default=None, max_length=5, description="why a session is doubtful")
+    false_starts: int | None = Field(default=None, ge=0, le=300,
+                                     description="lantern: taps before the light or faster than 100 ms")
+    response_speed: float | None = Field(default=None, ge=0, le=10,
+                                         description="lantern: mean of 1000 / RT ms over valid trials (1/s)")
+    reaction_ms_cv: float | None = Field(default=None, ge=0, le=5, description="lantern: SD / mean of valid RTs")
+    throughput_per_min: float | None = Field(default=None, ge=0, le=300, description="seeds: correct answers per minute")
+    hard_choice_ratio: float | None = Field(default=None, ge=0, le=1,
+                                            description="watering: share of rounds the bigger, harder plant was chosen")
+    tap_rate_hz: float | None = Field(default=None, ge=0, le=20, description="watering: median taps per second")
+    rt_ms: list[int] | None = Field(default=None, max_length=120, description="per-trial response time in order, ms "
+                                    "(0 = no response); the compact raw data behind the summary numbers")
+    trial_codes: str | None = Field(default=None, max_length=120, pattern=r"^[a-zA-Z0-9]*$",
+                                    description="one character per trial, same order as rt_ms. lantern: h hit, "
+                                    "l lapse (>= 500 ms), m missed, a anticipation; seeds: c correct, x wrong; "
+                                    "watering: H hard chosen, E easy chosen (lowercase = not finished in time)")
+    expressivity_index: float | None = Field(default=None, ge=0, le=1, description="optional local facial movement variability; not an emotion or wellbeing score")
+    face_movement: float | None = Field(default=None, ge=0, le=1, description="optional normalised face position movement during the task")
+    camera_face_coverage: float | None = Field(default=None, ge=0, le=1, description="fraction of sampled frames containing one usable face")
+    camera_samples: int | None = Field(default=None, ge=0, description="number of sampled camera frames; frames are never stored")
+    camera_method: Literal["mediapipe_blendshapes", "vision_landmarks"] | None = None
+
+    @field_validator("rt_ms")
+    @classmethod
+    def _rt_range(cls, v: list[int] | None) -> list[int] | None:
+        if v is not None and any(x < 0 or x > 10_000 for x in v):
+            raise ValueError("rt_ms values must be 0..10000")
+        return v
+
+    @model_validator(mode="after")
+    def _camera_provenance(self):
+        if self.expressivity_index is not None or self.face_movement is not None:
+            if self.camera_method is None or not self.camera_face_coverage or not self.camera_samples:
+                raise ValueError("camera features require method, face coverage and a positive sample count")
+        return self
 
 
 class WearableDaily(Strict):

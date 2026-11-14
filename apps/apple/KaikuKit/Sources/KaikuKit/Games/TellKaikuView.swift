@@ -22,6 +22,8 @@ struct TellField: View {
 
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var rm
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var active = true
     @State private var mode: Mode = .ready
     @State private var holdStart: Date?
     @State private var typing = false
@@ -39,6 +41,11 @@ struct TellField: View {
         VStack(spacing: KaikuTokens.Space.s4) {
             KCard(tone: .honey) {
                 Text(T("tell.prompt")).kText(.title3, weight: .medium).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+            }
+            if !app.allowed(.voice) {
+                Toggle(isOn: Binding(get: { app.consents[.voice] == true }, set: { app.consents[.voice] = $0 })) {
+                    Text(T("task.voice.optin")).kText(.footnote).wraps()
+                }.disabled(app.isPaused)
             }
             if mode == .denied {
                 MicPermissionCard { typing = true }
@@ -109,8 +116,11 @@ struct TellField: View {
         .focused($focused)
         .focusEffectDisabled()
         .onKeyPress(.space) { toggle(); return .handled }
-        .onAppear { focused = true }
-        .onDisappear { capture.onLevel = nil; _ = capture.stop() }
+        .onAppear { active = true; focused = true }
+        .onDisappear { active = false; cancelCapture() }
+        .onChange(of: app.allowed(.voice)) { _, allowed in if !allowed { cancelCapture() } }
+        .onChange(of: app.allowed(.checkins)) { _, allowed in if !allowed { cancelCapture() } }
+        .onChange(of: scenePhase) { _, state in if state != .active { cancelCapture() } }
     }
 
     private func toggle() {
@@ -118,7 +128,8 @@ struct TellField: View {
     }
 
     private func press() async {
-        guard mode == .ready else { return }
+        guard mode == .ready, active, app.allowed(.voice), app.allowed(.checkins), scenePhase == .active else { return }
+        guard !WalkModel.shared.talking else { app.showToast(T("task.voice.busy")); return }
         switch AudioCapture.permission {
         case .denied: mode = .denied; return
         case .undetermined:
@@ -126,6 +137,7 @@ struct TellField: View {
             return   // the permission sheet ate the press; next press records
         case .granted: break
         }
+        guard active, app.allowed(.voice), app.allowed(.checkins), scenePhase == .active else { return }
         do {
             capture.onLevel = { db in
                 let v = Double(max(0, min(1, (db + 55) / 45)))
@@ -157,9 +169,15 @@ struct TellField: View {
         s.pause_ratio = f.pauseRatio
         Task {
             try? await Task.sleep(nanoseconds: 900_000_000)
+            guard active, app.allowed(.voice), app.allowed(.checkins), scenePhase == .active else { return }
             if held < 1 { mode = .ready; return }   // too short to count
             finish(s)
         }
+    }
+
+    private func cancelCapture() {
+        capture.onLevel = nil; _ = capture.stop()
+        mode = .ready; holdStart = nil; level = 0; latched = false; pressing = false
     }
 
     private func send() {
@@ -215,6 +233,9 @@ struct Composer: View {
     @Binding var text: String
     let placeholder: String
     var mic: (() -> Void)?
+    var micOn = false
+    var micLabel: String? = nil
+    var micDisabled = false
     let send: () -> Void
     @FocusState private var focused: Bool
 
@@ -240,7 +261,11 @@ struct Composer: View {
                     text = String(t.dropLast())
                     if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { send() }
                 }
-            if let mic { IconButton("mic.fill", label: T("talk.hold"), action: mic) }
+            if let mic {
+                IconButton(micOn ? "mic.slash.fill" : "mic.fill", label: micLabel ?? T("talk.hold"),
+                           filled: micOn, action: mic)
+                    .disabled(micDisabled).accessibilityIdentifier("talk.voice.control")
+            }
             IconButton("arrow.up", label: T("talk.send"), filled: true, action: send)
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
         }

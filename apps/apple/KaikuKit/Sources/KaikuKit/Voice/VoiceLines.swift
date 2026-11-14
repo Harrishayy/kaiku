@@ -84,7 +84,9 @@ public final class VoiceLines {
         }
     }
 
-    /// Plays a keyed line in Kaiku's Gemini voice: cached audio, else fetched now; else silent.
+    /// Plays a keyed line in Kaiku's Gemini voice: cached audio, else fetched now. A key the service does not know
+    /// yet (an older service) falls back to the same words through `/v1/voice/say` when `fallback` is given.
+    /// Still Gemini TTS either way; with neither, silent.
     public func play(_ key: String, lang: KaikuLanguage, fallback: String? = nil) {
         guard !muted else { return }
         request += 1
@@ -96,6 +98,13 @@ public final class VoiceLines {
                 try? wav.write(to: url, options: .atomic)
                 if id == request { _ = playData(wav) }
                 return
+            }
+            guard id == request, let fallback, !fallback.isEmpty else { return }
+            let sayURL = Self.sayURL(fallback, lang.rawValue)
+            if playFile(sayURL) { return }
+            if let api, let wav = await api.sayAudio(Self.normalise(fallback), lang: lang.rawValue) {
+                try? wav.write(to: sayURL, options: .atomic)
+                if id == request { _ = playData(wav) }
             }
         }
     }

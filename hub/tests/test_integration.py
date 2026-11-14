@@ -27,7 +27,9 @@ async def test_full_ritual_over_mqtt(broker, settings, ppg):
     async def on_obs(t, env):
         seen.append(env)
         if env.type == "obs.ritual" and env.payload.status == "started":
-            if env.payload.step == "dial":
+            if env.payload.step == "greet":
+                asyncio.create_task(answer_dial([3]))
+            elif env.payload.step == "dial":
                 asyncio.create_task(answer_dial([4, 2, 5]))
             elif env.payload.step == "drum":
                 asyncio.create_task(drum())

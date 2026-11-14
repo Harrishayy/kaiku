@@ -32,26 +32,27 @@ consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "
             "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "cmd.hub",
             "obs.friend_link", "health"]
 emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
-         "obs.light_level", "obs.ritual", "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome",
-         "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors", "cmd.friendlink",
-         "raw.hub.face", "health"]
+         "obs.light_level", "obs.engagement", "obs.ritual", "obs.intervention_response", "obs.nudge_offered",
+         "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors",
+         "cmd.friendlink", "raw.hub.face", "health"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}", "GET /v1/voice/{line_key}",
-        "POST /v1/companion/session"]
+        "POST /v1/voice/say", "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode",
+        "POST /v1/commands/{command_id}/ack"]
 
 [[module]]
 name = "cloud"
 path = "cloud"
 owner = "C"
 kind = "service"
-summary = "Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma explanations, simulation, web hosting"
+summary = "Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma reasoning and graph organisation, simulation, web hosting"
 removable = false
 consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
             "obs.light_level", "obs.ritual", "obs.outing", "obs.laptop_session", "obs.phq9",
             "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link",
-            "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily"]
+            "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily", "obs.engagement"]
 emits = ["cmd.hub", "obs.safety_flag"]
-http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
-        "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions",
+http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/commands", "POST /v1/commands/{command_id}/ack", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
+        "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "POST /v1/patients/{id}/ask", "GET /v1/patients/{id}/tasks",
         "GET /v1/me", "GET /v1/events", "PUT /v1/health/{home_id}", "GET /v1/health", "POST /v1/admin/recompute",
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
         "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
@@ -68,14 +69,14 @@ name = "web"
 path = "apps/web"
 owner = "D"
 kind = "app"
-summary = "Next.js static export: person /me (+ firefly game), clinician dashboard, laptop /session, /phq9, /consent; team menu: /live, /health, /eval, /tune"
+summary = "Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune"
 removable = true
-emits = ["obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.self_report", "obs.play_session"]
-http = ["POST /v1/events", "GET /v1/patients", "GET /v1/patients/{id}/consensus", "GET /v1/patients/{id}/timeline",
-        "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "GET /v1/me", "GET /v1/events",
+emits = []
+http = ["GET /v1/patients", "GET /v1/patients/{id}/consensus", "GET /v1/patients/{id}/timeline",
+        "GET /v1/patients/{id}/insight", "GET /v1/patients/{id}/week", "GET /v1/patients/{id}/graph",
+        "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "POST /v1/patients/{id}/ask", "GET /v1/events",
         "GET /v1/health", "GET /v1/eval", "GET /healthz", "GET /v1/admin/criteria", "PUT /v1/admin/criteria",
-        "POST /v1/admin/criteria/preview", "GET /v1/me/memories", "DELETE /v1/me/memories/{id}",
-        "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
+        "POST /v1/admin/criteria/preview"]
 
 [[module]]
 name = "glasses-webapp"
@@ -106,7 +107,7 @@ summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your
 removable = true
 emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
          "obs.wearable_daily", "obs.nudge_outcome"]
-http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
+http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
         "GET /v1/me/transcripts", "DELETE /v1/me/transcripts"]
@@ -116,7 +117,7 @@ name = "atech-head"
 path = "firmware/atech-head"
 owner = "A"
 kind = "firmware"
-summary = "Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (hall homing), speaker; MQTT on the LAN"
+summary = "Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (power-on home, optional hall), speaker; MQTT on the LAN"
 removable = true
 consumes = ["cmd.head", "raw.sensors.hall", "health"]
 emits = ["raw.head.ear", "raw.head.button", "raw.head.pan", "health"]
@@ -126,7 +127,7 @@ name = "unoq-sensors"
 path = "firmware/unoq-sensors"
 owner = "A"
 kind = "firmware"
-summary = "UNO Q: knock drum, KY-039 pulse (KY-053), KY-054 light, KY-035 hall, buzzer chimes, camera (faces, distance, backup pulse/light)"
+summary = "UNO Q: knock drum, KY-039 pulse (KY-053), buzzer chimes, camera (faces, distance, room light, backup pulse); optional KY-035 hall / KY-054 light"
 removable = true
 consumes = ["cmd.sensors", "raw.head.pan"]
 emits = ["raw.head.tap", "raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
@@ -160,7 +161,7 @@ name = "tools"
 path = "tools"
 owner = "B"
 kind = "harness"
-summary = "bus tail / record / replay, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard)"
+summary = "bus tail / record / replay, local API discovery, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard)"
 removable = true
 
 [[module]]
@@ -207,3 +208,6 @@ removable = false
 # them today. `make agents` fails once a real module emits a type still listed here, so delete the line then.
 # apps/apple (iPhone + Mac, workstreams A1-A3) and design/ (workstream D) add their own [[module]] entries.
 [planned_producers]
+# The browser laptop session left with the person-facing web pages; only the sim's legacy fixture sends it now.
+# The contracts owner decides whether the Mac app takes it over or the type is retired.
+"obs.laptop_session" = "apple (Mac app) or retire the type: decision with contracts/cloud owners"

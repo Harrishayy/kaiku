@@ -47,6 +47,13 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         SurfaceSnapshots.runIfAsked()
         #endif
         app.makeGlasses = { GlassesChoice.make() }
+        #if canImport(MWDATCore) && canImport(MWDATMotion) && canImport(MWDATCamera)
+        app.glassesControl = GlassesChoice.control()
+        if (try? DATGlasses.configureSDK()) != nil {
+            app.glassesRegistered = Wearables.shared.registrationState == .registered
+        }
+        app.connectGlasses = { await DATGlasses.register() }
+        #endif
         IntentRouter.open = { [weak self] u in Task { await self?.route(u) } }
         if let u = IntentRouter.pending { IntentRouter.pending = nil; Task { await route(u) } }
         return true
@@ -82,7 +89,10 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
     func route(_ url: URL) async {
         if app.open(url) { return }
         #if canImport(MWDATCore)
-        if (try? await Wearables.shared.handleUrl(url)) == true { return }
+        if (try? await Wearables.shared.handleUrl(url)) == true {
+            app.glassesRegistered = Wearables.shared.registrationState == .registered
+            return
+        }
         #endif
         if await app.pair(link: url.absoluteString) { await foreground() }
     }

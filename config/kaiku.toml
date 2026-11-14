@@ -4,7 +4,7 @@
 [home]
 id = "demo-aino"
 language = "en"            # en | fi  (D9: Finnish greeting + English conversation)
-greeting_language = "fi"
+greeting_language = "en" # English-only product/demo release; retain safety phrase coverage in every language.
 
 [models]
 # Verified in the Gemini docs (geminiDocs MCP) 2026-11-14. Model names change: re-check before a deploy.
@@ -39,6 +39,11 @@ prefix_padding_ms = 120
 silence_ms = 900                              # quiet this long = the person's turn is over
 affective_dialog = false                      # true breaks the session (1007 "invalid argument" on the first turn, real call 2026-11-14)
 context_compression = true                    # sliding window: long chats don't hit the context limit
+session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
+reconnect_attempts = 2                       # bounded recovery during an explicitly started conversation
+mind_timeout_s = 120                       # bounded shared reasoning wait; audio receive remains responsive
+context_refresh_seconds = 15                 # active sessions receive bounded source-labelled activity updates
+hub_transcripts = false                     # explicit household opt-in before robot transcripts may be persisted
 
 [attention]
 # Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
@@ -63,8 +68,8 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, KY-054 light, KY-035 hall,
-# Modulino Buzzer, USB camera).
+# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, Modulino Buzzer, USB camera).
+# No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
 drum_input = "knock"     # knock (KY-031: timing, no force) | imu (force in g) — what the sims send
@@ -73,7 +78,7 @@ drum_sway = false        # no head sway while drumming: knocks are ignored while
 
 [unoq]
 # UNO Q Linux app (firmware/unoq-sensors/python/): camera -> derived numbers only, frames never stored or sent.
-camera_index = 0
+camera_index = 2         # /dev/video2 on the UNO Q (0/1 are the Qualcomm codec); verified 2026-11-14
 frame_w = 640
 frame_h = 480
 fps = 15
@@ -81,7 +86,7 @@ face_hz = 5              # face boxes on raw/hub/face (attention ladder, presenc
 face_detector = "haar"   # haar (OpenCV bundled) | yunet (needs the model file, VERIFY path on the board)
 distance_k_cm = 9.0      # distance_cm ~= k / face_width_ratio (60 deg hfov, ~15 cm face); tune on the real head
 far_cm = 300             # published when no face is seen
-light_source = "ky054"   # ky054 (lid window) | camera (backup: exposure locked, ring light off)
+light_source = "camera"  # camera (exposure locked, ring light off) | ky054 (lid window; not fitted in this build)
 light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
 exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
@@ -97,13 +102,31 @@ host = "localhost"
 port = 1883
 heartbeat_s = 5
 
+[local_api]
+host = "0.0.0.0"
+port = 8000
+service_name = "Kaiku companion service"
+
 [uplink]
 batch_s = 2
 max_batch = 200
 queue_path = "logs/uplink_queue.sqlite"
 timeout_s = 10
 
+[hub]
+# Local session store (hub/kaiku_hub/store.py): the raw NUMBERS behind each ritual (tap times, pulse samples,
+# distances, face box positions, dial turns) + the obs emitted from them. Stays at home, never uplinked, no
+# images or audio. Audit / export / replay: tools/session.py.
+store_enabled = true
+store_path = "logs/hub_sessions.sqlite"
+store_retention_days = 30   # sessions older than this are deleted when the next ritual starts
+store_max_mb = 200          # then the oldest sessions go until the file is under this
+presence_leave_s = 6        # distance comes from the face box (D39): a face turned away this long = the person left
+presence_stale_s = 5        # no distance reading this long (camera off, UNO Q down) = presence unknown, not "here"
+engagement_enabled = true   # obs.engagement: multi-cue session summary, only for an accepted conversation
+
 [ritual]
+enabled_nudges = ["breathe", "drum", "daylight_walk"] # No Friendlink or iCBT task is implemented in this build.
 greet_s = 20
 dial_s = 45             # whole DIAL step: mood, energy, last night's sleep (3 ear turns)
 breathe_s = 90
@@ -119,6 +142,10 @@ hrv_window_s = 30      # HRV pre/post window at start/end of BREATHE
 cooldown_s = 60        # min gap between rituals (demo mode)
 
 [perception]
+light_enabled = false # Current robot/demo omits light; raw light never enters cloud observations or context.
+speech_window_s = 30 # bounded energy-only speech summary; longer turns are not scored
+speech_min_voiced_s = 1.0 # silence/brief noise is missing speech evidence
+speech_clip_fraction = 0.01 # near-rail PCM fraction invalidating a speech window
 presence_near_cm = 80
 presence_first_of_day_after_h = 4
 tap_refractory_ms = 80
@@ -139,7 +166,14 @@ helpline_name = "MIELI Crisis Helpline"
 helpline_number = "09 2525 0111"
 emergency_number = "112"
 
+[gemma]
+# One switch for every Gemma call in the cloud (cloud/kaiku_cloud/llm/gemma.py): practitioner review, record
+# questions, the companion's shared mind, nightly graph organisation, and the `KAIKU_LLM=auto` explanation chain.
+provider = "hosted"   # "hosted" = Gemma through the Gemini API (verified) | "modal" = our vLLM app kaiku-gemma (deploy it first)
+
 [gemma_modal]
+timeout_s = 60        # result wait per call when provider = "modal"; a cold GPU start can exceed it -> deterministic fallback
+adapter_repo = ""     # optional LoRA adapter (HF repo) served by gemma_app.py on top of the base weights; empty = base model. No Kaiku adapter has been trained.
 # Separate scale-to-zero Modal app `kaiku-gemma` (cloud/gemma_app.py). Costs nothing until called.
 gpu = "H100"          # 26B-A4B in bf16 needs ~52 GB; use "L40S" with google/gemma-4-12B-it to save credits
 scaledown_s = 60      # container stops 60 s after the last call (raise to keep it warm during the demo)
@@ -147,9 +181,12 @@ max_model_len = 8192
 
 [budget]
 # HARD caps for all paid model calls (Gemini API / Vertex / Modal GPU), enforced by kaiku_contracts/budget.py.
-# Team rule (2026-11-14): stay under $10 overall while testing. Over the cap every caller uses its fallback.
-total_usd = 10.0
-daily_usd = 6.0                            # raised 4 → 6 on 2026-11-14 by the lead: pre-render all voice lines (never a robotic voice)
+# Lead approved $15 additional on 2026-11-14, after today's earlier $2 increase.
+# Allocate the approved $25 total / $23 daily ceiling: local ledgers $20/$18; the deployed API
+# uses KAIKU_BUDGET_TOTAL_USD=5 and KAIKU_BUDGET_DAILY_USD=5 in its runtime secret.
+# Over the cap every caller fails softly; this is an estimated spend ceiling, not a provider billing guarantee.
+total_usd = 20.0
+daily_usd = 18.0
 argon_per_home_day = 20                    # flagship calls per home per local day (ask_mind, reflection, consolidation, briefs); then Flash only
 images_per_home_day = 3                    # walk postcards per home per local day
 
@@ -169,6 +206,8 @@ images_per_home_day = 3                    # walk postcards per home per local d
 default = { in_per_m = 6.0, out_per_m = 30.0 }
 
 [mind]
+primary = "gemma_hosted"                  # shared reasoning layer; Gemini Live supplies the voice
+source_context_days = 7                   # permitted recent activities with their actual input source
 # Plan 06 §1–§3: ask_mind router, graph memory recall, postcards. Model IDs verified in the Gemini docs 2026-11-14.
 escalate_below = 0.6                       # Flash self-rated confidence below this -> Gemini 4 Argon (flagship)
 embedding_model = "gemini-embedding-2"     # Gemini Embedding 2 (text; 768 dims, auto-normalised)
@@ -199,3 +238,22 @@ helped_min = 0.4         # bandit mean effect (0..1): the best-responding activi
 helped_min_tries = 3
 max_items = 6            # per list
 max_metric_items = 3     # care team: drifting metrics listed one by one (the rest summarised in one line)
+
+[gemma_hosted]
+clinician_ask_cooldown_s = 15 # cache exact questions/evidence and bound new record-chat requests
+explanation_cooldown_s = 300 # coalesce incoming updates; never call Gemma once per dashboard poll
+thinking_level = "minimal" # grounded bounded JSON; avoid hidden reasoning exhausting the output cap
+timeout_s = 45 # hosted reasoning may take longer than a short voice request
+max_output_tokens = 1200 # allow a complete structured explanation; validated before use
+
+[insight]
+# Practitioner insight (cloud/kaiku_cloud/insight.py, GET /v1/patients/{id}/insight).
+cooldown_s = 60            # at most one Gemma review per person per minute; new evidence shows the template meanwhile
+timeout_s = 30             # one hosted Gemma call; the dashboard can load with generate=false first
+max_evidence = 60          # citable records sent to the model (course and changes first)
+course_days = 28           # how far back the course of change looks for a first day away from usual
+min_days_per_week = 2      # recorded days needed in a week before its median is compared
+similar_scale = 0.5        # week medians within this many baseline scales = "about the same"
+usual_scale = 1.0          # this week's median within this many baseline scales of the usual = "within their usual"
+help_early_tries = 3       # fewer attempts than this = too early to rely on
+help_consistent_tries = 8  # at least this many attempts and a narrow interval = consistent

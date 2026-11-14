@@ -6,10 +6,12 @@
  *   NEXT_PUBLIC_KAIKU_API=http://localhost:8000 pnpm dev
  */
 
+import { storedCredential } from './credentials';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const API_BASE = (process.env.NEXT_PUBLIC_KAIKU_API ?? '').replace(/\/$/, '');
-export const DEFAULT_HOME_ID = process.env.NEXT_PUBLIC_KAIKU_HOME_ID || 'demo-aino';
+
+export const apiOrigin = () => API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
 
 export class ApiError extends Error {
   constructor(
@@ -44,6 +46,7 @@ export async function api<T>(
   init: RequestInit & { timeoutMs?: number; token?: string | null } = {},
 ): Promise<T> {
   const { timeoutMs = 10_000, token, headers, ...rest } = init;
+  const auth = token === undefined ? storedCredential(path) : token;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -53,7 +56,7 @@ export async function api<T>(
       headers: {
         Accept: 'application/json',
         ...(rest.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
         ...headers,
       },
     });
@@ -88,12 +91,19 @@ export interface Resource<T> {
 }
 
 /** Fetch `path` on mount (and every `pollMs` if given). Keeps the last good data on error. */
-export function useApi<T>(path: string | null, pollMs?: number): Resource<T> {
+export function useApi<T>(path: string | null, pollMs?: number, timeoutMs?: number): Resource<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState<boolean>(path !== null);
   const [tick, setTick] = useState(0);
   const alive = useRef(true);
+  const [authEpoch, setAuthEpoch] = useState(0);
+  useEffect(() => {
+    const changed = () => setAuthEpoch(n => n + 1);
+    window.addEventListener("kaiku:credentials", changed);
+    return () => window.removeEventListener("kaiku:credentials", changed);
+  }, []);
+  useEffect(() => { setData(null); setError(null); setLoading(path !== null); }, [path, authEpoch]);
 
   useEffect(() => {
     alive.current = true;
@@ -107,7 +117,7 @@ export function useApi<T>(path: string | null, pollMs?: number): Resource<T> {
     let cancelled = false;
     const run = async () => {
       try {
-        const d = await api<T>(path);
+        const d = await api<T>(path, timeoutMs ? { timeoutMs } : {});
         if (!cancelled && alive.current) {
           setData(d);
           setError(null);
@@ -124,16 +134,8 @@ export function useApi<T>(path: string | null, pollMs?: number): Resource<T> {
       cancelled = true;
       if (id) clearInterval(id);
     };
-  }, [path, pollMs, tick]);
+  }, [path, pollMs, timeoutMs, tick, authEpoch]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { data, error, loading, reload };
-}
-
-/** POST envelopes to /v1/events with the pairing token (if any). Returns the cloud's EventsResult. */
-export async function postEvents<R = { accepted: number; duplicates: number; rejected: unknown[] }>(
-  events: unknown[],
-  token: string | null | undefined,
-): Promise<R> {
-  return api<R>('/v1/events', { method: 'POST', body: JSON.stringify({ events }), token, timeoutMs: 15_000 });
 }

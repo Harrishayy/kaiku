@@ -7,8 +7,7 @@ public final class AudioCapture: @unchecked Sendable {
     public enum Permission { case granted, denied, undetermined }
 
     private let engine = AVAudioEngine()
-    private var converter: AVAudioConverter?
-    private let out = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
+    private let downsampler = MicDownsampler()
     private let lock = NSLock()
     private var frames: [Float] = []      // dB per 20 ms frame
     private var pending: [Float] = []
@@ -39,13 +38,15 @@ public final class AudioCapture: @unchecked Sendable {
         let input = engine.inputNode
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else { throw NSError(domain: "kaiku.audio", code: 1) }
-        converter = AVAudioConverter(from: fmt, to: out)
         let frameLen = Int(fmt.sampleRate * 0.02)
         input.installTap(onBus: 0, bufferSize: 1024, format: fmt) { [weak self] buf, _ in
             self?.handle(buf, frameLen: frameLen)
         }
         engine.prepare()
-        try engine.start()
+        do { try engine.start() } catch {
+            input.removeTap(onBus: 0); engine.stop()
+            throw error
+        }
         running = true
     }
 
@@ -63,10 +64,9 @@ public final class AudioCapture: @unchecked Sendable {
 
     private func handle(_ buf: AVAudioPCMBuffer, frameLen: Int) {
         onBuffer?(buf)
-        guard let ch = buf.floatChannelData?[0] else { return }
-        let n = Int(buf.frameLength)
+        guard let samples = MicDownsampler.mono(buf) else { return }
         lock.lock()
-        pending.append(contentsOf: UnsafeBufferPointer(start: ch, count: n))
+        pending.append(contentsOf: samples)
         var level: Float = -90
         while pending.count >= frameLen {
             var sum: Float = 0
@@ -79,21 +79,7 @@ public final class AudioCapture: @unchecked Sendable {
         }
         lock.unlock()
         onLevel?(level)
-        if let onPCM, let converter {
-            let ratio = out.sampleRate / buf.format.sampleRate
-            guard let o = AVAudioPCMBuffer(pcmFormat: out, frameCapacity: AVAudioFrameCount(Double(n) * ratio) + 32) else { return }
-            var fed = false
-            var err: NSError?
-            converter.convert(to: o, error: &err) { _, status in
-                if fed { status.pointee = .noDataNow; return nil }
-                fed = true
-                status.pointee = .haveData
-                return buf
-            }
-            if err == nil, let p = o.int16ChannelData?[0], o.frameLength > 0 {
-                onPCM(Data(bytes: p, count: Int(o.frameLength) * 2))
-            }
-        }
+        if let onPCM, let pcm = downsampler.convert(samples: samples, sampleRate: buf.format.sampleRate) { onPCM(pcm) }
     }
 }
 

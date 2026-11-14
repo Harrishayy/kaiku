@@ -25,16 +25,22 @@ REPO = os.environ.get("KAIKU_GEMMA_REPO") or _CFG.get("models", {}).get("gemma_h
 GPU = os.environ.get("KAIKU_GEMMA_GPU") or _G.get("gpu", "H100")
 SCALEDOWN_S = int(os.environ.get("KAIKU_GEMMA_SCALEDOWN_S") or _G.get("scaledown_s", 60))
 MAX_LEN = int(_G.get("max_model_len", 8192))
+# Optional LoRA adapter (HF repo) applied on top of the base weights. Empty = base model. Not yet run on a GPU.
+ADAPTER = os.environ.get("KAIKU_GEMMA_ADAPTER") or _G.get("adapter_repo", "")
 HF_SECRET = os.environ.get("KAIKU_HF_SECRET", "huggingface")
 CACHE = "/root/.cache/huggingface"
 
 app = modal.App(os.environ.get("KAIKU_GEMMA_APP", "kaiku-gemma"))
 hf_cache = modal.Volume.from_name("kaiku-hf-cache", create_if_missing=True)
 secrets = [modal.Secret.from_name(HF_SECRET)]
-env = {"GEMMA_REPO": REPO, "GEMMA_MAX_LEN": str(MAX_LEN), "HF_HUB_ENABLE_HF_TRANSFER": "1"}
+env = {"GEMMA_REPO": REPO, "GEMMA_MAX_LEN": str(MAX_LEN), "GEMMA_ADAPTER": ADAPTER, "HF_HUB_ENABLE_HF_TRANSFER": "1"}
 
 dl_image = modal.Image.debian_slim(python_version="3.12").pip_install("huggingface_hub[hf_transfer]").env(env)
-vllm_image = modal.Image.debian_slim(python_version="3.12").pip_install("vllm", "huggingface_hub[hf_transfer]").env(env)
+# CUDA *devel* base: vLLM's flashinfer sampler JIT-compiles with nvcc at first use; on debian_slim the engine died
+# at warmup with "Could not find nvcc" (seen 2026-11-14). The env switch keeps the torch sampler as a second guard.
+vllm_image = (modal.Image.from_registry("nvidia/cuda:12.8.0-devel-ubuntu22.04", add_python="3.12").entrypoint([])
+              .pip_install("vllm", "huggingface_hub[hf_transfer]")
+              .env({**env, "VLLM_USE_FLASHINFER_SAMPLER": "0"}))
 
 
 def _token() -> str | None:
@@ -47,26 +53,37 @@ def download() -> str:
     from huggingface_hub import snapshot_download
 
     path = snapshot_download(REPO, token=_token(), ignore_patterns=["*.gguf", "original/*"])
+    adapter = os.environ.get("GEMMA_ADAPTER")
+    if adapter:
+        path += " + " + snapshot_download(adapter, token=_token())
     hf_cache.commit()
     return f"{REPO} -> {path}"
 
 
 @app.cls(image=vllm_image, gpu=GPU, volumes={CACHE: hf_cache}, secrets=secrets, min_containers=0, max_containers=1,
-         scaledown_window=SCALEDOWN_S, timeout=900)
+         scaledown_window=SCALEDOWN_S, timeout=900, startup_timeout=900)
 class Gemma:
     @modal.enter()
     def load(self) -> None:
         os.environ["HF_HUB_OFFLINE"] = "1"  # weights come from the Volume (run `download` first)
         from vllm import LLM
 
-        self.llm = LLM(model=os.environ["GEMMA_REPO"], max_model_len=int(os.environ["GEMMA_MAX_LEN"]))
+        adapter = os.environ.get("GEMMA_ADAPTER")
+        self.llm = LLM(model=os.environ["GEMMA_REPO"], max_model_len=int(os.environ["GEMMA_MAX_LEN"]),
+                       enable_lora=bool(adapter))
+        self.lora = None
+        if adapter:
+            from huggingface_hub import snapshot_download
+            from vllm.lora.request import LoRARequest
+
+            self.lora = LoRARequest("kaiku-adapter", 1, snapshot_download(adapter))
 
     @modal.method()
     def generate(self, prompt: str, max_tokens: int = 800, temperature: float = 0.2, system: str | None = None) -> str:
         from vllm import SamplingParams
 
         msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
-        out = self.llm.chat(msgs, SamplingParams(temperature=temperature, max_tokens=max_tokens))
+        out = self.llm.chat(msgs, SamplingParams(temperature=temperature, max_tokens=max_tokens), lora_request=self.lora)
         return out[0].outputs[0].text
 
 

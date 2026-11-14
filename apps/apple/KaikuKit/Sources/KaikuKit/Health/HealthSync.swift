@@ -5,7 +5,7 @@ import HealthKit
 /// Apple Health → one `obs.wearable_daily` per local morning (plan 05 §5). Read-only (sleep, resting HR, HRV SDNN,
 /// steps, exercise minutes); asked only when the person turns on "Watch & Health"; runs on foreground and from an
 /// observer query (background delivery is best effort). Never mentioned in conversation or notifications.
-/// The envelope id comes from the date, so the same day synced twice is one obs.
+/// The envelope id hashes the day and summary: repeated snapshots deduplicate, late samples produce a new observation.
 @MainActor
 public final class HealthSync {
     public static let shared = HealthSync()
@@ -35,16 +35,9 @@ public final class HealthSync {
 
     /// Syncs today's morning summary (and yesterday's, in case the app wasn't opened then).
     public func sync(app: AppModel) async {
-        guard available, app.allowed(.watch), let home = app.pairing?.homeID else { return }
+        guard available, app.allowed(.watch), app.pairing != nil else { return }
         if !observing { observe(app: app) }
-        let cal = Calendar.current
-        for back in [1, 0] {
-            let morning = cal.date(byAdding: .day, value: -back, to: Date())!
-            guard let w = await summary(morning: morning) else { continue }
-            app.healthState = .connected
-            await app.emit("obs.wearable_daily", w, id: WearableDailyBuilder.envelopeID(home: home, date: w.date),
-                           ts: cal.startOfDay(for: morning).addingTimeInterval(7 * 3600))
-        }
+        await HealthDelivery.sync(app: app) { [self] morning in await summary(morning: morning) }
     }
 
     private func observe(app: AppModel) {
@@ -127,3 +120,23 @@ public final class HealthSync {
     #endif
 }
 #endif
+
+/// Shared delivery orchestration so delayed Health reads can be tested without HealthKit or a physical watch.
+@MainActor enum HealthDelivery {
+    static func sync(app: AppModel, now: Date = Date(), calendar: Calendar = .current,
+                     summary: @MainActor (Date) async -> WearableDaily?) async {
+        guard app.allowed(.watch), let paired = app.pairing else { return }
+        let revision = app.pairingRevision
+        for back in [1, 0] {
+            guard revision == app.pairingRevision, app.pairing == paired, app.allowed(.watch) else { return }
+            let morning = calendar.date(byAdding: .day, value: -back, to: now)!
+            let value = await summary(morning)
+            guard revision == app.pairingRevision, app.pairing == paired, app.allowed(.watch) else { return }
+            guard let value else { continue }
+            app.healthState = .connected
+            await app.emit("obs.wearable_daily", value,
+                           id: WearableDailyBuilder.envelopeID(home: paired.homeID, summary: value),
+                           ts: Date(), pairedTo: paired)
+        }
+    }
+}

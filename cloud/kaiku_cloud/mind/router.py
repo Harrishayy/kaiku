@@ -1,33 +1,25 @@
-"""ask_mind (plan 06 §1): Gemini Live asks the cloud mind; a deterministic router picks who answers.
+"""Source-aware companion reasoning: exact memory lookup → hosted Gemma → Gemini fallback → scripted response.
 
-Routing (every step logged in the usage ledger, no content):
-    1. memory   — code answers from memory / graph / today when the question clearly matches (no model):
-                  kinds fact | memory | plan only, exactly one strong hit, no conflicting notes.
-    2. flash    — Gemini 3.8 Flash, structured JSON {answer, confidence 0-1, cites[]}.
-    3. argon    — Gemini 4 Argon when Flash confidence < [mind].escalate_below, kind ∈ {care, emotional}, conflicting
-                  notes, or Flash failed / was invalid. Care, emotional and conflict go to Argon first.
-                  Over [budget].argon_per_home_day -> Flash only.
-    4. fallback — scripted hand-off line (care: the best matching approved passage, if any).
-Grounding: answers cite [mem:<id>] | [kg:<id>] | [doc:<id>] from the facts we gave; code verifies every id (unknown
-id -> rejected), requires >= 1 cite except for kind emotional, lints the wording, strips the tags. Conflicting notes:
-the answer must ask the person (a question citing both notes) — a pick is rejected -> scripted ask line.
-Prompts hold only the question and clean facts: no state words, numbers or wearable data (`clean_fact`). The crisis
-phrase check runs before this (session.run_tool). Never decides state.
+Gemma is the primary reasoning tier for all nondeterministic kinds, including care and emotional questions.
+Every answer is validated for allowed citations, conflict handling and prohibited language before speaking.
+Fresh source metadata comes from current DB observations on every invocation; raw measurements, state, transcripts
+and private health data are never included. The deterministic crisis gate runs before this router.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from kaiku_contracts import wording
 from kaiku_contracts.api import MindAnswer
 from kaiku_contracts.config import get, load_config
 
-from ..llm import gemini, ledger
+from ..llm import gemini, gemma, ledger
 from ..llm.errors import LlmUnavailable
 from ..settings import TZ, Settings
 from ..store.db import Store
@@ -63,7 +55,9 @@ SYSTEM = (
     "0.4. Never pick between CONFLICTING notes: ask the person which is right, citing both. Care questions: only "
     "what a [doc:...] passage says, otherwise suggest asking the care team. Never mention health details, scores, "
     "states, sleep, heart or watch data; never give medical advice; no promises. Short, warm, plain words. "
-    "Answer with JSON only."
+    "Source facts say only which interface reported an activity, not how the person feels. Never infer wellness, "
+    "emotion or a diagnosis from source presence. Missing sources mean you do not know; never pretend a device "
+    "is connected or observing right now. Answer with JSON only."
 )
 
 Gen = Callable[..., str]
@@ -72,6 +66,17 @@ OUTCOME_TASK = "ask_mind" + ledger.OUTCOME  # one outcome row per question (whic
 
 class Rejected(ValueError):
     pass
+
+
+def rejection_code(error: Rejected) -> str:
+    """Contentless bounded reason for validation telemetry and corrective prompts."""
+    text = str(error)
+    for prefix, code in (("not JSON", "invalid_json"), ("missing cite", "missing_citation"),
+                         ("unverifiable cite", "unknown_citation"), ("wording", "wording"),
+                         ("picked one", "conflict")):
+        if text.startswith(prefix):
+            return code
+    return "invalid_shape"
 
 
 # ------------------------------------------------------------------ facts
@@ -111,6 +116,29 @@ def facts_for(store: Store, home_id: str, question: str, kind: str, done_today: 
     return out
 
 
+def source_facts(store: Store, home_id: str, now: datetime) -> list[dict[str, str]]:
+    """Fresh source provenance and activity presence only; no raw observations, numbers or state leave this edge."""
+    oldest = now - timedelta(days=int(get("mind", "source_context_days", 7)))
+    labels = {"phone": "phone app", "laptop": "laptop app", "glasses": "glasses interface", "hub": "home robot"}
+    activities = {"obs.outing": "an outing", "obs.self_report": "a personal check-in",
+                  "obs.play_session": "a game", "obs.laptop_session": "an activity summary",
+                  "obs.intervention_response": "feedback on an activity", "obs.ritual": "a companion activity",
+                  "obs.wearable_daily": "an optional daily summary", "obs.drum_session": "a drum activity",
+                  "obs.hrv_session": "a breathing activity", "obs.speech_features": "a conversation activity"}
+    latest: dict[tuple[str, str], dict[str, str]] = {}
+    for event in store.events_for_home(home_id):
+        source, kind = event["source"], event["type"]
+        ts = datetime.fromisoformat(event["ts"].replace("Z", "+00:00"))
+        if source not in labels or kind not in activities or not oldest <= ts <= now:
+            continue
+        key = (source, kind)
+        recent = "today" if ts.astimezone(TZ).date() == now.astimezone(TZ).date() else "recently"
+        latest[key] = {"id": f"doc:source-{source}-{kind.removeprefix('obs.').replace('_', '-')}",
+                       "text": ("Simulated: " if event.get("sim") else "") +
+                       f"The {labels[source]} reported {activities[kind]} {recent}."}
+    return list(latest.values())
+
+
 def build_prompt(question: str, kind: str, facts: list[dict[str, str]], conflict_ids: list[str]) -> str:
     body: dict[str, Any] = {"question": question, "kind": kind, "facts": facts}
     if conflict_ids:
@@ -121,7 +149,10 @@ def build_prompt(question: str, kind: str, facts: list[dict[str, str]], conflict
 # ------------------------------------------------------------------ validation
 def validate(raw: str, kind: str, allowed: set[str], conflict_ids: list[str], route: str, model: str) -> MindAnswer:
     try:
-        data = json.loads(raw)
+        text = raw.strip()
+        if text.startswith("```") and text.splitlines()[-1].strip() == "```":
+            text = "\n".join(text.splitlines()[1:-1]).strip()
+        data = json.loads(text)
     except json.JSONDecodeError as e:
         raise Rejected("not JSON") from e
     if not isinstance(data, dict):
@@ -142,7 +173,8 @@ def validate(raw: str, kind: str, allowed: set[str], conflict_ids: list[str], ro
     text = re.sub(r"\s+([.,!?;:])", r"\1", re.sub(r"\s{2,}", " ", TAG.sub("", answer))).strip()
     if not text:
         raise Rejected("empty after stripping")
-    if wording.codes(wording.lint(text, max_questions=1)) & BAD_CODES or STATE_WORDS.search(text):
+    if (re.search(r"\d", text) or wording.codes(wording.lint(text, max_questions=1)) & BAD_CODES
+            or STATE_WORDS.search(text)):
         raise Rejected("wording")
     ask = False
     if conflict_ids:
@@ -182,14 +214,33 @@ def deterministic(store: Store, home_id: str, question: str, kind: str, facts: l
 
 # ------------------------------------------------------------------ the router
 def ask(store: Store, settings: Settings, home_id: str, question: str, kind: str, *, done_today: list[str] | None = None,
-        now: datetime | None = None, gen: Gen | None = None) -> MindAnswer:
+        now: datetime | None = None, gen: Gen | None = None, gemma_gen: Gen | None = None) -> MindAnswer:
     now = now or datetime.now(UTC)
     gen = gen or gemini.generate
+    # Retrieval, validation retries and fallback tiers share the device's single tool wait.
+    # Leave time for serialization, durable commit and the response to reach the device.
+    deadline = time.monotonic() + max(0.0, float(get("live", "mind_timeout_s", 120)) - 5.0)
+
+    def remaining_timeout(limit: float) -> float:
+        return max(0.0, min(limit, deadline - time.monotonic()))
+
     question = re.sub(r"\s+", " ", question or "").strip()[:300]
     done_today = done_today or []
     graph.rebuild(store, home_id, now)
-    facts = facts_for(store, home_id, question, kind, done_today)
     clash = graph.conflicts(store, home_id, question)
+    if question and not clash:
+        # Exact notebook matches need no query embedding or reasoning-model call. Respect graph consolidation
+        # before consulting the local FTS index, so a merged/expired note cannot reappear through this shortcut.
+        inactive = {n["origin"] for n in store.kg_nodes(home_id) if n["status"] != "active"}
+        lexical = [{"id": f"mem:{m['id']}", "text": m["text"]}
+                   for m in memory.recall(store, home_id, question, now=now)
+                   if f"memory:{m['id']}" not in inactive and clean_fact(m["text"])]
+        hit = deterministic(store, home_id, question, kind, lexical, done_today)
+        if hit:
+            ledger.record("deterministic", OUTCOME_TASK, ok=True, route="memory", home_id=home_id)
+            return hit
+    facts = facts_for(store, home_id, question, kind, done_today)
+    facts.extend(source_facts(store, home_id, now))
     conflict_ids = [f"mem:{m['id']}" for m in clash]
     for m in clash:  # both notes must be in the facts so the model can cite them
         if f"mem:{m['id']}" not in {f["id"] for f in facts} and clean_fact(m["text"]):
@@ -213,8 +264,11 @@ def ask(store: Store, settings: Settings, home_id: str, question: str, kind: str
     flash_ans: MindAnswer | None = None
 
     def call(tier: str, route: str) -> MindAnswer | None:
+        remaining = remaining_timeout(timeout)
+        if remaining <= 0:
+            return None
         try:
-            raw = gen(prompt, tier=tier, system=SYSTEM, schema=SCHEMA, timeout_s=timeout, task="ask_mind",
+            raw = gen(prompt, tier=tier, system=SYSTEM, schema=SCHEMA, timeout_s=remaining, task="ask_mind",
                       home_id=home_id, route=route)
             ans = validate(raw, kind, allowed, conflict_ids, route, gemini.model_for(tier))  # type: ignore[arg-type]
         except (LlmUnavailable, Rejected):
@@ -226,6 +280,30 @@ def ask(store: Store, settings: Settings, home_id: str, question: str, kind: str
         return ans
 
     if question:
+        if get("mind", "primary", "gemma_hosted") == "gemma_hosted":
+            primary = gemma_gen or gemma.generate
+            model = gemma.model_name()
+            gemma_prompt = SYSTEM + "\nJSON SCHEMA:\n" + json.dumps(SCHEMA) + "\nINPUT:\n" + prompt
+            for _attempt in range(2):
+                remaining = remaining_timeout(float(get("gemma_hosted", "timeout_s", 45)))
+                if remaining <= 0:
+                    break
+                try:
+                    raw = primary(gemma_prompt, timeout_s=remaining, task="ask_mind", home_id=home_id)
+                    answer = validate(raw, kind, allowed, conflict_ids, "gemma", model)
+                    return done(answer)
+                except LlmUnavailable:
+                    ledger.record(model, "ask_mind.validation", ok=False, route="unavailable", home_id=home_id)
+                    break
+                except Rejected as rejected:
+                    reason = rejection_code(rejected)
+                    ledger.record(model, "ask_mind.validation", ok=False, route=reason, home_id=home_id)
+                    gemma_prompt += ("\nThe previous response failed validation. Return a complete JSON object with "
+                                     "answer, confidence and cites. Keep the answer under four hundred characters. "
+                                     "Use only provided citation IDs, and no health measurements or state claims. "
+                                     "Every factual plan must cite a supplied fact inline, for example [mem:1] only if that ID exists. "
+                                     "Do not use digits in the answer text, do not invent facts, and ask only one question. "
+                                     f"Validation issue: {reason}.")
         if argon_first and argon_left(store, home_id, now):
             tried_argon = True
             if ans := call("flagship", "argon"):

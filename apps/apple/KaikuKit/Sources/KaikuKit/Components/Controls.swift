@@ -9,11 +9,11 @@ public struct KSegmented<V: Hashable>: View {
 
     public var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) { segments(fixed: true) }
-                .padding(4)
+            HStack(spacing: KaikuTokens.Space.s1) { segments(fixed: true) }
+                .padding(KaikuTokens.Space.s1)
                 .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(KaikuTokens.Colors.surface2))
-            VStack(spacing: 4) { segments(fixed: false) }
-                .padding(4)
+            VStack(spacing: KaikuTokens.Space.s1) { segments(fixed: false) }
+                .padding(KaikuTokens.Space.s1)
                 .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(KaikuTokens.Colors.surface2))
         }
     }
@@ -57,12 +57,12 @@ public struct ToastModifier: ViewModifier {
                     .wraps()
                     .padding(.horizontal, KaikuTokens.Space.s4)
                     .padding(.vertical, KaikuTokens.Space.s3)
-                    .background(Capsule().fill(KaikuTokens.Colors.ink))
+                    .background(Capsule().fill(KaikuTokens.Colors.ink).kaikuShadow(KaikuTokens.Elevation.raised))
                     .padding(.horizontal, KaikuTokens.Space.s5)
                     .padding(.bottom, KaikuTokens.Space.s6)
                     .transition(rm ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     .task(id: t) {
-                        try? await Task.sleep(nanoseconds: 2_400_000_000)
+                        try? await Task.sleep(nanoseconds: UInt64(KaikuTokens.Duration.toastHold * 1_000_000_000))
                         withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { text = nil }
                     }
                     .accessibilityAddTraits(.updatesFrequently)

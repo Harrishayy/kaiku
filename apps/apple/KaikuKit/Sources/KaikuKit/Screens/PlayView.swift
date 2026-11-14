@@ -17,8 +17,11 @@ public struct PlayView: View {
 
     var cards: [Card] {
         var c = [
-            Card(route: .firefly, key: "firefly", tone: .honey, minutes: 1),
+            Card(route: .lantern, key: "lantern", tone: .honey, minutes: 2),
+            Card(route: .seeds, key: "seeds", tone: .sage, minutes: 2),
             Card(route: .pebbles, key: "pebbles", tone: .sky, minutes: 2),
+            Card(route: .watering, key: "watering", tone: .clay, minutes: 2),
+            Card(route: .firefly, key: "firefly", tone: .honey, minutes: 1),
             Card(route: .tell, key: "tell", tone: .clay, minutes: 1),
             Card(route: .breathe, key: "breathe", tone: .sage, minutes: 1),
         ]
@@ -140,6 +143,16 @@ struct GameTile: View {
                         ctx.stroke(Path(ellipseIn: r), with: .color(KaikuTokens.Colors.pebbleEdge), lineWidth: 1.5)
                     }
                 }
+            case "lantern":
+                LinearGradient(colors: [KaikuTokens.Colors.nightA, KaikuTokens.Colors.nightB], startPoint: .top, endPoint: .bottom)
+                StarPatch(count: 7).padding(.bottom, 26)
+                Lantern(lit: true, glow: 1).frame(width: 30, height: 42).offset(y: 12)
+            case "seeds":
+                tone.soft
+                HStack(spacing: 8) { ForEach(0..<3, id: \.self) { SeedMark.image($0, size: 20) } }
+            case "watering":
+                tone.soft
+                FlowerBed(count: 4, perRow: 6).padding(.horizontal, 6).padding(.vertical, 12)
             case "breathe":
                 tone.soft
                 ForEach(0..<3, id: \.self) { i in
@@ -233,6 +246,8 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
     @Environment(\.dynamicTypeSize) private var dts
     @State private var phase: Phase = .intro
     @State private var round = 0
+    @State private var camera = TaskCamera()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         // The scene is a background, never a layout sibling: on macOS a safe-area-ignoring sibling fed its grown
@@ -240,6 +255,17 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
         VStack(spacing: 0) {
             VStack(spacing: KaikuTokens.Space.s3) {
                 topBar
+                if phase == .play, camera.state != .off {
+                    HStack(spacing: KaikuTokens.Space.s2) {
+                        Image(systemName: "camera.fill")
+                        Text(T(camera.state == .capturing ? "task.camera.active" : camera.state == .requesting ? "task.camera.request" : "task.camera.unavailable"))
+                            .wraps()
+                        Spacer(minLength: 0)
+                        Button(T("task.camera.stop")) { camera.cancel(); app.consents[.camera] = false }
+                    }
+                    .kText(.footnote).foregroundStyle(scene.ink)
+                    .accessibilityElement(children: .contain)
+                }
                 Group {
                     switch phase {
                     case .intro: intro
@@ -259,6 +285,15 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
         .fillsProposal()
         .background { SceneBackground(scene: scene) }
         .environment(\.colorScheme, scene.isDark ? .dark : colorSchemeFallback)
+        .task(id: phase) {
+            if phase == .play { await camera.begin(allowed: app.allowed(.camera) && app.allowed(.checkins)) }
+        }
+        .onDisappear { camera.cancel() }
+        .onChange(of: app.allowed(.camera)) { _, allowed in if !allowed { camera.cancel() } }
+        .onChange(of: app.allowed(.checkins)) { _, allowed in if !allowed { camera.cancel() } }
+        .onChange(of: scenePhase) { _, state in
+            if state != .active, phase == .play { camera.cancel(); phase = .intro }
+        }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
@@ -269,7 +304,7 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
 
     @Environment(\.colorScheme) private var colorSchemeFallback
 
-    private func back() { if phase == .play { withAnimation(fade) { phase = .intro } } else { dismiss() } }
+    private func back() { camera.cancel(); if phase == .play { withAnimation(fade) { phase = .intro } } else { dismiss() } }
 
     @ViewBuilder private var topBar: some View {
         #if os(macOS)
@@ -305,6 +340,11 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
                 .multilineTextAlignment(.center).wraps().frame(maxWidth: 440)
             Spacer(minLength: 0)
             VStack(spacing: KaikuTokens.Space.s1) {
+                Toggle(isOn: Binding(get: { app.consents[.camera] == true }, set: { app.consents[.camera] = $0 })) {
+                    Text(T("task.camera.optin")).kText(.footnote).wraps()
+                }
+                .tint(KaikuTokens.Colors.sage)
+                .disabled(app.isPaused)
                 Button(T("game.start")) { start() }
                     .buttonStyle(KButtonStyle(.primary))
                     .keyboardShortcut(.defaultAction)
@@ -316,7 +356,14 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
 
     private var play: some View {
         field { session in
-            if let s = session {
+            guard phase == .play else { return }
+            let summary = camera.finish()
+            if var s = session {
+                if app.allowed(.camera), let summary {
+                    s.expressivity_index = summary.expressivity; s.face_movement = summary.movement
+                    s.camera_face_coverage = summary.coverage; s.camera_samples = summary.samples
+                    s.camera_method = "vision_landmarks"
+                }
                 Haptics.finished()
                 KSound.play(.done)
                 Task { await app.recordPlay(s) }

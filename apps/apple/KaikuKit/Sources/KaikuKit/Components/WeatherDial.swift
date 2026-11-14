@@ -38,10 +38,10 @@ public struct WeatherDial: View {
                 VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) { title; chip }
             }
             HStack(spacing: KaikuTokens.Space.s2) {
-                Image(systemName: symbol.0).font(.system(size: 15, weight: .semibold))
+                Image(systemName: symbol.0).kText(.footnote, weight: .semibold)
                     .foregroundStyle(KaikuTokens.Colors.muted).frame(width: 22).accessibilityHidden(true)
                 track
-                Image(systemName: symbol.1).font(.system(size: 15, weight: .semibold))
+                Image(systemName: symbol.1).kText(.footnote, weight: .semibold)
                     .foregroundStyle(KaikuTokens.Colors.honey).frame(width: 22).accessibilityHidden(true)
             }
         }
@@ -49,7 +49,7 @@ public struct WeatherDial: View {
         .padding(.vertical, KaikuTokens.Space.s3)
         .background(
             RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.surface)
-                .shadow(color: KaikuTokens.Colors.ink.opacity(active ? 0.08 : 0.04), radius: active ? 12 : 8, y: 4)
+                .kaikuShadow(KaikuTokens.Elevation.card)
         )
         .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
             .strokeBorder(focused ? KaikuTokens.Colors.focus : active ? KaikuTokens.Colors.honey.opacity(0.7) : KaikuTokens.Colors.line,
@@ -81,11 +81,11 @@ public struct WeatherDial: View {
     private var chip: some View {
         Text(T("wx.\(item.rawValue).\(value)"))
             .kText(.footnote, weight: .semibold)
-            .foregroundStyle(KaikuTokens.Colors.honey)
-            .padding(.horizontal, 10).padding(.vertical, 4)
+            .foregroundStyle(KaikuTokens.Colors.ink)   // ink on honey-soft: AA at footnote size
+            .padding(.horizontal, KaikuTokens.Space.s3).padding(.vertical, KaikuTokens.Space.s1)
             .background(Capsule().fill(KaikuTokens.Colors.honeySoft))
             .contentTransition(.opacity)
-            .animation(.easeOut(duration: 0.15), value: value)
+            .animation(.easeOut(duration: KaikuTokens.Feedback.hover), value: value)
             .wraps()
     }
 
@@ -137,10 +137,10 @@ public struct WeatherDial: View {
             }
         }
         .frame(width: 34, height: 34)
-        .shadow(color: KaikuTokens.Colors.ink.opacity(0.16), radius: dragging ? 8 : 4, y: dragging ? 4 : 2)
+        .kaikuShadow(dragging ? KaikuTokens.Elevation.raised : KaikuTokens.Elevation.card)
         .scaleEffect(dragging && !rm ? 1.14 : (hover && !rm ? 1.05 : 1))
-        .animation(.easeOut(duration: 0.15), value: dragging)
-        .animation(.easeOut(duration: 0.15), value: hover)
+        .animation(.easeOut(duration: KaikuTokens.Feedback.hover), value: dragging)
+        .animation(.easeOut(duration: KaikuTokens.Feedback.hover), value: hover)
     }
 
     private func set(_ v: Int) {

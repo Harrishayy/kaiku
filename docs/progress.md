@@ -641,3 +641,399 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Verified: signed device build OK; icon + manifests present in the built .app bundles (iOS + Mac).
 - Broken/blocked: install on the iPhone waits for Developer Mode on the phone. Cloud for the phone runs on the LAN
   (`uvicorn kaiku_cloud.api.local:app --host 0.0.0.0 --port 8000`).
+
+### 2026-11-14 — Codex hub integration repairs
+- Fixed: consented robot microphone startup (attention/cloud invitations stay mic-off; incidental speech,
+  rotation and timeout do not consent); authorized cloud bootstrap required. end_session/end_ritual stop
+  all remaining steps; breathe/drum selection targets the named step. Spoken crisis no longer cancels its
+  own receive task before the fixed visible script and priority safety flag; split transcription phrases
+  are checked cumulatively. No local say/espeak fallback remains; normal fallback is Gemini audio or text.
+- Fixed: callback PCM copies before device buffer reuse; callback playback avoids blocking Live receive,
+  barge-in clears queued audio while tools run; bounded session resumption and explicit-stop cancellation;
+  session duration bound; affective dialogue disabled. Source-labelled bounded robot context only during
+  consented conversations. PPG keeps sensor quality and timestamps; gaps restart the contiguous window.
+- Persistence: robot episode completion uses a SQLite outbox with stable IDs and retries; opt-in transcripts
+  are off by default and erased on crisis. Cloud commands repeat until acknowledged after local application.
+  Ground truth hub/AGENTS.md updated; parent owns config/contracts/modules sync. Demo driver now explicitly
+  presses the simulated button to accept (parent-authorized scripts/robot_demo_driver.py exception).
+- Verified: hub unit/controller suites (151 non-MQTT tests; latest focused changes 27 passing), isolated real
+  mosquitto ritual test. Production Gemini adapter with injected model/audio edges covers PCM upload,
+  consent timeout/acceptance, spoken crisis, exact activity/stop, barge-in during a blocked cloud tool,
+  auth failure, reconnect/stop race, expiry, transcript completion and command ack retries.
+- Verified: scripts/record_robot_demo.sh /private/tmp/kaiku-integration-fixed-robot completed 2,671 real
+  MQTT messages with greeting/explicit consent/dial/breathe/drum/nudge/close, and successful synthetic
+  glasses/laptop/Mac/phone posts. Seeded consensus remains needs_call/disagree. Separate actual HTTP
+  production Hub/outbox test stored an opted-in synthetic transcript exactly once, retrieved it through
+  /v1/me/transcripts, and proved command redelivery before acknowledgement and removal afterward.
+- Remaining: physical microphone/speaker, robot firmware/motor/sensors and audible voice quality need
+  bench validation. Fixed crisis guidance is visible; a deterministic pre-recorded crisis audio asset is
+  not supplied. These simulations do not establish physical hardware readiness. Real-model adapter probe
+  is being coordinated separately; no paid call or budget change was part of the tests above.
+
+### 2026-11-14 — Codex hub real voice adapter verification
+- Real probe exposed that global platform/enterprise backend tried the configured Developer API Live model
+  on Vertex global and failed1008. Fixed the Live edge to prefer GEMINI_API_KEY when present, independently
+  of the global text/TTS backend; injected edges remain testable. Added regression coverage.
+- Verified actual GeminiLiveVoice + Hub against the current isolated real cloud:489,920 bytes of generated
+  synthetic16kHzPCM passed through the production microphone callback; input transcription arrived;333,122
+  outputPCM bytes received; automatic ask_mind returned ok(route=argon); episode and opted-in transcript
+  were stored and retrieved through the realAPI. No physical audio device was used. Runtime authorized
+  budget overrides only; no cap change written. Log:/private/tmp/kaiku-hub-live-real.log.
+- Added configured bounded ask_mind timeout for longer reasoning while keeping other tools short; Live
+  receive/barge-in/safety remain concurrent. Explicit stop during a reconnect handshake is regression-tested
+  to close the newly returned socket without reopening the microphone. No claim of Gemma success is made
+  from the argon route; cloud owner is verifying whether that result was Gemini fallback.
+
+### 2026-11-14 — Codex Apple integration repairs and real controller verification
+- Fixed the missing production microphone edge: ConversationAudio.onPCM now reaches LiveSession through
+  Conversation after setup acknowledgement. Mute, pause, session expiry, pairing changes and stale sockets
+  cannot stream; route-restart failures close honestly. end_session closes capture and preserves its outcome.
+  Cloud duration/context-refresh/resume-session fields are mirrored; reconnect keeps the original episode.
+- Added origin/home-scoped durable EpisodeOutbox for metadata and opt-in transcripts, plus scoped observation
+  queues. Completion survives restart/offline delivery. Consent-off and forget remove pending words; crisis
+  never stores words. Legacy observation entries without an origin are quarantined rather than guessed.
+  record_dial now respects pause/consent/range; PHQ-9 and walking tools dispatch correctly; PHQ auth uses a
+  consumed token fragment. Health late samples now produce distinct snapshot IDs with capture timestamps.
+- Added bounded authenticated active-source refresh: whitelisted completed-activity/source labels only,
+  never Health metrics/scores/free text; deduplicated and delivered when quiet, with consent rechecked.
+  Gemini uses the prepared context and asks the cloud mind for deeper interpretation; ask_mind allows120s.
+  No AVSpeechSynthesizer voice fallback: Gemini Live or cached/cloud Gemini TTS, otherwise honest unavailable.
+- Meta DAT now starts real registration, handles distinct registration/motion states, and claims motion
+  connected only when actual samples arrive. You → Devices → Glasses → Set up opens Meta AI registration
+  without microphone capture. Developer Mode supports MetaAppID=0. Automatic mock fallback removed;
+  explicit debug mock outings and recovered drafts carry sim=true. Camera/daylight remains unavailable.
+- Verified:95 shared Swift tests,3 opt-in skips,0 failures; final signed iPhone build and Mac build succeeded.
+  Production Conversation tests cover PCM/playback/barge-in, mute/pause, consent, crisis, route failure,
+  duration, resume, durable completion, source refresh and cross-server isolation.
+- Verified real model/database flow in13.903s against isolated cloud18031 using a validated5.392s synthetic
+  speech fixture: Conversation→real LiveSession→input transcript and Gemini audio; typed ask_mind→successful
+  route=gemma result→Gemini audio AFTER that result; same episode completion/transcript saved and retrieved.
+  Evidence:/private/tmp/kaiku-controller-real.log. First probe had an empty sandbox-generated speech fixture;
+  corrected fixture validation now runs before token minting. No ambient microphone was opened.
+- Physical blocker: signed installer ready at/private/tmp/kaiku-apple-signed/Build/Products/Debug-iphoneos/Kaiku.app.
+  Installation attempted twice; CoreDevice reports paired iPhone14 unavailable. Xcode independently reports
+  it offline, while macOS USB Host inventory shows only buses and no phone; DDI is usable. Actual iPhone
+  microphone/HFP, Meta Gen2 registration/motion and HealthKit therefore remain unverified. Existing icon and
+  Mascot edits were preserved; Apple AGENTS updated. Parent runs global check and cross-module demo acceptance.
+
+### 2026-11-14 — Codex cloud integration, Gemma preparation and clinician record chat
+- Security: protected routes now fail closed. Pairing tokens bind one home; clinician/admin roles are separate and
+  cannot read private person routes. Credential-free local demos require explicit KAIKU_DEMO_MODE=1. Mixed-home
+  event batches reject before any write. Health readiness validates the effective criteria schema and returns 503
+  on invalid configuration instead of reporting a healthy service while monitoring routes fail.
+- Monitoring/persistence: criteria-driven source freshness makes old inputs insufficient; cached summaries refresh
+  on day/rule changes. Future input cannot move the scoring day. Daily watch snapshots use the configured measured
+  date and latest capture ordering. Commands remain queued until application acknowledgement. Crisis status,
+  transcript removal and retry tombstones are atomic; delayed completion uploads and deleted transcripts cannot
+  resurrect content. Explicit opt-in remains required; training export additionally needs reviewed, separately
+  training-consented episode IDs. Shared care graphs omit free-text helpers that may name people or places.
+- Voice admission: apps reserve the configured Live duration in the existing spend ledger, with usage visible in
+  intelligence health. Robot bootstrap intentionally does not mint a second token: the authorized robot adapter
+  meters its own key. Resume requests reuse only an open same-home/surface episode and retain the original duration.
+  Source context is prepared from actual input-source metadata, marks synthetic events and excludes private metrics.
+- Gemma: on-demand ask_mind now uses hosted Gemma before explicit Gemini fallback; exact memory lookup and crisis
+  remain deterministic. The existing nightly organiser uses validated Gemma graph proposals, caches unchanged
+  clean node sets, never rewrites the notebook and cannot merge different people. Bootstrap excludes consolidated
+  nodes and supplies compact prepared context so ordinary Gemini Live turns need no reasoning-model call.
+  The documented minimal-thinking setting fixed truncated responses and reduced the real primary response to 2.22 s.
+- Clinician record chat: POST /v1/patients/{id}/ask is clinician/admin only, grounded in deterministic consensus and
+  numeric observation timelines. Citation IDs, numeric claims and wording are validated; private memories, episodes
+  and transcripts are never read. Human-unit citation details include hours/minutes, clock times, percentages and
+  whole steps. Question/evidence caching and cooldown bound paid calls; unavailable/invalid answers fall back visibly.
+  Clinician explanation caching also ignores mere arrival timestamps and applies a failure/regeneration cooldown.
+- Durability: successful responses await volume commits, including GET routes that update summaries/explanations/
+  usage and voice caches. Failed commits return 503 for safe queued event/episode retries. No database was reset.
+- Verified: cloud ruff clean; full cloud suite 242 passed before the final readiness regression, then all 14 runtime
+  integration tests (including readiness) passed, covering all 243 current cloud tests. Production HTTP/SQLite tests
+  cover auth, restart/offline retries, timestamps, deletion/crisis monotonicity, source privacy and provider budgets.
+- Real-provider proofs using synthetic data and the existing spend DB: Gemma primary tool answer 2.22 s with a
+  verified phone-source citation; four-source clinician explanation 6.27 s; Gemma graph organisation 1.93 s with one
+  semantic merge, organised bootstrap and unchanged original notebook, repeated organisation cached; clinician
+  record question 6.16 s with 13 verified citations (11 human-unit metrics), repeat cached, unauthorized requests
+  rejected. Gemini Live microphone/speaker/Meta hardware validation is owned by the app/hub workstreams, not implied
+  by these API proofs. Hosted Gemma is verified; no private Modal GPU deployment or persistent warm GPU is claimed.
+- Ground truth: cloud/AGENTS.md updated. Parent owns contracts/config/modules regeneration, system-wide make check,
+  demo service restarts and deployment decisions. Runtime budget overrides followed the user's approved test limits;
+  no higher budget cap or credential was written into repository files.
+
+### 2026-11-14 — Codex web clinician and optional task capture
+- Reworked the care workspace around dated, searchable measurements, priority changes, preserved routines and
+  coverage limits. Source cards, evidence rows and validated record-chat citations navigate the same metric explorer.
+  Duration values use hours/minutes; minute-of-day metrics use HH:mm; steps and milliseconds use whole numbers.
+  Missing values and missing baselines are explicit. Synthetic records have visible labels and a record-type filter.
+- Added clinician-only Ask this record against the new cloud contract with clear generated/fallback attribution,
+  evidence citations, retry states and memory-only chat cleared on access changes. No clinician request reads the
+  person's private notebook or transcript endpoints. Routine comparisons now use a structured table; the relationship
+  graph is secondary supporting context rather than the main evidence view.
+- Added a recent task inspector using authorized GET /v1/patients/{id}/tasks: actual dates/device, timing, optional
+  spoken features and camera method/coverage. Facial features are described as experimental movement only, never
+  emotions, independent signal groups or comparable baselines across different capture methods.
+- Firefly camera capture is explicit opt-in and off by default, with visible preview/indicator and Stop control.
+  MediaPipe runs locally; only numeric movement/sample/coverage features are sent. The separate spoken session
+  measures microphone pace/pauses/pitch and now defaults its camera off. Silence returns missing speech evidence.
+  Leaving, backgrounding, cancellation or crisis releases capture; late permission grants are stopped. Interrupted
+  reaction tasks are discarded. Failed audio initialization releases the microphone.
+- Verified: web TypeScript check, all 32 tests, and production static export pass. New tests cover human units and
+  dated baseline evidence, silent speech, late and pre-cancelled permission requests, empty camera samples, and audio
+  setup cleanup. Final export includes the renamed signal groups and same-origin API (no integration port embedded).
+  Parent owns browser/device smoke verification, service restart for the new endpoint and combined make check.
+  No physical webcam/microphone, iPhone or Meta recording is claimed from these automated tests.
+- Ground truth: apps/web/AGENTS.md updated. Parent owns contracts/modules manifest regeneration; no cloud/config or
+  contract files were edited by this web workstream. Existing auth, durable outbox and safety delivery changes retained.
+
+### 2026-11-14 — Codex cloud optional task-capture integration
+- Added clinician/admin-only GET /v1/patients/{id}/tasks?days=7, returning the latest 100 typed PlaySession
+  envelopes within a validated 1–30 day window, newest first. Original date/source/device/method/sim/quality and
+  aggregate reaction, speech and optional camera features survive ingestion and retrieval unchanged. Future and
+  out-of-window observations are excluded; no private conversation tables are read.
+- Optional local facial methods remain observational and uncalibrated. No camera feature metric, cross-method
+  baseline pooling or new state vote was added. Zero-face capture metadata can be retained with no facial indices;
+  raw audio, frames, video and task transcripts remain invalid and unpersisted.
+- Record-chat task citations expose only participation, capture coverage and sample/method provenance. Facial
+  expressivity and movement index values are not included in Gemma's evidence, and the prompt forbids emotional
+  interpretation. Citation IDs retain the task event UUID for the clinician inspection panel.
+- Verified: all 249 cloud tests pass; Ruff clean. Six new production-route regressions cover web MediaPipe and
+  phone Vision round trips, roles/home isolation, time/100-row limits, optional capture/raw-media rejection,
+  unchanged analytic inputs and bounded record-chat evidence. These API tests do not claim physical camera or
+  microphone validation; app owners handle local permissions, capture and HTTPS/browser prerequisites.
+- Updated cloud/AGENTS.md. Parent owns contracts/config/modules regeneration and service restarts; no existing
+  LAN service, production database, deployment, secret or budget cap was changed by this workstream.
+
+### 2026-11-14 — Codex web capture origin preflight
+- Added a capability check before device capture: HTTP LAN addresses now explicitly require HTTPS or localhost;
+  secure browsers without media APIs get a separate unsupported-access explanation. Camera toggles and Start
+  speaking stay disabled when unavailable. Camera-free Firefly and skipping to the reaction game remain usable.
+- Verified TypeScript, all 33 web tests (including secure/insecure/unsupported origin cases), and production static
+  export. Confirmed prerequisite copy is bundled and no integration API port is embedded. No public service was
+  deployed. Module AGENTS updated; parent owns browser smoke verification on the LAN address.
+
+### 2026-11-14 — Codex web grounded-answer attribution correction
+- Updated Ask this record attribution to “Evidence selected by Gemma; facts checked by code” to match the cloud's
+  deterministic fact/direction rendering. Response contract and UI behavior are unchanged. Module AGENTS updated.
+- Verified TypeScript and successful production static export. Cloud owns model/direction regression tests.
+
+### 2026-11-14 — Codex native task sensing, physical installation and visible voice control
+- Added explicit default-off Camera consent and a visible activity-intro toggle, capture indicator and Stop
+  camera action. AVFoundation captures video only; Vision derives scalar facial geometry locally. Frames are
+  never saved or uploaded. Background, Back, cancellation, consent revocation and monitoring pause stop and
+  discard capture; late permission grants and late frames cannot reopen it. Camera failure leaves play usable.
+- Native play summaries now carry optional expressivity_index, face_movement, camera_face_coverage,
+  camera_samples and camera_method=vision_landmarks. Missing/ambiguous faces report coverage and no invented
+  metric. Geometry variability is not emotion recognition; Vision and MediaPipe values must not be pooled.
+  No new consensus vote was enabled. Existing Firefly reaction/lapse and Pebbles performance metrics remain.
+- Tell Kaiku microphone capture now requires explicit voice/task consent and a press; background/revocation/
+  dismissal stop it. Silent games do not capture audio; a walking Live session blocks a second Tell microphone.
+  Camera does not modify the Live audio session. Observation emission scrubs revoked sensor fields again.
+- Verified 104 Swift tests, 4 optional skips, zero failures; signed iPhone and Mac builds passed. New tests
+  cover geometry/coverage, no-data gaps, method-labelled contract fields, default-off, denied/late permission,
+  cancellation and late frames. Free actual AppModel recorder -> scoped outbox -> isolated cloud/database
+  test passed in 0.032 seconds: synthetic camera/task fields persisted; consent-off removed camera fields
+  while keeping reaction results. Dedicated camera-integration home, sim=true; no sensor/model opened.
+- Physical progress: USB discovery recovered and iPhone Developer Mode was enabled. Kaiku was installed,
+  then the camera-capable update installed over it and launched successfully, preserving data/pairing. User
+  confirmed Meta registration/connection. This does not yet prove actual IMU, glasses HFP or camera quality.
+- User reported no mic button. Found Talk hid its mic icon until Live already connected. Replaced that with
+  an always-visible labelled voice control (Start voice conversation / Mute microphone / Resume microphone),
+  plus explicit pairing and microphone-settings actions. Failure text distinguishes connection, pairing,
+  unavailable voice and audio startup; active iPhone voice shows the actual output-route name. This signed
+  fix was installed successfully. Parent is guiding the physical voice check; no further reinstall while
+  the person tests. Physical microphone/camera were not activated autonomously by the agent.
+- Evidence: /private/tmp/kaiku-camera-db-integration.log, /private/tmp/kaiku-apple-camera-tests.log,
+  /private/tmp/kaiku-apple-voice-button-build.log, /private/tmp/kaiku-apple-camera-mac-build.log.
+  Ground truth updated in apps/apple/AGENTS.md and project.yml; parent owns shared schema/config/view sync.
+
+### 2026-11-14 — Codex verified practitioner evidence rendering
+- Investigated task-chat fallback without retaining model prose. Existing contentless usage showed a successful
+  provider call followed by validation fallback. A newly authored synthetic fixture reproduced the cause: naked
+  task UUID fragments in unsolicited answer text were mistaken for unsupported numerical claims.
+- Gemma now selects relevance-ranked known citation IDs; code renders every practitioner fact, number, source
+  label and latest-versus-personal-usual direction. Unsolicited model prose is discarded, including cited claims
+  that reverse a numeric comparison. Unknown/malformed selections still fall back with a contentless reason.
+  Task answers retain actual coverage and explicitly mark absent camera capture as unknown.
+- Consensus explanations use the same boundary: Gemma prioritises supplied sources/metric IDs, while deterministic
+  code renders verdicts, recorded directions, caveats and scripted actions. Aggregate source labels do not claim
+  connected robot/Meta hardware. Semantic cache versions invalidate the older free-form answers.
+- Whole-unit/clock rounding now matches browser Math.round, including negative clock offsets. Added regressions
+  for reversed heart-rate claims, unsolicited UUID prose, source-group attribution and half-unit rounding.
+- Verified: full cloud suite passed and Ruff clean. Fresh authored-fixture real-provider proof: task-specific
+  selection rendered all three tasks, 80% coverage and unknown missing capture in 3.36 s; four-source consensus
+  selection rendered verified group labels in 1.82 s; repeated question used cache. No existing records were sent.
+- Automatic approval review rejected an earlier DB-snapshot provider probe because of potential sensitive-record
+  export. That action did not run. The approved replacement opened no existing database and used newly invented
+  in-memory fixtures only. Parent owns LAN service restarts and the final actual-HTTP/browser acceptance checks.
+
+### 2026-11-14 — Codex independent API discovery
+- Added public contract-backed GET /v1/discovery for the separate _kaiku-api._tcp service. It returns only
+  service/schema identity, effective demo/authenticated/unconfigured mode, auth requirement and supported API
+  capabilities; never home identifiers, credentials or a Live token. Configured credentials override demo mode.
+- A fresh app-generated installation home can bootstrap companion voice and ingest its first observation in
+  explicit demo mode without a robot, QR flow, seeded patient or new enrollment endpoint. Authenticated mode
+  retains existing per-home provisioning; an unconfigured deployment remains closed. Provider/budget gates
+  are unchanged, so discovery alone does not promise voice readiness.
+- Verified production-route tests cover all modes, credential privacy, fail-closed private routes and a fresh
+  home session followed by phone observation persistence. Full cloud test suite and Ruff passed. Parent owns
+  service restart and DNS-SD advertisement; Apple owns nearby API discovery and stable installation identity.
+
+
+### 2026-11-14 — Codex architecture audit — contracts
+- Did: atomic pre-provider budget reservation across threads/processes; metered failures retain estimates, invalid costs are rejected. guard is advisory. Updated contracts/AGENTS; no message/schema changes.
+- Verified: 11 budget regressions including blocked-provider concurrency and independent-process contention; final make check Ruff clean, 636 Python tests passed, web typecheck and generated/module checks passed.
+- Broken/blocked: independent ledgers are not a distributed billing limit; estimates are not invoices. No paid budget override used.
+
+### 2026-11-14 — Codex architecture audit — cloud
+- Did: added NumPy to Modal image with runtime-dependency parity check; exact accepted local recall precedes paid embeddings; provider tiers share remaining tool wait; Live mint/TTS attempts reserve before network; stateless Interactions use store=false. Durable atomic episode thread phase markers prevent retries replacing newer cross-device threads. Updated cloud/AGENTS.
+- Verified: final combined 636-test check and isolated make smoke pass, including current cloud suite. No paid inference or remote deployment.
+- Broken/blocked: TTS spend is recorded but TTS calls are absent from intelligence-health model_calls. Synchronous timeouts do not preemptively cancel provider work.
+
+### 2026-11-14 — Codex architecture audit — hub
+- Did: fixed partial transcripts consuming several dial/PHQ answers. Safety scans fragments immediately; completed utterances dispatch once; named Live dial tools own writes. Preserved end_session outcome/follow-up in durable completion; refused follow-ups cannot block delivery. Added validated consented express eye commands preserving ritual/thinking/crisis control. Updated hub/AGENTS.
+- Verified: final make check includes real MQTT; full isolated robot recording completed 2,674 MQTT messages across all ritual stages and synthetic glasses/laptop/Mac/phone posts, intended needs_call/disagree, exact mind recall and no hub errors. Evidence: /private/tmp/kaiku-audit-20261114-robot.
+- Broken/blocked: Atech root validation, uncompiled UNO Q sketch, absent friendlink firmware, unwired robot speech features, missing deterministic audible crisis asset and physical audio/sensor/motor/Lyria acceptance remain.
+
+### 2026-11-14 — Codex architecture audit — apps/apple
+- Did: global pause refuses/stops Live capture; unpausing requires explicit restart. Walks/recovered drafts bind original home/server without credentials; legacy drafts quarantined. Pairing revisions reject stale reads/rollbacks, clear private cached person data/visible words/walk state; Health delivery rechecks pairing/revision/consent after awaits. Updated Apple AGENTS.
+- Verified: 112 shared Swift tests, four optional skips, zero failures; unsigned generic-iPhone build succeeded. Logs: /private/tmp/kaiku-audit-apple-isolation-tests.log and /private/tmp/kaiku-audit-ios-build.log. No installation/capture/paid calls.
+- Broken/blocked: physical iPhone/HealthKit/DAT motion/HFP acceptance; DAT camera/daylight unavailable; standalone glasses web/Android modules are placeholders.
+
+### 2026-11-14 — Codex architecture audit — apps/web
+- Did: laptop, PHQ-9 and weather retries retain captured envelopes/home/API origin, preventing manual/background duplicate records. Weather answers lock after first submission. Person PHQ due uses /v1/me rather than a care-only history route. Updated web AGENTS.
+- Verified: TypeScript, 35 tests, production static export and whitespace checks pass, with lost-response/manual/background and scope/payload regressions. No browser capture or public deployment.
+
+### 2026-11-14 — Codex architecture audit — docs
+- Did: saved docs/intelligence-audit-2026-11-14.md with architecture chart, each input, orchestration/model boundaries, learning versus training, storage/transcripts and acceptance gates. Updated privacy ground truth for Google resumption state and dynamic TTS audio retention separate from transcript deletion.
+- Verified: setup/doctor zero failures (default-broker heartbeats absent); final make check 636 tests; final smoke; web 35 tests/build; Apple 112 tests and iPhone compile; full MQTT robot simulation. Existing dirty work preserved; no live service restart, deployment or production DB reset.
+- Broken/blocked: local estimated spend about $7.39 today versus configured $6 daily cap; no fresh paid proof or cap increase. Earlier real-model proofs remain historical evidence. No general transcript TTL, server consent registry, dynamic personal TTS erasure linkage or backup/forensic-erasure acceptance established. Physical/placeholder gates prevent an all-services-ready claim.
+
+### 2026-11-14 — Codex coordinated integration acceptance and architecture correction
+- Diagnosed the LAN website failure: an old API process loaded contracts that rejected newer criteria fields.
+  Restarted the existing port8000 service against the same database; no records were reset. Readiness now validates
+  effective criteria. The final static web export is served same-origin, and the task-owned Next development server
+  was stopped. Browser proof covers loaded care records, searched evidence, seven-day charts, human time units,
+  real Gemma evidence selection and corrected higher-than-usual heart-rate facts. Screenshot is in the temporary
+  acceptance artifacts, not committed user data.
+- Shared contracts/config now include source freshness and measured-day ordering, command acknowledgements,
+  bounded Live context/session controls, clinician citations, provenance-bearing task capture and public API
+  discovery. Generated schemas/TS and the module index were regenerated from their ground truth. No camera
+  feature was added to the consensus. Canonical source labels describe signal groups, not physical-device proof.
+- Architecture D35/D37/D38: Gemma organises permitted knowledge and selects/reasons over grounded evidence;
+  Gemini Live speaks from prepared context and calls Gemma only when needed. Deterministic code computes state,
+  validates graph proposals and renders clinician numeric facts. A real browser test caught a reversed heart-rate
+  claim in otherwise valid generated prose; model-authored clinical prose was replaced with bounded evidence
+  selection and deterministic fact rendering. Source groups no longer imply connected hardware.
+- Real HTTP task pipeline passed: three synthetic phone/web tasks accepted, three duplicate retries suppressed,
+  method/coverage retained in SQLite and read back, insufficient baseline never labelled stable, source context
+  marked simulated, and real Gemma selected all three task citations. Actual native Conversation→Gemini audio→
+  Gemma tool→new Gemini audio→consented transcript persistence passed separately; synthetic native task recorder
+  →outbox→HTTP→database passed. No physical microphone/camera success is inferred from injected audio/features.
+- Full make check passed: 636 Python tests plus web typecheck, lint and generated consistency checks. Web suite
+  passed 33 tests and production build. Native suite at the voice-button milestone: 100 passed, four optional
+  cases skipped; the paid controller and real-DB task cases were separately executed successfully. Shared persona
+  changes passed 25/25 dry scenarios and 3/3 bounded real-provider scenarios (text stand-in, not Live audio).
+- Prior robot proof: real hub adapter with synthetic PCM/Gemini and MQTT hardware twins, plus full ritual and
+  multi-source simulations. The lead subsequently deferred physical robot work; phone/glasses voice remains
+  independent and cannot claim robot-only capabilities. Meta registration was confirmed by the lead, while
+  physical audio routing/task capture still need actual-device acceptance.
+- Added a local API harness that advertises only the dedicated _kaiku-api._tcp service after readiness. Real
+  isolated HTTP lifecycle and SIGTERM cleanup passed; the running LAN service's advertisement was observed with
+  DNS-SD. No home ID or credential is advertised. Authenticated deployments still require scoped credentials;
+  only explicit demo mode permits new local installation profiles without QR/provisioning. Native discovery UI
+  installation is in progress after the lead reported the prior launch was not visibly updated.
+- The additional $15 budget approval is now persisted as $25 total/$23 daily ceilings, avoiding a normal restart
+  reverting to the already-exhausted old daily cap. Estimates were about $7.40 during this acceptance pass;
+  this is not provider billing reconciliation. Hosted Gemma is the verified path; no warm private Modal GPU or
+  deployed public API is claimed. HTTP LAN browser capture needs HTTPS or localhost, now explained before capture.
+- Updated architecture, privacy, track/submission claims and tester feedback. Remaining external boundaries:
+  no SMS/WhatsApp connector or external clinician notification, no verified physical robot bench, no iPhone DAT
+  camera stream, and no production multi-user enrollment/public HTTPS deployment. These are not silently mocked.
+
+### 2026-11-14 — Codex Apple: independent voice service discovery, no QR/robot prerequisite
+- Replaced QR-first onboarding with nearby companion services and advanced account access, plus separate service host/settings in You. `_kaiku-api._tcp` discovery validates public descriptors without sending credentials or profile data. Only a build-configured, verified explicit-demo service can automatically provision; Bonjour candidates require selection, production authorization is retained, origins get stable distinct device homes, existing profiles survive, and explicit disconnect prevents silent reprovisioning. Robot telemetry and Meta registration remain independent.
+- Updated developer install script to retain a profile/create a fresh device identity by default instead of silently using seeded demo-aino; launch arguments use the required separator. Existing explicit account links remain supported. New discovery contract mirrored in Swift, Apple AGENTS updated.
+- Validation: 121 Swift cases reported, 116 passed / 5 optional skipped / 0 failures (`/private/tmp/kaiku-discovery-tests.log`); optional real native discovery → new home → /me integration separately passed0.031s (`/private/tmp/kaiku-discovery-integration.log`) without paid model or capture. Signed iOS build4 succeeded; Mac build passed before final in-flight coalescing update and final rebuild running. Skips are icon export, paid controller, old raw LiveSession, task DB integration, and discovery HTTP integration; controller/task DB/discovery have separate successful evidence.
+- Physical evidence: one Kaiku app in device inventory, fi.kaiku.app build3; initial launch rejected specifically because iPhone locked. After unlock/local-network approval, parent observed phone10.0.38.179 GET /v1/discovery200 and /v1/me200 on LAN8000, distinct from Mac test traffic. Final build4 installed preserving profile/Meta and successfully launched You at03:56:10, without opening mic/camera. User-started phone/glasses voice acceptance pending; no further reinstall while they test. Parent owns global checks (636 passed before these final native changes).
+
+- Apple follow-up: final Mac rebuild including concurrent descriptor coalescing passed (`/private/tmp/kaiku-discovery-mac-build.log`); final signed iOS build4 passed (`/private/tmp/kaiku-discovery-ios-build.log`).
+
+### 2026-11-14 — Codex web new-record coverage wording
+- Replaced the watch-state hint with neutral coverage-first wording that also remains accurate when zero sources
+  have adequate data. Consensus states and chips are unchanged. TypeScript and production static export passed.
+
+## 2026-11-14 06:00 — Claude Code — hardware + firmware (A): UNO Q bring-up on the real board
+- Did: drove the UNO Q bench tests from the laptop (`arduino-app-cli` over adb, then SSH over Wi-Fi once the board
+  moved onto the PD hub; monitor read on the board's router port 7500 because the USB serial relay drops characters).
+  Board updated to App Lab 0.12 / zephyr core 1.1.0 / kernel 7.0. Python env on the board: `~/kaiku-venv` (uv, no sudo).
+  Fixes: knock bench uses an interrupt; buzzer address 0x1E (7-bit); `bench/sketch.yaml` pins every library
+  dependency; OpenCV < 5; `Camera.stop()` joins its thread (process abort on exit); main sketch compile error
+  (`Note` used in an auto-prototype) fixed; KY-039 bench detects real beats (30–220 bpm, 0 when not steady).
+  D39: no KY-054 (camera light), no KY-035 (power-on home, `HAS_HALL 0` in both firmwares, ±80° soft limit),
+  `camera_index = 2`.
+- Verified: buzzer PASS, knock PASS (5/5), camera PASS (opens, faces, distance, light, pulse batches), KY-053 found
+  and stable at 100 Hz; main UNO Q sketch compiles (16 % flash); new KY-039 bench compiles and runs; `make check`.
+- Contract changes: none.
+- Broken/blocked: KY-039 found no heartbeat in open room light (Garmin 44 bpm vs a ~117 bpm flicker artefact):
+  retest in the printed finger cradle. `kaiku_link` (Atech main firmware) still not ported to the SDK module format,
+  so the `HAS_HALL` change there is uncompiled. The Wi-Fi allows device-to-device traffic (SSH to the board works).
+- Next: A: Atech board bench tests (display, knob, button, LEDs, speaker, mic, motor), then port `kaiku_link`.
+
+## 2026-11-14 — Xavier — firmware/atech-head [first builds on the real Atech board, Windows]
+- Did: built the single-part benches with espressif32 6.9.0 and fixed what the first runs showed. Motor: `brake()`
+  (both lines HIGH) kept the real motor spinning, so the bench and `HeadIO.motorBrake` use `stop()`. Display: the
+  driver draws to a canvas until `display()`, so the bench calls it and the firmware uses direct mode. Speaker:
+  `playTone`/`playRTTTL` interrupt, so the bench queues the ladder with `playNote`. New `bench/mic_record`: 3 s
+  recording over USB to a local .wav (recordings gitignored).
+- Verified: mic bench on hardware (levels rise with sound). Motor, display, speaker, mic_record benches build;
+  their fixes still need a run on the board.
+- Contract changes: none.
+- Broken/blocked: `make` is not on Windows; atech-setup done by hand (see module AGENTS.md).
+- Next: run the motor/display/speaker/mic_record benches on the board, then the link bench.
+
+## 2026-11-14 — Xavier — firmware/atech-head, hardware [new port layout; full firmware compiles]
+- Did: ports now match the build: motor 13, LED grids 11/14, button 7 (project.yaml, benches, wiring.md, module
+  AGENTS.md). The full firmware compiles for the first time: `kaiku_link` is a PlatformIO library linked in place
+  (`libraries: symlink://`, new `kaiku_link/library.json`; `module.yaml` removed), since an Atech module must sit on a
+  real port. Knob: acceleration off (one count per click) in the bench and the firmware; the bench starts with the
+  ring off. Corrected the earlier motor note: the "won't stop" run had the motor on 13 while the code drove 7.
+- Verified: motor/leds/button/knob benches and the full firmware build. LED bench on hardware: grid lights on port 14,
+  stays dark on port 11.
+- Contract changes: none.
+- Broken/blocked: port 11 (GPIO43/44, UART0) did not light the LED grid: keep a grid off it or find out why.
+  Uploads sometimes fail at esptool's switch to 460800 baud; flash with `upload_speed = 115200` via
+  `pio run -d build -t upload` when that happens. Knob bench not yet run on hardware.
+- Next: knob bench on hardware, then the motor bench on port 13, then secrets.h + the link bench.
+
+## 2026-11-14 07:15 — Claude Code — integration pass (all modules, lead-coordinated agents)
+- Did (per module; details in each module's AGENTS.md):
+  - **cloud + contracts:** `GET /v1/patients/{id}/insight` (Gemma review with per-finding validators and code-rendered
+    facts, real agent trace, course of change, Gemma overview, week/usual comparison, learned routine with intervals,
+    learned-layer knowledge graph, daily account, shared-only reflection summaries, coverage, state history, action
+    log). One Gemma provider switch (`[gemma].provider`); deployed admin routes always need the admin token; backdated
+    care actions; per-home reset; capability-aware suggestions; `remember` guard; incomplete-day totals unscored;
+    context card `last_reflection` / `today_facts`; a new robot obs needs only registry + `sources.py`.
+  - **calibration:** `make calibrate`; provisional early baseline from day 9 (≥5 days, lag 3, labelled), never
+    "stable" before day 21, weight-0 observe-only metrics; evidence direction now comes from the days that voted.
+    Numbers and limits in `docs/validation.md`. Nothing is clinically validated.
+  - **games (apple, contracts, criteria, sim):** Lantern (simple reaction time), Seed shelf (symbol–digit), Watering
+    (effort for reward), Pebble path kept; warm-up sessions excluded; raw trials stay on the device.
+  - **apple:** mic down-mix/Bluetooth truncation/engine restart/keepalive fixes; six-step resumable setup; "Today,
+    so far"; design-audit fixes; `run_on_iphone.sh --install-only` (works on a locked phone). Glasses: session start
+    order fixed (`noEligibleDevice`), HFP route shown, opt-in camera frames to Gemini Live only (D43), You → Glasses
+    check with self-test; test script `docs/glasses-test.md`.
+  - **persona + evals:** "Meeting the feeling" attunement rules, reflection openers, `attunement.yaml`.
+  - **hub + sim + tools:** pulse measured-or-missing gates, camera backup HR, drum change features, face-derived
+    presence, `obs.engagement` multi-cue summary, local raw-number session store + `tools/session.py`; observations
+    are queued for the cloud before the bus publish (a stop mid-publish lost one).
+  - **web:** the website is the practitioner dashboard only: header strip + 9 movable/collapsible panels built on
+    the insight API; person-facing web routes removed.
+  - **design:** tokens v1.1.0 (state, chart, elevation, component sizes), `design/components.md`.
+  - **data + bring-up:** one person's authored 16-day record through the real routes; `make demo`, `make demo-reset`,
+    `make live-day`. **docs:** `track-readiness.md`, `demo-narrative.md`, tracks/submission rewritten to what the code
+    supports. Merged Edwin's and Xavier's robot commits (their D35 renumbered D39).
+- Verified: `make check` 794 passed; web typecheck/lint/tests/build; `swift test` 179 (8 skips); real hosted Gemma
+  reviews; one real Gemini Live call with injected speech + picture; one cold Gemma call on the Modal H100
+  (215 s, after giving the image the CUDA toolkit); Playwright at 1280×720, 1440×900, 1920×1080.
+- Contract changes: additive only (`PatientInsight` family, `obs.engagement`, `obs.play_session` game fields, optional
+  drum/pulse fields, criteria knobs, context-card fields). `SCHEMA_VERSION` unchanged.
+- Broken/blocked: nothing run on the real glasses, real microphones, HealthKit or the physical robot; pulse gates
+  tuned on synthetic signals; Modal GPU proven by one smoke call only (default provider stays hosted); challenge
+  PDFs with venue credentials were in earlier commits of this public repo (now untracked; history not rewritten).
+- Next: lead runs `docs/glasses-test.md`; redeploy the Modal API; record the video (`docs/demo-narrative.md`).

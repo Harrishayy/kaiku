@@ -5,6 +5,9 @@ board: 14port
 modules:
   - {id: rotary_encoder, instance: knob, ports: [5, 6]}
 code:
+  setup: |
+    knob.setAcceleration(false);   // the driver accelerates fast turns (up to 5x per click) by default
+    knob.enableRing(false);        // the ring starts ON; the press test expects off -> on -> off
   loop: |
     static int32_t last = 0; static bool down = false; static bool ring = false;
     knob.update();

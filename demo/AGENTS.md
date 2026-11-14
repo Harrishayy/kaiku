@@ -2,11 +2,16 @@
 
 > Read the root `AGENTS.md` first. Owner D.
 
-- `demo_script.md` — live table demo (ground truth for what we show and say; wording rules in root AGENTS.md).
-- `video_shotlist.md` — ≤ 2:00 video plan.
-- `reset.sh` — resets demo state in < 30 s against `KAIKU_CLOUD_URL` (clears hub queue, `seed_demo --reset`).
-- Rule: the demo only shows what runs. Before FINAL, compare `docs/submission.md` against what works and soften
-  anything that doesn't (handoff §15).
+- The story, video script and wording live in `docs/demo-narrative.md` (one source). `demo_script.md` is the
+  presenter's table checklist and `video_shotlist.md` the recording checklist; neither repeats the narrative.
+- `make demo` (`scripts/demo.sh`): starts what is not running (broker, local API with the built dashboard), seeds
+  Aino's sixteen-day record through the real routes (`cloud/kaiku_cloud/jobs/single_person.py`), prints the links.
+  Idempotent; `KAIKU_DEMO_PORT`, `KAIKU_DEMO_MQTT_PORT`, `KAIKU_DB_PATH`, `KAIKU_DEMO_ONCE=1`.
+- `make demo-reset` (`reset.sh`): clears the hub queue, drops simulated data on that API and seeds again so the
+  record ends yesterday (< 30 s). Live recordings stay.
+- `make live-day` (`scripts/live_day.py`): a good and a rough day on a throwaway copy, read back through the
+  practitioner API; `ARGS="--url ... --kind good|rough"` posts one to a running local API.
+- Rule: the demo only shows what runs. Claims are checked against `docs/track-readiness.md` §5.
 
 ## Recordings (gitignored: `demo/recordings/`)
 No keys, no paid calls (`KAIKU_NO_DOTENV=1`, template LLM, text voice). Both scripts start their own broker/cloud on

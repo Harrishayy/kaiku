@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "CourseEvent": {
+      "additionalProperties": false,
+      "description": "One dated point in the course of change. Text, dates and numbers are written by code.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "enum": [
+                "robot",
+                "glasses",
+                "laptop",
+                "wearable"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group"
+        },
+        "kind": {
+          "enum": [
+            "onset",
+            "lowest",
+            "care_action",
+            "phq9",
+            "back_in_range",
+            "still_away"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "title": "Label",
+          "type": "string"
+        },
+        "metric_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Id"
+        },
+        "text": {
+          "maxLength": 300,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "kind",
+        "label",
+        "text"
+      ],
+      "title": "CourseEvent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "How the record has moved against the person's own usual: what moved first, what followed, what has come\nback, what has not. Temporal order only, never a cause. Computed by code from the daily series.",
+  "properties": {
+    "events": {
+      "items": {
+        "$ref": "#/$defs/CourseEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "phase": {
+      "enum": [
+        "settling",
+        "steady",
+        "dip",
+        "recovering",
+        "recovered"
+      ],
+      "title": "Phase",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 700,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "phase",
+    "summary"
+  ],
+  "title": "Course",
+  "type": "object"
+}

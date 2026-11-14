@@ -94,8 +94,8 @@ def _clamp_1_5(v: Any) -> int:
     return max(1, min(5, int(v)))
 
 
-OFFER_LINE = "Shall we do our little check-in together? Press my ear or say yes."
-OFFER_LINE_BUTTON = "Shall we do our little check-in together? Press my button or say yes."
+OFFER_LINE = "Shall we do our little check-in together? Press my ear to turn on our conversation."
+OFFER_LINE_BUTTON = "Shall we do our little check-in together? Press my button to turn on our conversation."
 
 
 class Greet(Step):
@@ -106,7 +106,8 @@ class Greet(Step):
 
     async def enter(self, ctx: RitualContext) -> None:
         self._last_look = 0.0
-        if getattr(ctx, "ritual_reason", "") == "attention":
+        self._needs_consent = not getattr(ctx, "conversation_consented", True)
+        if self._needs_consent:
             await ctx.head(eyes="listening", pan_mode="track")
             await ctx.say(OFFER_LINE_BUTTON if _button(ctx) else OFFER_LINE)
             return
@@ -127,9 +128,22 @@ class Greet(Step):
             self.stop_ritual = True
             await ctx.say("That's fine. Not today.")
             return "skipped"
-        if event.kind in ("utterance", "ear"):
+        affirmative = (event.kind == "ear" and event.data.get("pressed", False)) or (
+            event.kind == "utterance" and YES.search(event.data.get("text", "")))
+        if affirmative:
+            if self._needs_consent:
+                ctx.accept_conversation()
+                self._needs_consent = False
+            return "completed"
+        if not self._needs_consent and event.kind == "utterance":
             return "completed"
         return None
+
+    def on_timeout(self) -> Status:
+        if self._needs_consent:
+            self.stop_ritual = True
+            return "skipped"
+        return "completed"
 
 
 class Dial(Step):
@@ -177,7 +191,7 @@ class Dial(Step):
             self.current = _clamp_1_5(event.data.get("value", 3))
             if event.data.get("pressed"):
                 return await self._answer(ctx, item, self.current)
-        elif event.kind == "utterance":
+        elif event.kind == "utterance" and not event.data.get("live"):
             m = NUMBER_1_5.search(event.data.get("text", ""))
             if m:
                 return await self._answer(ctx, item, int(m.group(1)))
@@ -243,7 +257,8 @@ class Breathe(Step):
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
         if event.kind == "ppg":
-            self.buf.add(event.data["fs_hz"], event.data["samples"])
+            self.buf.add(event.data["fs_hz"], event.data["samples"],
+                         t0_ms=event.data.get("t0_ms"), quality=event.data.get("quality"))
         return None
 
     async def exit(self, ctx: RitualContext, status: Status) -> None:
@@ -253,8 +268,14 @@ class Breathe(Step):
             return
         s = ctx.settings
         payload, quality, pre, post = self.buf.session(self.bpm, time.monotonic() - self.t0, s.ppg_band_hz,
-                                                       s.ppg_min_clean_ratio, window_s=self.window_s)
+                                                       s.ppg_min_clean_ratio, window_s=self.window_s,
+                                                       quality_min=getattr(s, "quality_min", 0.5))
         if not payload:
+            # Not measured: nothing is emitted and nothing is guessed. The reason is kept locally (session store).
+            note = getattr(ctx, "note", None)
+            if note is not None:
+                note("pulse_not_measured", reason=self.buf.reason, seconds=round(self.buf.seconds, 1),
+                     method=self.buf.method, restarts=self.buf.restarts)
             await ctx.say("Thank you for breathing with me.")
             return
         await ctx.emit("obs.hrv_session", payload, quality=quality)
@@ -316,7 +337,8 @@ class Drum(Step):
             return
         self.drum_emitted = True
         duration = (self.taps.times[-1] - self.taps.times[0]) / 1000 if self.taps.count > 1 else 0.0
-        await ctx.emit("obs.drum_session", self.taps.summary(duration))
+        payload = {k: v for k, v in self.taps.summary(duration).items() if v is not None or k == "force_mean"}
+        await ctx.emit("obs.drum_session", payload, quality=self.taps.quality())
 
     async def _stop_music(self, ctx: RitualContext) -> None:
         await ctx.music.stop()
@@ -340,12 +362,14 @@ class Drum(Step):
             if event.kind == "ear":
                 self.post_mood = _clamp_1_5(event.data.get("value", 3))
                 return "completed" if event.data.get("pressed") else None
-            if event.kind == "utterance":
+            if event.kind == "utterance" and not event.data.get("live"):
                 m = NUMBER_1_5.search(event.data.get("text", ""))
                 if m:
                     self.post_mood = int(m.group(1))
                     return "completed"
-            if event.kind == "tool" and event.data.get("name") == "record_dial" and "value" in event.data.get("args", {}):
+            if (event.kind == "tool" and event.data.get("name") == "record_dial"
+                    and event.data.get("args", {}).get("item", "mood") == "mood"
+                    and "value" in event.data.get("args", {})):
                 self.post_mood = _clamp_1_5(event.data["args"]["value"])
                 return "completed"
             return None

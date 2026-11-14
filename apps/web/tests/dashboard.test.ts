@@ -1,0 +1,219 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { PANEL_IDS, defaultLayout, dropPanel, promotePanel, readLayout, shiftPanel, slots, togglePanel } from '../lib/layout.ts';
+import { cleanText, compareSeries, daySignals, deriveReview, insightView, meaningOf, recordStage, recordedDays, trimLeading } from '../lib/insight.ts';
+import { byDay, describeObs } from '../lib/evidence.ts';
+import { fitLabel, layoutGraph } from '../lib/graph-layout.ts';
+
+test('layout: every panel count tiles the 12 × 12 grid exactly, so panels can never overlap or leave holes', () => {
+  for (let n = 1; n <= PANEL_IDS.length; n++) {
+    const cells = new Map<string, number>();
+    const rects = slots(n);
+    assert.equal(rects.length, n);
+    for (const s of rects) {
+      assert.ok(Number.isInteger(s.c[0]) && Number.isInteger(s.c[1]) && Number.isInteger(s.r[0]) && Number.isInteger(s.r[1]), `integer lines for ${n}`);
+      for (let c = s.c[0]; c < s.c[1]; c++) for (let r = s.r[0]; r < s.r[1]; r++) cells.set(`${c},${r}`, (cells.get(`${c},${r}`) ?? 0) + 1);
+    }
+    assert.equal(cells.size, 144, `holes with ${n} panels`);
+    assert.ok([...cells.values()].every((v) => v === 1), `overlap with ${n} panels`);
+    const area = (s: (typeof rects)[number]) => (s.c[1] - s.c[0]) * (s.r[1] - s.r[0]);
+    assert.ok(rects.every((s) => area(rects[0]) >= area(s)), 'the main panel is the largest');
+  }
+});
+
+test('layout: saved layouts recover from junk, stale ids, duplicates and missing panels', () => {
+  const full = (l: { order: string[]; docked: string[] }) => assert.deepEqual([...l.order, ...l.docked].sort(), [...PANEL_IDS].sort());
+  for (const raw of [null, '', '{', '[]', '{"order":1}', '{"order":["trends","nope","trends"],"docked":["trends","care"]}', '{"order":[],"docked":[]}']) full(readLayout(raw));
+  assert.deepEqual(readLayout('{"order":["care","nope","care"],"docked":[]}').order, ['care']);
+  assert.equal(defaultLayout(1280, 720).order.length, 3);
+  assert.equal(defaultLayout(1920, 1080).order.length, 5);
+  assert.deepEqual(defaultLayout(1280, 720).order, ['trends', 'consensus', 'review'], 'the review is always open by default');
+  assert.deepEqual(defaultLayout(1440, 900).order.slice(3), ['routine', 'graph']);
+  assert.equal(defaultLayout(1280, 720).order[0], 'trends');
+});
+
+test('layout: collapse, expand, keyboard shift, drag-drop and promote keep the complete panel set', () => {
+  let l = defaultLayout(1920, 1080);
+  const full = () => assert.deepEqual([...l.order, ...l.docked].sort(), [...PANEL_IDS].sort());
+  l = togglePanel(l, 'trends');
+  assert.ok(l.docked.includes('trends') && !l.order.includes('trends'));
+  l = togglePanel(l, 'trends');
+  assert.equal(l.order.at(-1), 'trends');
+  full();
+  const before = l.order.indexOf('review');
+  l = shiftPanel(l, 'review', 1);
+  assert.equal(l.order.indexOf('review'), before + 1);
+  assert.equal(shiftPanel(l, l.order[0], -1), l, 'moving past the edge changes nothing');
+  const [a, b] = [l.order[0], l.order[2]];
+  l = dropPanel(l, a, b);
+  assert.deepEqual([l.order[0], l.order[2]], [b, a]);
+  l = dropPanel(l, 'coverage', l.order[1]);
+  assert.equal(l.order[1], 'coverage');
+  assert.ok(!l.docked.includes('coverage'));
+  l = promotePanel(l, 'ask');
+  assert.equal(l.order[0], 'ask');
+  full();
+});
+
+const pt = (date: string, value: number | null, usual: number | null = null, lo: number | null = null, hi: number | null = null, early = false) => ({ date, value, baseline_median: usual, band_low: lo, band_high: hi, early });
+
+test('meaning: every number is worded against the person’s own usual, in the unit’s language', () => {
+  assert.equal(meaningOf(1412, 1370, 'min after midnight', 'up', 1350, 1395).text, '42 min later than their usual 22:50');
+  assert.equal(meaningOf(1412, 1370, 'min after midnight', 'up', 1350, 1395).tone, 'worse');
+  assert.equal(meaningOf(26, 15, 'min', 'down', 3, 27).text, '11 min longer than their usual 15 min');
+  assert.equal(meaningOf(26, 15, 'min', 'down', 3, 27).tone, 'similar');
+  assert.equal(meaningOf(2, 4, '1–5', 'down', 3.25, 4.75).text, '2 points lower than their usual 4 out of 5');
+  assert.equal(meaningOf(2, 4, '1–5', 'down', 3.25, 4.75).range, 'Outside their usual range: a change from their usual');
+  assert.equal(meaningOf(332, 390, 'ms', 'up', 360, 420).tone, 'better');
+  assert.equal(meaningOf(4, 4, '1–5', 'down', 3, 5).text, 'Same as their usual 4 out of 5');
+  assert.equal(meaningOf(null, 4, '1–5', 'down').text, 'Not recorded');
+  assert.equal(meaningOf(0, null, 'min', 'down').text, 'Still building their usual');
+  assert.equal(meaningOf(0, 20, 'min', 'down', 10, 30).tone, 'worse', 'zero is a recorded value');
+});
+
+const mood = {
+  metric: 'mood', label: 'Mood dial', unit: '1–5', source: 'robot' as const, worse_when: 'down' as const,
+  points: [
+    pt('2026-10-28', null), pt('2026-10-29', 4), pt('2026-10-30', 4), pt('2026-10-31', 4), pt('2026-11-01', 4), pt('2026-11-02', 4), pt('2026-11-03', 4), pt('2026-11-04', 4),
+    pt('2026-11-05', 4, 4, 3.25, 4.75, true), pt('2026-11-06', null, 4, 3.25, 4.75, true), pt('2026-11-07', 2, 4, 3.25, 4.75, true), pt('2026-11-08', 2, 4, 3.25, 4.75, true),
+    pt('2026-11-09', 2, 4, 3.25, 4.75, true), pt('2026-11-10', 3, 4, 3.25, 4.75, true), pt('2026-11-11', 5, 4, 3.25, 4.75, true),
+  ],
+};
+const consensus = (verdicts: Record<string, string>, state = 'watch', agreement = 'low_coverage') => ({
+  home_id: 'h', state, agreement, rule_version: 'v', computed_at: '2026-11-11T08:00:00Z',
+  sources: Object.entries(verdicts).map(([source, verdict]) => ({ home_id: 'h', source, verdict, confidence: 0.9, computed_at: '', last_data_at: verdict === 'insufficient' ? null : '2026-11-11T07:00:00Z', evidence: source === 'robot' && verdict === 'worse' ? [{ metric: 'mood', z: -2, direction: 'down', days: 4 }] : [] })),
+  explanation: { headline: 'Aino (SIMULATED): watching', text: 'Aino (SIMULATED) shows change. Simulated data is labelled SIMULATED. Read on.', caveats: '', suggested_actions: [], by: 'template' },
+}) as never;
+
+test('record: leading empty days are trimmed, gaps kept, and the calibration stage is read from the data', () => {
+  const s = trimLeading([mood as never]);
+  assert.equal(s[0].points[0].date, '2026-10-29');
+  assert.deepEqual(recordedDays(s), { days: 13, first: '2026-10-29', last: '2026-11-11', span: 14 });
+  assert.deepEqual(recordStage(s), { day: 14, building: false, early: true, steadyAfter: null });
+  const young = [{ ...mood, points: mood.points.slice(1, 5) }] as never;
+  assert.equal(recordStage(young).building, true);
+  assert.equal(recordStage(young).early, true);
+});
+
+test('day signals and period comparison: counts of measures outside their usual, calendar weeks, missing days visible', () => {
+  const sig = daySignals([mood as never]);
+  assert.deepEqual(sig.find((d) => d.date === '2026-11-07'), { date: '2026-11-07', measured: 1, compared: 1, changed: 1, better: 0, changedLabels: ['Mood dial'] });
+  assert.equal(sig.find((d) => d.date === '2026-11-06')?.measured, 0);
+  assert.equal(sig.find((d) => d.date === '2026-10-30')?.compared, 0, 'no usual yet: nothing to compare');
+  assert.equal(sig.find((d) => d.date === '2026-11-11')?.better, 1);
+  const c = compareSeries(mood as never, '2026-11-11', 'change_from_usual');
+  assert.equal(c.days_this_week, 6);
+  assert.equal(c.days_previous_week, 7);
+  assert.equal(c.this_week, 2.5);
+  assert.equal(c.previous_week, 4);
+  assert.equal(c.vs_previous, 'worse');
+  assert.equal(c.vs_usual, 'worse');
+  assert.equal(c.early_baseline, true);
+});
+
+test('review fallback: cites real records, never claims a steady picture on thin data, strips provenance tags from prose', () => {
+  const c = consensus({ robot: 'worse', glasses: 'insufficient', laptop: 'insufficient', wearable: 'insufficient' });
+  const { review, evidence } = deriveReview(c, [mood as never], null, recordStage([mood as never]));
+  assert.equal(review.by, 'template');
+  assert.ok(!/SIMULATED/.test(review.headline));
+  assert.equal(review.findings[0].theme, 'change');
+  assert.deepEqual(review.findings[0].cites, ['metric:mood']);
+  assert.equal(evidence[0].value, 5);
+  assert.equal(evidence[0].observed_at, '2026-11-11');
+  const coverage = review.findings.find((f) => f.theme === 'coverage');
+  assert.match(coverage?.meaning ?? '', /3 of 4 signal groups cannot give a verdict/);
+  assert.ok(!review.findings.some((f) => /\bstable\b/i.test(`${f.title} ${f.meaning}`)));
+  assert.equal(cleanText('Aino (SIMULATED): too little data'), 'Aino: too little data');
+  const view = insightView(null, c, [mood as never], null, null, [], {}, (s) => s);
+  assert.equal(view.fromCloud, false);
+  assert.deepEqual(view.trace, []);
+  assert.equal(view.stage.early, true);
+  assert.equal(view.coverage.groups.filter((g) => g.sufficient).length, 1);
+});
+
+test('evidence by day: plain sentences, envelope source kept, newest day first, fixed group order', () => {
+  assert.deepEqual(describeObs({ type: 'obs.outing', payload: { minutes: 26, steps: 2600, method: 'steps' } }), { group: 'outing', title: 'Outing of 26 min', detail: '2,600 steps · measured by steps' });
+  assert.equal(describeObs({ type: 'obs.phq9', payload: { total: 6, item9_positive: false } }).title, 'PHQ-9 questionnaire: 6 of 27');
+  assert.equal(describeObs({ type: 'obs.wearable_daily', payload: { sleep_min: 440 } }).title, 'Slept 7 h 20 min');
+  assert.equal(describeObs({ type: 'obs.something_new', payload: {} }).group, 'other');
+  for (const type of ['obs.self_report', 'obs.play_session', 'obs.safety_flag', 'obs.nudge_outcome', 'obs.intervention_response'])
+    assert.ok(!/payload|obs\.|undefined|null/.test(JSON.stringify(describeObs({ type, payload: {} }))), type);
+  const days = byDay([
+    { id: 'a', ts: '2026-11-12T12:00:00Z', source: 'phone', type: 'obs.outing', payload: { minutes: 10 }, sim: true },
+    { id: 'b', ts: '2026-11-13T12:00:00Z', source: 'hub', type: 'obs.drum_session', payload: {} },
+    { id: 'c', ts: '2026-11-13T12:05:00Z', source: 'phone', type: 'obs.safety_flag', payload: { trigger: 'manual' } },
+  ]);
+  assert.deepEqual(days.map((d) => d.count), [2, 1]);
+  assert.deepEqual(days[0].groups.map((g) => g.group), ['safety', 'checkin']);
+  assert.equal(days[1].groups[0].items[0].source, 'phone');
+  assert.equal(days[1].groups[0].items[0].sim, true);
+});
+
+test('graph: one row per node in a column, so labels cannot collide; dangling edges are dropped', () => {
+  const node = (id: string, kind: string, label = id) => ({ id, kind, label, detail: null, evidence: 3, tone: 'unknown' }) as never;
+  const edge = (src: string, dst: string, rel: string) => ({ src, dst, rel, label: rel, weight: 1, evidence: 1 }) as never;
+  const g = {
+    nodes: [node('p', 'person'), node('g1', 'signal_group'), node('a1', 'activity'), node('a2', 'activity'), ...Array.from({ length: 12 }, (_, i) => node(`m${i}`, 'measure')), node('r1', 'routine'), node('lost', 'routine')],
+    edges: [edge('p', 'g1', 'has_signal'), edge('p', 'a1', 'did'), edge('p', 'a2', 'helped'), ...Array.from({ length: 12 }, (_, i) => edge('g1', `m${i}`, 'measures')), edge('r1', 'a1', 'of'), edge('p', 'r1', 'keeps'), edge('p', 'ghost', 'did')],
+  };
+  const l = layoutGraph(g);
+  assert.equal(l.nodes.length, g.nodes.length);
+  for (const col of [1, 2]) {
+    const ys = l.nodes.filter((n) => n.col === col).map((n) => n.y).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= 27, `column ${col} rows are at least a line apart`);
+  }
+  assert.ok(!l.edges.some((e) => e.dst === 'ghost'));
+  assert.ok(!l.edges.some((e) => e.src === 'p' && e.dst === 'r1'), 'person → routine is implied through its activity');
+  assert.ok(l.height > 12 * 27);
+  assert.equal(fitLabel('Heart rate variability (watch, SDNN)', 140), 'Heart rate variabil…');
+  assert.equal(fitLabel('Watch', 140), 'Watch');
+});
+
+test('website scope: practitioner dashboard only; no person-facing routes, internal ids or banned words in the UI', () => {
+  const app = new URL('../app/', import.meta.url);
+  for (const gone of ['me', 'checkin', 'session', 'play', 'phq9', 'consent', 'live', 'clinician']) assert.ok(!existsSync(new URL(gone, app)), `${gone} route removed`);
+  for (const kept of ['health', 'eval', 'tune']) assert.ok(existsSync(new URL(kept, app)), kept);
+  const dir = new URL('../components/dash/', import.meta.url);
+  const files = [...readdirSync(dir).filter((f) => f.endsWith('.tsx')).map((f) => new URL(f, dir)), ...readdirSync(new URL('panels/', dir)).map((f) => new URL(`panels/${f}`, dir))];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+    assert.ok(!/monitoring|\bdemo\b|synthetic|diagnos|relapse|Worse than usual/i.test(src), `${f.pathname.split('/').pop()} wording`);
+    assert.ok(!/patient\.id\}<|home_id\}</.test(src), 'no internal id rendered');
+  }
+  const css = readFileSync(new URL('../app/dashboard.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(css), 'dashboard colours are tokens only');
+  assert.ok(!/font-size:\s*[\d.]+(px|rem|em)/.test(css), 'dashboard type sizes are tokens only');
+});
+
+import { edgeWords, learnedView } from '../lib/graph-layout.ts';
+
+test('learned graph: learned layer only, routines folded into their activity, measures only where a learned link touches', () => {
+  const n = (id: string, kind: string, layer = 'learned', label = id) => ({ id, kind, label, detail: null, evidence: 3, tone: 'unknown', layer }) as never;
+  const e = (src: string, dst: string, rel: string, layer = 'learned', label = rel, evidence = 8) => ({ src, dst, rel, label, weight: 0.7, evidence, layer }) as never;
+  const g = {
+    nodes: [n('p', 'person'), n('walk', 'activity'), n('r-walk', 'routine', 'learned', 'Daily · 15:00'), n('drum', 'activity'), n('call', 'care_action'), n('g', 'signal_group', 'structure'),
+      n('m-sleep', 'measure', 'structure'), n('m-mood', 'measure', 'structure'), n('m-steps', 'measure', 'structure')],
+    edges: [e('p', 'walk', 'did'), e('p', 'r-walk', 'keeps', 'learned', 'kept'), e('r-walk', 'walk', 'of'), e('p', 'walk', 'helped'), e('p', 'drum', 'did'),
+      e('m-sleep', 'm-mood', 'followed', 'learned', 'followed within a day'), e('call', 'm-mood', 'after'), e('p', 'g', 'has_signal', 'structure'), e('g', 'm-steps', 'measures', 'structure')],
+  };
+  const v = learnedView(g);
+  const ids = v.nodes.map((x) => x.node.id);
+  assert.deepEqual(ids.sort(), ['call', 'drum', 'm-mood', 'm-sleep', 'walk']);
+  assert.ok(!ids.includes('m-steps') && !ids.includes('g'), 'structure stays behind the toggle');
+  assert.equal(v.nodes.find((x) => x.node.id === 'walk')?.sub, 'Daily · 15:00 · kept');
+  assert.equal(v.nodes.find((x) => x.node.id === 'm-mood')?.side, 'right');
+  assert.equal(v.nodes.find((x) => x.node.id === 'call')?.side, 'left');
+  assert.ok(!v.edges.some((x) => x.rel === 'of'));
+  assert.ok(!v.edges.some((x) => x.rel === 'did' && x.dst === 'walk'), 'a bare "did" is dropped when a richer link exists');
+  assert.ok(v.edges.some((x) => x.rel === 'keeps' && x.dst === 'walk'), 'the routine link now points at the activity');
+  for (const side of ['left', 'right']) {
+    const rows = v.nodes.filter((x) => x.side === side).map((x) => x.row);
+    assert.equal(new Set(rows).size, rows.length, 'one row per node on a side');
+  }
+  assert.equal(edgeWords({ rel: 'helped', label: 'helped', evidence: 8, weight: 0.7 } as never), 'helped · 8 tries · uncertain');
+  assert.equal(edgeWords({ rel: 'followed', label: 'followed within a day', evidence: 4, weight: 1 } as never), 'followed within a day · 4 records');
+  // without layer tags (older cloud): activities, routines and what helped still count as learned
+  const old = { nodes: g.nodes.map((x: object) => ({ ...x, layer: 'structure' })), edges: g.edges.map((x: object) => ({ ...x, layer: 'structure' })) } as never;
+  assert.ok(learnedView(old).nodes.some((x) => x.node.id === 'walk'));
+});

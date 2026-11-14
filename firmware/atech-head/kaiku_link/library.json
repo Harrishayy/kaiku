@@ -1,0 +1,12 @@
+{
+  "name": "kaiku_link",
+  "version": "0.1.0",
+  "description": "Kaiku head link: Wi-Fi + MQTT contract messages, knob/button events, eyes, chest LEDs, open-loop pan motor, purr. Linked from ../project.yaml (libraries: symlink://).",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "knolleary/PubSubClient": "^2.8",
+    "bblanchon/ArduinoJson": "^7.2"
+  },
+  "build": { "srcFilter": ["+<*.cpp>"] }
+}

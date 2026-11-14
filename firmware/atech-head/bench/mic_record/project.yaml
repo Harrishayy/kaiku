@@ -1,0 +1,37 @@
+# Bench tool: record 3 s from the Atech microphone (ports 9-10) and send it to the laptop over USB.
+# Flash: `atech build . && atech upload .`. Then on the laptop: `python record_wav.py --port COM8` (see that file).
+# The host sends {"action":"record"}; the board records MAX_RECORD_SECONDS (3 s, 16 kHz, 16-bit mono), then prints
+# {"event":"wav_begin",...}, the PCM as "B64:" lines, and {"event":"wav_end"}. Bench only: raw audio never leaves the
+# laptop and recordings are gitignored (root AGENTS.md rule 5).
+name: bench-mic-record
+board: 14port
+modules:
+  - {id: microphone, instance: mic, ports: [9, 10]}
+code:
+  globals: |
+    #include "base64.h"
+    static bool rec_armed = false;
+  loop: |
+    if (atech_action == "record") {
+      mic.startRecording();
+      rec_armed = mic.isRecording();
+      if (!rec_armed) atechFail("could not allocate the recording buffer");
+      Serial.printf("{\"event\":\"rec_start\",\"ok\":%s}\n", rec_armed ? "true" : "false");
+      atechDone();
+    }
+    if (rec_armed && !mic.isRecording()) {           // the driver auto-stops when the 3 s buffer is full
+      rec_armed = false;
+      const uint8_t* pcm = (const uint8_t*)mic.getRecording();
+      size_t total = (size_t)mic.getRecordingLength() * 2;
+      Serial.setTxTimeoutMs(1000);                   // block while the host drains USB (default 0 drops bytes)
+      Serial.printf("{\"event\":\"wav_begin\",\"rate\":%d,\"bits\":16,\"channels\":1,\"bytes\":%u}\n",
+                    Microphone::SAMPLE_RATE, (unsigned)total);
+      for (size_t off = 0; off < total; off += 600) {
+        size_t len = total - off < 600 ? total - off : 600;
+        Serial.print("B64:");
+        Serial.println(base64::encode(pcm + off, len));
+      }
+      Serial.println("{\"event\":\"wav_end\"}");
+      Serial.flush();
+      Serial.setTxTimeoutMs(0);
+    }

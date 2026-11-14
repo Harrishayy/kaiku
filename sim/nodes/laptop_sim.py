@@ -3,7 +3,8 @@ usage rhythm, obs.play_session firefly games). HTTPS only.
 
     uv run python -m sim.nodes.laptop_sim [--every 300] [--once] [--phq9] [--phq9-item9]
 
-Each round posts a session, then one hour of screen activity plus a firefly game played on the Mac.
+Each default round posts Mac activity plus Firefly. The retired browser session remains available only
+through an explicit legacy fixture invocation; it does not populate ordinary demo rounds.
 
 --phq9-item9 sends a PHQ-9 with item 9 > 0 AND the obs.safety_flag the web app sends alongside it
 (the browser shows the crisis panel itself; the flag puts the dashboard into Safety).
@@ -82,11 +83,12 @@ class LaptopSim:
         return await self.http.post(batch)
 
     async def run(self, stop: asyncio.Event | None = None, once: bool = False, phq9: bool = False,
-                  item9: bool = False) -> None:
+                  item9: bool = False, legacy_session: bool = False) -> None:
         stop = stop or asyncio.Event()
         first = True
         while not stop.is_set():
-            await self.session()
+            if legacy_session:
+                await self.session()
             await self.mac_hour()
             if first and (phq9 or item9):
                 await self.phq9(item9=item9)
@@ -106,8 +108,10 @@ def main() -> None:
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--phq9", action="store_true", help="also send a PHQ-9 at start")
     ap.add_argument("--phq9-item9", action="store_true", help="PHQ-9 with item 9 > 0 (+ safety_flag)")
+    ap.add_argument("--legacy-session", action="store_true", help="explicit retired browser-task fixture")
     a = ap.parse_args()
-    asyncio.run(LaptopSim(every_s=a.every).run(once=a.once, phq9=a.phq9, item9=a.phq9_item9))
+    asyncio.run(LaptopSim(every_s=a.every).run(once=a.once, phq9=a.phq9, item9=a.phq9_item9,
+                                            legacy_session=a.legacy_session))
 
 
 if __name__ == "__main__":

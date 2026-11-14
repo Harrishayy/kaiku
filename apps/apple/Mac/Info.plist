@@ -29,10 +29,18 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>KaikuServiceURL</key>
+	<string>$(KAIKU_SERVICE_URL)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_kaiku-api._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Find nearby Kaiku companion services for voice. Robot hardware is separate.</string>
 </dict>
 </plist>

@@ -249,17 +249,21 @@ def card_memories(store: Store, home_id: str, intent: str, now: datetime) -> lis
     """≤ 3 memories for the context card. With vectors: Embedding-2 recall for the intent's words (query vector
     cached); otherwise exactly the plan-04 FTS rule (memory.recall)."""
     exclude = ("name", "preference")
+    inactive = {n["origin"] for n in store.kg_nodes(home_id) if n["status"] != "active"}
     if gemini.available() and store.embeddings(home_id, gemini.embedding_model()):
         q = " ".join([intent, *memory.INTENT_TERMS.get(intent, [])])
         hits = [h for h in recall(store, home_id, q, k=6, cache_query=True, now=now)
                 if h["ref"].startswith("mem:") and h["category"] not in exclude]
         if hits:
             ids = {h["id"] for h in hits}
-            rest = [m for m in store.memories(home_id) if m["id"] not in ids and m["category"] not in exclude]
+            rest = [m for m in store.memories(home_id) if m["id"] not in ids and m["category"] not in exclude
+                    and f"memory:{m['id']}" not in inactive]
             out = [{"id": h["id"], "category": h["category"], "text": h["text"]} for h in hits] + rest
             return out[:memory.CARD_MEMORIES]
-    return memory.recall(store, home_id, "", intent=intent, fill=True, exclude=exclude, now=now,
-                         limit=memory.CARD_MEMORIES)
+    inactive = {n["origin"] for n in store.kg_nodes(home_id) if n["status"] != "active"}
+    candidates = memory.recall(store, home_id, "", intent=intent, fill=True, exclude=exclude, now=now,
+                               limit=len(store.memories(home_id)))
+    return [m for m in candidates if f"memory:{m['id']}" not in inactive][:memory.CARD_MEMORIES]
 
 
 # ------------------------------------------------------------------ conflicts
@@ -311,7 +315,9 @@ def validate_diffs(store: Store, home_id: str, raw: list[Any], max_diffs: int = 
             continue
         if d.get("op") == "merge":
             k, x = nodes.get(str(d.get("keep"))), nodes.get(str(d.get("drop")))
-            if k and x and k["id"] != x["id"] and k["type"] == x["type"] and k["type"] != "me" \
+            same_person = bool(k and x and (k["type"] != "person" or (
+                (k["norm"] in x["norm"] or x["norm"] in k["norm"]) and _names(k["label"]) == _names(x["label"]))))
+            if k and x and same_person and k["id"] != x["id"] and k["type"] == x["type"] and k["type"] != "me" \
                     and not {d["keep"], d["drop"]} & touched:
                 ok.append({"op": "merge", "keep": d["keep"], "drop": d["drop"]})
                 touched |= {d["keep"], d["drop"]}

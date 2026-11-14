@@ -58,8 +58,8 @@ public struct KPressStyle: ButtonStyle {
                 }
                 .brightness(hover && !configuration.isPressed ? 0.012 : 0)
                 .scaleEffect(configuration.isPressed && !rm ? 0.98 : 1)
-                .animation(.easeOut(duration: configuration.isPressed ? 0.1 : 0.2), value: configuration.isPressed)
-                .animation(.easeOut(duration: 0.15), value: hover)
+                .animation(.easeOut(duration: configuration.isPressed ? KaikuTokens.Feedback.press : KaikuTokens.Feedback.release), value: configuration.isPressed)
+                .animation(.easeOut(duration: KaikuTokens.Feedback.hover), value: hover)
                 .kPointer(enabled)
                 .onHover { hover = $0 && enabled }
         }

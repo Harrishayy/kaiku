@@ -78,6 +78,22 @@ def health_detail(text: str) -> bool:
     return bool(HEALTH.search(norm(text))) or bool(wording.codes(wording.lint(text, max_questions=None)) & HEALTH_CODES)
 
 
+_WORD = re.compile(r"[^\W\d_]{3,}")
+_FILLER = {"the", "and", "her", "his", "their", "she", "has", "have", "that", "with", "for", "likes", "like", "name",
+           "named", "called", "person", "wants", "want", "said", "says", "going", "will", "every", "this", "are", "was"}
+
+
+def grounded(text: str, said: str | None) -> bool:
+    """True when at least half of the fact's content words occur in what the person said (same word stem)."""
+    if not said or not said.strip():
+        return False
+    stems = {w[:5] for w in _WORD.findall(norm(said))}
+    words = [w for w in _WORD.findall(norm(text)) if w not in _FILLER]
+    if not words:
+        return False
+    return sum(w[:5] in stems for w in words) * 2 >= len(words)
+
+
 # ------------------------------------------------------------------ settings
 def _off_key(home_id: str) -> str:
     return f"remember_off:{home_id}"

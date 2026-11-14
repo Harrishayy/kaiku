@@ -1,0 +1,219 @@
+{
+  "$defs": {
+    "Engagement": {
+      "additionalProperties": false,
+      "description": "Robot ritual, once at the end and only when the person accepted the conversation: a deterministic summary of\nhow animated the session was, fused from every available cue (face presence + movement from box positions,\nspeech pace/pauses, drum energy, pulse, dial answers, steps completed). No single cue decides and the face share\nis capped; fewer than 2 cues -> `level` is None. It is an observation feature with provenance: not an emotion,\nnot a diagnosis, and it feeds no verdict. Computed from numbers only; no image or audio is stored or sent.",
+      "properties": {
+        "agreement": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1 - spread of the available cue levels",
+          "title": "Agreement"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "cues": {
+          "items": {
+            "$ref": "#/$defs/EngagementCue"
+          },
+          "maxItems": 6,
+          "title": "Cues",
+          "type": "array"
+        },
+        "cues_available": {
+          "maximum": 6,
+          "minimum": 0,
+          "title": "Cues Available",
+          "type": "integer"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "method": {
+          "const": "robot-multicue-v1",
+          "default": "robot-multicue-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the ritual's episode id",
+          "title": "Session Id"
+        }
+      },
+      "required": [
+        "confidence",
+        "cues_available",
+        "cues"
+      ],
+      "title": "Engagement",
+      "type": "object"
+    },
+    "EngagementCue": {
+      "additionalProperties": false,
+      "description": "One cue of the robot's engagement summary. `available: false` = missing evidence (never a zero score).",
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "basis": {
+          "default": "",
+          "description": "what it was computed from, or why it is missing",
+          "maxLength": 120,
+          "title": "Basis",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "cue": {
+          "enum": [
+            "face",
+            "voice",
+            "drum",
+            "pulse",
+            "dial",
+            "ritual"
+          ],
+          "title": "Cue",
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-1 on a fixed reference range, not a baseline",
+          "title": "Level"
+        }
+      },
+      "required": [
+        "cue",
+        "available"
+      ],
+      "title": "EngagementCue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/Engagement"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.engagement>",
+  "type": "object"
+}

@@ -6,13 +6,14 @@
     "wearable"
   ],
   "source_labels": {
-    "glasses": "Glasses",
+    "glasses": "Walks & outings",
     "laptop": "Apps",
-    "robot": "Home robot",
+    "robot": "Check-ins & robot",
     "wearable": "Watch"
   },
   "source_of": {
     "obs.drum_session": "robot",
+    "obs.engagement": "adherence",
     "obs.friend_link": "robot",
     "obs.hrv_session": "robot",
     "obs.intervention_response": "learner",

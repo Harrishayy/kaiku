@@ -166,18 +166,18 @@ def synthesize(text: str, style: str, lang: str) -> bytes:
     from kaiku_contracts import budget
 
     est = budget.estimate(model, in_tokens=len(text) // 3 + 50, out_tokens=600)
-    try:
-        budget.guard("gemini", model, est * 2)
-    except budget.BudgetExceeded as e:
-        raise VoiceUnavailable(str(e)) from e
     err: Exception | None = None
     for attempt in range(2):
-        budget.charge("gemini", model, est, task="tts", component="cloud")
+        try:
+            budget.charge("gemini", model, est, task="tts", component="cloud")
+        except budget.BudgetExceeded as e:
+            raise VoiceUnavailable(str(e)) from e
         try:
             if genai_client.backend() == "platform":  # TTS models aren't on the platform Interactions API
                 return _platform_tts(client, model, text, style, codes.get(lang, lang))
             resp = client.interactions.create(
                 model=model,
+                store=False,
                 input=[{"type": "user_input", "content": [{
                     "type": "text", "text": text,
                     "annotations": [{"type": "speech_metadata", "style": style}]}]}],

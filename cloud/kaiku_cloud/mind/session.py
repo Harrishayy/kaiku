@@ -49,23 +49,38 @@ def models() -> tuple[str, str]:
 def start_session(store: Store, settings: Settings, req: CompanionSessionRequest,
                   now: datetime | None = None, mint=live_token.mint) -> CompanionSessionResponse:
     now = now or datetime.now(UTC)
+    previous = store.episode(req.resume_session_id) if req.resume_session_id else None
+    if req.resume_session_id and (previous is None or previous["home_id"] != req.home_id or
+                                  previous["surface"] != req.surface or previous["end"] is not None or
+                                  previous["outcome"] is not None):
+        raise ValueError("only an open session belonging to this home and surface can resume")
+    max_seconds = int(float(load_config().get("live", {}).get("session_max_minutes", 5)) * 60)
+    if previous:
+        started = datetime.fromisoformat(previous["start"].replace("Z", "+00:00"))
+        max_seconds -= int((now - started).total_seconds())
+        if max_seconds <= 0:
+            raise ValueError("session duration limit reached")
     card = build_card(store, settings, req.home_id, intent=req.intent, language=req.language,
                       others_present=req.others_present, now=now)
     persona, surfaces = assemble.load_files()
     tools = for_surface(req.surface)
     instruction = assemble.assemble(persona, surfaces, req.surface, card_dict(card), tools=[t["name"] for t in tools])
-    sid = str(uuid7())
-    store.episode_upsert({"id": sid, "home_id": req.home_id, "surface": req.surface, "intent": req.intent,
-                          "start": memory.iso(now), "tools": []})
+    sid = req.resume_session_id or str(uuid7())
+    if not previous:
+        store.episode_upsert({"id": sid, "home_id": req.home_id, "surface": req.surface, "intent": req.intent,
+                              "start": memory.iso(now), "tools": []})
     model, voice = models()
     pv = assemble.persona_version(persona)
     setup = live_token.setup(model, voice, instruction, tools)
-    token = mint(model, live_setup=setup)
+    # Robot is a trusted server-side adapter with its own budgeted key; apps receive one reserved token.
+    token = None if req.surface == "robot" else mint(model, live_setup=setup, home_id=req.home_id)
     log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv, live=token is not None)
     return CompanionSessionResponse(
         session_id=sid, model=model, voice=voice, system_instruction=instruction,
         tools=[CompanionTool(**t) for t in tools], context_card=card, persona_version=pv,
-        safety_phrases_version=safety_version(), live_token=token, live_setup=setup)
+        safety_phrases_version=safety_version(), live_token=token, live_setup=setup,
+        max_session_seconds=max_seconds,
+        context_refresh_seconds=int(load_config().get("live", {}).get("context_refresh_seconds", 15)))
 
 
 def _strings(v: Any) -> list[str]:
@@ -101,6 +116,12 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
              now: datetime | None = None) -> CompanionToolResult:
     now = now or datetime.now(UTC)
     name = call.name
+    episode = store.episode(call.session_id) if call.session_id else None
+    if episode and (episode["home_id"] != call.home_id or episode["surface"] != call.surface):
+        return CompanionToolResult(ok=False, name=name, error="session does not belong to this home and surface")
+    if episode and episode["outcome"] == "crisis":
+        return CompanionToolResult(ok=False, name=name, crisis=True, error="crisis",
+                                   result={"stop_session": True, "script": _gate().script("en")})
     for s in _strings(call.args):
         hit = _gate().check(s)
         if hit:
@@ -120,6 +141,13 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
     a, home = call.args, call.home_id
     try:
         if name == "remember":
+            if episode and not memory.grounded(a["text"], a.get("said")):
+                # In a live conversation the model must show the person's own words the fact comes from. The cloud
+                # never hears the audio, so this is the check it can make: no words, or words that do not contain
+                # the fact, store nothing.
+                return CompanionToolResult(ok=False, name=name, error=(
+                    "not stored: pass `said` with the person's own words that contain this fact, and only keep "
+                    "what they told you and want kept. Ask them first if unsure."))
             res = memory.remember(store, home, a["category"], a["text"], now)
             if res["action"] in ("stored", "forgot"):
                 graph.on_memory_write(store, home)
@@ -149,12 +177,19 @@ def end_session(store: Store, call: CompanionToolCall, a: dict[str, Any], now: d
     outcome = a.get("outcome", "completed")
     if ep:
         store.episode_upsert({**ep, "end": memory.iso(now), "outcome": outcome})
-        if outcome == "completed":
-            memory.close_threads_for(store, call.home_id, ep["intent"], now)
     res: dict[str, Any] = {"closed": ep is not None}
-    if a.get("follow_up"):
-        res["thread_id"] = memory.open_thread(store, call.home_id, a["follow_up"]["skill"], a["follow_up"]["topic"],
-                                              now)
+    follow_up = a.get("follow_up")
+    def open_follow_up():
+        return memory.open_thread(store, call.home_id, follow_up["skill"], follow_up["topic"], now)
+    if ep:
+        effects = store.episode_thread_effects(
+            call.home_id, ep["id"],
+            close=(lambda: memory.close_threads_for(store, call.home_id, ep["intent"], now)) if outcome == "completed" else None,
+            open_thread=open_follow_up if follow_up else None)
+        if "open" in effects:
+            res["thread_id"] = effects["open"]
+    elif follow_up:
+        res["thread_id"] = open_follow_up()
     return res
 
 
@@ -171,19 +206,29 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
     if old and old["home_id"] != ep.home_id:
         raise ValueError("episode id belongs to another home")
     end = ep.end or datetime.now(UTC)
+    crisis = ep.outcome == "crisis" or bool(old and old["outcome"] == "crisis") or any(
+        _gate().check(turn.text) for turn in ep.transcript or [])
     store.episode_upsert({"id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
-                          "start": memory.iso(ep.start), "end": memory.iso(end), "outcome": ep.outcome,
+                          "start": memory.iso(ep.start), "end": memory.iso(end), "outcome": "crisis" if crisis else ep.outcome,
                           "tools": sorted({*(old["tools"] if old else []), *ep.tools_used})})
-    if ep.close_thread or ep.outcome == "completed":
-        if ep.close_thread:
-            store.thread_close(ep.home_id, memory.iso(end))
-        else:
-            memory.close_threads_for(store, ep.home_id, ep.intent, end)
-    if ep.open_thread:
-        memory.open_thread(store, ep.home_id, ep.open_thread.skill, ep.open_thread.topic, end)
-    if transcript_allowed(ep):
-        store.transcript_upsert({"episode_id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
+    if not crisis:
+        def close_threads():
+            if ep.close_thread:
+                return store.thread_close(ep.home_id, memory.iso(end))
+            return memory.close_threads_for(store, ep.home_id, ep.intent, end)
+        store.episode_thread_effects(
+            ep.home_id, eid, close=close_threads if ep.close_thread or ep.outcome == "completed" else None,
+            open_thread=(lambda: memory.open_thread(store, ep.home_id, ep.open_thread.skill, ep.open_thread.topic, end))
+            if ep.open_thread else None)
+    if not crisis and transcript_allowed(ep):
+        stored = store.transcript_upsert({"episode_id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
                                  "start": memory.iso(ep.start),
                                  "turns": [t.model_dump() for t in ep.transcript or []]})
-        log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
+        if stored:
+            log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
+    from . import affect
+
+    affect.on_episode(store, ep.home_id, eid, start=memory.iso(ep.start), surface=ep.surface, intent=ep.intent,
+                      outcome=ep.outcome, crisis=crisis,
+                      turns=[t.model_dump() for t in ep.transcript] if ep.transcript and not crisis else None)
     return eid

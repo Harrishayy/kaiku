@@ -29,6 +29,9 @@ public enum DeepLink: Equatable, Sendable {
             switch g {
             case "firefly": return .route(.firefly)
             case "pebbles": return .route(.pebbles)
+            case "lantern": return .route(.lantern)
+            case "seeds": return .route(.seeds)
+            case "watering": return .route(.watering)
             case "breathe": return .route(.breathe)
             case "tell": return .route(.tell)
             case "lighthunt", "walk": return .route(.walk)
@@ -57,6 +60,10 @@ extension AppModel {
         guard let p = pairing, var c = URLComponents(url: p.baseURL, resolvingAgainstBaseURL: false) else { return nil }
         c.path = "/phq9/"
         c.queryItems = [URLQueryItem(name: "home", value: p.homeID)]
+        if let token = p.token {
+            var fragment = URLComponents(); fragment.queryItems = [URLQueryItem(name: "t", value: token)]
+            c.percentEncodedFragment = fragment.percentEncodedQuery
+        }
         return c.url
     }
 }

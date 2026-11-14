@@ -58,6 +58,13 @@ public enum WearableDailyBuilder {
         return w
     }
 
-    /// One wearable_daily per home and date, whatever happens (idempotent envelope id).
+    /// Equal snapshots retry idempotently; new HealthKit samples on the same day get a distinct event.
+    public static func envelopeID(home: String, summary: WearableDaily) -> String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let snapshot = (try? encoder.encode(summary)).map { String(decoding: $0, as: UTF8.self) } ?? summary.date
+        return StableID.make("wearable_daily|\(home)|\(snapshot)")
+    }
+
+    /// Legacy day identifier retained for stored-event compatibility.
     public static func envelopeID(home: String, date: String) -> String { StableID.make("wearable_daily|\(home)|\(date)") }
 }

@@ -10,7 +10,16 @@ public struct TodayView: View {
 
     public init() {}
 
-    var arm: NudgeArm? { app.nudge?.arm }
+    /// Today's suggestion. Robot activities (drum, a light to a friend) are only offered when the robot has been
+    /// heard from today: a phone- or Mac-only person is never sent to hardware they do not have.
+    var arm: NudgeArm? {
+        guard let a = app.nudge?.arm else { return nil }
+        if a == .drum || a == .friend_ping {
+            let robotHere = app.todayEvents.contains { ["head", "sensors", "hub"].contains($0.source) }
+            return robotHere ? a : nil
+        }
+        return a
+    }
 
     var bubble: String {
         if declined { return T("today.nottoday.reply") }
@@ -20,18 +29,17 @@ public struct TodayView: View {
     }
 
     public var body: some View {
-        KScreen(app.greeting, maxWidth: 1000) {
-            if app.offline { OfflineBanner() }
+        KScreen(app.greeting, maxWidth: KaikuTokens.Size.paneMax) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.48) {
                 WideAware { wide in
                     if wide {
                         VStack(spacing: KaikuTokens.Space.s4) {
-                            GlowingMascot(state: app.ambientState, size: 176)
+                            GlowingMascot(state: app.ambientState, size: KaikuTokens.Size.mascotL)
                             Bubble(bubble, big: true, centered: true)
                         }
                         .frame(maxWidth: .infinity)
                     } else {
-                        MascotWithBubble(state: app.ambientState, text: bubble, size: 112, big: true)
+                        MascotWithBubble(state: app.ambientState, text: bubble, size: KaikuTokens.Size.mascotM, big: true)
                     }
                 }
                 actions
@@ -94,8 +102,7 @@ struct GardenStrip: View {
                 HStack(alignment: .bottom, spacing: KaikuTokens.Space.s3) {
                     GardenPatch(plants: garden.plants, resting: garden.resting, height: height)
                         .frame(maxWidth: .infinity)
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(KaikuTokens.Colors.sage).padding(.bottom, 14)
+                    KChevron(tint: KaikuTokens.Colors.sage).padding(.bottom, KaikuTokens.Space.s3)
                 }
                 Text(garden.resting ? T("days.resting") : T("days.garden"))
                     .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
@@ -123,7 +130,7 @@ struct GardenCard: View {
                     Text(T("garden.title")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(KaikuTokens.Colors.sage)
+                    KChevron(tint: KaikuTokens.Colors.sage)
                 }
                 .contentShape(Rectangle())
             }

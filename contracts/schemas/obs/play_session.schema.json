@@ -16,8 +16,53 @@
             }
           ],
           "default": null,
-          "description": "pebbles: share of rounds repeated correctly",
+          "description": "pebbles: share of taps that were right; seeds: share of answers right",
           "title": "Accuracy"
+        },
+        "camera_face_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fraction of sampled frames containing one usable face",
+          "title": "Camera Face Coverage"
+        },
+        "camera_method": {
+          "anyOf": [
+            {
+              "enum": [
+                "mediapipe_blendshapes",
+                "vision_landmarks"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Camera Method"
+        },
+        "camera_samples": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "number of sampled camera frames; frames are never stored",
+          "title": "Camera Samples"
         },
         "device": {
           "enum": [
@@ -34,6 +79,51 @@
           "title": "Duration S",
           "type": "number"
         },
+        "expressivity_index": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "optional local facial movement variability; not an emotion or wellbeing score",
+          "title": "Expressivity Index"
+        },
+        "face_movement": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "optional normalised face position movement during the task",
+          "title": "Face Movement"
+        },
+        "false_starts": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "lantern: taps before the light or faster than 100 ms",
+          "title": "False Starts"
+        },
         "false_taps": {
           "anyOf": [
             {
@@ -48,15 +138,57 @@
           "description": "firefly: taps on a moth (no-go)",
           "title": "False Taps"
         },
+        "flags": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "few_trials",
+                  "false_starts",
+                  "low_accuracy",
+                  "too_fast",
+                  "interrupted"
+                ],
+                "type": "string"
+              },
+              "maxItems": 5,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "why a session is doubtful",
+          "title": "Flags"
+        },
         "game": {
           "enum": [
             "firefly",
             "breathe",
             "tell",
-            "pebbles"
+            "pebbles",
+            "lantern",
+            "seeds",
+            "watering"
           ],
           "title": "Game",
           "type": "string"
+        },
+        "hard_choice_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "watering: share of rounds the bigger, harder plant was chosen",
+          "title": "Hard Choice Ratio"
         },
         "hr_after_bpm": {
           "anyOf": [
@@ -87,6 +219,25 @@
           "default": null,
           "description": "breathe, with a watch",
           "title": "Hr Before Bpm"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "enum": [
+                "touch",
+                "pointer",
+                "keyboard",
+                "mixed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how the person answered (provenance for timing)",
+          "title": "Input"
         },
         "lapses": {
           "anyOf": [
@@ -132,6 +283,21 @@
           "description": "tell: semitones SD",
           "title": "Pitch Variability"
         },
+        "reaction_ms_cv": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "lantern: SD / mean of valid RTs",
+          "title": "Reaction Ms Cv"
+        },
         "reaction_ms_iqr": {
           "anyOf": [
             {
@@ -160,6 +326,53 @@
           "default": null,
           "description": "firefly: correct taps",
           "title": "Reaction Ms Median"
+        },
+        "response_speed": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "lantern: mean of 1000 / RT ms over valid trials (1/s)",
+          "title": "Response Speed"
+        },
+        "rt_ms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 120,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "per-trial response time in order, ms (0 = no response); the compact raw data behind the summary numbers",
+          "title": "Rt Ms"
+        },
+        "session_index": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "nth finished session of this game on this device (1 = first)",
+          "title": "Session Index"
         },
         "span_max": {
           "anyOf": [
@@ -190,6 +403,107 @@
           "default": null,
           "description": "tell: syllables per second",
           "title": "Speech Rate"
+        },
+        "tap_rate_hz": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "watering: median taps per second",
+          "title": "Tap Rate Hz"
+        },
+        "throughput_per_min": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "seeds: correct answers per minute",
+          "title": "Throughput Per Min"
+        },
+        "trial_codes": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[a-zA-Z0-9]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "one character per trial, same order as rt_ms. lantern: h hit, l lapse (>= 500 ms), m missed, a anticipation; seeds: c correct, x wrong; watering: H hard chosen, E easy chosen (lowercase = not finished in time)",
+          "title": "Trial Codes"
+        },
+        "trials_n": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "scored trials presented (practice excluded)",
+          "title": "Trials N"
+        },
+        "valid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "false when the validity rules failed (see flags); the envelope quality is then < 0.5 so the metric skips it",
+          "title": "Valid"
+        },
+        "valid_n": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "trials with a usable response",
+          "title": "Valid N"
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "true for the first sessions of a game on a device (practice effects): criteria metrics filter warmup = false",
+          "title": "Warmup"
         }
       },
       "required": [

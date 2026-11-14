@@ -16,6 +16,7 @@ import { api, ApiError, detailLines, useApi } from '@/lib/api';
 import { clone, criteriaToToml, diffPaths, groupBySource, normalizeCriteria, setIn } from '@/lib/criteria';
 import { STATE_LABEL, VERDICT_LABEL, dateTime, fmt, pct, prettify, sourceLabel, type State, type Verdict } from '@/lib/format';
 import { useAdminToken } from '@/lib/params';
+import { Chip } from '@/components/dash/kit';
 import { ErrorBox, Loading, PageHead, StateChip } from '@/components/ui';
 
 /** Short help for criteria fields (field names come from the contract; unknown fields render without help). */
@@ -171,7 +172,7 @@ export function TuneView() {
             }}
           >
             <input type="password" aria-label="Admin token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} style={{ maxWidth: 320 }} />
-            <button className="btn" type="submit" disabled={!tokenInput.trim()}>
+            <button className="d-btn d-btn-secondary" type="submit" disabled={!tokenInput.trim()}>
               Use token
             </button>
           </form>
@@ -222,7 +223,7 @@ export function TuneView() {
           ))}
 
           <section className="card" aria-labelledby="prev-h">
-            <h2 id="prev-h">Preview {previewStale && preview && <span className="tag tag-disagree">out of date — preview again</span>}</h2>
+            <h2 id="prev-h">Preview {previewStale && preview && <Chip tone="warn">out of date, preview again</Chip>}</h2>
             {!preview && <p className="muted small">Dry run: recompute every patient and the simulation under your edits. Nothing changes until you apply.</p>}
             {preview && <PreviewPanel p={preview} current={currentEval.data} />}
           </section>
@@ -241,21 +242,21 @@ export function TuneView() {
                 <strong>{dirty.length}</strong> unapplied edit{dirty.length === 1 ? '' : 's'}
               </span>
               <input type="text" placeholder="your initials" aria-label="Your initials" value={by} onChange={(e) => setBy(e.target.value)} maxLength={40} />
-              <button type="button" className="btn" disabled={busy !== null} onClick={() => run('preview')}>
+              <button type="button" className="d-btn d-btn-secondary" disabled={busy !== null} onClick={() => run('preview')}>
                 {busy === 'preview' ? 'Previewing…' : 'Preview'}
               </button>
-              <button type="button" className="btn btn-apply" disabled={busy !== null || dirty.length === 0} onClick={() => run('apply')}>
+              <button type="button" className="d-btn d-btn-primary" disabled={busy !== null || dirty.length === 0} onClick={() => run('apply')}>
                 {busy === 'apply' ? 'Applying…' : 'Apply live'}
               </button>
-              <button type="button" className="btn btn-ghost" disabled={busy !== null || resp.origin === 'file'} onClick={() => run('reset')}>
+              <button type="button" className="d-btn" disabled={busy !== null || resp.origin === 'file'} onClick={() => run('reset')}>
                 Reset to file
               </button>
-              <button type="button" className="btn btn-ghost" onClick={exportToml}>
+              <button type="button" className="d-btn" onClick={exportToml}>
                 Export TOML
               </button>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className="d-btn"
                 disabled={dirty.length === 0}
                 onClick={() => {
                   setDraft(clone(resp.criteria));

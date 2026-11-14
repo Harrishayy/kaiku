@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "description": "Public service identity, never a robot connection or authorization credential.",
+  "properties": {
+    "auth_required": {
+      "title": "Auth Required",
+      "type": "boolean"
+    },
+    "capabilities": {
+      "items": {
+        "enum": [
+          "companion_voice",
+          "observations",
+          "monitoring"
+        ],
+        "type": "string"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "mode": {
+      "enum": [
+        "demo",
+        "authenticated",
+        "unconfigured"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "service": {
+      "const": "kaiku-api",
+      "default": "kaiku-api",
+      "title": "Service",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mode",
+    "auth_required"
+  ],
+  "title": "APIDiscoveryResponse",
+  "type": "object"
+}

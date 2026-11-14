@@ -20,12 +20,12 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 ## Map
 | file | twin of | talks | publishes / posts | listens to |
 |---|---|---|---|---|
-| `nodes/head_sim.py` | Atech board (+ the UNO Q knock drum) | MQTT | `raw/head/ear` Knob dial (`[robot] dial_input = ear`, current build) or `raw/head/button` presses (`button`); taps as knocks (`drum_input = knock`, no force) or IMU (`imu`); `raw/head/pan` (5 Hz), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
-| `nodes/sensors_sim.py` | UNO Q (+ its camera's YOLO boxes) | MQTT | `raw/sensors/distance` (5 Hz), `raw/hub/face` (5 Hz, one per person within 180 cm, growing as they approach; `--two` / key `2` = two people), `raw/sensors/ppg` (25 @ 100 Hz, only between `ppg start/stop`), `light`, `hall`, `button`, `health/sensors` | `cmd/sensors`, `obs/ritual` |
+| `nodes/head_sim.py` | Atech board (+ the UNO Q knock drum) | MQTT | `raw/head/ear` Knob dial (`[robot] dial_input = ear`, current build) or `raw/head/button` presses (`button`); taps as knocks (`drum_input = knock`, no force; dropped inside the 40 ms debounce or while the pan moves, like the sketch) or IMU (`imu`); `raw/head/pan` (5 Hz while moving, 0.5 Hz idle; `moving` only on real `pan`/`home`/`gesture` moves, soft limit ±80°), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
+| `nodes/sensors_sim.py` | UNO Q (+ its camera's face boxes) | MQTT | `raw/hub/face` (5 Hz, one per person within 180 cm, size = `[unoq] distance_k_cm` / cm; `--two` / key `2` = two people), `raw/sensors/distance` (5 Hz, **derived from the biggest face box** like the firmware; `far_cm` when no face is seen: `face_hidden`; nothing at all with `camera_ok = False`), `button`, `health/sensors` (`camera_ok, mcu_ok, mcu_fw, knocks, ppg, at_home`); explicit bench fixtures for pulse (`--ppg-fixture clean\|flat\|noisy\|flicker\|camera\|auto`), light and hall | `cmd/sensors`, `obs/ritual` |
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
-| `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: dat_imu, cadence_spm, gait_regularity, head_up_ratio, daylight_min}` + `obs.intervention_response{activity: walk}` | — |
-| `nodes/laptop_sim.py` | laptop `/session` + `/phq9` + Mac app (source 3, "Apps") | HTTPS | `obs.laptop_session`, `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0), hourly `obs.screen_activity`, `obs.play_session{game: firefly, device: mac}` | — |
-| `nodes/phone_sim.py` | iPhone app (source `phone`) | HTTPS | `obs.wearable_daily` (watch, or `--no-watch` phone_only), weather check `obs.self_report{channel: phone}` ×3, `obs.play_session{device: phone}` (firefly + pebbles) | — |
+| `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: steps, minutes, steps}` (phone-supported outing only; no outdoor-location or DAT claim) + `obs.intervention_response{activity: walk}` | — |
+| `nodes/laptop_sim.py` | laptop `/session` + `/phq9` + Mac app (source 3, "Apps") | HTTPS | explicit legacy `obs.laptop_session` fixture only; `obs.phq9{mode: laptop}` (+ `obs.safety_flag` if item 9 > 0), hourly `obs.screen_activity`, `obs.play_session{game: firefly, device: mac}` | — |
+| `nodes/phone_sim.py` | iPhone app (source `phone`) | HTTPS | `obs.wearable_daily` (watch, or `--no-watch` phone_only), weather check `obs.self_report{channel: phone}` ×3, `obs.play_session{device: phone}` (firefly + pebbles + the measured games lantern / seeds / watering: trial record, `warmup`, `valid`, envelope `quality`; `lantern(session=, slowing=, valid=)` for tests) | — |
 | `nodes/http_source.py` | shared HTTPS poster: validates, Bearer token, timeouts, retries, fail-soft | | | |
 | `nodes/signals.py` | synthetic PPG with RSA, approach curve, daylight | | | |
 | `run.py` | `make sim`: runs the twins together, auto or `--keyboard` | | | |
@@ -35,8 +35,8 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 **Auto mode** acts like a user, following the hub's dial protocol (`hub/AGENTS.md` → Invariants):
 someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn the
 ear knob, then press (`[robot] dial_input`; `--dial button` = press the button n times) · `drum started` → tap at `--tempo`, warming up to ~1.4× tempo + force by the end (so the hub's live context says `[drumming · lively]`) · `obs/drum_session` → stop, answer the post-activity
-mood · `phq9 started` → nine presses (item 9 always 0) · during `breathe` the PPG's RSA grows (RMSSD rises) and the heart rate settles ~4 bpm over 30 s ·
-glasses walk, laptop session + Mac hour, phone morning (watch summary + weather check) + firefly once at start,
+mood · `phq9 started` → nine presses (item 9 always 0) · only with the explicit `--ppg-fixture` bench flag, `breathe` exercises synthetic RSA/heart-rate changes ·
+phone-supported outing, Mac hour, phone morning (watch summary + weather check) + firefly once at start,
 then every `--every` s.
 
 Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their end states are pinned by cloud tests.
@@ -54,7 +54,7 @@ Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their 
 - Keyboard keys are documented once: in `run.py`'s docstring and in "Run standalone" below.
 
 ## Run standalone
-`make sim` (all six twins, auto) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
+`make sim` (current head/sensors/outings/apps twins, auto; Friendlink requires explicit selection) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
 `[`/`]` ear, `e` press ear, `b` press head button, `p` arrive/leave, `s` start ritual, `x` long-press top button = manual safety trigger,
 `2` second person in view, `f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `m` Mac hour (screen activity +
 firefly), `o` phone morning (watch summary + weather check), `q` quit).
@@ -71,7 +71,10 @@ seeds the deployed cloud.
 `MQTT_*`, `KAIKU_HOME_ID`, `KAIKU_CLOUD_URL` (default `http://localhost:8000`), `KAIKU_HOME_TOKEN` (Bearer for the
 HTTPS twins and the seeder), `KAIKU_ADMIN_TOKEN` (seeder admin calls). `KAIKU_RITUAL_DRUM_S` etc. shorten the auto
 drum. `run.py` flags: `--every`, `--phq9`, `--phq9-item9`, `--tempo`, `--mood`, `--arrive-after`, `--two`.
-`sensors_sim` alone: `--no-faces`, `--two`.
+`sensors_sim` alone: `--no-faces` (legacy distance-sensor fixture: distance without a camera), `--two`, `--legacy-light`,
+`--hall`, `--ppg-fixture [clean|flat|noisy|flicker|camera|auto]` (`camera` = ~15 Hz at a wobbling rate, quality 0.6, only
+while a face is in view; `auto` = flat KY-039 for `[unoq] ppg_fallback_s`, then the camera). Light/hall/pulse fixtures default off.
+`laptop_sim --legacy-session` explicitly exercises the retired browser-task contract; normal rounds send Mac rhythm and Firefly only.
 
 ## Health signal
 MQTT twins heartbeat on `health/<node>` with `details.sim = true`. HTTPS twins log `posted` / `cloud_unreachable`.
@@ -79,11 +82,21 @@ MQTT twins heartbeat on `health/<node>` with `details.sim = true`. HTTPS twins l
 
 ## Tests
 `uv run pytest sim/tests` (PPG heart rate + RSA, approach curve, face boxes grow on approach / two people, head dial/drum/post-mood protocol and PPG gating on
-a real broker, glasses/laptop envelopes + auth via `httpx.MockTransport`, fail-soft when the cloud is down). The
+a real broker, glasses/laptop envelopes + auth via `httpx.MockTransport`, fail-soft when the cloud is down; firmware
+twins: distance from the face box / `far_cm` / camera unplugged, every pulse fixture's shape, pan `moving` + knock mute). The
 generator and every demo patient's end state are tested in `cloud/tests`.
 
 ## Known issues
-- Pan is cosmetic (no motor physics). PPG has no motion artefacts — use recorded fixtures for quality-gate tests.
-- The laptop twin's features are plausible random numbers, not computed from audio/video.
+- Pan is a linear move to the target (no ramp, no dead-reckoning drift). The pulse fixtures are synthetic shapes
+  (flat, noise, a metronomic flicker ripple, a smooth camera ripple): no motion artefacts and no real finger data.
+- The sim person sits 36 cm away (face ≈ 25 % of the frame) so the default `at_desk_size` is reached; `distance_k_cm`
+  is untuned on the real head.
+- Explicit legacy laptop-task fixtures contain synthetic features, never computed audio/video.
 - Phone/Mac twins stand in for `apps/apple` until it exists (`modules.toml [planned_producers]`).
 - Simulated drift is one model (a ramp across signals); real drift will be messier.
+
+Current demo capture omits fabricated task-camera fields, DAT motion/daylight, light/hall and unvalidated robot pulse.
+Phone Firefly and Pebbles retain aggregate game performance only. Phone Health remains an explicitly simulated
+optional supported capture path. Outings use the existing `steps` contract method; steps do not prove outdoor
+location. Legacy sensor/pulse/browser fixtures remain explicit bench invocations, separate from the default demo.
+All posted envelopes still carry `sim=true`; absent fields remain missing rather than invented zeros.

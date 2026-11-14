@@ -36,7 +36,8 @@ _PERSONA = find_repo_file("config/persona.md")
 ROOT = _PERSONA.parents[1] if _PERSONA else Path.cwd()
 
 CARD_KEYS = {"language", "intent", "time_of_day", "weather_word", "first_name", "done_today", "suggestion",
-             "phq9_due", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember"}
+             "phq9_due", "source_context", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember",
+             "recent_reflection", "last_reflection", "today_facts"}
 TONES = {"steady", "gentle", "extra-gentle"}
 LANGUAGES = {"en", "fi", "sv"}
 FORBIDDEN_KEY = re.compile(r"state|score|verdict|consensus|needs_call|phq9_total|z_|baseline|metric|trend|risk|"
@@ -127,6 +128,8 @@ def render_card(card: dict[str, Any]) -> str:
         lines.append(f"This session: {c['intent']}.")
     if c.get("done_today"):
         lines.append("Already done today: " + "; ".join(c["done_today"]) + ".")
+    if c.get("source_context"):
+        lines.append("Recent input context (presence only): " + " ".join(c["source_context"]))
     if c.get("suggestion"):
         lines.append(f"Today's suggestion (if it fits): {c['suggestion']}.")
     if c.get("phq9_due"):
@@ -137,6 +140,10 @@ def render_card(card: dict[str, Any]) -> str:
         lines.append(f"Left open last time (on any device): {c['open_thread']}. Pick it up gently if it fits.")
     if c.get("focus"):
         lines.append(f"Today's focus, if it fits naturally: {c['focus']}.")
+    if c.get("today_facts"):
+        lines.append("Today, in their own ratings: " + ", ".join(c["today_facts"]) + ". Mention it only if it helps.")
+    if c.get("recent_reflection"):
+        lines.append(f"Last reflection: {c['recent_reflection']}")
     if c.get("dont_remember"):
         lines.append("They asked you not to remember things: never call remember.")
     elif c.get("memories"):

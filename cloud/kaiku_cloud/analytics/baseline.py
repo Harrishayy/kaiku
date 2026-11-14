@@ -20,6 +20,7 @@ class Baseline:
     median: float
     scale: float
     n: int
+    early: bool = False  # provisional baseline of a young record (criteria [defaults].early_baseline_*)
 
 
 def baseline_for(series: dict[date, float], day: date, *, window: int, min_days: int, min_mad: float,

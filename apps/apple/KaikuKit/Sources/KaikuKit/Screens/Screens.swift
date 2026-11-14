@@ -20,12 +20,13 @@ public enum KaikuTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// exceptions, mirrored in apps/apple/AGENTS.md → Parity.
 public enum KaikuRoute: String, Hashable, CaseIterable, Sendable {
     case weather, firefly, pebbles, breathe, tell, walk
-    case memories, saw, voice, quiet, devices, help
+    case lantern, seeds, watering
+    case memories, saw, voice, quiet, devices, help, glasses
 
     public var tab: KaikuTab {
         switch self {
         case .weather: return .today
-        case .firefly, .pebbles, .breathe, .tell, .walk: return .play
+        case .firefly, .pebbles, .breathe, .tell, .walk, .lantern, .seeds, .watering: return .play
         default: return .you
         }
     }
@@ -33,12 +34,13 @@ public enum KaikuRoute: String, Hashable, CaseIterable, Sendable {
 
 /// The parity list (one row per screen in design/ia.md). Used by the parity test and the AGENTS.md table.
 public enum KaikuScreen: String, CaseIterable, Sendable {
-    case onboardingWelcome, onboardingPair, onboardingConsent, onboardingNotifications, onboardingMeet
+    case onboardingWelcome, onboardingAbout, onboardingPair, onboardingConsent, onboardingPermissions, onboardingHello
     case today, weatherCheck
     case play, firefly, pebbles, tell, breathe, walk
+    case lantern, seeds, watering
     case talk
     case days, markDay
-    case you, memories, saw, voice, quiet, devices, help
+    case you, memories, saw, voice, quiet, devices, help, glasses
     case crisis
     case menuBarPopover
 
@@ -46,7 +48,7 @@ public enum KaikuScreen: String, CaseIterable, Sendable {
     public var platform: Platform {
         switch self {
         case .menuBarPopover: return .macOnly
-        case .walk: return .iPhoneOnly
+        case .walk, .glasses: return .iPhoneOnly
         default: return .both
         }
     }
@@ -58,6 +60,9 @@ func destination(_ r: KaikuRoute) -> some View {
     case .weather: WeatherCheckView()
     case .firefly: FireflyGame()
     case .pebbles: PebbleGame()
+    case .lantern: LanternGame()
+    case .seeds: SeedGame()
+    case .watering: WateringGame()
     case .breathe: BreatheView()
     case .tell: TellKaikuView()
     case .walk: WalkView()
@@ -67,6 +72,7 @@ func destination(_ r: KaikuRoute) -> some View {
     case .quiet: QuietHoursView()
     case .devices: DevicesView()
     case .help: HelpView()
+    case .glasses: GlassesCheckView()
     }
 }
 
@@ -93,6 +99,7 @@ public struct KaikuRootView: View {
         .environment(\.locale, Locale(identifier: app.language.rawValue))
         .tint(KaikuTokens.Colors.clay)
         .kToast($app.toast)
+        .kCelebration(app.celebration, enabled: !app.showCrisis)
         #if os(iOS)
         .fullScreenCover(isPresented: $app.showCrisis) { CrisisView() }
         #else
@@ -161,7 +168,7 @@ struct MacSidebar: View {
                 ForEach(KaikuTab.allCases) { tab in
                     Label { Text(tab.title).kText(.body, weight: .medium) } icon: { Image(systemName: tab.symbol) }
                         .tag(tab)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, KaikuTokens.Space.s1)
                 }
             }
             .listStyle(.sidebar)

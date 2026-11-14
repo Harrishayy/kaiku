@@ -4,17 +4,15 @@ import { useEffect, useState } from 'react';
 import type { Health, HealthOverview, Healthz } from '@contracts';
 import { useApi } from '@/lib/api';
 import { fmt, relTime } from '@/lib/format';
+import { Chip } from '@/components/dash/kit';
 import { Empty, ErrorBox, Loading, PageHead, StaleNote } from '@/components/ui';
 
 const STALE_S = 15; // heartbeats every 5 s; report is considered stale after 3 missed
 
 function chipFor(status: Health['status'] | 'stale') {
-  const cls = status === 'ok' ? 'chip-green' : status === 'degraded' ? 'chip-amber' : status === 'stale' ? 'chip-neutral' : 'chip-red';
+  const tone = status === 'ok' ? 'ok' : status === 'degraded' ? 'warn' : status === 'stale' ? 'ins' : 'call';
   return (
-    <span className={`chip ${cls}`}>
-      <span className="chip-dot" aria-hidden="true" />
-      {status}
-    </span>
+    <Chip tone={tone}>{status}</Chip>
   );
 }
 

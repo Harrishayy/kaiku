@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "InsightEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "dst": {
+          "title": "Dst",
+          "type": "string"
+        },
+        "evidence": {
+          "minimum": 0,
+          "title": "Evidence",
+          "type": "integer"
+        },
+        "label": {
+          "maxLength": 80,
+          "title": "Label",
+          "type": "string"
+        },
+        "layer": {
+          "default": "structure",
+          "enum": [
+            "learned",
+            "structure"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "rel": {
+          "enum": [
+            "has_signal",
+            "measures",
+            "did",
+            "keeps",
+            "of",
+            "helped",
+            "moved_first",
+            "followed",
+            "moved_together",
+            "kept_through",
+            "slipped_during",
+            "after",
+            "talked_about"
+          ],
+          "title": "Rel",
+          "type": "string"
+        },
+        "src": {
+          "title": "Src",
+          "type": "string"
+        },
+        "weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "rel",
+        "label",
+        "weight",
+        "evidence"
+      ],
+      "title": "InsightEdge",
+      "type": "object"
+    },
+    "InsightNode": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "evidence": {
+          "description": "recorded days / observations / attempts behind this node",
+          "minimum": 0,
+          "title": "Evidence",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "person",
+            "signal_group",
+            "measure",
+            "activity",
+            "routine",
+            "care_action",
+            "shared_topic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "title": "Label",
+          "type": "string"
+        },
+        "layer": {
+          "default": "structure",
+          "description": "learned = found in this person's record; structure = how the record is organised",
+          "enum": [
+            "learned",
+            "structure"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "tone": {
+          "default": "unknown",
+          "enum": [
+            "better",
+            "worse",
+            "similar",
+            "unknown"
+          ],
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "evidence"
+      ],
+      "title": "InsightNode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What a practitioner may see of what Kaiku has learned: signal groups, measures, observed activities, routines\nand what helped. Built from observations; conversation counts join only when the person shares. Never people,\nplaces, likes, plans, memories or transcripts.",
+  "properties": {
+    "basis": {
+      "items": {
+        "enum": [
+          "observations",
+          "shared_conversations"
+        ],
+        "type": "string"
+      },
+      "title": "Basis",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/InsightEdge"
+      },
+      "title": "Edges",
+      "type": "array"
+    },
+    "layers": {
+      "description": "layers present",
+      "items": {
+        "enum": [
+          "learned",
+          "structure"
+        ],
+        "type": "string"
+      },
+      "title": "Layers",
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/InsightNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "note": {
+      "default": "",
+      "maxLength": 240,
+      "title": "Note",
+      "type": "string"
+    },
+    "shared": {
+      "description": "the person shares conversation-derived activity counts with the care team",
+      "title": "Shared",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "shared"
+  ],
+  "title": "InsightGraph",
+  "type": "object"
+}

@@ -9,7 +9,8 @@ from kaiku_contracts.api import Explanation, SourceNote
 from kaiku_contracts.sources import SOURCE_LABELS
 
 CAVEATS = ("Change signals are measured against this person's own recent baseline; they are not clinical "
-           "findings and can have ordinary causes. Simulated data is labelled SIMULATED.")
+           "findings and can have ordinary causes. Source groups combine related "
+           "inputs; a group label does not confirm that a physical device is connected.")
 SOURCE_LABEL = SOURCE_LABELS  # robot "Home robot", glasses, laptop "Apps", wearable "Watch"
 VERDICT_WORD = {"better": "better than usual", "as_usual": "as usual", "worse": "worse than usual",
                 "insufficient": "not enough data"}
@@ -39,10 +40,10 @@ def template_explanation(ctx: dict[str, Any]) -> Explanation:
         names = (", ".join(labels[:-1]) + " and " + labels[-1]) if len(labels) > 1 else (labels[0] if labels
                                                                                           else "two sources")
         headline = f"{name}: {names} show change from their usual — needs a call"
-        text = (f"{len(worse)} independent sources report worse than this person's usual. "
+        text = (f"{len(worse)} source groups report worse than this person's usual. "
                 + ("A clinician acknowledged it; the state holds until three stable days. " if ctx.get("acknowledged")
-                   else "") + "Worth a check-in call; consider a booster or an iCBT referral.")
-        actions = ["check_in_call", "flag_booster", "flag_icbt_referral"]
+                   else "") + "Worth a check-in call. What follows from it is the care team's decision.")
+        actions = ["check_in_call", "send_message"]
     elif state == "watch":
         if len(sufficient) < 2:
             headline = f"{name}: too little data from enough sources — watching"

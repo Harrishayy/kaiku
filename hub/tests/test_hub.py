@@ -4,7 +4,7 @@ import asyncio
 import sys
 
 import pytest
-from kaiku_contracts import OBS, example, parse_topic, validate
+from kaiku_contracts import OBS, example, make, parse_topic, validate
 from kaiku_hub.live.base import OffMusic, Voice
 from kaiku_hub.main import Hub
 
@@ -89,6 +89,64 @@ async def test_cmd_phq9_due_and_tools(hub):
     assert (await hub.on_tool("log_mood", {"value": 3}))["ok"] is False  # v1 tool name is gone
 
 
+@pytest.mark.parametrize("feeling,eyes", [
+    ("happy", "happy"), ("curious", "listening"), ("sleepy", "sleepy"),
+    ("cozy", "soft"), ("proud", "happy"),
+])
+async def test_express_maps_to_valid_eyes_without_changing_ritual_body(hub, feeling, eyes):
+    hub.start_ritual("test")
+    await asyncio.sleep(0.01)
+    commands = []
+
+    async def capture(type_, payload):
+        commands.append(make(type_, payload, source="hub"))
+
+    hub._cmd = capture
+    assert await hub.on_tool("express", {"feeling": feeling}) == {"ok": True}
+    assert commands[0].type == "cmd.head"
+    assert commands[0].payload.model_dump(exclude_none=True) == {"eyes": eyes}
+    assert hub._eyes == eyes
+    await hub.end_ritual()
+
+
+async def test_express_rejects_invalid_unconsented_and_post_crisis_calls(hub):
+    commands = []
+
+    async def capture(type_, payload):
+        commands.append(make(type_, payload, source="hub"))
+
+    hub._cmd = capture
+    assert not (await hub.on_tool("express", {"feeling": "happy"}))["ok"]
+    assert not commands
+    hub.start_ritual("test")
+    await asyncio.sleep(0.01)
+    commands.clear()
+    for args in ({}, {"feeling": "angry"}, {"feeling": 1}, {"feeling": "happy", "extra": "ignored"}):
+        assert not (await hub.on_tool("express", args))["ok"]
+    assert not commands
+    await hub.on_utterance("I want to die")
+    assert commands[-1].payload.eyes == "soft"
+    commands.clear()
+    assert not (await hub.on_tool("express", {"feeling": "happy"}))["ok"]
+    assert not commands and hub._eyes == "soft"
+
+
+async def test_express_preserves_thinking_priority_and_updates_restore_target(hub):
+    hub.start_ritual("test")
+    await asyncio.sleep(0.01)
+    commands = []
+
+    async def capture(type_, payload):
+        commands.append(make(type_, payload, source="hub"))
+
+    hub._cmd = capture
+    hub.thinking = 1
+    assert (await hub.on_tool("express", {"feeling": "curious"}))["ok"]
+    assert not commands and hub._eyes == "listening"
+    hub.thinking = 0
+    await hub.end_ritual()
+
+
 async def test_button_long_press_and_short_press(hub):
     t = parse_topic(f"kaiku/v1/{hub.settings.home_id}/raw/sensors/button")
 
@@ -110,7 +168,7 @@ async def test_button_long_press_and_short_press(hub):
 async def test_head_button_build_dial_by_press_count(hub):
     """Button build: idle short press starts a ritual; a run of presses answers the dial; long press = safety."""
     hub.settings.dial_input = "button"
-    hub.presses.window_s = 0.1
+    hub.presses.window_s = 1.0
     t = parse_topic(f"kaiku/v1/{hub.settings.home_id}/raw/head/button")
 
     def btn(pressed):
@@ -121,7 +179,7 @@ async def test_head_button_build_dial_by_press_count(hub):
         for _ in range(n):
             await hub.on_raw(t, btn(True))
             await hub.on_raw(t, btn(False))
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(1.25)
 
     await press_run(1)  # idle -> ritual starts
     assert hub.machine.running
@@ -151,6 +209,7 @@ async def test_cmd_hub_say_goes_through_gate_and_start(hub):
 
 
 async def test_adhoc_mood_and_light(hub):
+    hub.settings.light_enabled = True
     hub.light.window_min = 0.0001
     from datetime import timedelta
 
@@ -162,7 +221,8 @@ async def test_adhoc_mood_and_light(hub):
     lt = parse_topic(f"kaiku/v1/{hub.settings.home_id}/raw/sensors/light")
     await hub.on_raw(lt, light)
     await asyncio.sleep(0.01)
-    await hub.on_raw(lt, light)
+    from datetime import UTC, datetime
+    await hub.on_raw(lt, light.model_copy(update={"ts": datetime.now(UTC)}))
     assert "obs.self_report" in types(hub) and "obs.light_level" in types(hub)
     adhoc = next(e for e in hub.emitted if e.type == "obs.self_report").payload
     assert (adhoc.item, adhoc.value, adhoc.context) == ("mood", 2, "adhoc")
@@ -216,3 +276,33 @@ async def test_cloud_offline_tool_degrades_softly(hub):
     hub.cloud = FakeCloud(None)
     assert (await hub.on_tool("recall", {"topic": "walk"}))["ok"] is False
     assert (await hub.on_tool("end_session", {}))["ok"] is True  # still ends politely
+
+
+async def test_camera_light_summary_keeps_capture_time_and_quality(hub):
+    hub.settings.light_enabled = True
+    from datetime import UTC, datetime, timedelta
+
+    capture = datetime(2026, 11, 10, 10, tzinfo=UTC)
+    hub.light.window = timedelta(seconds=60)
+    topic = parse_topic(f'kaiku/v1/{hub.settings.home_id}/raw/sensors/light')
+    for offset, value, quality in [(0, 100, .8), (30, 200, .6), (61, 300, .9)]:
+        sample = make('raw.sensors.light', {'raw': value, 'lux_est': value}, source='sensors', home_id=hub.settings.home_id,
+                      ts=capture + timedelta(seconds=offset), quality=quality)
+        await hub.on_raw(topic, sample)
+    result = next(e for e in hub.emitted if e.type == 'obs.light_level')
+    assert result.ts == capture + timedelta(seconds=30) and result.quality == .6
+    assert result.payload.lux_est == 150
+
+
+async def test_default_light_disabled_produces_no_observation_or_context(hub):
+    from datetime import UTC, datetime, timedelta
+
+    assert not hub.settings.light_enabled
+    topic = parse_topic(f'kaiku/v1/{hub.settings.home_id}/raw/sensors/light')
+    captured = datetime.now(UTC)
+    for offset in (0, 3700):
+        sample = make('raw.sensors.light', {'raw': 10, 'lux_est': 10}, source='sensors',
+                      home_id=hub.settings.home_id, ts=captured + timedelta(seconds=offset))
+        await hub.on_raw(topic, sample)
+    assert hub.light._values == []
+    assert not any(e.type == 'obs.light_level' for e in hub.emitted)

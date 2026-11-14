@@ -21,8 +21,13 @@ None. No bus, no HTTP.
 None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `mascot.svg`.
 
 ## Map
-- `tokens.json` — **ground truth** for colours (light + warm-charcoal dark), glow-by-time-of-day stops, radii,
-  spacing, sizes, type (web fonts + Apple rounded), motion durations/easings/springs, blink + breath numbers.
+- `tokens.json` — **ground truth** for colours (light + warm-charcoal dark; `$semantic` aliases incl. consensus
+  `state-*`, chart `series-*`/`chart-*`), glow-by-time-of-day stops, radii, spacing, sizes, elevation, type (web
+  fonts + Apple rounded, each style's Dynamic Type `apple` style), motion durations/feedback/easings/springs,
+  blink + breath numbers.
+- `components.md` — the shared component spec: gap ladder, type and colour roles, the one consensus state →
+  label/colour/shape map, chart style, radii/elevation, card/panel, buttons, chip, row, inputs,
+  loading/empty/error/offline states, sheet, toast, icons, voice of copy, accessibility floor.
 - `mascot.spec.json` — **ground truth** for the mascot: parts (ids, shapes, colour token refs, pivots, clips), blink
   modes, per-state pose + keyframe tracks + events, interactions, ambient-mood → state map, robot eye crop.
 - `copy.json` — **ground truth** for on-screen UI copy (en + fi, same keys; `{name}`/`{n}` placeholders). Apps
@@ -35,13 +40,18 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   Motion rules, robot parity.
 - `gen.py` — stdlib generator; writes the three generated files below. `--check` for staleness, `--out` for a dir.
 - `mascot.svg` — GENERATED. 200×200, every part a `<g id>` with `data-pivot` and CSS `transform-origin` set.
-- `generated/tokens.css` — GENERATED. `--k-*` custom properties; dark via `prefers-color-scheme` and `data-theme`.
-- `generated/Tokens.swift` — GENERATED. `KaikuTokens` (Colors, Radius, Space, Size, TextStyle, Duration, Easing,
-  Spring, Blink, IdleBreath, GuideBreath, glowStops) for SwiftUI on iOS + macOS.
+- `generated/tokens.css` — GENERATED. `--k-*` custom properties (incl. `--k-shadow-*`, `--k-state-*`,
+  `--k-series-*`); dark via `prefers-color-scheme` and `data-theme`.
+- `generated/Tokens.swift` — GENERATED. `KaikuTokens` (Colors, Radius, Space, Size, Elevation, TextStyle, Duration,
+  Feedback, Easing, Spring, Blink, IdleBreath, GuideBreath, glowStops) + `.kaikuShadow(_:)` for SwiftUI on
+  iOS + macOS.
 - `tests/test_design.py` — freshness, named parts, spec consistency, AA contrast, motion budget.
 
 ## Extension points
-- **New colour / size / duration:** add it to `tokens.json`, `make design`. It appears in CSS and Swift.
+- **New colour / size / duration:** add it to `tokens.json`, `make design`. It appears in CSS and Swift. Apple
+  reads a copy: run `apps/apple/scripts/sync_design.sh` after (its `SyncFreshnessTests` fails until then).
+- **New component or variant:** describe it in `components.md` first (tokens used, states), then build it once per
+  platform.
 - **New mascot part:** add it to `mascot.spec.json → parts` (id, pivot, shapes with token colours, optional
   `default.opacity`, optional `clip`), `make design`. Give it a pose in the states that use it.
 - **New state:** add `states.<name>` (about, duration, loop, blink, pose, tracks; one track per part+prop), describe
@@ -54,7 +64,12 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   `generated/`; `make test` fails when they are stale.
 - Light and dark palettes have exactly the same keys. Text colours (`ink`, `ink-2`, `muted`, `clay`, `sage`, `sky`,
   `honey`, `crisis`) keep ≥ 4.5:1 on `bg` and `surface` in both themes; `clay-ink` on `clay` too.
-- **No red except `crisis`**, and `crisis` is only used on the crisis screen.
+- **No red except `crisis`**, and `crisis` is only used on the crisis screen and for the `safety` state on the
+  clinician dashboard.
+- Chip/label text on a soft fill is `ink` or `ink-2` (≥ 4.5:1 on every `-soft` and on `surface-2`); a tone's own
+  ink on its soft fill is for icons and large text only (≥ 3:1). Chart series colours keep ≥ 3:1 on `surface`.
+- `motion.duration` never goes under 300 ms (blink excepted); the only faster numbers are `motion.feedback`
+  (≤ 200 ms, direct press/hover feedback).
 - Required part ids exist: body, shadow, eye-l, eye-r, lid-l, lid-r, ear, glow, mouth-happy, mouth-yawn, scarf, z.
 - `copy.json` languages have identical keys and placeholders, and contain no clinical words. No screen shows dev
   text (obs types, file names, config paths).
@@ -83,7 +98,8 @@ None. No `config/*.toml` keys, no env vars.
 ## Tests
 `uv run pytest design/tests` (also part of `make test`): generated files fresh, generator writes to any dir, SVG has
 every named part, states reference real parts/props/easings with keys 0..1, colour refs exist in both themes, AA
-contrast for text tokens (incl. crisis button), motion budget and breath timing, copy tables in sync + no
+contrast for text tokens (incl. crisis button, chip text on soft fills, state and series colours), motion budget
+(durations ≥ 300 ms, feedback ≤ 200 ms) and breath timing, semantic aliases resolve, copy tables in sync + no
 clinical words.
 
 ## Known issues

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -12,6 +11,7 @@ from typing import Any
 import httpx
 from kaiku_contracts import ContractError, Envelope, validate
 from kaiku_contracts.api import NodeHealthReport, NudgeResponse
+from kaiku_contracts.config import get
 from kaiku_contracts.jlog import get_logger
 from kaiku_contracts.payloads import NUDGE_ARMS
 
@@ -26,8 +26,6 @@ class CloudLink:
         self.token = token
         self.timeout_s = timeout_s
         self.transport = transport
-        self.since: str | None = None
-        self._seen: OrderedDict[str, None] = OrderedDict()
         self.last_error: str | None = None
 
     def _client(self, timeout: float | None = None) -> httpx.AsyncClient:
@@ -50,8 +48,7 @@ class CloudLink:
 
     async def companion_session(self, intent: str = "ritual", timeout_s: float = 4.0) -> dict[str, Any] | None:
         """POST /v1/companion/session {surface: robot, home_id, intent} -> {system_instruction, tools, model, voice,
-        ...} (plan 03 §3). None when the cloud is offline or doesn't have the endpoint yet (404): the caller falls
-        back to the local SYSTEM_PROMPT + live/tools.py."""
+        ...}. None when offline or unauthorized: microphone remains closed."""
         if not self.url:
             return None
         try:
@@ -92,8 +89,6 @@ class CloudLink:
         if not self.url:
             return []
         params = {"home_id": self.home_id}
-        if self.since:
-            params["since"] = self.since
         try:
             async with self._client() as c:
                 r = await c.get("/v1/commands", params=params)
@@ -109,16 +104,20 @@ class CloudLink:
             except ContractError as e:
                 log.warning("bad_command", str(e)[:200])
                 continue
-            if env.type != "cmd.hub" or env.home_id != self.home_id or str(env.id) in self._seen:
+            if env.type != "cmd.hub" or env.home_id != self.home_id:
                 continue
-            self._seen[str(env.id)] = None
-            while len(self._seen) > 1000:
-                self._seen.popitem(last=False)
             out.append(env)
-            ts = item.get("ts")
-            if ts and (self.since is None or ts > self.since):
-                self.since = ts
         return out
+
+    async def ack_command(self, command_id: str) -> bool:
+        if not self.url:
+            return False
+        try:
+            async with self._client() as c:
+                response = await c.post(f"/v1/commands/{command_id}/ack", params={"home_id": self.home_id})
+            return response.status_code == 200 and bool(response.json().get("ok"))
+        except Exception:
+            return False
 
     async def report_health(self, nodes: dict[str, dict], uplink_queue: int, uplink_lag_s: float | None) -> bool:
         if not self.url:
@@ -160,4 +159,6 @@ def local_nudge(suggested: str | None = None) -> tuple[str, str]:
     """Offline fallback: clinician suggestion if any, else uniform random (bandit cold start)."""
     if suggested in NUDGE_ARMS:
         return suggested, "Suggested by your care team."
-    return random.choice(NUDGE_ARMS), "Trying something new today."
+    # Offline too, only offer what this build can actually do ([ritual] enabled_nudges, D40).
+    enabled = [a for a in (get("ritual", "enabled_nudges") or NUDGE_ARMS) if a in NUDGE_ARMS] or list(NUDGE_ARMS)
+    return random.choice(enabled), "Trying something new today."

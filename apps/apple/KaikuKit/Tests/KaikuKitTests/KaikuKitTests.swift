@@ -359,8 +359,8 @@ final class OfflineQueueTests: XCTestCase {
         let q = OfflineQueue(url: url)
         let e = try AnyEnvelope(Envelope(home_id: "demo-aino", source: .phone, type: "obs.self_report",
                                          payload: SelfReport(item: .mood, value: 4, channel: .phone)))
-        await q.enqueue(e)
-        await q.enqueue(e)   // same id → once
+        await q.enqueue(e, server: URL(string: "http://stub")!)
+        await q.enqueue(e, server: URL(string: "http://stub")!)   // same id → once
         StubProtocol.fail = true
         let ok1 = await q.flush(using: api)
         XCTAssertFalse(ok1)
@@ -386,5 +386,23 @@ final class ParityTests: XCTestCase {
     func testParityTableListsEveryScreen() throws {
         let doc = try String(contentsOf: repoRoot.appendingPathComponent("apps/apple/AGENTS.md"), encoding: .utf8)
         for s in KaikuScreen.allCases { XCTAssertTrue(doc.contains("`\(s.rawValue)`"), "AGENTS.md parity table misses \(s.rawValue)") }
+    }
+}
+
+
+final class PebblePracticeTests: XCTestCase {
+    func testPracticeIsDiscardedBeforeScoredProtocol() {
+        var session = PebbleSession()
+        var rng = SystemRandomNumberGenerator()
+        session.engine.newRound(using: &rng)
+        let sequence = session.engine.sequence
+        for index in sequence { _ = session.engine.tap(index) }
+        XCTAssertGreaterThan(session.engine.spanMax, 0)
+        session.startScored()
+        XCTAssertFalse(session.practicing)
+        XCTAssertEqual(session.engine.spanMax, 0)
+        XCTAssertEqual(session.engine.taps, 0)
+        XCTAssertEqual(session.engine.length, 2)
+        XCTAssertTrue(session.engine.bestPath.isEmpty)
     }
 }

@@ -8,7 +8,8 @@ If a number here and in those files ever disagree, the JSON wins. Fix this file.
 - **Slow, soft, springy.** Character and UI motion is never faster than 300 ms (`motion.duration.fast`). Blinks
   (240 ms) are one exception because a real blink is that quick; **direct feedback** is the other: a press scales to
   0.97 (0.98 for rows/cards) within 100 ms and settles in ~180 ms, hover shades in 150 ms, so every tap is answered
-  in the same frame.
+  in the same frame. These three numbers are `motion.feedback` (`press` 100 · `release` 180 · `hover` 150:
+  `KaikuTokens.Feedback.*`, `--k-dur-press|release|hover`); app code never types them.
 - **Gentle overshoot, never a bounce-fest.** Use `overshoot` (`cubic-bezier(.34,1.36,.64,1)`) or
   `Spring.gentle` (response 0.55 s, damping 0.72) for arrivals, and `soft-in-out` for loops.
 - **Nothing flashes.** No strobing, no colour flicker. Glow changes fade over at least 700 ms.
@@ -27,7 +28,7 @@ SwiftUI: `KaikuTokens.Easing.<name>(duration)` or `KaikuTokens.Spring.gentle`. C
 
 ## Durations (`motion.duration`)
 `fast` 300 · `base` 450 · `slow` 700 · `blink` 240 · `ear-flick` 620 · `crossfade` 300 · `idle-breath` 4000 ·
-`guide-breath` 10000 ms.
+`guide-breath` 10000 · `toast-hold` 2400 ms (how long a toast stays).
 
 ## Blink schedule (`mascot.spec.json` → `blink`)
 - Lids (`lid-l`, `lid-r`) slide down to `translate [0, 28]` and back (`soft-in-out`), from the state's pose.
@@ -67,9 +68,9 @@ Each state has a **pose** (static values held for the whole state, also the Redu
 `peek` + `sleepy`).
 
 **Mac notch island** (layout: `layout.md` → Mac notch island): collapsed → peek → expanded is ONE spring on the
-same shape (response 0.8 s, damping 0.82): the band widens to notch + wings and the body grows down and out of the
+same shape (`Spring.island`: response 0.8 s, damping 0.82): the band widens to notch + wings and the body grows down and out of the
 notch — never a fade between windows. A beat later (150 ms) Kaiku drops into the body on a slower spring
-(response 1.1 s, damping 0.78), clipped by the shape, keeping its state (`sleepy` at 01:10: z's, slow blink,
+(`Spring.islandDrop`: response 1.1 s, damping 0.78), clipped by the shape, keeping its state (`sleepy` at 01:10: z's, slow blink,
 yawns). Auto-hides after 20 s (hovering holds it). Reduce Motion: crossfade (`crossfade`), Kaiku just appears.
 
 **Ambient mood** (`GET /v1/me` → `mascot.mood`) maps to a state through `mascot.spec.json → ambient_mood`.
@@ -108,6 +109,9 @@ yawns). Auto-hides after 20 s (hovering holds it). Reduce Motion: crossfade (`cr
 Sounds are synthesised soft sine tones (no bundled audio), quiet, behind You → Little sounds, the iPhone silent
 switch (ambient session) and the system mute. Never on the crisis screen. Every game opens with a one-screen
 intro that shows a tiny looping demo of what to do; progress is a thin line/dots, never a number.
+
+Lantern (reaction game): the flame is the thing to react to, so it appears at once — one small warm shape, at
+most once every 1.5 s, never the screen; its halo still swells in over 700 ms. This is the only immediate onset.
 
 ## Reduce Motion
 When `prefers-reduced-motion: reduce` (web, `--k-motion: 0`) or `accessibilityReduceMotion` (SwiftUI):

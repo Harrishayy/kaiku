@@ -23,11 +23,11 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 | Part | Pin | Voltage | Notes | Check |
 |---|---|---|---|---|
 | KY-031 knock S / + / − | D2 / 3V3 / GND | 3.3 V | under the head top, 3 jumpers down the neck; interrupt on CHANGE, idle level calibrated at boot, `INPUT_PULLUP` | `bench/knock` |
-| KY-035 hall out / + / − | **A1** / 3V3 / GND | 3.3 V | 49E linear (analog): magnet in the turntable = head faces front. The spec said D3 (VERIFY): a digital pin only works if the swing crosses the logic threshold | `bench/hall` |
-| KY-054 light S / + / − | A0 / 3V3 / GND | 3.3 V | under the lid window | `bench/light` |
+| ~~KY-035 hall~~ | — | — | **Not fitted** (no magnet; D39). Home = head position at power-on (`HAS_HALL 0` in both firmwares). If one turns up: out → **A1** (analog), magnet 6×3 mm in the turntable pocket, set `HAS_HALL 1` | `bench/hall` |
+| ~~KY-054 light~~ | — | — | **Not fitted** (D39): room light comes from the camera (`[unoq] light_source = "camera"`) | — |
 | KY-053 ADS1115 SDA / SCL / + / − | header SDA / SCL (`Wire`) / 3V3 / GND | 3.3 V | address 0x48; not A4/A5, not Qwiic | `bench/ky039` |
 | KY-039 pulse S / + / − | KY-053 A0 / 3V3 / GND | 3.3 V | under the lid finger cradle | `bench/ky039` |
-| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x3C; ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
+| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x1E 7-bit (0x3C 8-bit, verified 2026-11-14); ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
 | LED matrix | on board | — | hidden in the body: status only | — |
 
 ## Atech board (node `head`, 14-port), in the body; all 12 ports used
@@ -38,10 +38,10 @@ Confirm GPIOs with `atech validate`; never hard-code them. Head modules are cabl
 | Speaker (MAX98357A) | 1–2 | body, right-wall grille | `bench/speaker` |
 | Color Display (st7735_tft, eyes) | 3–4 | head, tuning window (connector edge up) | `bench/display` |
 | Knob (rotary_encoder_knob, ear dial) | 5–6 | head, left ear | `bench/knob` |
-| DC Motor V2.3 (pan, 12:40 gear) | 7 | body, under the pan base | `bench/motor` |
+| DC Motor V2.3 (pan, 12:40 gear) | 13 | body, under the pan base | `bench/motor` |
 | Microphone (ICS-43434) | 9–10 | head, right-ear grille (sound hole against it) | `bench/mic` |
-| Button (active low) | 11 | lid, square opening | `bench/button` |
-| LED Grid left / right (neopixel_grid) | 13 / 14 | body, behind the chest louvres | `bench/leds` |
+| Button (active low) | 7 | lid, square opening | `bench/button` |
+| LED Grid left / right (neopixel_grid) | 11 / 14 | body, behind the chest louvres | `bench/leds` |
 
 The neck carries 6 Atech cables, 3 jumpers and the camera cable through a 19 mm axle: feed the plugs through one at
 a time, the camera's USB-A plug first, and leave a service loop. Charge-only USB-C cables can't program the Atech board.

@@ -1,5 +1,7 @@
+
 """Bench checker: every part definition loads, and saved monitor logs pass/fail as they should."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -41,7 +43,7 @@ def test_ky039_pass_and_flat_fail():
 
 def test_ask_checks_use_the_answer():
     res = _run("firmware/unoq-sensors/bench/buzzer", "knock_pass.log", answer=NO)
-    assert res["heard"] is False and res["Modulino Buzzer answers on Wire1 at 0x3C"] is False
+    assert res["heard"] is False and res["Modulino Buzzer answers on Wire1 at 0x1E (7-bit; 0x3C in 8-bit notation)"] is False
 
 
 def test_parse_lines_skips_noise_and_non_events():
@@ -65,3 +67,14 @@ def test_bad_part_definition(tmp_path):
                                          '[[check]]\nname="c"\nevent="e"\n')
     with pytest.raises(ValueError, match="board"):
         bench.Part.load(tmp_path)
+
+
+def test_ky039_rejects_noise_as_pulse(tmp_path):
+    """The first real run passed on noise ("bpm_rough" 1500-3000); a pulse above 220 bpm must fail now."""
+    log = tmp_path / "noise.log"
+    lines = ['{"event": "i2c", "addr": 72}', '{"event": "ads", "ok": 1}']
+    lines += [json.dumps({"event": "batch", "fs_hz": 100.0, "min": 4700, "max": 4760, "range": 60, "bpm": b})
+              for b in (0, 0, 2400, 0, 0, 0)]
+    log.write_text("\n".join(lines) + "\n")
+    res = _run("firmware/unoq-sensors/bench/ky039", str(log))
+    assert res["never an impossible pulse (> 220 bpm)"] is False   # noise above 220 bpm fails the part

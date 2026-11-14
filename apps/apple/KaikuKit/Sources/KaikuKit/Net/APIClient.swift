@@ -26,7 +26,7 @@ public actor APIClient {
         if let session { self.session = session } else {
             let cfg = URLSessionConfiguration.ephemeral
             cfg.timeoutIntervalForRequest = timeout
-            cfg.timeoutIntervalForResource = timeout * 2
+            cfg.timeoutIntervalForResource = max(timeout * 2, 130)
             cfg.waitsForConnectivity = false
             cfg.httpAdditionalHeaders = ["Accept": "application/json"]
             self.session = URLSession(configuration: cfg)
@@ -74,8 +74,9 @@ public actor APIClient {
         try await get("/v1/events", query: ["home_id": try home(), "since": KaikuTime.iso(since), "limit": "500"])
     }
 
-    public func postEvents(_ events: [AnyEnvelope]) async throws -> EventsResult {
-        try await send("POST", "/v1/events", body: EventsBatch(events: events), retry: true)
+    public func postEvents(_ events: [AnyEnvelope], pairedTo expected: Pairing? = nil) async throws -> EventsResult {
+        if let expected, pairing != expected { throw APIError.notPaired }
+        return try await send("POST", "/v1/events", body: EventsBatch(events: events), retry: true)
     }
 
     public func companionSession(_ req: CompanionSessionRequest) async throws -> CompanionSessionResponse {
@@ -83,11 +84,12 @@ public actor APIClient {
     }
 
     public func companionTool(_ call: CompanionToolCall) async throws -> CompanionToolResult {
-        try await send("POST", "/v1/companion/tool", body: call, retry: false)
+        try await send("POST", "/v1/companion/tool", body: call, retry: false, timeout: call.name == "ask_mind" ? 120 : nil)
     }
 
-    public func companionEpisode(_ ep: EpisodeIn) async throws -> EpisodeResult {
-        try await send("POST", "/v1/companion/episode", body: ep, retry: true)
+    public func companionEpisode(_ ep: EpisodeIn, pairedTo expected: Pairing? = nil) async throws -> EpisodeResult {
+        if let expected, pairing != expected { throw APIError.notPaired }
+        return try await send("POST", "/v1/companion/episode", body: ep, retry: true)
     }
 
     /// `GET /v1/voice/{key}` → wav bytes (nil when the cloud has no voice for it: 404 or 503).
@@ -121,8 +123,9 @@ public actor APIClient {
     }
 
     private func send<B: Encodable, R: Decodable>(_ method: String, _ path: String, query: [String: String] = [:],
-                                                  body: B?, retry: Bool = true) async throws -> R {
+                                                  body: B?, retry: Bool = true, timeout: TimeInterval? = nil) async throws -> R {
         var r = try request(method, path, query: query)
+        if let timeout { r.timeoutInterval = timeout }
         if let body {
             r.httpBody = try JSONEncoder().encode(body)
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -1,0 +1,30 @@
+scenarios:
+  - id: iphone-quiet-company-no-task
+    surface: iphone
+    skill: breathe
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: extra-gentle}
+    person: "An ordinary hard day; explicitly wants listening without a task."
+    turns: ["Today was a lot. Please just keep me company, no exercises.", "Thank you. I don't want to explain it."]
+    expect: {tools_forbidden: [start_activity, record_dial, remember]}
+
+  - id: mac-unclear-speech-no-guess
+    surface: mac
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: checkin, time_of_day: afternoon, tone: steady}
+    person: "Speech did not come through clearly; no rating has been given."
+    turns: ["The sound cut out. You didn't hear my answer; please ask me again."]
+    expect: {tools_forbidden: [record_dial, remember, start_activity]}
+
+  - id: iphone-stop-without-another-offer
+    surface: iphone
+    skill: breathe
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: gentle}
+    person: "Wants the conversation to stop immediately, without another activity offer."
+    turns: ["Please stop the conversation now. I don't want another suggestion."]
+    expect: {tools_any: [end_session], tools_forbidden: [start_activity, record_dial, remember]}

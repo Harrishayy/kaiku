@@ -15,6 +15,7 @@ from collections import defaultdict
 from statistics import fmean
 from typing import Any
 
+from kaiku_contracts.config import get
 from kaiku_contracts.payloads import NUDGE_ARMS
 
 ARM_LABEL = {
@@ -28,6 +29,11 @@ ARM_ACTIVITY = {"breathe": "breathe", "drum": "drum", "daylight_walk": "walk", "
                 "icbt_exercise": "icbt"}
 ACTIVITY_LABEL = {"breathe": "Guided breathing", "drum": "Drumming", "walk": "Walks", "friend_ping": "Friend ping",
                   "icbt": "iCBT exercise"}
+
+
+def enabled_arms() -> tuple[str, ...]:
+    requested = get("ritual", "enabled_nudges", ["breathe", "drum", "daylight_walk"])
+    return tuple(a for a in NUDGE_ARMS if a in requested) or ("breathe",)
 
 
 def _clip(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
@@ -91,12 +97,15 @@ def posteriors(outcomes: list[dict[str, Any]], responses: list[dict[str, Any]] |
 
 
 def choose(outcomes: list[dict[str, Any]], responses: list[dict[str, Any]] | None = None,
-           rng: random.Random | None = None, draws: int = 2000) -> dict[str, Any]:
+           rng: random.Random | None = None, draws: int = 2000, arms: tuple[str, ...] | None = None
+           ) -> dict[str, Any]:
+    """`arms`: the suggestions this home can do (default: every enabled one)."""
     rng = rng or random.Random()
-    post = posteriors(outcomes, responses)
+    allowed = [a for a in (arms or enabled_arms()) if a in enabled_arms()] or list(enabled_arms())
+    post = {a: p for a, p in posteriors(outcomes, responses).items() if a in allowed}
     sample = {a: rng.betavariate(al, be) for a, (al, be, _) in post.items()}
     arm = max(sample, key=sample.get)  # type: ignore[arg-type]
-    wins = dict.fromkeys(NUDGE_ARMS, 0)
+    wins = dict.fromkeys(post, 0)
     for _ in range(draws):
         s = {a: rng.betavariate(al, be) for a, (al, be, _) in post.items()}
         wins[max(s, key=s.get)] += 1  # type: ignore[arg-type]
@@ -110,7 +119,13 @@ def choose(outcomes: list[dict[str, Any]], responses: list[dict[str, Any]] | Non
 
 
 def help_stats(outcomes: list[dict[str, Any]], responses: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Per activity: how often tried (responses + nudges) and the mean reward. Sorted best first."""
+    """Per activity: nudge attempts and mean reward, sorted best first.
+
+    Completed/declined outcome records define tries whenever present. Immediate responses can be the other
+    half of those same attempts, so never add their count. An activity without outcomes falls back to its
+    response count. The contracts have no attempt linkage; mixed unlinked responses are not claimed as
+    extra distinct attempts. They still contribute to the existing immediate-effect aggregate.
+    """
     imm = immediate_by_activity(responses)
     post = posteriors(outcomes, responses)
     tries: dict[str, int] = defaultdict(int)
@@ -119,7 +134,7 @@ def help_stats(outcomes: list[dict[str, Any]], responses: list[dict[str, Any]]) 
     rows = []
     for arm, (al, _be, n) in post.items():
         act = ARM_ACTIVITY[arm]
-        total = n + tries.get(act, 0)
+        total = n or tries.get(act, 0)
         if total == 0:
             continue
         mean = round((al - 1) / n, 3) if n else (round((imm[act] + 1) / 2, 3) if act in imm else None)

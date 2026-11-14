@@ -2,6 +2,7 @@
 # End-to-end smoke test: throwaway cloud on a free port + temp DB, seed sim patients, check key endpoints.
 # Usage: scripts/smoke.sh        (make smoke)     Exit 0 = the integrated system works end to end.
 set -euo pipefail
+export KAIKU_DEMO_MODE=1
 cd "$(dirname "$0")/.."
 
 PORT=${SMOKE_PORT:-8765}

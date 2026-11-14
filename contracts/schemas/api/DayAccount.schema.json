@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "description": "One day in plain words, built by code from every source: what was done, what was away from usual, how the\nreflection went (level and themes only, when shared).",
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "parts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Parts",
+      "type": "array"
+    },
+    "text": {
+      "maxLength": 400,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "date",
+    "text"
+  ],
+  "title": "DayAccount",
+  "type": "object"
+}

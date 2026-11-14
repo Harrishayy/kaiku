@@ -1,8 +1,8 @@
-"""Scripted keyed lines in Kaiku's one voice (D27): cloud voice cache first, local fallback, never fails.
+"""Scripted keyed lines in Kaiku's one voice (D27): cloud voice cache first, visible fallback, never synthetic speech.
 
     say_line("greet.morning") ->  1. text from config/voice_lines.toml (caption; always printed)
                                   2. audio from GET /v1/voice/{key}?lang= (cloud TTS cache, same voice as Live)
-                                  3. cloud 404/503/offline/slow -> macOS `say` / `espeak` (if playing audio) or text only
+                                  3. cloud 404/503/offline/slow -> visible text only
 
 Audio plays only when `play_audio` (voice gemini/local or KAIKU_LOCAL_TTS=1); text mode and tests stay silent.
 Not for the crisis script: that is CrisisScript + Voice.say_verbatim (deterministic, never a cache miss).
@@ -20,8 +20,6 @@ from typing import Any
 import httpx
 from kaiku_contracts.config import find_repo_file
 from kaiku_contracts.jlog import get_logger
-
-from .local_audio import _tts_cmd
 
 log = get_logger("hub")
 
@@ -64,7 +62,7 @@ class LinePlayer:
         self.transport = transport
         self.lines = {**FALLBACK_TEXT, **load_lines()}
         self._audio: dict[tuple[str, str], bytes] = {}
-        self.last_source: str | None = None  # cloud | cache | local_tts | text (for logs/tests)
+        self.last_source: str | None = None  # cloud | cache | text (for logs/tests)
 
     def text(self, key: str, lang: str = "en") -> str:
         entry = self.lines.get(key) or {}
@@ -98,13 +96,30 @@ class LinePlayer:
             self.last_source = "cache" if cached else "cloud"
             if self.play_audio:
                 await _play_wav(audio)
-        elif self.play_audio and _tts_cmd(force=True):
-            self.last_source = "local_tts"
-            await _speak(text)
         else:
             self.last_source = "text"
         log.info("voice_line", key, lang=lang, source=self.last_source)
         return text
+
+
+    async def say_text(self, text: str, lang: str = "en") -> None:
+        """Same Gemini voice for scripted fallback; failure stays visible and never uses OS TTS."""
+        for key, translations in self.lines.items():
+            if text in translations.values():
+                await self.say_line(key, lang)
+                return
+        print(f"\U0001f916 Kaiku: {text}", file=sys.stderr, flush=True)
+        if not self.cloud_url or not self.play_audio:
+            return
+        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        try:
+            async with httpx.AsyncClient(base_url=self.cloud_url, headers=headers, timeout=self.timeout_s,
+                                         transport=self.transport) as c:
+                r = await c.post("/v1/voice/say", json={"text": text[:400], "lang": lang})
+            if r.status_code == 200 and r.headers.get("content-type", "").startswith("audio/"):
+                await _play_wav(r.content)
+        except Exception as e:
+            log.info("voice_text_unavailable", type(e).__name__)
 
 
 async def _play_wav(data: bytes) -> None:
@@ -119,14 +134,3 @@ async def _play_wav(data: bytes) -> None:
             await asyncio.wait_for(proc.wait(), timeout=30)
     except Exception as e:
         log.warning("voice_play_failed", str(e))
-
-
-async def _speak(text: str) -> None:
-    cmd = _tts_cmd(force=True)
-    if not cmd:
-        return
-    try:
-        proc = await asyncio.create_subprocess_exec(*cmd, text)
-        await asyncio.wait_for(proc.wait(), timeout=30)
-    except Exception as e:
-        log.warning("local_tts_failed", str(e))

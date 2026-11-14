@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from kaiku_contracts.api import ContextCard
+from kaiku_contracts.api import ContextCard, LastReflection
 
 from .. import service
 from ..companion import time_of_day
@@ -27,7 +27,8 @@ WHERE = {"hub": "with the robot", "head": "with the robot", "sensors": "with the
 SURFACE_WHERE = {"robot": "with the robot", "iphone": "on the phone", "glasses": "on the glasses",
                  "mac": "on the computer", "web": "on the computer"}
 GAME = {"firefly": "the firefly game", "breathe": "breathing", "tell": "telling Kaiku about the day",
-        "pebbles": "the pebbles game"}
+        "pebbles": "the pebbles game", "lantern": "the lantern game", "seeds": "the seed shelf game",
+        "watering": "the watering game"}
 EPISODE_TEXT = {"walk": "a walk", "ritual": "the morning ritual", "checkin": "a weather check",
                 "breathe": "breathing together", "break": "a short break", "talk": "a chat"}
 MAX_DONE = 4
@@ -71,6 +72,21 @@ def done_today(events: list[dict[str, Any]], episodes: list[dict[str, Any]], now
     return out[:MAX_DONE]
 
 
+def today_facts(events: list[dict[str, Any]], now: datetime) -> list[str]:
+    """Plain facts from what the person recorded themselves today. Their own ratings in everyday words: never a
+    number, never a judgement, never watch data."""
+    today = now.astimezone(TZ).date()
+    mine = [e for e in events if datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).astimezone(TZ).date() == today]
+    facts: list[str] = []
+    night = [e["payload"]["value"] for e in mine if e["type"] == "obs.self_report" and e["payload"].get("item") == "sleep"]
+    if night:
+        facts.append("a short night" if night[-1] <= 2 else "a good night" if night[-1] >= 4 else "an ordinary night")
+    days = sorted({datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).astimezone(TZ).date() for e in events})
+    if mine and len(days) >= 2 and (today - days[-2]).days >= 3:
+        facts.append(f"back after {(today - days[-2]).days - 1} quiet days")
+    return facts[:4]
+
+
 def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = "talk", language: str | None = None,
                others_present: bool = False, now: datetime | None = None) -> ContextCard:
     now = now or datetime.now(UTC)
@@ -86,11 +102,17 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
     mems = graph.card_memories(store, home_id, intent, now) if keep else []
     thread = memory.current_thread(store, home_id, now)
     arm = service.nudge(store, settings, home_id).arm
-    lang = language or str(settings_language())
+    # This release is English-only, including requests from clients with a previously saved locale.
+    lang = "en"
+    from .router import source_facts
+
+    prepared_sources = {} if others_present else {f["id"].split("-")[1]: f["text"]
+                                                   for f in source_facts(store, home_id, now)}
     card = ContextCard(
         language=lang if lang in ("en", "fi", "sv") else "en", intent=intent, time_of_day=time_of_day(local.hour),
         first_name=memory.first_name(store, home_id),
         done_today=done_today(events, store.episodes(home_id), now),
+        source_context=list(prepared_sources.values())[:4],
         suggestion=SUGGESTION.get(arm), phq9_due=service.phq9_due(data, settings.phq9_every_days, local.date()),
         memories=[m["text"] for m in mems], routines=memory.routines(store, home_id, now, TZ),
         open_thread=thread["topic"] if thread and not others_present else None,
@@ -100,6 +122,12 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
 
         d = card.model_dump(mode="json")
         card.focus = reflect.focus_line(reflect.plan(store, home_id, d, now=now, use_model=False), d)
+        from . import affect
+
+        card.recent_reflection = affect.card_line(store, home_id, now)
+        last = affect.latest(store, home_id, now)
+        card.last_reflection = LastReflection(**last) if last else None
+        card.today_facts = today_facts(events, now)
     return card
 
 

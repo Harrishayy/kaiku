@@ -1,23 +1,28 @@
-# Live table demo (~3 min, one presenter, robot + laptop + glasses on the table)
+# Live table demo
 
-Pre-flight (T-10 min): phone hotspot on · `make doctor` all ✅ (incl. per-source last data) · `make demo-reset` ·
-dashboard open on `/clinician/` · laptop `/session/` open via the pairing link · robot homed ·
-backup: `KAIKU_VOICE=text KAIKU_MUSIC=local KAIKU_LLM=template` ready in a second terminal.
+The script, the shot table, the per-service wording and the judges' questions live in ONE place:
+[`docs/demo-narrative.md`](../docs/demo-narrative.md). This page only holds what the presenter does at the table.
 
-1. **0:00 Problem (20 s):** half of TMS responders lose the effect within a year; when the visits stop, clinicians
-   lose their view; one signal is too thin.
-2. **0:20 The hospital principle (10 s):** clinicians never judge from one measurement. Neither do we: three
-   independent sources.
-3. **0:30 Source 1, robot (50 s):** head finds the judge's face; "turn my ear" (mood, energy, sleep); finger on chest
-   (breathing glow, HRV); "drum on my head" (music follows, head sways).
-4. **1:20 Sources 2 and 3 (20 s):** glasses walk card; 30-second laptop session snippet.
-5. **1:40 Consensus (40 s):** the judge's data lands live on the robot card. Switch to Aino (SIMULATED 30 days):
-   robot worse + laptop worse, glasses as usual → **Needs a call**, disagreement shown, explanation (Gemma or
-   template — say which), PHQ-9 trend; click "flag for booster".
-6. **2:20 Proof & path (40 s):** `/eval` numbers (alert precision, lead time, losing one source — synthetic patients);
-   pilot with Aalto + a neuromodulation unit; iCBT referral route; tech stack in one sentence.
+## Before (T-10 min)
 
-Fallbacks: no Wi-Fi → everything local (`make cloud-local`, `KAIKU_CLOUD_URL=http://localhost:8000`,
-`KAIKU_LLM=template`); voice lag → `KAIKU_VOICE=text`; a node dies → keep going, the consensus shows reduced coverage.
-Wording: "change from your usual", "worth a check-in", "needs a call" — never "diagnosis" or "relapse detected".
-Q&A prep: handoff §14.2.
+1. `make doctor`, then `make demo` (or `make demo-reset` if the record was seeded on an earlier day: it must end
+   yesterday). Open the dashboard link it prints; Aino is selected.
+2. Read what is on screen and narrate that, not the plan. Today the record opens on **needs a call, acknowledged**,
+   with the first worse group on day 11 and several from day 12 (`make live-day` prints the same reading).
+3. Devices that will record live are linked to Aino's record (README, "Link your own iPhone or Mac").
+4. Fallbacks ready in a second terminal: `KAIKU_VOICE=text KAIKU_LLM=template`; the hardware twins (`make sim`).
+
+## During
+
+- Record one thing live (a phone check-in, a game, a walk) and refresh the dashboard: the new day sits next to
+  her usual and her hard days. A good day clears the worse groups; a rough one keeps them. One day never flips a
+  state by itself in either direction beyond what three-of-five days allow: say so.
+- Say "signal groups", "change from her usual", "worth a check-in", "needs a call". Say "simulated record" when
+  the dashboard is on screen. Say which robot parts ran on the real board today and which on the twin.
+- Do not claim: a deployed URL before it exists, robot pulse or HRV, music from drumming, a glasses camera or
+  display app, Finnish speech, a friend lamp, Gemma on our own GPU (it runs through the hosted API today).
+
+## If something fails
+
+No network: everything above runs on the laptop. Voice lag: `KAIKU_VOICE=text`. A device drops out: keep
+going; the dashboard shows that group as not enough data, never as stable.

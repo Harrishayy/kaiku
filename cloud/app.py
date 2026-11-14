@@ -4,7 +4,10 @@
     cd cloud && uv run modal deploy app.py    # public URL       (make cloud-deploy)
 
 Deploy-time env (read on your laptop when you run modal deploy):
-    KAIKU_LLM=template|gemma_hosted|gemma_modal   (gemma_modal also deploys the vLLM GPU class)
+    KAIKU_LLM=template|auto|gemma_hosted|gemma_modal  (consensus explanations; auto = [gemma].provider then Gemini)
+    KAIKU_GEMMA_PROVIDER=hosted|modal             (every Gemma call; modal needs gemma_app.py deployed first)
+    KAIKU_MODAL_APP=kaiku                        (app identity; use a separate value for staging)
+    KAIKU_MODAL_VOLUME=<app-name>-data           (persistent state; explicitly override only for intended reuse)
     KAIKU_MODAL_SECRET=kaiku-secrets              (optional; skipped with a warning if it doesn't exist)
 """
 
@@ -16,6 +19,7 @@ from pathlib import Path
 import modal
 
 APP_NAME = os.environ.get("KAIKU_MODAL_APP", "kaiku")
+VOLUME_NAME = os.environ.get("KAIKU_MODAL_VOLUME") or f"{APP_NAME}-data"
 ROOT = Path(__file__).resolve().parents[1]
 WEB_OUT = ROOT / "apps" / "web" / "out"
 LLM = os.environ.get("KAIKU_LLM", "template")
@@ -23,7 +27,7 @@ SECRET_NAME = os.environ.get("KAIKU_MODAL_SECRET", "kaiku-secrets")
 DATA = "/data"
 
 app = modal.App(APP_NAME)
-volume = modal.Volume.from_name("kaiku-data", create_if_missing=True)
+volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
 
 def _secrets() -> list[modal.Secret]:
@@ -36,7 +40,7 @@ def _secrets() -> list[modal.Secret]:
         s.hydrate()
         return [s]
     except Exception:
-        print(f"[kaiku] Modal secret {SECRET_NAME!r} not found — deploying without it (auth off, template explanations). "
+        print(f"[kaiku] Modal secret {SECRET_NAME!r} not found — deploying without it (protected API disabled, template explanations). "
               f"Create it with: modal secret create {SECRET_NAME} KAIKU_HOME_TOKEN=... GEMINI_API_KEY=...")
         return []
 
@@ -52,16 +56,21 @@ ENV = {
     "KAIKU_SPEND_DB": f"{DATA}/spend.sqlite",  # hard spend cap ledger survives restarts
     "KAIKU_LLM": LLM,
     "KAIKU_MODAL_APP": APP_NAME,
+    "KAIKU_MODAL_VOLUME": VOLUME_NAME,
     "KAIKU_HAS_SECRET": "1" if SECRETS else "0",
 }
+if os.environ.get("KAIKU_GEMMA_PROVIDER"):  # otherwise config/kaiku.toml [gemma].provider decides
+    ENV["KAIKU_GEMMA_PROVIDER"] = os.environ["KAIKU_GEMMA_PROVIDER"]
 
 # Build steps first; add_local_* must be the last layers.
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .pip_install("pydantic>=2.7", "fastapi>=0.115", "httpx>=0.27", "tzdata>=2024.1", "google-genai>=2.25")
+    .pip_install("pydantic>=2.7", "fastapi>=0.115", "numpy>=1.26", "httpx>=0.27", "tzdata>=2024.1",
+                 "google-genai>=2.25")
     .env(ENV)
     .add_local_dir(ROOT / "config", "/root/config")  # kaiku.toml + criteria.toml (live overrides live in the DB)
     .add_local_python_source("kaiku_contracts", "kaiku_cloud")
+    .add_local_dir(ROOT / "cloud" / "kaiku_cloud" / "llm" / "prompts", "/root/kaiku_cloud/llm/prompts")
 )
 if modal.is_local() and WEB_OUT.is_dir():
     image = image.add_local_dir(WEB_OUT, "/root/web")

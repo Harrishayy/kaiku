@@ -11,13 +11,16 @@ public final class ConversationAudio: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
-    private let out = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
-    private var converter: AVAudioConverter?
+    private let downsampler = MicDownsampler()
+    /// Silence queued before Kaiku's first chunk after a pause: the voice-processing output swallows the first
+    /// few milliseconds after idling and network chunks arrive unevenly, so words began clipped.
+    static let leadInSeconds = 0.12
     private var configObserver: NSObjectProtocol?
     private let lock = NSLock()
     private var queued = 0
     private var generation = 0
     private var micOn = true
+    private var tapInstalled = false
 
     /// 16 kHz mono PCM16 chunks (only while the mic is on).
     public var onPCM: ((Data) -> Void)?
@@ -27,6 +30,7 @@ public final class ConversationAudio: @unchecked Sendable {
     public var onLevel: ((Float) -> Void)?
     /// Kaiku's voice started (true) / everything queued has been played or flushed (false).
     public var onPlaying: ((Bool) -> Void)?
+    public var onFailure: (() -> Void)?
     public private(set) var running = false
 
     public init() {}
@@ -47,23 +51,27 @@ public final class ConversationAudio: @unchecked Sendable {
         TalkAudio.preferHeadsetInput()
         // Voice processing (AEC + noise suppression) must be on before the engine starts; best effort.
         do { try engine.inputNode.setVoiceProcessingEnabled(true) } catch { kaikuLog.notice("vp_unavailable") }
-        engine.attach(player)
+        if player.engine == nil { engine.attach(player) }
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
-        try installTap()
-        engine.prepare()
-        try engine.start()
+        do {
+            try installTap()
+            engine.prepare()
+            try engine.start()
+        } catch { stop(); throw error }
         player.play()
         running = true
+        // Restart off the notification's own thread: touching the engine inside its handler can deadlock.
         configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine,
-                                                                queue: nil) { [weak self] _ in self?.restart() }
+                                                                queue: nil) { [weak self] _ in
+            DispatchQueue.main.async { self?.restart() }
+        }
     }
 
     public func stop() {
-        guard running else { return }
         running = false
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
-        engine.inputNode.removeTap(onBus: 0)
+        if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
         flush()
         player.stop()
         engine.stop()
@@ -78,7 +86,7 @@ public final class ConversationAudio: @unchecked Sendable {
 
     /// 24 kHz little-endian PCM16 from Live → the player.
     public func play(_ pcm: Data) {
-        guard running else { return }
+        guard running, engine.isRunning else { return }
         let count = pcm.count / 2
         guard count > 0, let buf = AVAudioPCMBuffer(pcmFormat: playFormat, frameCapacity: AVAudioFrameCount(count)) else { return }
         buf.frameLength = AVAudioFrameCount(count)
@@ -92,7 +100,14 @@ public final class ConversationAudio: @unchecked Sendable {
         queued += 1
         let started = queued == 1
         lock.unlock()
-        if started { onPlaying?(true) }
+        if started {
+            onPlaying?(true)
+            let lead = AVAudioFrameCount(playFormat.sampleRate * Self.leadInSeconds)
+            if let silence = AVAudioPCMBuffer(pcmFormat: playFormat, frameCapacity: lead) {
+                silence.frameLength = lead   // zero-filled by AVAudioPCMBuffer
+                player.scheduleBuffer(silence, completionHandler: nil)
+            }
+        }
         player.scheduleBuffer(buf, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self else { return }
             self.lock.lock()
@@ -102,7 +117,7 @@ public final class ConversationAudio: @unchecked Sendable {
             self.lock.unlock()
             if idle { self.onPlaying?(false) }
         }
-        if !player.isPlaying { player.play() }
+        if !player.isPlaying, engine.isRunning { player.play() }
     }
 
     /// Barge-in: drop everything Kaiku had queued, at once (the server already discarded the rest of the turn).
@@ -113,7 +128,7 @@ public final class ConversationAudio: @unchecked Sendable {
         queued = 0
         lock.unlock()
         player.stop()
-        if running { player.play() }
+        if running, engine.isRunning { player.play() }
         if was { onPlaying?(false) }
     }
 
@@ -123,14 +138,31 @@ public final class ConversationAudio: @unchecked Sendable {
         let input = engine.inputNode
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0, fmt.channelCount > 0 else { throw NSError(domain: "kaiku.audio", code: 1) }
-        converter = AVAudioConverter(from: fmt, to: out)
         input.installTap(onBus: 0, bufferSize: 1024, format: fmt) { [weak self] buf, _ in self?.handle(buf) }
+        tapInstalled = true
+    }
+
+    /// After a phone call / Siri / alarm the system leaves the engine stopped: start it again (same tap rules as
+    /// a route change). Safe to call when it is already running.
+    public func resumeAfterInterruption() {
+        guard running, !engine.isRunning else { return }
+        restart()
     }
 
     /// The route changed (glasses connected / gone, HFP rate renegotiated): the engine stopped itself.
     private func restart() {
         guard running else { return }
-        engine.inputNode.removeTap(onBus: 0)
+        try? TalkAudio.activate()
+        // Buffers queued for the old route never report completion: forget them so "speaking" cannot stick.
+        // (Not `flush()`: starting the player while the engine is stopped raises an exception.)
+        lock.lock()
+        generation += 1
+        let was = queued > 0
+        queued = 0
+        lock.unlock()
+        player.stop()
+        if was { onPlaying?(false) }
+        if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
         TalkAudio.preferHeadsetInput()
         do {
             try installTap()
@@ -140,6 +172,8 @@ public final class ConversationAudio: @unchecked Sendable {
             kaikuLog.notice("audio_route_restarted")
         } catch {
             kaikuLog.notice("audio_restart_failed")
+            stop()
+            onFailure?()
         }
     }
 
@@ -147,25 +181,9 @@ public final class ConversationAudio: @unchecked Sendable {
         lock.lock(); let on = micOn; lock.unlock()
         guard on else { return }
         onBuffer?(buf)
-        if let ch = buf.floatChannelData?[0], buf.frameLength > 0 {
-            var sum: Float = 0
-            let n = Int(buf.frameLength)
-            for i in 0..<n { sum += ch[i] * ch[i] }
-            onLevel?(20 * log10(max(sqrt(sum / Float(n)), 1e-6)))
-        }
-        guard let onPCM, let converter else { return }
-        let ratio = out.sampleRate / buf.format.sampleRate
-        guard let o = AVAudioPCMBuffer(pcmFormat: out, frameCapacity: AVAudioFrameCount(Double(buf.frameLength) * ratio) + 32) else { return }
-        var fed = false
-        var err: NSError?
-        converter.convert(to: o, error: &err) { _, status in
-            if fed { status.pointee = .noDataNow; return nil }
-            fed = true
-            status.pointee = .haveData
-            return buf
-        }
-        if err == nil, let p = o.int16ChannelData?[0], o.frameLength > 0 {
-            onPCM(Data(bytes: p, count: Int(o.frameLength) * 2))
-        }
+        guard let samples = MicDownsampler.mono(buf) else { return }
+        onLevel?(MicDownsampler.level(samples))
+        guard let onPCM, let pcm = downsampler.convert(samples: samples, sampleRate: buf.format.sampleRate) else { return }
+        onPCM(pcm)
     }
 }

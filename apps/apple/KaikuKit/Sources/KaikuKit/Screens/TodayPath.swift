@@ -2,8 +2,9 @@ import SwiftUI
 
 // MARK: Today's path — the guided order ("first this, then this"), so nobody has to pick from a menu.
 
-/// One step of today's path. The path is always three steps: the weather check, Kaiku's suggestion for today
-/// (the nudge arm), and a small game. Done-ness is local (this device) — the garden carries the cross-device view.
+/// One step of today's path. The path is always four steps: the weather check, Kaiku's suggestion for today
+/// (the nudge arm), the lantern (every day) and one more small game that rotates (`GameRotation`): about three
+/// minutes of games a day. Done-ness is local (this device) — the garden carries the cross-device view.
 public struct PathStep: Identifiable, Equatable {
     public let route: KaikuRoute
     public let titleKey: String
@@ -16,7 +17,7 @@ public struct PathStep: Identifiable, Equatable {
 }
 
 extension AppModel {
-    /// Weather check → today's suggestion → a game (Firefly / Pebble path alternate by day, so both get played).
+    /// Weather check → today's suggestion → the lantern → today's rotating game (seed shelf / pebble path / watering).
     var todayPath: [PathStep] {
         let weather = PathStep(route: .weather, titleKey: "today.card.weather.t", whyKey: "path.why.weather",
                                icon: "sun.max.fill", tone: .sky, minutes: 1, done: weatherDoneToday)
@@ -32,13 +33,20 @@ extension AppModel {
             suggested = PathStep(route: .breathe, titleKey: "game.breathe.t", whyKey: "path.why.suggest", icon: "wind",
                                  tone: .sage, minutes: 1, done: playedToday("breathe"))
         }
-        let odd = (Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0) % 2 == 1
-        let game = odd
-            ? PathStep(route: .pebbles, titleKey: "game.pebbles.t", whyKey: "path.why.game", icon: "circle.grid.2x1.fill",
-                       tone: .sky, minutes: 2, done: playedToday("pebbles"))
-            : PathStep(route: .firefly, titleKey: "game.firefly.t", whyKey: "path.why.game", icon: "sparkles",
-                       tone: .honey, minutes: 1, done: playedToday("firefly"))
-        return [weather, suggested, game]
+        return [weather, suggested] + GameRotation.today().enumerated().map { i, g in
+            gameStep(g, whyKey: i == 0 ? "path.why.game" : "path.why.game2")
+        }
+    }
+
+    private func gameStep(_ g: PlayGame, whyKey: String) -> PathStep {
+        let (route, icon, tone): (KaikuRoute, String, KTone) = switch g {
+        case .lantern: (.lantern, "lightbulb.fill", .honey)
+        case .seeds: (.seeds, "leaf.fill", .sage)
+        case .watering: (.watering, "drop.fill", .clay)
+        default: (.pebbles, "circle.grid.2x1.fill", .sky)
+        }
+        return PathStep(route: route, titleKey: "game.\(g.rawValue).t", whyKey: whyKey, icon: icon, tone: tone,
+                        minutes: Int((Double(GameRotation.seconds(g)) / 60).rounded()), done: playedToday(g.rawValue))
     }
 
     var nextPathStep: PathStep? { todayPath.first { !$0.done } }
@@ -83,8 +91,8 @@ struct TodayPathCard: View {
             }
             if current == nil {
                 HStack(spacing: KaikuTokens.Space.s3) {
-                    MascotView(state: .cheering, size: 56, tappable: false)
-                    VStack(alignment: .leading, spacing: 2) {
+                    MascotView(state: .cheering, size: KaikuTokens.Size.mascotS, tappable: false)
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                         Text(T("path.done.t")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                         Text(T("path.done.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
                     }
@@ -97,7 +105,7 @@ struct TodayPathCard: View {
         .padding(KaikuTokens.Space.s4)
         .background(
             RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.surface)
-                .shadow(color: KaikuTokens.Colors.ink.opacity(0.05), radius: 10, y: 4)
+                .kaikuShadow(KaikuTokens.Elevation.card)
         )
         .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
     }
@@ -107,7 +115,7 @@ struct ProgressDots: View {
     let total: Int
     let done: Int
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: KaikuTokens.Space.s2) {
             ForEach(0..<total, id: \.self) { i in
                 Capsule().fill(i < done ? KaikuTokens.Colors.sage : KaikuTokens.Colors.line)
                     .frame(height: 6)
@@ -132,13 +140,13 @@ struct PathStopRow: View {
                     Circle().fill(step.done ? KaikuTokens.Colors.sage : current ? step.tone.ink : KaikuTokens.Colors.surface)
                     Circle().strokeBorder(step.done || current ? .clear : KaikuTokens.Colors.line, lineWidth: 2)
                     if step.done {
-                        Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "checkmark").kText(.footnote, weight: .bold).foregroundStyle(KaikuTokens.Colors.bg)
                     } else {
                         Text("\(index)").kText(.callout, weight: .bold)
-                            .foregroundStyle(current ? .white : KaikuTokens.Colors.muted)
+                            .foregroundStyle(current ? KaikuTokens.Colors.bg : KaikuTokens.Colors.muted)
                     }
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: KaikuTokens.Size.iconTile, height: KaikuTokens.Size.iconTile)
                 .shadow(color: current ? step.tone.ink.opacity(0.35) : .clear, radius: 8, y: 2)
                 if !last {
                     Rectangle().fill(.clear).frame(width: 2).frame(minHeight: 18, maxHeight: .infinity)
@@ -149,15 +157,13 @@ struct PathStopRow: View {
             VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
                 Button(action: open) {
                     HStack(spacing: KaikuTokens.Space.s3) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                             Text(T(step.whyKey)).kText(.caption).foregroundStyle(current ? step.tone.ink : KaikuTokens.Colors.muted).wraps()
                             Text(T(step.titleKey)).kText(.callout, weight: .semibold)
                                 .foregroundStyle(step.done ? KaikuTokens.Colors.ink2 : KaikuTokens.Colors.ink).wraps()
                         }
                         Spacer(minLength: KaikuTokens.Space.s2)
-                        Text(T("game.time", n: step.minutes)).kText(.caption).foregroundStyle(step.tone.ink)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Capsule().fill(step.tone.soft))
+                        KChip(T("game.time", n: step.minutes), tone: step.tone)
                     }
                     .contentShape(Rectangle())
                 }
@@ -170,7 +176,7 @@ struct PathStopRow: View {
                     .buttonStyle(.kPrimary)
                 }
             }
-            .padding(.top, 6)
+            .padding(.top, KaikuTokens.Space.s2)
             .padding(.bottom, last ? 0 : KaikuTokens.Space.s3)
         }
         .accessibilityElement(children: .combine)
@@ -184,7 +190,7 @@ private struct Line: Shape {
 
 struct TrailingIconLabel: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 8) { configuration.title; configuration.icon }
+        HStack(spacing: KaikuTokens.Space.s2) { configuration.title; configuration.icon }
     }
 }
 
@@ -235,7 +241,7 @@ struct GardenBeds: View {
                 if weeks > 1 {
                     Text(T(w == weeks - 1 ? "garden.recent" : "garden.lastweek")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted)
                 }
-                HStack(alignment: .bottom, spacing: 6) {
+                HStack(alignment: .bottom, spacing: KaikuTokens.Space.s2) {
                     ForEach(row, id: \.date) { d in plot(d) }
                 }
             }
@@ -255,13 +261,13 @@ struct GardenBeds: View {
             guard selectable else { return }
             withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { selected = on ? nil : d.date }
         } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: KaikuTokens.Space.s2) {
                 DayPlant(count: d.count, seed: d.date.hashValue, tint: d.kinds.contains("play_session") ? KaikuTokens.Colors.honey : KaikuTokens.Colors.mascotBlush)
                     .frame(height: plantHeight)
-                HStack(spacing: 2) {
+                HStack(spacing: KaikuTokens.Space.s1) {
                     ForEach(d.kinds.prefix(3), id: \.self) { k in
                         if let (sym, c) = GardenDay.kindStyle[k] {
-                            Image(systemName: sym).font(.system(size: 9, weight: .bold)).foregroundStyle(c)
+                            Image(systemName: sym).kText(.micro, weight: .bold).foregroundStyle(c)
                         }
                     }
                 }
@@ -274,7 +280,7 @@ struct GardenBeds: View {
                 }
                 .lineLimit(1).minimumScaleFactor(0.7)
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, KaikuTokens.Space.s2)
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous)
                 .fill(on ? KaikuTokens.Colors.surface : KaikuTokens.Colors.surface.opacity(d.isToday ? 0.55 : 0)))

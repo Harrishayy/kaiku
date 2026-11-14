@@ -12,7 +12,7 @@ public struct MenuBarPopover: View {
         VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
             HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
                 MascotView(state: app.ambientState, size: 64)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                     Text(app.greeting).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                     if let arm = app.nudge?.arm {
                         Text(T("today.suggest.\(arm.rawValue)")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
@@ -27,7 +27,7 @@ public struct MenuBarPopover: View {
             }
             Divider()
             Toggle(isOn: Binding(get: { app.consents[.mac] ?? false }, set: { app.consents[.mac] = $0 })) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                     Text(T("sig.mac.t")).kText(.footnote, weight: .semibold).wraps()
                     Text(T("sig.mac.d")).kText(.caption, weight: .regular).foregroundStyle(KaikuTokens.Colors.muted).wraps()
                 }
@@ -37,7 +37,7 @@ public struct MenuBarPopover: View {
             Button {
                 app.pausedUntil = app.isPaused ? nil : Date().addingTimeInterval(3600)
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                     Text(T("mac.pause1h")).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                     Text(T("mac.pause1h.d")).kText(.caption, weight: .regular).foregroundStyle(KaikuTokens.Colors.muted).wraps()
                 }
@@ -48,7 +48,7 @@ public struct MenuBarPopover: View {
             .overlay(alignment: .trailing) { if app.pausedUntil.map({ $0 > Date() }) == true { Image(systemName: "checkmark").foregroundStyle(KaikuTokens.Colors.sage) } }
             Button { open(.you, .saw) } label: {
                 Text(T("you.saw")).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.clay)
-                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading).contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, minHeight: KaikuTokens.Size.tapMin, alignment: .leading).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             Divider()
@@ -65,11 +65,11 @@ public struct MenuBarPopover: View {
 
     private func quick(_ icon: String, _ key: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(KaikuTokens.Colors.clay)
+            VStack(spacing: KaikuTokens.Space.s2) {
+                Image(systemName: icon).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.clay)
                 Text(T(key)).kText(.caption).foregroundStyle(KaikuTokens.Colors.ink).multilineTextAlignment(.center).wraps()
             }
-            .frame(maxWidth: .infinity, minHeight: 64)
+            .frame(maxWidth: .infinity, minHeight: KaikuTokens.Size.rowMin)
             .padding(.vertical, KaikuTokens.Space.s2)
             .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(KaikuTokens.Colors.surface))
             .contentShape(Rectangle())

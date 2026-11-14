@@ -1,0 +1,86 @@
+{
+  "additionalProperties": false,
+  "description": "What the learner has seen for one activity. A reported response, not proof that the activity caused it.",
+  "properties": {
+    "activity": {
+      "title": "Activity",
+      "type": "string"
+    },
+    "certainty": {
+      "enum": [
+        "early",
+        "building",
+        "consistent"
+      ],
+      "title": "Certainty",
+      "type": "string"
+    },
+    "high": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "High"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "low": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "90% interval of the learner's estimate",
+      "title": "Low"
+    },
+    "mean_effect": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "mean reward 0..1 (0.5 = neutral)",
+      "title": "Mean Effect"
+    },
+    "text": {
+      "maxLength": 240,
+      "title": "Text",
+      "type": "string"
+    },
+    "tries": {
+      "minimum": 0,
+      "title": "Tries",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "activity",
+    "label",
+    "tries",
+    "certainty",
+    "text"
+  ],
+  "title": "HelpEffect",
+  "type": "object"
+}

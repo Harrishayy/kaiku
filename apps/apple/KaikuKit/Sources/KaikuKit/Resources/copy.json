@@ -1,5 +1,5 @@
 {
-  "$about": "GROUND TRUTH for on-screen UI copy (iPhone, Mac, web /me). Keys are referenced from design/ia.md. Placeholders: {name}, {n}. Spoken lines live in the voice script, crisis text in config/safety_phrases.toml (crisis.body mirrors its first three sentences). en and fi must have the same keys (tested). Swedish to follow.",
+  "$about": "GROUND TRUTH for on-screen UI copy (iPhone, Mac, web /me) and the shared consensus words the clinician dashboard shows (state.*, verdict.*; see design/components.md). Keys are referenced from design/ia.md. Placeholders: {name}, {n}. Spoken lines live in the voice script, crisis text in config/safety_phrases.toml (crisis.body mirrors its first three sentences). en and fi must have the same keys (tested). Swedish to follow.",
   "en": {
     "common.notok": "I'm not OK",
     "common.nottoday": "Not today",
@@ -13,7 +13,6 @@
     "tab.talk": "Talk",
     "tab.days": "Your days",
     "tab.you": "You",
-
     "onb.welcome.title": "Hi, I'm Kaiku",
     "onb.welcome.body": "I'm the little robot on your desk. I live here on your phone too.",
     "onb.welcome.cta": "Say hello",
@@ -39,7 +38,6 @@
     "onb.meet.title": "Tap me!",
     "onb.meet.body": "Turn my ear to answer. One is a heavy day, five is a bright one.",
     "onb.meet.cta": "Let's start",
-
     "today.greet.morning": "Good morning, {name}",
     "today.greet.afternoon": "Good afternoon, {name}",
     "today.greet.evening": "Good evening, {name}",
@@ -52,7 +50,6 @@
     "today.card.breathe.t": "Breathe with Kaiku",
     "today.card.breathe.d": "One to three minutes",
     "today.offline": "I can't reach the cloud right now. I'll keep your check-ins safe here.",
-
     "wx.title": "How's the weather inside?",
     "wx.mood": "Mood",
     "wx.energy": "Energy",
@@ -74,7 +71,6 @@
     "wx.sleep.5": "Deeply",
     "wx.done": "That's it",
     "wx.thanks": "Thank you. I've noted it.",
-
     "play.title": "Play",
     "play.body": "Little games, a minute or two each. Nothing to win.",
     "game.firefly.t": "Firefly",
@@ -115,7 +111,6 @@
     "lh.end": "End walk",
     "lh.walking": "Walking with Kaiku",
     "lh.progress": "{n} of 3 found",
-
     "talk.hold": "Hold me to talk",
     "talk.listening": "Listening…",
     "talk.thinking": "Hmm, let me think",
@@ -124,7 +119,6 @@
     "talk.say1": "I walked to the lake today.",
     "talk.reply1": "The lake! Was the water still, or windy?",
     "talk.hint": "Kaiku keeps only what you say it may keep.",
-
     "days.garden": "Your garden grew a sprout for every walk, check-in and breath. When you're away, it rests.",
     "days.week": "This week",
     "days.weekdays": "M T W T F S S",
@@ -134,7 +128,6 @@
     "days.good": "A good day",
     "days.hard": "A hard day",
     "days.clear": "Leave it blank",
-
     "you.remembers": "What Kaiku remembers",
     "you.saw": "What Kaiku saw today",
     "you.voice": "Voice and language",
@@ -186,9 +179,8 @@
     "help.team.d": "Ask them to call you",
     "crisis.title": "You're not alone",
     "crisis.body": "I'm really glad you told me. I'm going to stop what we're doing. You don't have to handle this alone.",
-    "crisis.team": "Your care team has been told",
-    "crisis.team.d": "Someone will contact you.",
-
+    "crisis.team": "Safety flag saved",
+    "crisis.team.d": "This does not confirm someone has read it. Please use the contact options above.",
     "mac.late": "It's late. I'm going to sleep. You too?",
     "mac.goodnight": "Goodnight",
     "mac.five": "Five more minutes",
@@ -196,7 +188,6 @@
     "mac.nudge.yes": "Sure",
     "mac.pause1h": "Pause for 1 hour",
     "mac.pause1h.d": "Kaiku won't notice anything for an hour",
-
     "toast.saved": "Saved. I'll keep it safe.",
     "toast.deleted": "Forgotten.",
     "empty.postcards": "No postcards yet. Your first walk will make one.",
@@ -206,14 +197,24 @@
     "perm.mic.t": "Kaiku would like to hear you",
     "perm.mic.d": "Only while you hold Kaiku. Your voice stays on this phone.",
     "perm.later": "Not now",
-
     "me.hi": "Hi again, {name}",
     "me.together": "You and Kaiku did something together on 5 of the last 7 days.",
     "me.walks": "You went for 4 walks. Tuesday's was the longest, 31 minutes.",
     "me.checkins": "You checked in 5 times. Thank you.",
     "me.games": "You caught fireflies twice and made a pebble path.",
     "me.pair": "Add your phone",
-    "me.pair.d": "Scan this to put Kaiku on your phone."
+    "me.pair.d": "Scan this to put Kaiku on your phone.",
+    "state.stable": "Stable",
+    "state.watch": "Worth a check-in",
+    "state.needs_call": "Needs a call",
+    "state.safety": "Safety: call today",
+    "state.insufficient": "Not enough data",
+    "verdict.better": "Better than usual",
+    "verdict.as_usual": "As usual",
+    "verdict.worse": "Change from usual",
+    "verdict.insufficient": "Not enough data",
+    "common.simulated": "Simulated",
+    "empty.moments": "No moments yet this week. They'll gather here."
   },
   "fi": {
     "common.notok": "En ole kunnossa",
@@ -228,7 +229,6 @@
     "tab.talk": "Juttele",
     "tab.days": "Päiväsi",
     "tab.you": "Sinä",
-
     "onb.welcome.title": "Hei, olen Kaiku",
     "onb.welcome.body": "Olen pieni robotti työpöydälläsi. Asun myös täällä puhelimessasi.",
     "onb.welcome.cta": "Sano hei",
@@ -254,7 +254,6 @@
     "onb.meet.title": "Napauta minua!",
     "onb.meet.body": "Vastaa kääntämällä korvaani. Yksi on raskas päivä, viisi on kirkas päivä.",
     "onb.meet.cta": "Aloitetaan",
-
     "today.greet.morning": "Hyvää huomenta, {name}",
     "today.greet.afternoon": "Hyvää iltapäivää, {name}",
     "today.greet.evening": "Hyvää iltaa, {name}",
@@ -267,7 +266,6 @@
     "today.card.breathe.t": "Hengitä Kaikun kanssa",
     "today.card.breathe.d": "Yhdestä kolmeen minuuttiin",
     "today.offline": "En juuri nyt saa yhteyttä pilveen. Pidän kuulumisesi tallessa täällä.",
-
     "wx.title": "Millainen sää sisälläsi on tänään?",
     "wx.mood": "Mieliala",
     "wx.energy": "Jaksaminen",
@@ -289,7 +287,6 @@
     "wx.sleep.5": "Sikeästi",
     "wx.done": "Siinä kaikki",
     "wx.thanks": "Kiitos. Kirjasin sen ylös.",
-
     "play.title": "Leiki",
     "play.body": "Pieniä pelejä, minuutti tai kaksi kerrallaan. Mitään ei tarvitse voittaa.",
     "game.firefly.t": "Tulikärpänen",
@@ -330,7 +327,6 @@
     "lh.end": "Lopeta kävely",
     "lh.walking": "Kävelyllä Kaikun kanssa",
     "lh.progress": "{n}/3 löydetty",
-
     "talk.hold": "Pidä minua painettuna ja puhu",
     "talk.listening": "Kuuntelen…",
     "talk.thinking": "Hmm, annas kun mietin",
@@ -339,7 +335,6 @@
     "talk.say1": "Kävelin tänään järven rantaan.",
     "talk.reply1": "Järvelle! Oliko vesi tyyni vai tuulinen?",
     "talk.hint": "Kaiku muistaa vain sen, minkä sanot sen saavan muistaa.",
-
     "days.garden": "Puutarhaasi kasvoi verso jokaisesta kävelystä, kuulumisesta ja hengityksestä. Kun olet poissa, se lepää.",
     "days.week": "Tämä viikko",
     "days.weekdays": "M T K T P L S",
@@ -349,7 +344,6 @@
     "days.good": "Hyvä päivä",
     "days.hard": "Raskas päivä",
     "days.clear": "Jätä tyhjäksi",
-
     "you.remembers": "Mitä Kaiku muistaa",
     "you.saw": "Mitä Kaiku huomasi tänään",
     "you.voice": "Ääni ja kieli",
@@ -401,9 +395,8 @@
     "help.team.d": "Pyydä heitä soittamaan sinulle",
     "crisis.title": "Et ole yksin",
     "crisis.body": "Olen todella iloinen, että kerroit. Lopetan nyt sen, mitä teimme. Sinun ei tarvitse jäädä tämän kanssa yksin.",
-    "crisis.team": "Hoitotiimillesi on ilmoitettu",
-    "crisis.team.d": "Joku ottaa sinuun yhteyttä.",
-
+    "crisis.team": "Turvailmoitus tallennettu",
+    "crisis.team.d": "Tämä ei vahvista, että joku on lukenut sen. Käytä yllä olevia yhteystietoja.",
     "mac.late": "On jo myöhä. Minä menen nukkumaan. Entä sinä?",
     "mac.goodnight": "Hyvää yötä",
     "mac.five": "Vielä viisi minuuttia",
@@ -411,7 +404,6 @@
     "mac.nudge.yes": "Mielelläni",
     "mac.pause1h": "Keskeytä tunniksi",
     "mac.pause1h.d": "Kaiku ei huomaa mitään tuntiin",
-
     "toast.saved": "Tallennettu. Pidän sen tallessa.",
     "toast.deleted": "Unohdettu.",
     "empty.postcards": "Ei vielä postikortteja. Ensimmäinen kävelysi tekee sellaisen.",
@@ -421,13 +413,23 @@
     "perm.mic.t": "Kaiku haluaisi kuulla sinut",
     "perm.mic.d": "Vain silloin, kun pidät Kaikua painettuna. Äänesi pysyy tässä puhelimessa.",
     "perm.later": "Ei nyt",
-
     "me.hi": "Hei taas, {name}",
     "me.together": "Teitte Kaikun kanssa jotain yhdessä viitenä päivänä viimeisestä seitsemästä.",
     "me.walks": "Kävit neljällä kävelyllä. Tiistain lenkki oli pisin, 31 minuuttia.",
     "me.checkins": "Kerroit kuulumisesi viisi kertaa. Kiitos.",
     "me.games": "Pyydystit tulikärpäsiä kahdesti ja teit yhden kivipolun.",
     "me.pair": "Lisää puhelimesi",
-    "me.pair.d": "Skannaa tämä, niin Kaiku tulee myös puhelimeesi."
+    "me.pair.d": "Skannaa tämä, niin Kaiku tulee myös puhelimeesi.",
+    "state.stable": "Vakaa",
+    "state.watch": "Kannattaa kysyä kuulumisia",
+    "state.needs_call": "Soitto tarpeen",
+    "state.safety": "Turvallisuus: soita tänään",
+    "state.insufficient": "Ei tarpeeksi tietoa",
+    "verdict.better": "Tavallista parempi",
+    "verdict.as_usual": "Kuten tavallisesti",
+    "verdict.worse": "Muutos tavalliseen",
+    "verdict.insufficient": "Ei tarpeeksi tietoa",
+    "common.simulated": "Simuloitu",
+    "empty.moments": "Ei vielä hetkiä tällä viikolla. Ne kertyvät tänne."
   }
 }

@@ -40,7 +40,9 @@ static uint8_t patLen = 0, patIdx = 0;
 static uint32_t noteEndsAt = 0;
 static bool buzzerOk = false;
 
-static uint8_t load(const String& n, Note* p) {
+// Fills the global `pattern` (no Note in the signature: Arduino's auto-prototypes land above the struct).
+static uint8_t loadPattern(const String& n) {
+  Note* p = pattern;
   if (n == "wake")       { p[0] = {660, 80}; p[1] = {880, 120}; return 2; }
   if (n == "ok")         { p[0] = {1320, 60}; return 1; }
   if (n == "start_drum") { p[0] = {880, 60}; p[1] = {0, 60}; p[2] = {880, 60}; return 3; }
@@ -77,7 +79,7 @@ static bool atHome = false;
 static uint32_t nextHall = 0;
 
 static void tickHall(uint32_t now) {
-  if (now < nextHall) return;
+  if (!HAS_HALL || now < nextHall) return;
   nextHall = now + HALL_POLL_MS;
   int d = abs(analogRead(HALL_PIN) - HALL_MID);        // either magnet pole
   bool home = atHome ? d > HALL_DELTA - HALL_HYST : d > HALL_DELTA;
@@ -124,7 +126,7 @@ static void tickPpg() {
 }
 
 // ------------------------------------------------------------------ bridge handlers
-void buzz_pattern(String name) { patLen = load(name, pattern); patIdx = 0; noteEndsAt = 0; }
+void buzz_pattern(String name) { patLen = loadPattern(name); patIdx = 0; noteEndsAt = 0; }
 void motor_moving(int moving) { motorMoving = moving != 0; }
 void ppg_start() { ppgOn = true; ppgN = 0; ppgNextUs = micros(); }
 void ppg_stop() { ppgOn = false; ppgN = 0; }

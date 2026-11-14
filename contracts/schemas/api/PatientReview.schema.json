@@ -1,0 +1,181 @@
+{
+  "$defs": {
+    "ReviewFinding": {
+      "additionalProperties": false,
+      "description": "One claim in the review. `meaning`/`consider` are interpretation (Gemma when `by` = gemma: validated, no\nnumbers, no state words); `facts` are rendered by code from the cited records and carry every number.",
+      "properties": {
+        "by": {
+          "enum": [
+            "gemma",
+            "template"
+          ],
+          "title": "By",
+          "type": "string"
+        },
+        "cites": {
+          "description": "ids into PatientInsight.evidence",
+          "items": {
+            "type": "string"
+          },
+          "title": "Cites",
+          "type": "array"
+        },
+        "consider": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "what the practitioner could consider",
+          "title": "Consider"
+        },
+        "facts": {
+          "description": "verified record facts, numbers rendered by code",
+          "items": {
+            "type": "string"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "meaning": {
+          "description": "what it likely means, in plain words",
+          "maxLength": 400,
+          "title": "Meaning",
+          "type": "string"
+        },
+        "theme": {
+          "enum": [
+            "change",
+            "improvement",
+            "steady",
+            "routine",
+            "what_helps",
+            "coverage"
+          ],
+          "title": "Theme",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "theme",
+        "title",
+        "meaning",
+        "by"
+      ],
+      "title": "ReviewFinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Gemma's review of the person: what changed, what it likely means, what to consider. Never decides state.",
+  "properties": {
+    "by": {
+      "enum": [
+        "gemma",
+        "template"
+      ],
+      "title": "By",
+      "type": "string"
+    },
+    "cached": {
+      "default": false,
+      "title": "Cached",
+      "type": "boolean"
+    },
+    "day_of_record": {
+      "default": 0,
+      "description": "calendar days since the first observation",
+      "minimum": 0,
+      "title": "Day Of Record",
+      "type": "integer"
+    },
+    "early_record": {
+      "default": false,
+      "description": "baselines are provisional or missing: read every comparison with lower confidence",
+      "title": "Early Record",
+      "type": "boolean"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "content-free category when the template answered instead of the model, e.g. not_requested | provider_unavailable | invalid_json | no_valid_findings | cooldown",
+      "title": "Fallback Reason"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ReviewFinding"
+      },
+      "maxItems": 8,
+      "title": "Findings",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "headline": {
+      "maxLength": 240,
+      "title": "Headline",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "overview": {
+      "anyOf": [
+        {
+          "maxLength": 700,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Gemma's reading of the whole record: what started, what followed, what has come back, what has not. Null when the template answered; `PatientInsight.course.summary` is the code-written arc",
+      "title": "Overview"
+    },
+    "overview_cites": {
+      "description": "evidence ids the overview rests on",
+      "items": {
+        "type": "string"
+      },
+      "title": "Overview Cites",
+      "type": "array"
+    }
+  },
+  "required": [
+    "headline",
+    "by",
+    "generated_at"
+  ],
+  "title": "PatientReview",
+  "type": "object"
+}

@@ -4,176 +4,136 @@
 > data flow, structure or invariants. Each fact lives here once.
 
 ## Purpose
-The browser side of Kaiku, owner **D**, kind app (`modules.toml` → `web`): the person's own page (`/me`, with Kaiku the
-mascot and the firefly game), the clinician dashboard, the **laptop source** (2-minute session + PHQ-9), the admin
-criteria tuner, and internal team pages. The look is `design/` (tokens, mascot spec, copy, layout rules): this app reads
-those files directly and never copies or redraws them.
+The practitioner dashboard for Kaiku, owner **D**, kind app (`modules.toml` → `web`). The website is only for the
+care team: `/` opens one person's record as a one-viewport dashboard of movable panels. Everything the person
+does (check-ins, games, PHQ-9, talking to Kaiku, consent) lives in the iPhone and Mac apps (`apps/apple`), not here.
+Internal team pages (`/health/`, `/eval/`, `/tune/`) stay reachable from a quiet link row in the dashboard footer.
+The look is `design/` (tokens, component spec, copy): this app reads those files and never copies or redraws them.
 **Next.js 15 App Router + TypeScript, static export** (`output: 'export'`, `trailingSlash: true`) to `out/`, served by
 the Modal cloud from the same origin as `/v1`.
 
 | route | for | what |
 |---|---|---|
-| `/me/` | person | ambient Kaiku (`/v1/me` mascot mood; `crisis` → crisis screen), greeting, weather check (3 × 1–5 → `obs.self_report` channel web), "I'm not OK", good & hard moments (7 d), garden, pairing QR + link (`?home=&t=`), suggestion, firefly link, what helps, Your week (what each part of Kaiku added: one-record strip per source, rhythms with 7-dot strips, going well, worth a gentle look — `GET /v1/me/week`), What Kaiku has learned (graph `GET /v1/me/graph` + "Share with my care team" switch `PUT /v1/me/sharing`), What Kaiku remembers (delete one / all, remembering on/off), What Kaiku saw today (receipt), PHQ-9 due card. en/fi toggle (cloud sentences stay English). Never states, scores or trends |
-| `/play/firefly/` | person | go/no-go game (60 s), gentle end with a jar, quietly posts `obs.play_session {game: firefly, device: web}` |
-| `/clinician/` | clinician | ranked by consensus; chips "Safety: call today" / "Needs a call" / "Worth a check-in" / "Not enough data" (low coverage) / "Stable"; per-source verdict chips (Home robot, Glasses, Apps, Watch); SIMULATED |
-| `/clinician/patient/?id=` | clinician | header (last data, last PHQ-9) → consensus chip + sentence + rule line + quick action → 4 source cards (≤ 3 metrics with sparkline + usual band; Watch says "No watch connected" when absent) → evidence table (metric, source, latest, usual median + range, z, direction; scrolls inside its card) → Suggested next steps (rule-chosen, with the matching action button) → This week (one record per source, routines, going well, worth a look: `GET /v1/patients/{id}/week`) → What Kaiku has learned (`GET /v1/patients/{id}/graph`; "Not shared" card unless the person opted in; never people/places/likes/plans) → timeline by source → summary ("not a decision") → actions → PHQ-9 → what helps. Never the memories list |
-| `/session/` | person | laptop source: consent → 30 s spoken prompt (+ optional webcam expressivity) → 60 s go/no-go → review numbers → send |
-| `/phq9/` | person | standard wording, every 14 days; item 9 > 0 → fixed crisis panel + `safety_flag` first |
-| `/consent/` | person | privacy in plain language (static) |
-| `/tune/` | admin | edit consensus criteria, preview who would change state + simulation, apply live, reset, export TOML |
-| `/live/` `/health/` `/eval/` | team | event stream, node heartbeats, simulation (incl. "losing one source"); with `/tune/` under the small **Team** menu, not in the person/clinician nav |
-| `/checkin/` | — | v1 URL; client redirect to `/phq9/` keeping `?home=&t=` |
+| `/` (`?id=` picks a person; a compact switcher appears only when there is more than one) | practitioner | header strip (person, day of record and calibration stage, consensus in plain words, freshness) + panel grid + dock of collapsed panels. Default: Trends, Consensus now and Kaiku's review side by side; Routine and Knowledge graph join from 800 px height |
+| `/health/` `/eval/` `/tune/` | team | node heartbeats, simulation, criteria tuning (admin token), inside `TeamShell` |
+
+### Panels (`lib/layout.ts` → `PANEL_IDS`)
+| id | title | shows |
+|---|---|---|
+| `trends` | Trends | the course of change (phase chip + code-written summary) above one measure by day: value line, the person's usual range (dashed outline while the baseline is early), gaps for missing days, the consensus state for each day on the same axis, dated notes from the course (care action, PHQ-9, this measure's turning points; numbered with a key when labels would collide), hover/arrow-key reading; this week vs week before vs usual with the meaning in words; measure picker grouped by signal group |
+| `consensus` | Consensus now | state, one-sentence meaning, calibration stage, each signal group's verdict with its evidence, last data, who actually sent the records (envelope `source`) and a "Simulated" marker; next steps; how to read it |
+| `review` | Kaiku's review | Gemma's overview of the whole record first, then findings: meaning and what to consider up front, the code-rendered facts as a collapsible compact evidence list with this week / week before / usual and the cited records; second tab: the agent trace (step, actor, model, latency, cache, validator rejections, fallback) |
+| `routine` | Routine | usual day by time of day, adherence this week, what helps with tries, interval and caveat |
+| `graph` | Knowledge graph | default: what was learned (`layer: learned`): the person in the middle, activities / routines / care actions on one side, the measures a learned link touches on the other, capped to what fits the panel; select a node or link for its evidence; "Show all measures" opens the full layered tree |
+| `evidence` | Evidence by day | per day: every measure against their usual, then the records (check-in ritual, outings, tasks and games, watch, screen rhythm, suggestions) with sender; conversations are never shown |
+| `care` | Care actions & notes | record an action with a note; the record's action log |
+| `ask` | Ask the record | grounded question and answer with citations |
+| `coverage` | Coverage | completeness per signal group per day; what each group sent, by whom |
 
 ## Boundaries
-May import `@contracts` (`../../contracts/ts/index.ts`, generated) + npm deps — nothing else from the repo. Never
-hand-write a type that mirrors a contract model; a missing shape is a contract change (root rule 4).
+May import `@contracts` (`../../contracts/ts/index.ts`, generated) and `@design/*` + npm deps — nothing else from
+the repo. Never hand-write a type that mirrors a contract model; a missing shape is a contract change (root rule 4).
+`Deep<T>` in `lib/insight.ts` only marks the as-served shape (defaults present) of contract types.
 
 ## Consumes (topics/endpoints)
-`GET /v1/patients` · `GET /v1/patients/{id}/consensus` · `GET /v1/patients/{id}/timeline` (series named by
-`config/criteria.toml`) · `GET /v1/patients/{id}/phq9` (PHQ-9 is charted from here, never a timeline series) ·
-`GET /v1/me?home_id=` · `GET /v1/me/memories?home_id=` · `GET /v1/me/week|graph|sharing?home_id=` ·
-`GET /v1/patients/{id}/week|graph` · `GET /v1/events?home_id=&since=&limit=` (also /me's receipt) · `GET /v1/health` · `GET /v1/eval` · `GET /healthz` ·
-admin: `GET /v1/admin/criteria`, `POST /v1/admin/criteria/preview?eval=1`.
+`GET /v1/patients` · `GET /v1/patients/{id}/consensus` · `GET /v1/patients/{id}/timeline?days=60` ·
+`GET /v1/patients/{id}/insight` (first with `?generate=false`: rule-based, fast; then without: the generated review
+upgrades the Review and trace in place) · `GET /v1/patients/{id}/week` · `GET /v1/patients/{id}/graph` ·
+`GET /v1/patients/{id}/phq9` · `GET /v1/events?home_id=&limit=1000` (evidence by day) ·
+team: `GET /v1/health` · `GET /healthz` · `GET /v1/eval` · `GET /v1/admin/criteria` · `POST /v1/admin/criteria/preview`.
+If `/insight` is unavailable, `lib/insight.ts` derives the same panel shapes from consensus, timeline, week, graph
+and events and the Review panel says so (no trace, no state history, no action log in that mode).
 
 ## Emits (topics/endpoints)
-- `POST /v1/events`, all `source: "laptop"`, built with `lib/envelope.ts` (UUIDv7, UTC ms `Z`): `obs.laptop_session`,
-  `obs.phq9 {mode: "laptop"}`, `obs.safety_flag` (`phq9_item9` | `manual`, `handled_locally: true`),
-  `obs.self_report {context: adhoc, channel: web}` (weather check), `obs.play_session {game: firefly, device: web}`.
-- `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` · `PUT /v1/me/memory_settings?home_id=` ·
-  `PUT /v1/me/sharing?home_id=` (`CareSharing`).
-- `POST /v1/patients/{id}/actions` (flag_booster | flag_icbt_referral | acknowledge | send_message).
+- `POST /v1/patients/{id}/actions` (`ActionRequest`: acknowledge | send_message | flag_booster | flag_icbt_referral).
+- `POST /v1/patients/{id}/ask` (`ClinicianAskRequest` → `ClinicianAskResponse` with `RecordCitation`s).
 - admin: `PUT /v1/admin/criteria` (`CriteriaUpdate`; `criteria: null` = reset to file).
-- Never audio, images or transcripts.
+- No `obs.*` at all: the browser no longer produces observations.
 
 ## Map
 ```
-app/<route>/page.tsx          server shell (metadata) + a 'use client' component next to it
-  clinician/PatientList.tsx · clinician/patient/PatientDetail.tsx · me/MeView.tsx · play/firefly/FireflyGame.tsx
-  session/SessionFlow.tsx · phq9/Phq9Flow.tsx · tune/TuneView.tsx · consent/page.tsx · checkin/Redirect.tsx · live/ health/ eval/
-  layout.tsx (imports design/generated/tokens.css + fonts, LangProvider, nav + footer: MIELI 09 2525 0111, 112)
-  page.tsx (landing) · kaiku.css (design-system classes k-*, .ui em sizing with --ts) · globals.css (base + older
-  pages; legacy names mapped onto --k-* tokens)
-components/
-  Mascot.tsx        <Mascot state compose size still ear label>: renders design/mascot.spec.json (all states, blink,
-                    events, tap = ear flick, glow by hour from tokens.json, Reduce Motion = pose + cross-fade)
-  CrisisScreen.tsx  person crisis screen (no mascot/motion) + useCrisis (obs.safety_flag manual, once)
-  Garden.tsx · QrCode.tsx (qrcode-generator, client-side) · Icon.tsx (look book line icons) · Nav.tsx (For you ·
-                    Clinician · Team menu)
-  ui.tsx            StateChip, VerdictChip, AgreementBadge, DeviceIndicator, Loading/ErrorBox/Empty/StaleNote (older pages)
-  SourceCard.tsx    one consensus source card with sparklines, data-driven (works for any future source)
-  LearnedGraph.tsx  knowledge graph in columns (told → person → activities → routines), deterministic layout,
-                    click/Enter = links panel with relation words; GraphWords per audience (person i18n / care English)
-  RecordStrip.tsx   the one record: per-source 7-day bars + counts (WeekSummary.sources)
-  WeekPanels.tsx    routines (7-dot strip, kept/partly/slipped) + going well + worth a look; WeekWords per audience
-  TimelineChart.tsx generic MetricSeries chart (label/unit/source/worse_when from the cloud) + Phq9Chart
-  CrisisPanel.tsx   FIXED crisis text (mirrors config/safety_phrases.toml [script]) — never generated
-  NotOkButton.tsx   manual safety trigger · Nav.tsx
+app/
+  layout.tsx        tokens.css + globals.css + dashboard.css, fonts from tokens; no shared chrome
+  page.tsx          `/` → <Dashboard>
+  dashboard.css     every dashboard style (`.dash`, `d-*`); token values only (tested)
+  globals.css       base + the team pages' styles only
+  health/ eval/ tune/   team pages wrapped in components/TeamShell.tsx
+components/dash/
+  Dashboard.tsx     shell: header facts, grid, dock, layout state (localStorage, try/catch), person switcher, care access
+  Panel.tsx         the one card: grip (drag, arrow keys, Home), maximise (Esc restores), collapse
+  kit.tsx           the one Chip, ToneMark, Busy / EmptyState / Problem, Provenance, SimMark
+  Chart.tsx         the one chart style (TrendChart + ChartLegend)
+  data.ts           useRecord(): all fetching for one record; panels degrade one by one
+  panels/*.tsx      one file per panel
+components/  Mascot.tsx (brand mark from design/mascot.spec.json) · TeamShell.tsx · ui.tsx (team pages; chips and buttons are the dashboard's Chip / d-btn)
 lib/
-  copy.ts         pure copy lookup (merge design + web tables, en fallback, never a key on screen), greetKey, nameFromHome
-  copy-web.json   web-only keys design/copy.json lacks (en + fi; design wins on a shared key)
-  i18n.tsx        LangProvider/useCopy: ?lang= → localStorage kaiku.lang → browser → en
-  mascot.ts       spec types, cssValue, ambientState (mood → state via spec), glowAt (tokens glow.stops)
-  saw.ts          today's events → receipt lines (counts/minutes only), togetherDays
-  qr.ts           qrPath, pairingUrl · clinician.ts consensusChip/verdictChip, evidenceRows, cardSeries, sparkline
-  api.ts          fetch wrapper (timeout, ApiError with raw `detail`), detailLines (FastAPI 422 → "path: msg"),
-                  useApi (poll, keeps last good data), postEvents (Bearer pairing token)
-  envelope.ts     uuidv7 + makeEnvelope (typed by @contracts PayloadByType)
-  pairing.ts      pure ?home= / ?t= parsing · params.ts: usePairing, useAdminToken (localStorage, stripped from URL)
-  format.ts       ALL wording: state/verdict/source/action/activity labels, ranking, describe() for /live
-  criteria.ts     /tune/ helpers: groupBySource (via SOURCE_OF), setIn, diffPaths, normalizeCriteria, criteriaToToml
-  metrics.ts      pure math: reaction stats, go/no-go schedule, expressivity index, pitch + semitone SD
-  speech.ts       Web Audio speech task (pace, pauses, pitch variability)
-  expressivity.ts lazy MediaPipe FaceLandmarker (pinned CDN 0.10.35); blendshapes in memory → index; null on failure
-tests/lib.test.ts · tests/design.test.ts  node --test over the pure lib functions
+  layout.ts         panel order, dock, slots(n) tiling of a 12 × 12 grid, viewport-aware default, saved-layout repair
+  insight.ts        meaningOf() (every number against the person's usual), day signals, record stage, fallback derivations
+  evidence.ts       one plain sentence per observation, grouped by day
+  graph-layout.ts   learnedView() (learned layer, routines folded into activities) + layered tree (one row per node)
+  labels.ts         state / verdict labels from design/copy.json + the one state → tone map
+  clinician.ts format.ts chart-domain.ts   units, dates, consensus sentence
+  api.ts credentials.ts params.ts criteria.ts mascot.ts
+tests/              node --test (pure libs + scope/wording/token guards)
 ```
 
 ## Extension points
-- **New route:** `app/<route>/page.tsx` + client component; fetch with `useApi('/v1/...')`; add to `components/Nav.tsx`
-  and the landing list; add new endpoints to the `web` entry in `modules.toml`. Dynamic data via query params, never
-  `[id]` segments.
-- **4th consensus source / new metric / new rule:** nothing to change — source cards, list badges, timelines and
-  `/tune/` all render whatever the cloud returns (`CONSENSUS_SOURCES`, `SOURCE_OF`, `MetricSeries`, `Criteria`).
-  Optionally add a display name/blurb in `lib/format.ts` (`SOURCE_LABELS`, `SOURCE_BLURB`) and a field hint in
-  `tune/TuneView.tsx` (`HINT`, keyed by criteria field name).
-- **New session task:** a step in `session/SessionFlow.tsx`, pure math in `lib/metrics.ts` + test, and the field in
-  `LaptopSession` in contracts first.
-- **Swap the face model:** only `lib/expressivity.ts` (keep `startExpressivity(video) → stop(): index | null`).
-  **Drop the webcam part:** delete it and its use in `SpeakStep`; send `expressivity_index: null` (D11).
+- **New panel:** add the id + title in `lib/layout.ts`, a file in `components/dash/panels/`, a case in
+  `Dashboard.tsx → body()`. Slots, dock, drag, keyboard move and persistence need no change.
+- **New measure / signal group / obs type:** nothing here; charts, pickers, coverage and evidence are driven by the
+  timeline series and the generated `SOURCE_OF` / `SOURCE_LABELS`. A new obs type reads better with a case in
+  `lib/evidence.ts → describeObs` (unknown types still list under "Other records").
+- **New state or verdict wording:** `design/copy.json` (`state.*`, `verdict.*`), then `lib/labels.ts` if the tone changes.
 
 ## Invariants
-- **design/ is the ground truth for look and copy.** Colours/type/motion only from `--k-*` tokens
-  (`design/generated/tokens.css`, imported, not copied); the mascot only via `<Mascot>` from `mascot.spec.json`; person
-  UI strings only via `useCopy().t(key)` from `design/copy.json` (+ `lib/copy-web.json`). No dev text on screen
-  (`tools/ui_copy_check.py`). Clinician pages are English only (not in copy.json, per `design/ia.md`).
-- Overflow (`design/layout.md`): every page holds at 320 px, fi copy, 1.35× text, light and dark, with no horizontal page
-  scroll; only the evidence table scrolls inside its card. Text-holding flex/grid children get `min-width: 0`.
-- /me never shows states, scores or trends; the person's memories are never shown on clinician pages.
-- Static export only: no API routes, server actions, runtime server fetching or `next/headers`.
-- No raw media leaves the browser; only `LaptopSession` numbers are sent, after the person has seen them. Camera/mic
-  indicators are visible whenever a device is on.
-- Crisis path is deterministic: PHQ-9 item 9 > 0 or "I'm not OK" → fixed `CrisisPanel` immediately, then
-  `obs.safety_flag` before anything else. A PHQ-9 is sent only when all 9 items are answered (never invented).
-  Crisis text changes only together with `config/safety_phrases.toml`.
-- "insufficient" is always shown as **not enough data**, never as fine; missing sources stay visible.
-- Wording: "change from your usual", "worth a check-in", "consensus", "needs a call"; never diagnosis / relapse
-  detected / predicts. Explanations are labelled "an explanation, not a decision".
-- Data-driven: no metric, rule or source names hard-coded in components; the frontend never decides a state.
-- `/tune/` never changes the ground truth: `config/criteria.toml` is it. Apply = a live, reversible cloud override;
-  Export TOML produces text to paste into the file and commit. Apply and Reset always ask for confirmation.
-- Talks to the system only over the cloud HTTP API: no MQTT, no hub access, no Gemini calls. The only credentials
-  in the browser are the pairing token (person pages) and the admin token (`/tune/`); both are stripped from the URL
-  after first load, and the admin token is only sent to `/v1/admin/*`.
-- Every page has loading, error (with retry) and empty states; a cloud outage never white-screens.
+- The website is practitioner-only. No person-facing route, no observation capture, no camera or microphone.
+- One viewport at ≥ 1100 × 600: the page never scrolls; panels scroll inside themselves; with many panels open the
+  panel area scrolls while the main panel stays in view. Below that the panels stack and the page scrolls.
+- Panels cannot overlap: `slots(n)` tiles the grid exactly (tested). Moving only reorders, collapsing only docks.
+- The frontend never decides a state. State, verdicts, day-by-day state history and early-baseline flags come from
+  the cloud; low coverage always reads "Not enough data", never "Stable". A record on an early baseline says so
+  in the header, the consensus panel, the chart band and the tooltip.
+- Every number is shown with its meaning against the person's own usual (`meaningOf`). "What helps" always shows
+  tries and the interval, never certainty wording.
+- Provenance is the envelope `source` (who sent the record), with a discreet "Simulated" marker. Internal home ids
+  are never rendered; "(SIMULATED)" tags in cloud prose are stripped (`cleanText`).
+- Wording: "change from usual", "worth a check-in", "consensus", "needs a call"; never diagnosis / relapse.
+  State and verdict labels come only from `design/copy.json`.
+- Look: only `--k-*` tokens in `dashboard.css` (tested: no literal colours or font sizes); one card, one chip, one
+  chart style; state tone by colour **and** shape; visible focus; reduced motion honoured.
+- No hard-coded person data. Conversations and private memories are never shown.
+- Static export only: no API routes, server actions or runtime server fetching. Credentials in the browser: the
+  tab-scoped care-team token and the admin token for `/tune/`, nothing else.
+- Every panel has loading, empty and error states; a cloud outage never white-screens.
+- `/tune/` never changes the ground truth: `config/criteria.toml` is it.
 
 ## Run standalone
 ```bash
 cd apps/web && pnpm install
-pnpm dev      # http://localhost:3000 — without a backend, pages show "cannot reach the cloud" states
+pnpm dev      # http://localhost:3000 — without a backend the dashboard shows its "service is not answering" state
 pnpm build    # static export → out/
 ```
 
 ## Run with sim
 ```bash
-make cloud-local   # API on :8000
-make seed          # every consensus state, SIMULATED
-make web           # http://localhost:3000/clinician/
+make cloud-local                      # API on :8000 (serves apps/web/out at /)
+uv run python -m kaiku_cloud.jobs.single_person --out /tmp/kaiku-seed --url http://127.0.0.1:8000   # the 16-day record
+make web                              # http://localhost:3000/
 ```
-Person pages: pair once with `/session/?home=demo-aino&t=<KAIKU_HOME_TOKEN>`. Tuning: open
-`/tune/?admin=<KAIKU_ADMIN_TOKEN>` once (a local cloud without an admin token accepts requests without one).
-`/tune/` flow: edit → **Preview** (who would change state + simulation, current vs candidate; nothing saved) →
-**Apply live** (confirm) → **Export TOML** → paste into `config/criteria.toml` → `make criteria && make tune` → commit.
-**Reset to file** drops the live override.
 
 ## Config & env
-- `NEXT_PUBLIC_KAIKU_API` — API base (default same origin; `make web` sets `http://localhost:8000`).
-- `NEXT_PUBLIC_KAIKU_HOME_ID` — default home for demo pages (default `demo-aino`).
-- Browser storage (localStorage, try/catch): `kaiku.home`, `kaiku.token` (pairing), `kaiku.admin` (`/tune/`).
+`NEXT_PUBLIC_KAIKU_API` (dev only; empty = same origin). Layout is saved per browser under
+`kaiku.dashboard.layout.v4`; the practitioner's initials for actions under `kaiku.dashboard.by`.
 
 ## Health signal
-`/health/` shows cloud `/healthz` and every node heartbeat. Polling pages keep the last good data with a
-"connection lost" note; one-shot pages show a retryable error.
+None of its own (a static site). The dashboard header shows data freshness and a "connection lost" chip when a
+poll fails; `/health/` shows node heartbeats.
 
 ## Tests
-`pnpm typecheck && pnpm test && pnpm build` (`make test` runs the typecheck when `node_modules` exists).
-Unit tests: copy parity/fallback/no clinical words, mascot mood map + glow, receipt lines, QR + pairing link, clinician
-wording/evidence rows/sparkline, UUIDv7/envelope, speech pause ratio, pitch + semitone SD, reaction stats + schedule, expressivity index,
-pairing parsing, criteria grouping/setIn/diffPaths/normalize/TOML export.
+`pnpm typecheck` · `pnpm lint` (typecheck + `tools/ui_copy_check.py`) · `pnpm test` (`node --test`: grid tiling,
+layout repair, meaning wording, record stage, comparison, fallback review, evidence sentences, graph rows, scope
+and token guards) · `pnpm build`.
 
 ## Known issues
-- Highlights, what-helps labels and suggestion reasons are English sentences from the cloud: in Finnish /me shows the
-  kind of moment ("Hyvä hetki") and local labels instead. Web-only copy keys should move into `design/copy.json`.
-- The weather check uses 1–5 segmented buttons, not the iPhone's rotary dial (the mascot's ear still follows the value).
-- "What Kaiku saw today" has no per-signal pause switches yet (no endpoint).
-- Clinician pages and `/tune/` have no login beyond the admin token (demo only). PHQ-9 is English only.
-- Speech rate and expressivity are rough browser estimates (energy peaks; blendshape variability) — fine for change
-  from one's own usual, not absolute values. MediaPipe loads from jsdelivr on first use; offline it is skipped (`null`).
-- Live view polls every 2 s (no WebSocket).
-- Export TOML drops the comments of `config/criteria.toml` — keep the file's header when pasting.
-- Gotcha: `contracts/ts` lives outside the app — `experimental.externalDir` + the `@contracts` alias make it work;
-  `contracts/ts/index.ts` has small runtime exports (`CONSENSUS_SOURCES`, `SOURCE_OF`, `topicFor`).
-- Gotcha: Node's test runner strips types but needs explicit `.ts` extensions on relative imports inside `lib/`.
-- Gotcha: a dangling symlink in this folder makes `next build` fail with ENOENT.
-- Gotcha: query params are only readable after mount (`useQueryParam`/`usePairing`/`useAdminToken` return `undefined`
-  first) — render `<Loading />` until then, and call all hooks before any early return.
-- Gotcha: the criteria JSON keys are `metric` / `rule` (aliases); `normalizeCriteria` also accepts `metrics` / `rules`
-  in case a Python path serialises without `by_alias`.
+- With all nine panels open on a 720-high screen each side tile is about 240 px tall and the panel area scrolls.
+- Annotation labels above the chart can touch on phone-width screens.

@@ -11,6 +11,11 @@ Auto mode (default) behaves like a user, following the hub's dial protocol (hub/
   - obs.drum_session         -> stop tapping; answer the post-activity mood dial (turn + press)
   - obs.ritual phq9 started  -> nine ear presses (spoken PHQ-9: dial 1 -> score 0, 2 -> score 1)
 Keyboard mode is driven by sim/run.py (t tap, [ ] ear, e press ear, b press head button).
+
+Like the firmware (D39, firmware/atech-head): the pan is open loop with a soft limit of +-80 deg, `raw.head.pan`
+goes out at 5 Hz while the motor moves and 0.5 Hz when idle, `moving` is true only while it really moves
+(`pan_mode: sway|track` are ignored: tracking arrives as `pan` targets), and knocks are dropped while it moves or
+closer together than the knock debounce (the UNO Q sketch mutes the KY-031 during motor vibration).
 """
 
 from __future__ import annotations
@@ -26,6 +31,11 @@ from kaiku_contracts.bus import Bus
 from kaiku_contracts.config import get, load_dotenv
 
 PRESS_GAP_S = 0.35  # between presses of one answer (well inside [robot] press_window_s)
+PAN_LIMIT_DEG = 80.0  # firmware soft limit (D39: power-on home, no hall sensor)
+PAN_DEG_PER_S = 120.0  # at speed 1.0
+PAN_TICK_S = 0.2
+PAN_IDLE_EVERY = 10  # ticks: 0.5 Hz when idle
+KNOCK_DEBOUNCE_MS = 40  # firmware/unoq-sensors/sketch/config.h
 
 
 class HeadSim:
@@ -41,7 +51,11 @@ class HeadSim:
         self.rng = random.Random(seed)
         self.ear = 3
         self.deg = 0.0
+        self.target_deg = 0.0
+        self.pan_speed = 0.5
         self.homed = True
+        self.muted_knocks = 0
+        self._last_knock_ms = -10_000
         self.state: dict[str, Any] = {"eyes": "neutral", "pan_mode": "still", "chest": "off"}
         self.bus = Bus("head", sim=True, details=lambda: {"sim": True, **self.state})
         self.bus.on("cmd/head", self._on_cmd)
@@ -63,7 +77,12 @@ class HeadSim:
     # ------------------------------------------------------------ actions (also used by keyboard)
     async def tap(self, force_g: float | None = None) -> None:
         if self.drum == "knock":  # knock switch: timing only, no force
-            await self.bus.publish("raw.head.tap", {"t_ms": self.t_ms(), "src": "knock"})
+            t = self.t_ms()
+            if self.moving or t - self._last_knock_ms < KNOCK_DEBOUNCE_MS:
+                self.muted_knocks += 1
+                return
+            self._last_knock_ms = t
+            await self.bus.publish("raw.head.tap", {"t_ms": t, "src": "knock"})
             return
         f = force_g if force_g is not None else max(0.2, self.rng.gauss(self.force_g, 0.3))
         await self.bus.publish("raw.head.tap", {"t_ms": self.t_ms(), "force": round(f, 2), "src": "imu"})
@@ -85,12 +104,11 @@ class HeadSim:
     async def _on_cmd(self, _t, env) -> None:
         cmd = env.payload.model_dump(exclude_none=True)
         self.state.update({k: v for k, v in cmd.items() if k in ("eyes", "pan_mode", "chest", "bpm")})
-        if cmd.get("home"):
-            self.deg, self.homed = 0.0, True
+        if cmd.get("home") or cmd.get("gesture"):  # a gesture is a timed pulse, then back to the power-on home
+            self.target_deg, self.homed = 0.0, True
         if "pan" in cmd:
-            self.deg = float(cmd["pan"]["target_deg"])
-        if cmd.get("gesture"):
-            self.deg, self.homed = 0.0, True  # timed pulse, then back home on the hall sensor
+            self.target_deg = max(-PAN_LIMIT_DEG, min(PAN_LIMIT_DEG, float(cmd["pan"]["target_deg"])))
+            self.pan_speed = float(cmd["pan"].get("speed", 0.5)) or 0.5
         self.bus.log.info("cmd_head", str(cmd))
 
     async def _on_ritual(self, _t, env) -> None:
@@ -149,15 +167,22 @@ class HeadSim:
             await self.tap(max(0.2, self.rng.gauss(self.force_g * lift, 0.3)))
             await asyncio.sleep(max(0.12, self.rng.gauss(interval / lift, interval * 0.06)))
 
+    @property
+    def moving(self) -> bool:
+        return abs(self.target_deg - self.deg) > 0.05
+
     async def _pan_loop(self) -> None:
+        idle = 0
         while True:
-            mode = self.state.get("pan_mode")
-            moving = mode in ("sway", "track")
-            if mode == "sway":
-                bpm = float(self.state.get("bpm") or 90)
-                self.deg = 15.0 * math.sin(2 * math.pi * (bpm / 60.0 / 2) * time.monotonic())
-            await self.bus.publish("raw.head.pan", {"deg": round(self.deg, 1), "homed": self.homed, "moving": moving})
-            await asyncio.sleep(0.2)
+            was_moving = self.moving
+            if was_moving:
+                step = PAN_DEG_PER_S * self.pan_speed * PAN_TICK_S
+                self.deg += math.copysign(min(step, abs(self.target_deg - self.deg)), self.target_deg - self.deg)
+            idle = 0 if was_moving else idle + 1
+            if was_moving or idle == 1 or idle % PAN_IDLE_EVERY == 0:  # 5 Hz moving, one "stopped", then 0.5 Hz
+                await self.bus.publish("raw.head.pan", {"deg": round(self.deg, 1), "homed": self.homed,
+                                                        "moving": self.moving})
+            await asyncio.sleep(PAN_TICK_S)
 
     async def run(self, stop: asyncio.Event | None = None) -> None:
         async with self.bus:

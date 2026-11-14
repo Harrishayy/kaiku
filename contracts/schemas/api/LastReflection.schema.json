@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "description": "How the latest talk with Kaiku went: a level and themes, never the words.",
+  "properties": {
+    "declined": {
+      "default": false,
+      "description": "they did not want to talk or asked to stop",
+      "title": "Declined",
+      "type": "boolean"
+    },
+    "themes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Themes",
+      "type": "array"
+    },
+    "valence": {
+      "anyOf": [
+        {
+          "enum": [
+            "low",
+            "neutral",
+            "bright"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Valence"
+    },
+    "when": {
+      "description": "e.g. \"yesterday evening\", \"this morning\"",
+      "title": "When",
+      "type": "string"
+    }
+  },
+  "required": [
+    "when"
+  ],
+  "title": "LastReflection",
+  "type": "object"
+}

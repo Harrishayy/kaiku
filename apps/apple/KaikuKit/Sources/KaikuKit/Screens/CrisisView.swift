@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Crisis: plain surface, title, the pre-written script (config/safety_phrases.toml [script], verbatim, never
-/// generated), three call buttons, "your care team has been told". No mascot, no motion, no glow, no haptics.
+/// generated), three call buttons, honest delivery guidance. No mascot, no motion, no glow, no haptics.
 /// Deterministic: opened by "I'm not OK", a crisis phrase on this device, or mood `crisis` from the cloud.
 public struct CrisisView: View {
     @Environment(AppModel.self) private var app
@@ -22,9 +22,9 @@ public struct CrisisView: View {
                 VStack(spacing: KaikuTokens.Space.s3) {
                     CallButtons(style: .crisis)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(T("crisis.team")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                    Text(T("crisis.team.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
+                    Text(T("crisis.delivery.unconfirmed")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                    Text(T("crisis.delivery.contact")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
                 }
                 .padding(KaikuTokens.Space.s4)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -34,7 +34,7 @@ public struct CrisisView: View {
             }
             .padding(.horizontal, KaikuPlatform.sidePadding)
             .padding(.vertical, KaikuTokens.Space.s6)
-            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: KaikuTokens.Size.contentMax, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
         .background(KaikuTokens.Colors.surface.ignoresSafeArea())

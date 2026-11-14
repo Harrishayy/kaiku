@@ -27,16 +27,18 @@ LWT `down`) `details{rssi, homed, at_home, hub_silent, reconnects}`. Every envel
 
 ## Map
 ```
-project.yaml            board + modules (speaker 1-2, display 3-4, knob 5-6, motor 7, mic 9-10, button 11,
-                        LED grids 13/14, kaiku_link) + HeadIO wiring (the only place Atech method names appear)
+project.yaml            board + modules (speaker 1-2, display 3-4, knob 5-6, button 7, mic 9-10, LED grids 11/14,
+                        motor 13, kaiku_link) + HeadIO wiring (the only place Atech method names appear)
 kaiku_link/
   kaiku_link.h/.cpp     Wi-Fi + MQTT (backoff 1->10 s, mDNS then IP fallback), envelope + UUIDv7 + NTP UTC ts;
                         knob dial, button, eyes (redraw on change, random blink), chest LEDs, open-loop motor
                         (ramp, segments, dead reckoning, hall homing, home after gestures), hub watchdog
   config.h              every hardware number (knob counts, eye shapes, LED brightness, motor pulses) — tune here
-  module.yaml           custom-module declaration + lib_deps (PubSubClient, ArduinoJson 7)
+  library.json          PlatformIO manifest (linked from project.yaml `libraries:`) + deps (PubSubClient, ArduinoJson 7)
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
+bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over USB; record_wav.py saves a .wav
+                        in bench/mic_record/recordings/ (gitignored; never commit or upload recordings)
 ```
 
 ## Extension points
@@ -82,11 +84,17 @@ FROM=mqtt` with `make hub` and the UNO Q app running. Checker logic: `tools/test
 Verified 2026-11-14 with atech 1.0.0a12: all 7 `bench/<part>` projects validate and compile. SDK module IDs are
 `button`, `rotary_encoder`, `neopixel` (not the website's `button_module`, `rotary_encoder_knob`, `neopixel_grid`);
 two-port modules take `ports: [a, b]`; the Speaker method is `playRTTTL`. The SDK leaves the ESP32 platform unpinned
-and the newest (8.x) breaks its own `dc_motor` driver (`ledcSetup`), hence the 6.9.0 pin. Still failing validation:
-the root `project.yaml`, because `kaiku_link` is not yet in the SDK's custom-module shape (`driver:` header/source +
-templates; MQTT libraries go in `libraries:`).
-Not compiled yet (no Atech toolchain on the authoring machine). VERIFY with `atech guide` / `atech info`: the
-`code.setup` key; C++ method names (camelCase assumed from the docs' example: `isPressed`, `getPosition`,
-`enableRing`, `fillScreen`/`fillRect`, `setAll`/`show`, `setSpeed`, `brake`, `playNote`, `setVolume`, `stop`); the
-`module.yaml` shape; the port id for a non-hardware module. Tune `KNOB_COUNTS_PER_STEP`, `MOTOR_DEG_PER_S_FULL`, the
-eye shapes and the pan sign on the real robot. The hall edge arrives over Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
+and the newest (8.x) breaks its own `dc_motor` driver (`ledcSetup`), hence the 6.9.0 pin. The root `project.yaml` also
+validates and compiles: an SDK module must sit on a real port, so `kaiku_link` is a plain PlatformIO library linked in
+place (`libraries: kaiku_link=symlink://../kaiku_link` + `kaiku_link/library.json`, which carries the MQTT/JSON deps).
+Still to run on hardware: the full firmware and the link bench. Tune `KNOB_COUNTS_PER_STEP`, `MOTOR_DEG_PER_S_FULL`, the
+eye shapes and the pan sign on the real robot. This build has no hall sensor (D39, `HAS_HALL 0`): face the head forward before
+powering on; `home` drives back to the dead-reckoned 0° and the soft limit is ±80°. With `HAS_HALL 1` the edge arrives over
+Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
+
+Found on the first builds (2026-11-14, espressif32 6.9.0 / Arduino core 2.0.17; benches built, mic verified on
+hardware): stops use `motor.stop()` (both lines LOW, off on any H-bridge); `brake()` is untested on this motor (the
+first "won't stop" run had the motor on port 13 while the code drove port 7). **A motor on a port the running program
+doesn't declare floats and may spin**: unplug it when flashing other benches. Port 11 is GPIO43/44 (UART0), so an LED
+grid there may flicker during boot. The display is in canvas mode by default (nothing shows until `tft.display()`), so the firmware sets
+`tft.setDirectMode(true)`. Speaker calls return at once: `playNote` queues, `playTone`/`playRTTTL` interrupt.

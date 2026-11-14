@@ -16,6 +16,7 @@ OBS: dict[str, type[BaseModel]] = {
     "obs.drum_session": p.DrumSession,
     "obs.light_level": p.LightLevel,
     "obs.speech_features": p.SpeechFeatures,
+    "obs.engagement": p.Engagement,
     "obs.ritual": p.Ritual,
     "obs.nudge_offered": p.NudgeOffered,
     "obs.nudge_outcome": p.NudgeOutcome,
@@ -97,6 +98,12 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "obs.drum_session": {"tempo_bpm": 96.0, "force_mean": 0.55, "duration_s": 45.0, "regularity": 0.8, "taps": 72},
     "obs.light_level": {"lux_est": 240.0, "window_min": 60.0},
     "obs.speech_features": {"syllables_per_s": 3.9, "pause_ratio": 0.22, "duration_s": 30.0},
+    "obs.engagement": {"session_id": "0199b2c4-ritual", "level": 0.58, "confidence": 0.71, "cues_available": 3,
+                       "agreement": 0.8, "method": "robot-multicue-v1", "cues": [
+                           {"cue": "dial", "available": True, "level": 0.5, "confidence": 1.0, "basis": "mood 3, energy 3"},
+                           {"cue": "drum", "available": True, "level": 0.6, "confidence": 0.9, "basis": "1.8 taps/s, 41 taps"},
+                           {"cue": "face", "available": True, "level": 0.7, "confidence": 0.6, "basis": "face in view 70% of 240 looks"},
+                           {"cue": "pulse", "available": False, "confidence": 0.0, "basis": "not measured"}]},
     "obs.ritual": {"step": "drum", "status": "completed", "duration_s": 45.0},
     "obs.nudge_offered": {"arm": "daylight_walk", "reason": "Walks helped on 3 of your last 4 grey days."},
     "obs.nudge_outcome": {"arm": "daylight_walk", "accepted": True, "next_day": {"mood": 4, "energy": 3, "activity": 25.0}, "reward": 0.75},
@@ -110,7 +117,8 @@ EXAMPLES: dict[str, dict[str, Any]] = {
                                              "games": 0.0, "other": 0.0},
                             "switches_per_hour": 18.0, "longest_stretch_min": 24.0, "breaks": 1, "paused": False},
     "obs.play_session": {"game": "firefly", "device": "phone", "duration_s": 60.0, "reaction_ms_median": 318.0,
-                         "reaction_ms_iqr": 58.0, "lapses": 1, "false_taps": 0},
+                         "reaction_ms_iqr": 58.0, "lapses": 1, "false_taps": 0, "expressivity_index": 0.15,
+                         "camera_face_coverage": 0.9, "camera_samples": 120, "camera_method": "vision_landmarks"},
     "obs.wearable_daily": {"date": "2026-11-14", "sleep_min": 432.0, "sleep_midpoint_min": 195.0, "sleep_regularity": 0.81,
                            "resting_hr_bpm": 61.0, "hrv_sdnn_ms": 46.0, "steps": 6400, "exercise_min": 22.0,
                            "device": "apple_watch"},
@@ -137,6 +145,27 @@ EXAMPLES: dict[str, dict[str, Any]] = {
 }
 
 assert set(EXAMPLES) == set(REGISTRY), "every registered type needs an example"
+
+# One obs.play_session example per research-inspired game (docs/validation.md -> Games). rt_ms + trial_codes are the
+# compact per-trial record; warmup marks the first sessions on a device (practice effects), valid/flags the doubt.
+PLAY_EXAMPLES: dict[str, dict[str, Any]] = {
+    "lantern": {"game": "lantern", "device": "phone", "duration_s": 92.4, "reaction_ms_median": 312.0,
+                "reaction_ms_iqr": 61.0, "reaction_ms_cv": 0.19, "response_speed": 3.18, "lapses": 1, "false_starts": 1,
+                "trials_n": 24, "valid_n": 23, "input": "touch", "session_index": 6, "warmup": False, "valid": True,
+                "rt_ms": [298, 331, 0, 287, 305, 322, 356, 301, 290, 344, 512, 309, 296, 318, 327, 283, 315, 300, 341,
+                          294, 336, 308, 299, 325],
+                "trial_codes": "hhahhhhhhhlhhhhhhhhhhhhh"},
+    "seeds": {"game": "seeds", "device": "mac", "duration_s": 104.0, "throughput_per_min": 26.0, "accuracy": 0.951,
+              "reaction_ms_median": 2105.0, "reaction_ms_iqr": 640.0, "trials_n": 41, "valid_n": 39, "input": "keyboard",
+              "session_index": 4, "warmup": False, "valid": True,
+              "rt_ms": [2400, 2210, 1980, 2105, 2300, 1890, 2050, 2600], "trial_codes": "ccccxccc"},
+    "watering": {"game": "watering", "device": "phone", "duration_s": 81.0, "hard_choice_ratio": 0.625,
+                 "tap_rate_hz": 5.4, "trials_n": 8, "valid_n": 8, "input": "touch", "session_index": 2, "warmup": True,
+                 "valid": True, "rt_ms": [1840, 1320, 990, 1410, 1200, 1105, 980, 1250], "trial_codes": "HEHHEHEH"},
+    "doubtful": {"game": "lantern", "device": "phone", "duration_s": 60.0, "lapses": 14, "false_starts": 2,
+                 "trials_n": 24, "valid_n": 9, "input": "touch", "session_index": 7, "warmup": False, "valid": False,
+                 "flags": ["few_trials", "interrupted"]},
+}
 
 
 def example(type_: str, *, home_id: str = "demo-aino", source: str | None = None, sim: bool = True) -> Envelope[Any]:

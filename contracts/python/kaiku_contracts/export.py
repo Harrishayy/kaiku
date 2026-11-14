@@ -25,20 +25,26 @@ from .sources import CONSENSUS_SOURCES, SOURCE_LABELS, SOURCE_OF
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "schemas"
 
 API_MODELS = [
-    api.EventsBatch, api.EventsResult, api.CommandsResponse, api.VerdictEvidence, api.SourceVerdict,
+    api.APIDiscoveryResponse,
+    api.ClinicianAskRequest, api.RecordCitation, api.ClinicianAskResponse,
+    api.TaskObservationsResponse,
+    api.EventsBatch, api.EventsResult, api.CommandsResponse, api.CommandAckResult, api.VerdictEvidence, api.SourceVerdict,
     api.SourceNote, api.Explanation, api.Consensus, api.SourceBadge, api.PatientSummary, api.PatientsResponse,
     api.TimelinePoint, api.MetricSeries, api.TimelineResponse, api.Phq9Entry, api.Phq9History,
     api.ActionRequest, api.ActionResult, api.NudgeResponse, api.HelpStat, api.Mascot, api.Highlight, api.Garden,
     api.MeResponse, api.VoiceLinesResponse, api.VoiceSayRequest, api.StateScore,
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
-    api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
+    api.LastReflection, api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
     api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
     api.DeletedResponse, api.ThreadIn, api.TranscriptTurn, api.EpisodeIn, api.EpisodeResult,
     api.Transcript, api.TranscriptsResponse,
     api.MindAnswer, api.ModelUsageRow, api.IntelligenceHealth, api.ConstellationNode, api.ConstellationEdge,
     api.ConstellationResponse, api.PostcardRequest, api.PostcardResponse, api.BriefSection, api.ClinicianBrief,
     api.CareSharing, api.SourceCount, api.SourceWeek, api.NextStep, api.Routine, api.WeekItem, api.WeekSummary, api.GraphNode, api.GraphEdge, api.KnowledgeGraph,
+    api.ReviewFinding, api.PatientReview, api.AgentStep, api.MetricComparison, api.GroupComparison,
+    api.PeriodComparison, api.HelpEffect, api.LearnedRoutine, api.InsightNode, api.InsightEdge, api.InsightGraph,
+    api.ObsTypeCoverage, api.GroupCoverage, api.DataCoverage, api.CourseEvent, api.Course, api.DayAccount, api.ReflectionOverview, api.StateDay, api.CareAction, api.PatientInsight,
 ]
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -198,6 +198,11 @@ class Store:
         except sqlite3.Error:
             return False
 
+    def mutation_count(self) -> int:
+        """Connection-local change counter, used to commit derived writes from GET routes too."""
+        with self._lock:
+            return self._db.total_changes
+
     # ------------------------------------------------------------------ events
     def insert_events(self, rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
         """rows: envelope dicts (json mode). Returns (inserted, duplicates)."""
@@ -248,6 +253,14 @@ class Store:
         with self._lock:
             return [self._row_to_env(r) for r in self._db.execute(q, args).fetchall()]
 
+    def task_observations(self, home_id: str, since: str, until: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Newest aggregate task envelopes only; bounded time range, no raw media or private mind tables."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM events WHERE home_id=? AND type='obs.play_session' AND ts>=? AND ts<=?"
+                " ORDER BY ts DESC, id DESC LIMIT ?", (home_id, since, until, min(100, max(1, limit)))).fetchall()
+        return [self._row_to_env(row) for row in rows]
+
     def home_ids(self) -> list[str]:
         with self._lock:
             return [r[0] for r in self._db.execute("SELECT DISTINCT home_id FROM events ORDER BY home_id")]
@@ -264,10 +277,14 @@ class Store:
             env["quality"] = r["quality"]
         return env
 
-    def delete_sim(self) -> int:
-        """Demo reset: drop all simulated events and every derived row of homes left without events."""
+    def delete_sim(self, home_id: str | None = None) -> int:
+        """Demo reset: drop simulated events (of one home, or all) and every derived row of homes left without
+        events. Other homes are untouched when `home_id` is given."""
         with self._lock:
-            n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
+            if home_id is None:
+                n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
+            else:
+                n = self._db.execute("DELETE FROM events WHERE sim=1 AND home_id=?", (home_id,)).rowcount
             for table in ("homes", "explanations", "commands", "actions", "node_health", "memories", "episodes",
                           "threads"):
                 self._db.execute(f"DELETE FROM {table} WHERE home_id NOT IN (SELECT DISTINCT home_id FROM events)")
@@ -319,22 +336,24 @@ class Store:
                              (str(envelope["id"]), envelope["home_id"], envelope["ts"], json.dumps(envelope)))
 
     def pending_commands(self, home_id: str, since: str | None) -> list[dict[str, Any]]:
-        """Undelivered commands (or, with `since`, every command after that ts). Marks them delivered."""
+        """Peek at unacknowledged commands. A lost response must never consume a command.
+
+        `since` is retained for client compatibility but cannot hide older unacknowledged work.
+        """
         with self._lock:
-            if since:
-                rows = self._db.execute("SELECT id, envelope FROM commands WHERE home_id=? AND ts>? ORDER BY ts",
-                                        (home_id, since)).fetchall()
-            else:
-                rows = self._db.execute("SELECT id, envelope FROM commands WHERE home_id=? AND delivered=0 ORDER BY ts",
-                                        (home_id,)).fetchall()
-            if rows:
-                self._db.execute(f"UPDATE commands SET delivered=1 WHERE id IN ({','.join('?' * len(rows))})",
-                                 [r[0] for r in rows])
-        return [json.loads(r[1]) for r in rows]
+            rows = self._db.execute("SELECT envelope FROM commands WHERE home_id=? AND delivered=0 ORDER BY ts",
+                                    (home_id,)).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def acknowledge_command(self, home_id: str, command_id: str) -> bool:
+        with self._lock:
+            return bool(self._db.execute("UPDATE commands SET delivered=1 WHERE home_id=? AND id=?",
+                                         (home_id, command_id)).rowcount)
 
     # ------------------------------------------------------------------ actions
-    def log_action(self, home_id: str, action: str, note: str | None, by: str | None = None) -> str:
-        ts = _now()
+    def log_action(self, home_id: str, action: str, note: str | None, by: str | None = None,
+                   ts: str | None = None) -> str:
+        ts = ts or _now()
         with self._lock:
             self._db.execute("INSERT INTO actions(home_id,action,note,by_who,ts) VALUES (?,?,?,?,?)",
                              (home_id, action, note, by, ts))
@@ -343,7 +362,7 @@ class Store:
     def actions(self, home_id: str) -> list[dict[str, Any]]:
         with self._lock:
             return [dict(r) for r in self._db.execute(
-                "SELECT action, note, by_who AS by, ts FROM actions WHERE home_id=? ORDER BY seq", (home_id,))]
+                "SELECT action, note, by_who AS by, ts FROM actions WHERE home_id=? ORDER BY ts, seq", (home_id,))]
 
     # ------------------------------------------------------------------ node health
     def save_node_health(self, home_id: str, report: dict[str, Any]) -> None:
@@ -443,21 +462,47 @@ class Store:
 
     # ------------------------------------------------------------------ episodes (one per session, no transcript)
     def episode_upsert(self, ep: dict[str, Any]) -> None:
-        """Insert, or update end/outcome/tools of an existing session (start/surface/intent are kept)."""
+        """Idempotent session update; a crisis is irreversible, including against delayed device retries."""
         with self._lock:
-            self._db.execute(
-                "INSERT INTO episodes(id,home_id,surface,intent,start,end,tools,outcome) VALUES (?,?,?,?,?,?,?,?)"
-                " ON CONFLICT(id) DO UPDATE SET end=COALESCE(excluded.end, episodes.end),"
-                " outcome=COALESCE(excluded.outcome, episodes.outcome), tools=excluded.tools",
-                (ep["id"], ep["home_id"], ep["surface"], ep["intent"], ep["start"], ep.get("end"),
-                 json.dumps(ep.get("tools", [])), ep.get("outcome")))
+            self._db.execute("SAVEPOINT episode_write")
+            try:
+                old = self.episode(ep["id"])
+                if old and old["home_id"] != ep["home_id"]:
+                    raise ValueError("episode id belongs to another home")
+                crisis = ep.get("outcome") == "crisis" or bool(old and old["outcome"] == "crisis")
+                if crisis:
+                    # Crisis status, transcript deletion and retry tombstone are one durable transaction.
+                    self.transcript_delete(ep["home_id"], ep["id"])
+                self._db.execute(
+                    "INSERT INTO episodes(id,home_id,surface,intent,start,end,tools,outcome) VALUES (?,?,?,?,?,?,?,?)"
+                    " ON CONFLICT(id) DO UPDATE SET end=COALESCE(excluded.end, episodes.end),"
+                    " outcome=COALESCE(excluded.outcome, episodes.outcome), tools=excluded.tools",
+                    (ep["id"], ep["home_id"], ep["surface"], ep["intent"], ep["start"], ep.get("end"),
+                     json.dumps(ep.get("tools", [])), "crisis" if crisis else ep.get("outcome")))
+                self._db.execute("RELEASE episode_write")
+            except Exception:
+                self._db.execute("ROLLBACK TO episode_write")
+                self._db.execute("RELEASE episode_write")
+                raise
 
-    def transcript_upsert(self, t: dict[str, Any]) -> None:
+    def transcript_upsert(self, t: dict[str, Any]) -> bool:
         with self._lock:
+            ep = self.episode(t["episode_id"])
+            deleted = self.kv_get(f"transcript-deleted:{t['home_id']}:{t['episode_id']}")
+            cutoff = self.kv_get(f"transcripts-deleted-before:{t['home_id']}")
+            if deleted or (cutoff and t["start"] <= cutoff["ts"]) or (ep and (
+                    ep["home_id"] != t["home_id"] or ep["outcome"] == "crisis")):
+                return False
             self._db.execute(
                 "INSERT INTO transcripts(episode_id,home_id,surface,intent,start,turns) VALUES (?,?,?,?,?,?)"
-                " ON CONFLICT(episode_id) DO UPDATE SET turns=excluded.turns",
+                " ON CONFLICT(episode_id) DO UPDATE SET turns=excluded.turns WHERE transcripts.home_id=excluded.home_id",
                 (t["episode_id"], t["home_id"], t["surface"], t["intent"], t["start"], json.dumps(t["turns"])))
+            return self.transcript_exists(t["home_id"], t["episode_id"])
+
+    def transcript_exists(self, home_id: str, episode_id: str) -> bool:
+        with self._lock:
+            return self._db.execute("SELECT 1 FROM transcripts WHERE home_id=? AND episode_id=?",
+                                    (home_id, episode_id)).fetchone() is not None
 
     def transcripts(self, home_id: str | None = None) -> list[dict[str, Any]]:
         """One home's transcripts (newest first), or all homes' (home_id None: training export only)."""
@@ -472,7 +517,11 @@ class Store:
     def transcript_delete(self, home_id: str, episode_id: str | None = None) -> int:
         with self._lock:
             if episode_id is None:
+                for row in self._db.execute("SELECT episode_id FROM transcripts WHERE home_id=?", (home_id,)).fetchall():
+                    self.kv_set(f"transcript-deleted:{home_id}:{row[0]}", {"deleted": True})
+                self.kv_set(f"transcripts-deleted-before:{home_id}", {"ts": _now()})
                 return self._db.execute("DELETE FROM transcripts WHERE home_id=?", (home_id,)).rowcount
+            self.kv_set(f"transcript-deleted:{home_id}:{episode_id}", {"deleted": True})
             return self._db.execute("DELETE FROM transcripts WHERE home_id=? AND episode_id=?",
                                     (home_id, episode_id)).rowcount
 
@@ -488,6 +537,34 @@ class Store:
         return [{**dict(r), "tools": json.loads(r["tools"])} for r in rows]
 
     # ------------------------------------------------------------------ open thread
+    def episode_thread_effects(self, home_id: str, episode_id: str, *,
+                               close: Callable[[], Any] | None = None,
+                               open_thread: Callable[[], Any] | None = None) -> dict[str, Any]:
+        """Apply completion and follow-up phases at most once per episode, atomically with their markers.
+
+        Device completion uploads and Live end_session tools can describe the same effects. Separate markers
+        let a later completion close its matching thread without replaying an already applied follow-up.
+        """
+        with self._lock:
+            self._db.execute("SAVEPOINT episode_threads")
+            try:
+                results = {}
+                for phase, effect in (("close", close), ("open", open_thread)):
+                    if effect is None:
+                        continue
+                    key = f"episode-thread:{home_id}:{episode_id}:{phase}"
+                    saved = self.kv_get(key)
+                    if saved is None:
+                        saved = {"result": effect()}
+                        self.kv_set(key, saved)
+                    results[phase] = saved["result"]
+                self._db.execute("RELEASE episode_threads")
+                return results
+            except Exception:
+                self._db.execute("ROLLBACK TO episode_threads")
+                self._db.execute("RELEASE episode_threads")
+                raise
+
     def thread_open(self, home_id: str, skill: str, topic: str, created: str, expires: str) -> int:
         """Opening a thread closes any other open one (one thread at a time)."""
         with self._lock:

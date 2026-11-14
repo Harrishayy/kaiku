@@ -3,10 +3,11 @@ import SwiftUI
 /// Dynamic Type for the token text styles (layout.md → Text scaling): each `KaikuTokens.TextStyle` size scales with
 /// the matching system style via @ScaledMetric, with line spacing from the token line height.
 public enum KText: Sendable {
-    case caption, footnote, body, callout, title3, title2, title1, display
+    case micro, caption, footnote, body, callout, title3, title2, title1, display
 
     var style: KaikuTextStyle {
         switch self {
+        case .micro: return KaikuTokens.TextStyle.micro
         case .caption: return KaikuTokens.TextStyle.caption
         case .footnote: return KaikuTokens.TextStyle.footnote
         case .body: return KaikuTokens.TextStyle.body
@@ -20,6 +21,7 @@ public enum KText: Sendable {
 
     var relative: Font.TextStyle {
         switch self {
+        case .micro: return .caption2
         case .caption: return .caption
         case .footnote: return .footnote
         case .body: return .body
@@ -51,7 +53,7 @@ struct KTextModifier: ViewModifier {
     /// 320 pt column at the largest accessibility sizes. Body text scales all the way.
     var cap: CGFloat {
         switch kind {
-        case .caption, .footnote, .body: return 3
+        case .micro, .caption, .footnote, .body: return 3
         case .callout: return 1.7
         case .title3: return 1.6
         case .title2: return 1.5

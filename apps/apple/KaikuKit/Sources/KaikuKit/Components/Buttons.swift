@@ -51,22 +51,22 @@ private struct KButtonBody: View {
             .foregroundStyle(fg)
             .padding(.horizontal, KaikuTokens.Space.s5)
             .padding(.vertical, KaikuTokens.Space.s3)
-            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: ghost ? KaikuTokens.Size.tapMin : 52)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: ghost ? KaikuTokens.Size.tapMin : KaikuTokens.Size.buttonMin)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous).fill(bg)
+                    RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(bg)
                     // Hover/press shade: a darker veil on filled buttons, a wash of the label colour on ghosts.
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous)
                         .fill(ghost ? fg.opacity(pressed ? 0.12 : hover ? 0.07 : 0)
                                     : Color.black.opacity(pressed ? 0.12 : hover ? 0.05 : 0))
                 }
                 .shadow(color: lifted && enabled ? bg.opacity(0.28) : .clear, radius: pressed ? 2 : 8, y: pressed ? 1 : 4)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous))
             .opacity(enabled ? 1 : 0.42)
             .scaleEffect(pressed && kind != .crisis && !rm ? 0.97 : 1)
-            .animation(.easeOut(duration: pressed ? 0.1 : 0.18), value: pressed)
-            .animation(.easeOut(duration: 0.15), value: hover)
+            .animation(.easeOut(duration: pressed ? KaikuTokens.Feedback.press : KaikuTokens.Feedback.release), value: pressed)
+            .animation(.easeOut(duration: KaikuTokens.Feedback.hover), value: hover)
             .kPointer(enabled && kind != .crisis)
             .onHover { hover = $0 && enabled && kind != .crisis }
     }
@@ -88,11 +88,12 @@ public struct NotOKPill: View {
         Button { app.crisis(trigger: "manual") } label: {
             Text(T("common.notok"))
                 .kText(.footnote, weight: .semibold)
-                .foregroundStyle(onDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.clay)
+                // Ink on clay-soft (AA at footnote size); the clay heart keeps the pill recognisable.
+                .foregroundStyle(onDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.ink)
                 .lineLimit(1)
                 .fixedSize()
                 .padding(.horizontal, KaikuTokens.Space.s4)
-                .frame(minHeight: 38)
+                .frame(minHeight: KaikuTokens.Size.control)
                 .background(Capsule().fill(onDark ? Color.clear : KaikuTokens.Colors.claySoft))
                 .overlay(Capsule().strokeBorder(onDark ? KaikuTokens.Colors.nightInk.opacity(0.35) : .clear, lineWidth: 1.5))
                 .frame(minHeight: KaikuTokens.Size.tapMin)
@@ -116,7 +117,7 @@ public struct IconButton: View {
     public var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 17, weight: .semibold))
+                .kText(.body, weight: .semibold)
                 .foregroundStyle(filled ? KaikuTokens.Colors.clayInk : KaikuTokens.Colors.ink)
                 .frame(width: KaikuTokens.Size.tapMin, height: KaikuTokens.Size.tapMin)
                 .background(Circle().fill(filled ? KaikuTokens.Colors.clay : KaikuTokens.Colors.surface2))

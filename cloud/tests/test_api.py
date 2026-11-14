@@ -42,7 +42,7 @@ def test_ingest_dedupe_and_rejections(client):
 
 
 def test_pairing_token_required_for_every_source(make_client):
-    c = make_client(home_token="secret", admin_token="adm")
+    c = make_client(home_token="secret", admin_token="adm", home_id="t-home")
     auth = {"Authorization": "Bearer secret"}
     for src, t, p in (("hub", "obs.self_report", MOOD),
                       ("laptop", "obs.laptop_session", None), ("glasses", "obs.outing", None)):
@@ -55,7 +55,8 @@ def test_pairing_token_required_for_every_source(make_client):
     assert c.post("/v1/admin/recompute", headers={"Authorization": "Bearer adm"}).status_code == 200
     rep = {"nodes": {}, "uplink_queue": 0, "reported_at": "2026-11-14T08:00:00Z"}
     assert c.put("/v1/health/t-home", json=rep).status_code == 401
-    assert c.get("/v1/patients").status_code == 200  # clinician reads open (demo)
+    assert c.get("/v1/patients").status_code == 401
+    assert c.get("/v1/patients", headers={"Authorization": "Bearer adm"}).status_code == 200
 
 
 def test_auth_off_accepts_everything(client):
@@ -103,7 +104,7 @@ def test_patients_ranked_and_consensus_views(client):
     assert {s["source"] for s in full} == {"robot", "glasses", "laptop", "wearable"}
 
     phq = client.get("/v1/patients/demo-aino/phq9").json()
-    assert len(phq["entries"]) == 3 and phq["entries"][-1]["total"] >= 10 and phq["next_due"]
+    assert len(phq["entries"]) == 4 and phq["entries"][-1]["total"] >= 10 and phq["next_due"]
 
     ev = client.get("/v1/events", params={"home_id": "demo-aino", "limit": 5}).json()["events"]
     assert len(ev) == 5 and ev[0]["ts"] >= ev[-1]["ts"]
@@ -150,7 +151,10 @@ def test_commands_message_and_phq9_due(client, monkeypatch):
     client.post("/v1/patients/sim-eero/actions", json={"action": "send_message", "note": "Calling you at 2pm"})
     cmds = client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"]
     assert cmds[0]["type"] == "cmd.hub" and cmds[0]["payload"]["clinician_message"]["text"] == "Calling you at 2pm"
-    assert client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"] == []  # delivered once
+    assert client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"] == cmds
+    for cmd in cmds:
+        assert client.post(f"/v1/commands/{cmd['id']}/ack?home_id=sim-eero").status_code == 200
+    assert client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"] == []
 
     # spoken PHQ-9 mode: a home whose last PHQ-9 is ≥ 14 days old gets exactly one cmd.hub {phq9_due}
     monkeypatch.setenv("KAIKU_RITUAL_PHQ9_MODE", "spoken")
@@ -159,6 +163,8 @@ def test_commands_message_and_phq9_due(client, monkeypatch):
     try:
         cmds = client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"]
         assert [c["payload"] for c in cmds] == [{"phq9_due": True}]
+        for cmd in cmds:
+            assert client.post(f"/v1/commands/{cmd['id']}/ack?home_id=sim-eero").status_code == 200
         assert client.get("/v1/commands", params={"home_id": "sim-eero"}).json()["commands"] == []
     finally:
         load_config.cache_clear()

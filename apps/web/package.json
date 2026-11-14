@@ -9,11 +9,11 @@
     "build": "next build",
     "start": "npx --yes serve@14.2.4 out",
     "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && cd ../.. && uv run --quiet python tools/ui_copy_check.py",
     "test": "node --test 'tests/*.test.ts'"
   },
   "dependencies": {
     "next": "15.5.29",
-    "qrcode-generator": "1.4.4",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },

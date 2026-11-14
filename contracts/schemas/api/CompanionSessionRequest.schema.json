@@ -41,6 +41,19 @@
       "title": "Others Present",
       "type": "boolean"
     },
+    "resume_session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "reuse an open session belonging to this home and surface",
+      "title": "Resume Session Id"
+    },
     "surface": {
       "enum": [
         "robot",

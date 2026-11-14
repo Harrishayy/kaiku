@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Reset demo state in < 30 s: clear the hub's offline queue, re-seed simulated history, recompute.
-# Works against local or Modal cloud (KAIKU_CLOUD_URL). Stop the hub first so its queue isn't in use.
+# Reset in < 30 s: clear the hub's offline queue, drop simulated data on the local API and seed Aino's sixteen
+# days again so they end yesterday. Live recordings (sim: false) stay. Stop the hub first so its queue is free.
+# Port: KAIKU_DEMO_PORT (default 8000). Starts the API/broker if they are not running.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-CLOUD="${KAIKU_CLOUD_URL:-http://localhost:8000}"
-echo "resetting demo against $CLOUD"
 rm -f logs/uplink_queue.sqlite
-uv run --quiet python -m sim.seed_demo --reset   # --reset drops SIMULATED data only, re-anchors history to today
-echo "done. Open $CLOUD/clinician/"
+KAIKU_DEMO_ONCE="${KAIKU_DEMO_ONCE-1}" exec ./scripts/demo.sh --reset

@@ -13,6 +13,8 @@
 - `bom.md` — parts list.
 - Electronics source spec (boards, ports, power, behaviour): `docs/kaiku_robot_electronics_specs.md`; how it maps onto
   the repo: plan 07.
+- `assembly_guide/kaiku_assembly.pdf` — step-by-step illustrated build of the MVP (renders from `cad/assembly_guide.py`;
+  rebuild: Blender `-b -P hardware/cad/assembly_guide.py`, then `latexmk -pdf` in `assembly_guide/`).
 - `assembly.md` — build steps (neck, head, cardboard or printed body) and the Atech port budget.
 - `dimensions.md` — ground truth for every part's physical size (datasheet, photo estimate or caliper value) for CAD.
 - `datasheets/` — vendor PDFs, **gitignored** (third-party copyright). Re-download from the URLs in its `SOURCES.md`.

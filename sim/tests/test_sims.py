@@ -1,6 +1,8 @@
 import asyncio
+import time
 
 import numpy as np
+import pytest
 from kaiku_contracts.bus import Bus
 
 from sim.nodes.head_sim import HeadSim
@@ -106,16 +108,21 @@ async def test_head_sim_button_build_presses_and_knocks(broker, monkeypatch):
 
 
 async def test_sensors_sim_ppg_only_when_started(broker):
-    got = []
+    got, unsupported = [], []
 
     async def on_ppg(t, env):
         got.append(env)
 
+    async def on_unsupported(t, env):
+        unsupported.append(env)
+
     stop = asyncio.Event()
-    s = SensorsSim(arrive_after_s=None, seed=2)
+    s = SensorsSim(arrive_after_s=None, seed=2, ppg_fixture=True)
     task = asyncio.create_task(s.run(stop))
     ctl = Bus("hub", heartbeat=False)
     ctl.on("raw/sensors/ppg", on_ppg)
+    ctl.on("raw/sensors/light", on_unsupported)
+    ctl.on("raw/sensors/hall", on_unsupported)
     async with ctl:
         await s.bus.connected.wait()
         await asyncio.sleep(0.6)
@@ -125,6 +132,7 @@ async def test_sensors_sim_ppg_only_when_started(broker):
     stop.set()
     await task
     assert len(got) >= 3 and len(got[0].payload.samples) == 25
+    assert unsupported == []
 
 
 def _mock(record, status=200):
@@ -157,7 +165,9 @@ async def test_glasses_and_laptop_post_valid_envelopes(monkeypatch):
     by_type = {e.type: e for e in envs}
     assert {e.source for e in envs} == {"glasses", "laptop"} and all(e.sim for e in envs)
     out = by_type["obs.outing"].payload
-    assert out.method == "dat_imu" and out.steps and out.cadence_spm > 0 and 0 <= out.head_up_ratio <= 1
+    assert out.method == "steps" and out.steps
+    assert out.cadence_spm is None and out.gait_regularity is None and out.head_up_ratio is None
+    assert out.daylight_min is None
     assert by_type["obs.intervention_response"].payload.activity == "walk"
     assert by_type["obs.laptop_session"].payload.reaction_ms_median > 0
     assert by_type["obs.phq9"].payload.item9_positive and by_type["obs.phq9"].payload.mode == "laptop"
@@ -188,8 +198,58 @@ async def test_mac_and_phone_twins_post_plan02_obs():
     dial = [e for e in envs if e.type == "obs.self_report"]
     assert len(dial) == 6 and all(e.payload.channel == "phone" for e in dial)
     assert {e.payload.device for e in envs if e.type == "obs.play_session"} == {"mac", "phone"}
+    assert all(e.sim for e in envs)
+    assert all(e.payload.camera_method is None and e.payload.camera_samples is None
+               and e.payload.expressivity_index is None for e in envs if e.type == "obs.play_session")
     pebbles = next(e for e in envs if e.type == "obs.play_session" and e.payload.game == "pebbles")
     assert pebbles.payload.span_max >= 2 and 0 <= pebbles.payload.accuracy <= 1
+    # measured games: one of each, with the trial record, provenance and an envelope quality
+    games = {e.payload.game: e for e in envs if e.type == "obs.play_session" and e.payload.trials_n}
+    assert {"lantern", "seeds", "watering"} <= set(games)
+    for e in games.values():
+        p = e.payload
+        assert e.quality is not None and e.quality >= 0.6 and p.valid and p.warmup is False and p.input == "touch"
+        assert len(p.rt_ms) == len(p.trial_codes) == p.trials_n
+    assert games["lantern"].payload.response_speed > 2 and 0 <= games["watering"].payload.hard_choice_ratio <= 1
+    doubtful = PhoneSim(seed=5, url="http://cloud").lantern(valid=False)[1]
+    assert doubtful["valid"] is False and PhoneSim.game_quality(doubtful) == 0.2
+    slow, usual = PhoneSim(seed=6, url="http://cloud"), PhoneSim(seed=6, url="http://cloud")
+    assert slow.lantern(slowing=1.0)[1]["response_speed"] < usual.lantern()[1]["response_speed"]
+
+
+async def test_default_laptop_round_omits_retired_browser_features():
+    import json
+
+    from sim.nodes.laptop_sim import LaptopSim
+
+    reqs = []
+    lap = LaptopSim(seed=3, transport=_mock(reqs), url="http://cloud")
+    await lap.run(once=True)
+    events = [e for r in reqs for e in json.loads(r.content)["events"]]
+    assert {e["type"] for e in events} == {"obs.screen_activity", "obs.play_session"}
+    assert all(e["sim"] for e in events)
+
+
+async def test_legacy_sensors_require_explicit_bench_opt_in():
+    from kaiku_contracts import make
+
+    class CaptureBus:
+        def __init__(self):
+            self.events = []
+
+        async def publish(self, type_, payload):
+            self.events.append(make(type_, payload, source="sensors", sim=True))
+
+    for enabled in (False, True):
+        sensor = SensorsSim(arrive_after_s=None, light=enabled, hall=enabled, ppg_fixture=enabled)
+        await sensor._on_cmd(None, make("cmd.sensors", {"ppg": "start"}, source="hub", sim=True))
+        assert sensor.ppg_on is enabled
+        sensor.bus = CaptureBus()
+        task = asyncio.create_task(sensor._slow_loop())
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert {e.type for e in sensor.bus.events} == ({"raw.sensors.light", "raw.sensors.hall"} if enabled else set())
 
 
 async def test_http_sims_fail_soft_when_cloud_down():
@@ -222,3 +282,97 @@ def test_sensors_face_boxes_grow_as_person_approaches():
     for box in far + near + two:
         make("raw.hub.face", box, source="sensors")
     assert SensorsSim(arrive_after_s=None, faces=False).face_boxes(60.0, 0.0) == []
+
+
+# ---------------------------------------------------------------- twins of the merged firmware (D39)
+class _Capture:
+    def __init__(self):
+        from kaiku_contracts.jlog import get_logger
+        self.events = []
+        self.log = get_logger("sim-test")
+
+    async def publish(self, type_, payload, quality=None, **_kw):
+        from kaiku_contracts import make
+        self.events.append(make(type_, payload, source="sensors", sim=True, quality=quality))
+
+    def of(self, type_):
+        return [e for e in self.events if e.type == type_]
+
+
+async def _run_loop(coro, seconds):
+    task = asyncio.create_task(coro)
+    await asyncio.sleep(seconds)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_sensors_distance_comes_from_the_face_box_like_the_firmware():
+    """No distance sensor on the build: distance = k / face size, and far_cm whenever no face is seen."""
+    s = SensorsSim(arrive_after_s=None, seed=1)
+    s.bus = _Capture()
+    await _run_loop(s._distance_loop(), 0.3)
+    assert s.bus.of("raw.sensors.distance")[-1].payload.cm == s.far_cm == 300 and not s.bus.of("raw.hub.face")
+    s._arrived_at = time.monotonic() - 10  # at the desk
+    s.bus.events.clear()
+    await _run_loop(s._distance_loop(), 0.3)
+    face, dist = s.bus.of("raw.hub.face")[-1].payload, s.bus.of("raw.sensors.distance")[-1].payload
+    assert dist.cm == pytest.approx(s.k_cm / face.size, abs=0.5) and dist.cm < 45 and face.size >= 0.22
+    s.face_hidden = True  # the person is there, the camera can't find a face: the build cannot know they are near
+    s.bus.events.clear()
+    await _run_loop(s._distance_loop(), 0.3)
+    assert s.bus.of("raw.sensors.distance")[-1].payload.cm == 300 and not s.bus.of("raw.hub.face")
+    s.camera_ok = False  # camera unplugged: no distance messages at all
+    s.bus.events.clear()
+    await _run_loop(s._distance_loop(), 0.3)
+    assert not s.bus.events
+
+
+@pytest.mark.parametrize("mode", ["flat", "noisy", "flicker", "camera", "auto"])
+async def test_sensors_pulse_fixtures_match_firmware_shapes(mode, monkeypatch):
+    from kaiku_contracts import make
+    monkeypatch.setenv("KAIKU_UNOQ_PPG_FALLBACK_S", "0.3")
+    from kaiku_contracts.config import load_config
+    load_config.cache_clear()
+    s = SensorsSim(arrive_after_s=None, seed=4, ppg_fixture=mode)
+    load_config.cache_clear()
+    s._arrived_at = time.monotonic() - 10
+    s.bus = _Capture()
+    await s._on_cmd(None, make("cmd.sensors", {"ppg": "start"}, source="hub"))
+    await _run_loop(s._ppg_loop(), 2.6)
+    got = s.bus.of("raw.sensors.ppg")
+    cam = [e for e in got if e.payload.fs_hz < 50]
+    ky = [e for e in got if e.payload.fs_hz == 100]
+    if mode == "camera":
+        assert cam and not ky and all(e.quality == 0.6 for e in cam) and len({e.payload.fs_hz for e in cam}) > 1
+        assert s.ppg_active == "camera"
+    elif mode == "auto":
+        assert ky and cam and got.index(cam[0]) > got.index(ky[-1]) and s.ppg_active == "camera"
+    else:
+        assert ky and not cam and all(e.quality == 0.9 and len(e.payload.samples) == 25 for e in ky)
+        t0 = [e.payload.t0_ms for e in ky]
+        assert all(b - a == 250 for a, b in zip(t0, t0[1:], strict=False))  # fixed sample grid
+        if mode == "flat":
+            assert len({v for e in ky for v in e.payload.samples}) == 1
+    with pytest.raises(ValueError):
+        SensorsSim(ppg_fixture="guess")
+
+
+async def test_head_pan_moves_only_on_targets_and_knocks_are_muted_while_moving():
+    from kaiku_contracts import make
+    head = HeadSim(auto=False, drum="knock", seed=1)
+    head.bus = _Capture()
+    await head._on_cmd(None, make("cmd.head", {"pan_mode": "track", "eyes": "wide"}, source="hub"))
+    assert not head.moving  # pan_mode track/sway are ignored by the firmware: tracking arrives as pan targets
+    await head.tap()
+    await head.tap()  # 0 ms later: inside the knock debounce
+    assert len(head.bus.of("raw.head.tap")) == 1 and head.muted_knocks == 1
+    await head._on_cmd(None, make("cmd.head", {"pan": {"target_deg": 200.0, "speed": 1.0}}, source="hub"))
+    assert head.target_deg == 80.0 and head.moving  # soft limit +-80 deg
+    await asyncio.sleep(0.05)
+    await head.tap()
+    assert len(head.bus.of("raw.head.tap")) == 1 and head.muted_knocks == 2  # motor vibration: knock ignored
+    await _run_loop(head._pan_loop(), 1.2)
+    pans = head.bus.of("raw.head.pan")
+    assert pans[0].payload.moving and not pans[-1].payload.moving and pans[-1].payload.deg == 80.0
+    await head._on_cmd(None, make("cmd.head", {"gesture": "shake"}, source="hub"))
+    assert head.target_deg == 0.0  # home after every gesture

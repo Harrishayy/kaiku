@@ -27,7 +27,6 @@
     },
     "ContextCard": {
       "additionalProperties": false,
-      "description": "What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,\nscores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.",
       "properties": {
         "care_info": {
           "anyOf": [
@@ -104,6 +103,17 @@
           "title": "Language",
           "type": "string"
         },
+        "last_reflection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LastReflection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "memories": {
           "items": {
             "type": "string"
@@ -135,6 +145,19 @@
           "title": "Phq9 Due",
           "type": "boolean"
         },
+        "recent_reflection": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how the latest reflection with Kaiku went, as a level and themes only (never the words), so Kaiku can be gentle about it",
+          "title": "Recent Reflection"
+        },
         "routines": {
           "description": "e.g. \"usually walks on Tuesdays\"",
           "items": {
@@ -142,6 +165,15 @@
           },
           "maxItems": 2,
           "title": "Routines",
+          "type": "array"
+        },
+        "source_context": {
+          "description": "prepared source-labelled activity facts; no clinical metrics or raw content",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Source Context",
           "type": "array"
         },
         "suggestion": {
@@ -166,6 +198,15 @@
           ],
           "title": "Time Of Day",
           "type": "string"
+        },
+        "today_facts": {
+          "description": "plain facts the person recorded themselves today, in everyday words (\"a short night\"); never a number or a judgement",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Today Facts",
+          "type": "array"
         },
         "tone": {
           "default": "steady",
@@ -194,6 +235,53 @@
         "time_of_day"
       ],
       "title": "ContextCard",
+      "type": "object"
+    },
+    "LastReflection": {
+      "additionalProperties": false,
+      "description": "How the latest talk with Kaiku went: a level and themes, never the words.",
+      "properties": {
+        "declined": {
+          "default": false,
+          "description": "they did not want to talk or asked to stop",
+          "title": "Declined",
+          "type": "boolean"
+        },
+        "themes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Themes",
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valence"
+        },
+        "when": {
+          "description": "e.g. \"yesterday evening\", \"this morning\"",
+          "title": "When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "title": "LastReflection",
       "type": "object"
     },
     "LiveToken": {
@@ -225,10 +313,24 @@
     }
   },
   "additionalProperties": false,
-  "description": "POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null\nwhen the cloud has no Gemini key: the device uses its own fallback (hub key, or scripted lines).",
+  "description": "POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null\nwhen Live is unavailable: the device reports unavailability and keeps the microphone closed.",
   "properties": {
     "context_card": {
       "$ref": "#/$defs/ContextCard"
+    },
+    "context_refresh_seconds": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "poll interval for consented source updates during an active conversation",
+      "title": "Context Refresh Seconds"
     },
     "live_setup": {
       "anyOf": [
@@ -241,7 +343,7 @@
         }
       ],
       "default": null,
-      "description": "Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; the server uses the token's copy either way.",
+      "description": "Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; clients must apply this complete setup.",
       "title": "Live Setup"
     },
     "live_token": {
@@ -254,6 +356,20 @@
         }
       ],
       "default": null
+    },
+    "max_session_seconds": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "client-enforced maximum active session duration",
+      "title": "Max Session Seconds"
     },
     "model": {
       "title": "Model",

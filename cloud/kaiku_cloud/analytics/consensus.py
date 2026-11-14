@@ -8,6 +8,8 @@
 correlated families: if every worse source is worse only via families in `correlated_families`, the explanation
 carries an independence caveat; with count_correlated_as_one, sources worse only via the same correlated family
 count as ONE worse source.
+young record: fewer calendar days than `min_history_days_for_stable` is never "stable" (watch + low_coverage);
+            it can still be flagged, from the provisional baseline in drift.py.
 hysteresis: needs_call holds until a clinician acknowledges or `hysteresis_stable_days` consecutive stable days —
 implemented by replaying the rule day by day (no hidden mutable state).
 agreement:  low_coverage (< 2 sufficient) | disagree (worse alongside as_usual/better) | agree
@@ -88,6 +90,13 @@ def raw_state(results: list[VerdictResult], safety_open: bool, st: StateSpec) ->
     return "stable", agreement
 
 
+def _young(data: PatientData, day: date, st: StateSpec) -> bool:
+    """Fewer calendar days on record than [state].min_history_days_for_stable: too early to call it stable."""
+    if not st.min_history_days_for_stable:
+        return False
+    return data.first_day is None or (day - data.first_day).days + 1 < st.min_history_days_for_stable
+
+
 def open_safety(data: PatientData, until: datetime) -> datetime | None:
     """Earliest safety flag after the latest acknowledgement (both up to `until`)."""
     last_ack = max((t for t, _ in data.acks if t <= until), default=None)
@@ -116,6 +125,8 @@ def replay(data: PatientData, crit: Criteria, end: date, now: datetime | None = 
             acked = any(call_since is not None and call_since <= t <= eod for t, _ in data.acks)
             if not acked and stable_streak < st.hysteresis_stable_days:
                 state, held = "needs_call", True
+        if state == "stable" and _young(data, d, st):
+            state, agreement = "watch", "low_coverage"  # the personal baseline is still forming
         if state == "needs_call" and (prev is None or prev.state != "needs_call"):
             call_since = datetime.combine(d, time(0), TZ)
         ack_by = None
@@ -134,12 +145,15 @@ def replay(data: PatientData, crit: Criteria, end: date, now: datetime | None = 
 
 def compute(data: PatientData, crit: Criteria, end: date, now: datetime | None = None) -> tuple[Consensus, DayResult]:
     now = now or datetime.now(UTC)
-    if data.first_day:
+    if data.first_day and data.first_day <= end:
         last = replay(data, crit, end, now)[-1]
     else:
         results = all_verdicts(data, end, crit, now)
         raw, agreement = raw_state(results, False, crit.state)
-        last = DayResult(end, raw, raw, [r.model for r in results], agreement, None)
+        state = raw
+        if raw == "stable" and _young(data, end, crit.state):
+            state, agreement = "watch", "low_coverage"
+        last = DayResult(end, raw, state, [r.model for r in results], agreement, None)
     c = Consensus(home_id=data.home_id, state=last.state, rule_version=crit.rule_version, sources=last.verdicts,
                   agreement=last.agreement, explanation=None, acknowledged_by=last.acknowledged_by,
                   safety_since=last.safety_since, computed_at=now)

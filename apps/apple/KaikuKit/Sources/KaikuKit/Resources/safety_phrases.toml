@@ -23,5 +23,5 @@ phrases = [
 
 [script]
 # Pre-written, never generated. Spoken/displayed verbatim.
-en = "I'm really glad you told me. I'm going to stop what we're doing. You don't have to handle this alone. You can call the MIELI Crisis Helpline any time on 09 2525 0111. If you are in immediate danger, call 112. I'm letting your care team know."
-fi = "Olen todella iloinen, että kerroit. Lopetan nyt sen, mitä teimme. Sinun ei tarvitse jäädä tämän kanssa yksin. MIELI ry:n kriisipuhelin päivystää numerossa 09 2525 0111. Jos olet välittömässä vaarassa, soita 112. Ilmoitan hoitotiimillesi."
+en = "I'm really glad you told me. I'm going to stop what we're doing. You don't have to handle this alone. You can call the MIELI Crisis Helpline any time on 09 2525 0111. If you are in immediate danger, call 112."
+fi = "Olen todella iloinen, että kerroit. Lopetan nyt sen, mitä teimme. Sinun ei tarvitse jäädä tämän kanssa yksin. MIELI ry:n kriisipuhelin päivystää numerossa 09 2525 0111. Jos olet välittömässä vaarassa, soita 112."

@@ -149,7 +149,8 @@ def _scripted(monkeypatch, plan: dict[int, tuple[str, str, str]], acks=()):
         return [V(s, v) for s, v in zip(CONSENSUS_SOURCES, _pad(plan[(day - start).days]), strict=True)]
 
     monkeypatch.setattr(consensus, "all_verdicts", fake)
-    return [r.state for r in replay(data, CRIT, END, NOW)]
+    # scripted days test the state rule itself; the young-record guard has its own tests below
+    return [r.state for r in replay(data, tuned(**{"state.min_history_days_for_stable": 0}), END, NOW)]
 
 
 WW, OK = ("worse", "worse", "as_usual"), ("as_usual", "as_usual", "as_usual")
@@ -268,9 +269,7 @@ def _ctx():
 
 
 def test_llm_valid_json_is_used(monkeypatch):
-    good = ('{"headline": "Aino: robot and laptop show change from usual", "text": "Two sources worse.", '
-            '"per_source": [{"source": "robot", "summary": "Lower HRV."}], "disagreement_note": "Glasses as usual.", '
-            '"suggested_actions": ["check_in_call"], "caveats": "Ordinary causes possible."}')
+    good = '{"source_order": ["robot", "laptop", "wearable", "glasses"], "focus_metrics": []}'
     monkeypatch.setitem(explain.BACKENDS, "gemma_hosted", lambda prompt: good)
     ex = explain.make_explanation(_ctx(), Settings(llm="gemma_hosted"))
     assert ex.by == "gemma" and ex.headline.startswith("Aino")
@@ -352,3 +351,160 @@ def test_simulate_cli_compare_and_invalid(tmp_path, capsys):
     bad = tmp_path / "bad.toml"
     bad.write_text(src.replace('worse_when = "down"', 'worse_when = "sideways"', 1))
     assert main(["--criteria", str(bad)]) == 2
+
+
+def test_explanation_uses_verified_directions_and_group_labels_only():
+    ctx = _ctx()
+    for source in ctx["sources"]:
+        source["evidence"] = [{"metric": "hr", "direction": "up", "days": 3, "z": 2.0,
+                               "summary": "Resting heart rate higher than usual on three recent days"}] if source["source"] == "robot" else []
+    ctx["sources"][0]["verdict"] = "worse"
+    raw = '{"source_order": ["robot", "laptop", "wearable", "glasses"], "focus_metrics": ["hr"], "text": "Heart rate is lower and glasses are connected."}'
+    ex = explain._from_llm(raw, ctx, "gemma_hosted")
+    text = ex.model_dump_json()
+    assert "higher than usual" in text and "Heart rate is lower" not in text and "glasses are connected" not in text
+    assert "Check-ins & robot" in text and "Walks & outings" in text
+
+
+# ---------------------------------------------------------------- calibration (make calibrate; docs/validation.md)
+def _daily(n, value_of):
+    start = END - timedelta(days=n - 1)
+    return {start + timedelta(days=i): float(value_of(i)) for i in range(n)}
+
+
+def _young_person(n=16, dip=range(8, 12)):
+    """A 16-day record: three daily robot signals + two daily app signals, lower on the dip days."""
+    from kaiku_cloud.analytics.data import PatientData
+
+    robot = ("mood", "energy", "sleep")
+    series = {m: _daily(n, lambda i: 2 if i in dip else 4) for m in robot}
+    series["active_min"] = _daily(n, lambda i: 150 if i in dip else 320 + (i % 3) * 5)
+    series["communication_min"] = _daily(n, lambda i: 20 if i in dip else 70 + (i % 2) * 3)
+    days = {d: [0.95] for d in series["mood"]}
+    return PatientData(home_id="young", series=series, source_days={s: (dict(days) if s in ("robot", "laptop") else {})
+                                                                     for s in CONSENSUS_SOURCES},
+                       last_data_at={}, rule_readings={}, safety_flags=[], acks=[], last_activity_at=None, sim=True,
+                       first_day=min(days))
+
+
+def test_young_record_is_never_stable_and_a_dip_is_scored_with_an_early_baseline_label():
+    res = replay(_young_person(), CRIT, END, NOW)
+    states = [r.state for r in res]
+    assert len(res) == 16 and "stable" not in states
+    assert all(r.agreement == "low_coverage" for r in res[:8])  # days 1–8: nothing to compare with yet
+    assert states[:10] == ["watch"] * 10  # day 9–10: two low days are not yet a pattern (3 of 5)
+    assert states[10] == "needs_call"  # day 11: third low day, two groups agree
+    worse = [v for v in res[10].verdicts if v.verdict == "worse"]
+    assert {v.source for v in worse} == {"robot", "laptop"}
+    assert all("early baseline" in e.summary and "lower confidence" in e.summary for v in worse for e in v.evidence)
+    fine = replay(_young_person(dip=()), CRIT, END, NOW)
+    assert {r.state for r in fine} == {"watch"} and fine[-1].agreement == "low_coverage"
+    assert not any(v.verdict == "worse" for r in fine for v in r.verdicts)
+    # the same record, three weeks old, may be stable; and the provisional baseline is gone
+    old = replay(_young_person(n=30, dip=()), CRIT, END, NOW)
+    assert old[-1].state == "stable" and [r.state for r in old[:20]] == ["watch"] * 20
+
+
+def test_early_baseline_can_be_switched_off_in_criteria():
+    off = tuned(**{"defaults.early_baseline_min_days": 0})
+    res = replay(_young_person(), off, END, NOW)
+    assert all(v.verdict == "insufficient" for v in res[10].verdicts) and "stable" not in {r.state for r in res}
+    with pytest.raises(ValueError):
+        tuned(**{"defaults.early_baseline_min_days": 9})  # must not exceed baseline_min_days
+
+
+def test_new_metric_blocks_never_break_or_bias_a_verdict():
+    """A games/robot agent adds [[metric]] blocks: without data they change nothing; with weight 0 they are
+    observe-only (no vote, and cannot make a source look sufficient on their own)."""
+    _, data = _demo("demo-aino")
+    before = {v.model.source: v.model.verdict for v in (verdict_for(data, s, END, CRIT, NOW) for s in CONSENSUS_SOURCES)}
+    raw = CRIT.model_dump(mode="json", by_alias=True)
+    raw["metric"].append({"name": "pebbles_span", "label": "Memory span", "obs": "obs.play_session", "field": "span_max",
+                          "where": {"game": "pebbles"}, "worse_when": "down", "weight": 0.5, "family": "cognition"})
+    grown = Criteria.model_validate(raw)
+    assert grown.rule_version != CRIT.rule_version
+    after = {s: verdict_for(data, s, END, grown, NOW).model.verdict for s in CONSENSUS_SOURCES}
+    assert after == before  # no data for the new signal -> insufficient metric -> no effect
+    # observe-only: a source whose only data is a weight-0 signal stays insufficient even when it drifts
+    raw["metric"][-1]["weight"] = 0
+    observe = Criteria.model_validate(raw)
+    from kaiku_cloud.analytics.data import PatientData
+
+    span = _daily(30, lambda i: 2 if i >= 24 else 5)
+    lone = PatientData(home_id="h", series={"pebbles_span": span},
+                       source_days={s: ({d: [1.0] for d in span} if s == "laptop" else {}) for s in CONSENSUS_SOURCES},
+                       last_data_at={}, rule_readings={}, safety_flags=[], acks=[], last_activity_at=None, sim=True,
+                       first_day=min(span))
+    assert drift_for(observe.metric("pebbles_span"), span, END, observe).status == "drifting"
+    v = verdict_for(lone, "laptop", END, observe, NOW).model
+    assert v.verdict == "insufficient" and v.evidence == []
+    raw["metric"][-1]["weight"] = 1.0  # once it has a weight it votes like any other signal
+    assert verdict_for(lone, "laptop", END, Criteria.model_validate(raw), NOW).model.verdict == "worse"
+
+
+def test_calibration_regression_thresholds():
+    """Loose bounds around the numbers in docs/validation.md (n=40 there, n=16 here): a rule or criteria change
+    that makes the rule much noisier, much blinder, or lets thin data read as stable fails here."""
+    from kaiku_cloud.analytics import calibration as cal
+
+    r = cal.run_calibration(CRIT, n=16, effects=("moderate",))
+    h = r["headline"]
+    assert r["sim"] is True and r["rule_version"] == CRIT.rule_version
+    assert h["false_flags_per_person_week_fine"] <= 0.15  # measured 0.08: about one false flag per 3 person-months
+    assert max(c["false_calls_per_person_week"] for c in r["fine"]) <= 0.03
+    assert h["sensitivity_flag_moderate"] >= 0.85 and h["sensitivity_call_moderate"] >= 0.55
+    assert h["sensitivity_flag_moderate"] > h["chance_flag_in_detect_window"] + 0.5
+    by = {c["trajectory"]: c for c in r["unwell"]}
+    assert by["sudden drop, stays low"]["delay_flag_days"] <= 4
+    assert by["gradual decline (14-day slide)"]["delay_flag_days"] <= 11
+    # a new person: nothing before day 9, never "stable" within 16 days, yet a dip on days 9–12 is usually seen
+    early = r["early_days"]
+    for label in ("fine", "dip days 9–12 (moderate)"):
+        seen = early[label]["practitioner_sees_on_day"]
+        assert set(seen["3"]) == set(seen["7"]) == {"not enough data"}
+        assert not any("stable" in day for day in seen.values())
+    assert early["fine"]["ever_flagged"] <= 0.15 and early["dip days 9–12 (moderate)"]["ever_flagged"] >= 0.4
+    assert early["first_day_any_source_can_vote"] <= 12
+    short = {c["trajectory"]: c for c in r["short_history"]}
+    assert set(short["16 days, fine"]["final_state"]) == {"watch"}
+    # no single robot/app/watch signal may flip its group; the walks group is the documented exception
+    assert {s: m for s, m in r["single_metric_flippers"].items() if m} == {"glasses": ["outing_min"]}
+    # the learner's known confound stays visible: two no-effect activities do not score the same
+    assert r["bandit_no_effect_arms"]["drum"] > r["bandit_no_effect_arms"]["breathe"]
+
+
+def test_calibration_cli(capsys, tmp_path):
+    from kaiku_cloud.analytics.calibration import main
+
+    assert main(["--n", "3"]) == 0
+    out = capsys.readouterr().out
+    assert "not clinical accuracy" in out and "New person" in out and CRIT.rule_version in out
+    bad = tmp_path / "bad.toml"
+    bad.write_text("name = 1")
+    assert main(["--criteria", str(bad)]) == 2
+
+
+@pytest.mark.parametrize("tail", [(2, 2, 2, 3, 3), (2, 2, 2, 4, 4), (2, 2, 2, 5, 5)])
+def test_evidence_direction_z_and_wording_come_from_the_days_that_voted(tail):
+    """Whole-number dials, constant usual 4 (zero spread -> min_mad floor), three low days, then partly/fully
+    back: the group is still worse (3 of 5), and its evidence must say LOWER with a negative z — never
+    "higher ... z=0" because the latest day happens to sit at or above the usual."""
+    from kaiku_cloud.analytics.data import PatientData
+
+    n = 16
+    series = {m: _daily(n, lambda i: tail[i - (n - 5)] if i >= n - 5 else 4) for m in ("mood", "energy", "sleep")}
+    days = {d: [0.95] for d in series["mood"]}
+    data = PatientData(home_id="h", series=series, source_days={s: (days if s == "robot" else {}) for s in CONSENSUS_SOURCES},
+                       last_data_at={}, rule_readings={}, safety_flags=[], acks=[], last_activity_at=None, sim=True,
+                       first_day=min(days))
+    v = verdict_for(data, "robot", END, CRIT, NOW).model
+    assert v.verdict == "worse" and len(v.evidence) == 3
+    for e in v.evidence:
+        assert e.direction == "down" and e.z is not None and e.z <= -CRIT.defaults.z_threshold and e.days >= 3
+        assert " lower than usual on " in e.summary and "higher" not in e.summary
+    d = drift_for(CRIT.metric("mood"), series["mood"], END, CRIT)
+    assert d.status == "drifting" and d.flag_direction == "down" and d.z_flag >= CRIT.defaults.z_threshold
+    # improving mirrors it: direction and z from the better days
+    up = {day: 6 - val for day, val in series["mood"].items()}  # usual 2, three days at 4
+    imp = drift_for(CRIT.metric("mood"), up, END, CRIT)
+    assert imp.status == "improved" and imp.flag_direction == "up" and imp.z_flag <= -CRIT.defaults.z_threshold

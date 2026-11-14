@@ -11,11 +11,13 @@ code:
     const char* nm[] = {"red", "green", "blue", "white", "black"};
     if (step < 5 && millis() >= next) {
       tft.fillScreen(bars[step]);
+      tft.display();   // canvas mode (default): nothing shows until display()
       Serial.printf("{\"event\":\"fill\",\"color\":\"%s\"}\n", nm[step]);
       step++; next = millis() + 600;
     } else if (step == 5 && millis() >= next) {
       tft.fillScreen(0x0000);
       tft.fillRect(35, 20, 30, 40, 0xFFDF); tft.fillRect(95, 20, 30, 40, 0xFFDF);
+      tft.display();
       Serial.println("{\"event\":\"eyes\"}");
       step++;
     }

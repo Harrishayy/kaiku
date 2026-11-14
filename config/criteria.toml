@@ -12,7 +12,8 @@
 #
 # HOW A STATE IS DECIDED
 #   1. per metric, per day: aggregate the obs field (agg) -> daily value; skip readings with quality < quality_min
-#   2. baseline: median + MAD of the previous baseline_days (needs baseline_min_days, else metric insufficient)
+#   2. baseline: median + MAD of baseline_days ending baseline_lag_days before the day (needs baseline_min_days,
+#      else metric insufficient; a young record uses the provisional early_baseline_* settings below)
 #   3. robust z = (day - median) / max(1.4826 * MAD, min_mad); "drifting" if z is beyond z_threshold in the
 #      worse_when direction on >= drift_days of the last drift_window days with data
 #   4. source verdict: worse if sum(weight of drifting metrics) >= worse_min_weight OR any enabled [[rule]] fires;
@@ -20,6 +21,12 @@
 #      insufficient if confidence (days with data / expected) x mean quality < min_confidence
 #   5. state: safety (open safety_flag) > needs_call (>= needs_call_min_worse sufficient sources worse)
 #      > watch (>= watch_min_worse, or only one sufficient source) > stable
+#      a record younger than min_history_days_for_stable is never stable (watch, "not enough data")
+#
+# HOW GOOD IS IT?   make calibrate   (labelled synthetic courses: sensitivity, false flags per person-week,
+#                   detection delay, day 3/7/16 of a new record) — numbers and limits in docs/validation.md
+# NEW SIGNAL:       add its [[metric]] with weight = 0 first (charted, never a vote, never makes a source
+#                   "sufficient"); raise the weight only after `make calibrate` shows false flags did not rise.
 # ============================================================================================================
 
 name = "consensus-v1"
@@ -35,10 +42,17 @@ min_mad = 0.0
 quality_min = 0.5
 baseline_lag_days = 7     # baseline ends N days before today, so a slow drift can't become its own baseline
 rule_max_age_days = 21    # [[rule]] observations older than this stop firing (PHQ-9 is every 14 days)
+# A NEW PERSON (measured with `make calibrate`, docs/validation.md): with the lag above, nothing can be compared before day 17.
+# While a metric's record is younger than baseline_days + baseline_lag_days and has no full baseline yet, a
+# provisional baseline of >= early_baseline_min_days days, ending early_baseline_lag_days before the scored day,
+# is used: a change can be flagged from about day 11. Set early_baseline_min_days = 0 to switch this off.
+early_baseline_min_days = 5
+early_baseline_lag_days = 3
 
 # ---------------------------------------------------------------- sources: who gets a vote, and how easily
 [sources.robot]
 enabled = true
+max_age_days = 2            # stale observations cannot vote as usual
 worse_min_weight = 2.5      # D20: > two robot signals (half-weight ones count 0.5); tuned with make tune
 better_min_weight = 2.0
 expected_per_week = 7       # daily ritual
@@ -46,6 +60,7 @@ min_confidence = 0.4
 
 [sources.glasses]
 enabled = true
+max_age_days = 4
 worse_min_weight = 1.0      # D15: minutes + steps are correlated, so one drifting signal is enough
 better_min_weight = 1.0
 expected_per_week = 3
@@ -53,6 +68,7 @@ min_confidence = 0.4
 
 [sources.laptop]               # display label "Apps": Mac app, browser apps, games on any device
 enabled = true
+max_age_days = 4
 worse_min_weight = 1.0
 better_min_weight = 2.0
 expected_per_week = 3
@@ -60,6 +76,7 @@ min_confidence = 0.4
 
 [sources.wearable]             # D25: optional Apple Health daily summary (any watch); D29 numbers
 enabled = true
+max_age_days = 2
 worse_min_weight = 1.0         # all wearable metrics are half-weight: two must drift together
 better_min_weight = 1.0
 expected_per_week = 7          # one summary per morning
@@ -71,6 +88,8 @@ needs_call_min_worse = 2
 watch_min_worse = 1
 watch_if_single_sufficient = true
 min_sufficient_for_stable = 2
+min_history_days_for_stable = 21         # = baseline_days + baseline_lag_days: before that a record is never
+                                         # "stable" (baseline still forming) -> watch + low_coverage. 0 = off
 hysteresis_stable_days = 3
 correlated_families = ["self_report"]   # dial (robot) + PHQ-9 (laptop) are both self-report -> caveat
 count_correlated_as_one = false         # true = those two alone can't make needs_call
@@ -87,7 +106,7 @@ unit = "1–5"
 family = "self_report"
 obs = "obs.self_report"
 field = "value"
-where = { item = "mood", context = "ritual" }
+where = { item = "mood", context = ["ritual", "adhoc"] }
 agg = "mean"
 worse_when = "down"
 min_mad = 0.5
@@ -99,7 +118,7 @@ unit = "1–5"
 family = "self_report"
 obs = "obs.self_report"
 field = "value"
-where = { item = "energy", context = "ritual" }
+where = { item = "energy", context = ["ritual", "adhoc"] }
 agg = "mean"
 worse_when = "down"
 min_mad = 0.5
@@ -111,13 +130,14 @@ unit = "1–5"
 family = "self_report"
 obs = "obs.self_report"
 field = "value"
-where = { item = "sleep", context = "ritual" }
+where = { item = "sleep", context = ["ritual", "adhoc"] }
 agg = "mean"
 worse_when = "down"
 min_mad = 0.5
 
 [[metric]]
 name = "rmssd"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "HRV before breathing (RMSSD)"
 unit = "ms"
 family = "physiology"
@@ -129,6 +149,7 @@ min_mad = 3.0
 
 [[metric]]
 name = "hr"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Resting heart rate"
 unit = "bpm"
 family = "physiology"
@@ -152,6 +173,7 @@ min_mad = 4.0
 
 [[metric]]
 name = "drum_force"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Drum force"
 unit = "0–1"
 family = "behaviour"
@@ -187,7 +209,7 @@ min_mad = 0.05
 
 [[metric]]
 name = "getup"
-label = "First seen (get-up time)"
+label = "First interaction time"
 unit = "min after midnight"
 family = "behaviour"
 obs = "obs.presence"
@@ -199,6 +221,7 @@ min_mad = 15.0
 
 [[metric]]
 name = "light"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Room light"
 unit = "lux"
 family = "behaviour"
@@ -246,7 +269,7 @@ enabled = false             # stretch hardware; too sparse to baseline
 # ===== glasses (source 2) =====
 [[metric]]
 name = "outing_min"
-label = "Time outdoors"
+label = "Outing duration"
 unit = "min"
 family = "behaviour"
 obs = "obs.outing"
@@ -254,7 +277,7 @@ field = "minutes"
 agg = "sum"
 worse_when = "down"
 missing = "skip"            # D20: "zero" (no walk = 0 min) caused most false alarms in simulation
-person_hard = "A quieter day indoors than your usual."
+person_hard = "Less time on outings than your usual."
 min_mad = 8.0
 
 [[metric]]
@@ -271,6 +294,7 @@ min_mad = 500.0
 
 [[metric]]
 name = "cadence"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Walking cadence"
 unit = "steps/min"
 family = "behaviour"
@@ -284,6 +308,7 @@ baseline_min_days = 4       # walks ~4 days/week
 
 [[metric]]
 name = "daylight_min"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Daylight on walks"
 unit = "min"
 family = "behaviour"
@@ -298,6 +323,7 @@ baseline_min_days = 4
 # ===== laptop / "Apps" (source 3) =====
 [[metric]]
 name = "voice_rate"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Speech rate (laptop)"
 unit = "syll/s"
 family = "voice"
@@ -310,6 +336,7 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "voice_pauses"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Pauses in speech (laptop)"
 unit = "ratio"
 family = "voice"
@@ -322,6 +349,7 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "pitch_var"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Pitch variability"
 unit = "semitones"
 family = "voice"
@@ -334,6 +362,7 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "expressivity"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Facial expressivity"
 unit = "0–1"
 family = "voice"
@@ -346,6 +375,7 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "reaction"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Reaction time (median)"
 unit = "ms"
 family = "cognition"
@@ -358,6 +388,7 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "lapses"
+enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
 label = "Reaction lapses"
 unit = "count"
 family = "cognition"
@@ -423,6 +454,94 @@ weight = 0.5                # D29: new, conservative
 min_mad = 20.0
 baseline_min_days = 4       # ~3–4 games/week
 
+# ----- research-inspired games (docs/validation.md -> Games). All of them: against the person's OWN baseline only;
+# warm-up sessions (the first 3 per game per device) never count (where warmup = false: practice effects); doubtful
+# sessions arrive with envelope quality 0.2 and are skipped by quality_min; a stricter z (2.0); at least 5 baseline
+# days; counts_for_better = false (getting better at a game is practice, not recovery); low weights, so one game
+# alone can never make the Apps source "worse" (lantern 0.75 in total < worse_min_weight 1.0). No person_hard: a
+# game never tells the person they did badly.
+[[metric]]
+name = "lantern_speed"
+label = "Lantern response speed"
+unit = "1/s"
+family = "cognition"
+obs = "obs.play_session"
+field = "response_speed"
+where = { game = "lantern", warmup = false }
+agg = "mean"
+worse_when = "down"
+weight = 0.5
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.1               # ~10 ms at a 300 ms reaction
+baseline_min_days = 5
+note = "PVT-style simple reaction time: mean of 1000/RT over valid trials (daily in the path)"
+
+[[metric]]
+name = "lantern_variability"
+label = "Lantern reaction variability"
+unit = "CV"
+family = "cognition"
+obs = "obs.play_session"
+field = "reaction_ms_cv"
+where = { game = "lantern", warmup = false }
+agg = "mean"
+worse_when = "up"
+weight = 0.25               # moves with lantern_speed: half of it
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.03
+baseline_min_days = 5
+
+[[metric]]
+name = "seeds_throughput"
+label = "Seed shelf pace"
+unit = "right/min"
+family = "cognition"
+obs = "obs.play_session"
+field = "throughput_per_min"
+where = { game = "seeds", warmup = false }
+agg = "mean"
+worse_when = "down"
+weight = 0.5
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 1.5
+baseline_min_days = 5       # every third day in the path: ~2 weeks before it can speak
+note = "symbol-digit substitution (processing speed), 90 s, a new pairing each session"
+
+[[metric]]
+name = "pebble_span"
+label = "Pebble path length"
+unit = "pebbles"
+family = "cognition"
+obs = "obs.play_session"
+field = "span_max"
+where = { game = "pebbles", warmup = false }
+agg = "max"
+worse_when = "down"
+weight = 0.25               # a span moves in whole steps: coarse
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 1.0
+baseline_min_days = 5
+
+[[metric]]
+name = "watering_effort"
+label = "Watering: bigger plant chosen"
+unit = "share"
+family = "motivation"
+obs = "obs.play_session"
+field = "hard_choice_ratio"
+where = { game = "watering", warmup = false }
+agg = "mean"
+worse_when = "down"
+weight = 0.25               # the least established of the four (flowers, not money): a quarter
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.12              # one choice in eight
+baseline_min_days = 5
+
 # ===== wearable (source 4, optional) =====
 [[metric]]
 name = "watch_sleep"
@@ -430,8 +549,9 @@ label = "Sleep (watch)"
 unit = "min"
 family = "physiology"
 obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
 field = "sleep_min"
-agg = "mean"
+agg = "last"
 worse_when = "down"
 weight = 0.5                # D29: new, conservative
 min_mad = 25.0
@@ -443,8 +563,9 @@ label = "Middle of the night's sleep (later = up)"
 unit = "min from midnight"
 family = "physiology"
 obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
 field = "sleep_midpoint_min"
-agg = "mean"
+agg = "last"
 worse_when = "up"
 weight = 0.5                # D29: new, conservative
 min_mad = 15.0
@@ -456,8 +577,9 @@ label = "Resting heart rate (watch)"
 unit = "bpm"
 family = "physiology"
 obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
 field = "resting_hr_bpm"
-agg = "mean"
+agg = "last"
 worse_when = "up"
 weight = 0.5                # D29: new, conservative
 min_mad = 2.0
@@ -468,8 +590,9 @@ label = "Heart rate variability (watch, SDNN)"
 unit = "ms"
 family = "physiology"
 obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
 field = "hrv_sdnn_ms"
-agg = "mean"
+agg = "last"
 worse_when = "down"
 weight = 0.5                # D29: new, conservative
 min_mad = 4.0
@@ -480,8 +603,9 @@ label = "Daily steps (watch)"
 unit = "steps"
 family = "behaviour"
 obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
 field = "steps"
-agg = "mean"
+agg = "last"
 worse_when = "down"
 weight = 0.5                # D29: new, conservative
 min_mad = 800.0

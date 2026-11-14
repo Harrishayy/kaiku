@@ -87,6 +87,7 @@ class RitualMachine:
         self.results: dict[str, Status] = {}
         self._queue: asyncio.Queue[Event] | None = None
         self._task: asyncio.Task | None = None
+        self._next_step: int | None = None
 
     @property
     def running(self) -> bool:
@@ -97,6 +98,15 @@ class RitualMachine:
             return False
         self._queue.put_nowait(event)
         return True
+
+    def jump_to(self, name: str) -> bool:
+        if not self.running or self._queue is None:
+            return False
+        for i, step in enumerate(self.steps):
+            if step.name == name and step.applies(self.ctx):
+                self._queue.put_nowait(Event("goto", {"index": i}))
+                return True
+        return False
 
     def start(self) -> asyncio.Task | None:
         if self.running:
@@ -116,7 +126,11 @@ class RitualMachine:
     async def run(self) -> dict[str, Status]:
         self.results = {}
         try:
-            for step in self.steps:
+            index = 0
+            while index < len(self.steps):
+                step = self.steps[index]
+                index += 1
+                self._next_step = None
                 step.stop_ritual = False
                 if not step.applies(self.ctx):
                     continue
@@ -124,6 +138,8 @@ class RitualMachine:
                 if step.stop_ritual:
                     log.info("ritual_stopped", f"stopped after {step.name}")
                     break
+                if self._next_step is not None:
+                    index = self._next_step
         finally:
             self.state = "idle"
             self._queue = None
@@ -157,6 +173,10 @@ class RitualMachine:
                     ev = await asyncio.wait_for(q.get(), remaining)
                 except TimeoutError:
                     continue  # re-check deadline (steps may move it)
+                if ev.kind == "goto":
+                    self._next_step = ev.data["index"]
+                    status = "skipped"
+                    break
                 if ev.kind == "skip":
                     status = "skipped"
                     break

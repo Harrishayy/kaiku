@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "flag_booster",
+        "flag_icbt_referral",
+        "acknowledge",
+        "send_message"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "By"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ts",
+    "action"
+  ],
+  "title": "CareAction",
+  "type": "object"
+}

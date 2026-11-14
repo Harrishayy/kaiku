@@ -35,6 +35,17 @@ def local_date(ts: str | datetime) -> date:
     return parse_ts(ts).astimezone(TZ).date()
 
 
+def observation_day(event: dict[str, Any], crit: Criteria) -> date:
+    """Daily summaries carry their measured day separately from their capture/ordering timestamp."""
+    fields = {m.day_field for m in crit.metrics if m.obs == event["type"] and m.day_field}
+    if fields:
+        field = next(iter(fields))
+        value = event["payload"].get(field)
+        if value is not None:
+            return date.fromisoformat(str(value))
+    return local_date(event["ts"])
+
+
 def _passes(where: dict[str, Any], p: dict[str, Any]) -> bool:
     for key, want in where.items():
         have = p.get(key)
@@ -73,13 +84,14 @@ def daily_metrics(events: list[dict[str, Any]], crit: Criteria, source_spans: di
         if not specs:
             continue
         t = parse_ts(e["ts"]).astimezone(TZ)
+        day = observation_day(e, crit)
         q = e.get("quality")
         for m in specs:
             if q is not None and q < crit.param(m, "quality_min"):
                 continue
             v = extract(m, e["payload"], t)
             if v is not None:
-                buckets[m.name][t.date()].append((t, v))
+                buckets[m.name][day].append((t, v))
     out: dict[str, Series] = {}
     for specs in by_type.values():
         for m in specs:

@@ -36,6 +36,7 @@ def settings(tmp_path) -> Settings:
     s.cloud_url = None
     s.queue_path = tmp_path / "q.sqlite"
     s.state_path = tmp_path / "state.json"
+    s.store_path = tmp_path / "sessions.sqlite"
     return s
 
 

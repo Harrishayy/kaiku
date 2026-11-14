@@ -63,11 +63,17 @@ def rule_fires(rule: RuleSpec, data: PatientData, day: date, crit: Criteria) -> 
 
 def _evidence(d: MetricDrift, crit: Criteria) -> VerdictEvidence:
     m = crit.metric(d.metric)
-    raw_z = None if d.z_last is None else (d.z_last if m.worse_when == "up" else -d.z_last)
+    # direction, z and wording all come from the days that made the vote (drift.py z_flag / flag_direction)
+    z = d.z_flag if d.z_flag is not None else d.z_last
+    raw_z = None if z is None else (z if m.worse_when == "up" else -z)
     days = d.worse_days if d.status == "drifting" else d.better_days
-    word = "higher" if d.direction == "up" else "lower"
-    return VerdictEvidence(metric=d.metric, z=raw_z, direction="up" if d.direction == "up" else "down", days=days,
-                           summary=f"{m.label} {word} than usual on {days} of the last {d.scored_days} days")
+    direction = d.flag_direction or d.direction
+    word = "higher" if direction == "up" else "lower"
+    # a provisional baseline (young record, criteria early_baseline_*) is always labelled as such
+    early = d.baseline is not None and d.baseline.early
+    label = f" (early baseline: {d.baseline.n} days, lower confidence)" if early else ""
+    return VerdictEvidence(metric=d.metric, z=raw_z, direction="up" if direction == "up" else "down", days=days,
+                           summary=f"{m.label} {word} than usual on {days} of the last {d.scored_days} days{label}")
 
 
 def verdict_for(data: PatientData, source: str, day: date, crit: Criteria, now: datetime | None = None
@@ -78,14 +84,17 @@ def verdict_for(data: PatientData, source: str, day: date, crit: Criteria, now: 
     weight = {m.name: m.weight for m in metrics}
     better_ok = {m.name for m in metrics if m.counts_for_better}
     fired = [(r, ev) for r in crit.rules_for(source) if (ev := rule_fires(r, data, day, crit)) is not None]
-    conf = confidence(data, source, day, crit)
-    drifting = [d for d in drifts if d.status == "drifting"]
-    improved = [d for d in drifts if d.status == "improved" and d.metric in better_ok]
-    usable = [d for d in drifts if d.status != "insufficient"]
+    source_days = [d for d in data.source_days.get(source, {}) if d <= day]
+    stale = not source_days or (day - max(source_days)).days > spec.max_age_days
+    conf = 0.0 if stale else confidence(data, source, day, crit)
+    drifting = [d for d in drifts if d.status == "drifting" and weight[d.metric] > 0]
+    improved = [d for d in drifts if d.status == "improved" and d.metric in better_ok and weight[d.metric] > 0]
+    # weight-0 metrics are observe-only: charted, never a vote, and never what makes a source "sufficient"
+    usable = [d for d in drifts if d.status != "insufficient" and weight[d.metric] > 0]
 
     evidence: list[VerdictEvidence] = []
     families: set[str] = set()
-    if conf < spec.min_confidence or (not usable and not fired):
+    if stale or conf < spec.min_confidence or (not usable and not fired):
         verdict = "insufficient"
     elif sum(weight[d.metric] for d in drifting) >= spec.worse_min_weight or fired:
         verdict = "worse"

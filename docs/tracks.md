@@ -1,10 +1,21 @@
 # Track mapping
 
-| Track | What we show | Where in repo |
-|---|---|---|
-| Aalto — Beyond the Clinic (main) | three independent sources → deterministic consensus; 3-min no-typing ritual; immediate + next-day intervention scoring | everything |
-| Best Use of Gemini API | Gemini Live voice with function-calling tools; Lyria RealTime music following the drum | `hub/kaiku_hub/live/` |
-| Best Use of Gemma | Gemma 4 on Modal explains the consensus from private data (explains only, never decides) | `cloud/kaiku_cloud/llm/` |
-| Best Use of Modal | API + web + DB volume + 15-min/nightly cron + GPU Gemma + `.map` consensus simulation (with lose-one-source ablation) on one live URL | `cloud/app.py` |
-| Meta AI Glasses | Source 2: audio-first walk companion, consent + permission/error/connectivity handling, WebMCP tools | `apps/glasses-webapp/` |
-| Atech Real World | Atech ESP32 head: eyes, IMU taps, ear encoder, pan motor, chest LEDs | `firmware/atech-head/` |
+What each track asks for, what we show, and where it lives. The full requirement-by-requirement audit, with
+gaps ranked, is in [`track-readiness.md`](track-readiness.md); the script is in
+[`demo-narrative.md`](demo-narrative.md). Rows marked *verify* describe work that was still landing on
+14 November: confirm it runs before the submission is set to FINAL.
+
+| Track (criteria) | What we show | Proof today | Where |
+|---|---|---|---|
+| **Aalto: Beyond the Clinic** (usefulness, ease of use, smart sensing, creativity; 25% each) | One person's day across robot, phone, Mac and glasses; four signal groups, each compared with her own baseline; a fixed consensus rule; a practitioner dashboard that shows who is worth a check-in; a learner that scores each suggested activity right away and the next day. | Software loop tested end to end on authored records. No real-person data, no clinical calibration. Calibration evaluation, richer games and onboarding: *verify*. | `cloud/kaiku_cloud/analytics/`, `config/criteria.toml`, `apps/apple/`, `apps/web/` (dashboard being rebuilt: verify path) |
+| **Best Use of Gemini API** (problem, integration, innovation, why Gemini) | Gemini Live is Kaiku's one voice on robot, phone, Mac and glasses, with function calls that move a physical ritual and write to a consented notebook; tokens are short-lived and minted by the cloud; TTS renders fixed lines; embeddings serve memory recall. | Native Live path verified with real provider calls on injected audio. Physical microphone acceptance pending. Lyria adapter exists and is not in the demo unless it plays on the device. | `hub/kaiku_hub/live/`, `apps/apple/KaikuKit/Sources/KaikuKit/Talk/`, `cloud/kaiku_cloud/mind/` |
+| **Best Use of Gemma** (innovative and impactful use, technical execution, open models on real problems) | Gemma 4 chooses the evidence for the practitioner review, proposes notebook graph changes, and answers the companion's deeper questions. Code validates every citation and renders every number; no model sets a state. | Verified through the hosted API (`gemma-4-26b-a4b-it`), an access route the brief allows. The Modal GPU app has not been deployed. No fine-tuned weights. Review trace API: *verify*. | `cloud/kaiku_cloud/clinician_chat.py`, `cloud/kaiku_cloud/mind/`, `cloud/kaiku_cloud/llm/` |
+| **Best Use of Modal** (effective use 40%, ambition 25%, impact 20%, live demo 15%) | One warm container serving API and dashboard, SQLite on a Volume, Secrets, three schedules, `.map()` simulation of 72 synthetic people, a scale-to-zero GPU class for Gemma. | Implemented, **not deployed**. There is no public URL yet; the API currently runs on the LAN. This track has no evidence until `make cloud-deploy` has run. | `cloud/app.py`, `cloud/gemma_app.py` |
+| **Meta: AI Glasses** (use case, technical execution, real-world value, UX: input, accessibility, trust; 25% each) | An audio-first walk companion on Gen 2 glasses through the iPhone: explicit registration with Meta AI (Device Access Toolkit), Kaiku's voice over Bluetooth, head motion summarised on the phone, and a walk that continues on the phone when the glasses disconnect or come off. No camera. | Registration and connection confirmed on real Gen 2 glasses. Motion and audio routing not yet accepted on the device. Runs in Developer Mode. The Display web app and Android folders are instructions only and are not part of the entry. | `apps/apple/iOS/DATGlasses.swift`, `apps/apple/KaikuKit/Sources/KaikuKit/Walk/`, `.../Voice/TalkAudio.swift` |
+| **Atech Real World** (validation, impact, use of Atech, live demo and story; 25% each) | The robot's head on one 14-port Atech board: screen eyes, encoder ear dial, lid button, two chest LED grids, neck motor, speaker, microphone, linked to the hub over MQTT. | Full firmware compiles; microphone and one LED grid seen working on the board. The link to the hub and the remaining benches have not run on hardware. Discord post and outside testers still missing. | `firmware/atech-head/`, `hub/kaiku_hub/devices/atech_adapter.py`, `hardware/` |
+
+Model responsibilities are fixed by D35 in [`decisions.md`](decisions.md): deterministic code computes state
+and handles a crisis; Gemma organises and selects; Gemini Live speaks.
+
+Every track is shown on the same authored person. Label her record as simulated, name the real device source
+of each observation, and separate software tests from physical hardware.

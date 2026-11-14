@@ -81,6 +81,20 @@
           "title": "Drift Window",
           "type": "integer"
         },
+        "early_baseline_lag_days": {
+          "default": 3,
+          "description": "lag of that provisional baseline (shorter than baseline_lag_days, so the first days can be compared at all)",
+          "minimum": 1,
+          "title": "Early Baseline Lag Days",
+          "type": "integer"
+        },
+        "early_baseline_min_days": {
+          "default": 0,
+          "description": "0 = off. While a metric's record is younger than baseline_days + baseline_lag_days and has no full baseline yet, use a provisional baseline from at least this many days",
+          "minimum": 0,
+          "title": "Early Baseline Min Days",
+          "type": "integer"
+        },
         "min_mad": {
           "default": 0.0,
           "description": "noise floor for MAD in metric units (avoids huge z on flat data)",
@@ -167,6 +181,19 @@
           "default": true,
           "title": "Counts For Better",
           "type": "boolean"
+        },
+        "day_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "payload ISO date used for daily grouping; envelope timestamp orders snapshots",
+          "title": "Day Field"
         },
         "drift_days": {
           "anyOf": [
@@ -442,6 +469,13 @@
           "title": "Expected Per Week",
           "type": "number"
         },
+        "max_age_days": {
+          "default": 3,
+          "description": "latest qualifying observation older than this -> insufficient",
+          "minimum": 1,
+          "title": "Max Age Days",
+          "type": "integer"
+        },
         "min_confidence": {
           "default": 0.4,
           "description": "below -> 'insufficient' (excluded from the vote)",
@@ -483,6 +517,13 @@
           "description": "needs_call holds until acknowledged or N stable days",
           "minimum": 0,
           "title": "Hysteresis Stable Days",
+          "type": "integer"
+        },
+        "min_history_days_for_stable": {
+          "default": 0,
+          "description": "0 = off. A record with fewer calendar days than this can never be 'stable' (the personal baseline is still forming): it reads 'watch' with agreement low_coverage",
+          "minimum": 0,
+          "title": "Min History Days For Stable",
           "type": "integer"
         },
         "min_sufficient_for_stable": {

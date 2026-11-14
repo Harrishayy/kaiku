@@ -154,3 +154,39 @@ def test_press_counter_one_answer_per_run():
     c.add(20.0)
     c.add(30.0)  # gap longer than the window starts a new answer
     assert c.take() == 1
+
+
+def test_speech_window_has_no_audio_and_suppresses_invalid_evidence():
+    from kaiku_hub.perception.speech import SpeechWindow
+
+    sr = 16000
+    t = np.arange(sr * 3) / sr
+    pcm = (10000 * np.sin(2 * np.pi * 200 * t) * (np.sin(2 * np.pi * 4 * t) > 0)).astype('<i2').tobytes()
+    window = SpeechWindow()
+    for chunk in (pcm[i:i+3200] for i in range(0, len(pcm), 3200)):
+        window.add(chunk)
+    assert len(window.energy) == 150 and isinstance(window.energy[0], float)
+    assert window.finish(heard=True)['duration_s'] == 3
+    assert len(window.energy) == 0
+    for unusable in (bytes(sr * 4), b'\xff\x7f' * sr * 2):
+        window.add(unusable)
+        assert window.finish(heard=True) is None
+    window.add(pcm)
+    assert window.finish(heard=False) is None
+    window.add(pcm)
+    window.add(pcm, usable=False)
+    assert window.finish(heard=True) is None
+    for _ in range(11):
+        window.add(pcm)
+    assert len(window.energy) == 1500 and window.finish(heard=True) is None
+    assert speech_features(np.zeros(sr * 2), sr) is None
+
+
+def test_light_preserves_capture_order_and_sensor_quality():
+    agg = LightAggregator(window_min=1)
+    assert agg.add(100, T0, .8) is None
+    assert agg.add(1000, T0 - timedelta(seconds=1), .9) is None
+    assert agg.add(1000, T0 + timedelta(seconds=10), .1) is None
+    assert agg.add(200, T0 + timedelta(seconds=30), .6) is None
+    assert agg.add(300, T0 + timedelta(seconds=61), .9)['lux_est'] == 150
+    assert agg.closed_at == T0 + timedelta(seconds=30) and agg.closed_quality == .6

@@ -94,27 +94,33 @@ final class DemoTourTests: XCTestCase {
         launch([], paired: false)
         step("onboarding")
         tap("Say hello", after: 2)
-        tap("Paste a link instead")
+        step("what Kaiku is and is not")
+        _ = see("Not emergency care")
+        tap("I understand", after: 2)
+        step("connect")
+        tap("Advanced: service address or account link")
         let field = app.textFields.firstMatch.exists ? app.textFields.firstMatch : app.textViews.firstMatch
         if field.waitForExistence(timeout: 4) {
             field.tap()
             field.typeText("\(cloud)/?home=demo-aino")
             pause(1)
-            tap("Continue", after: 3)            // pairs, shows "Found you!", moves on by itself
+            tap("Find service", after: 3)         // explicitly supplied test account link
         } else { missing.append("pair field") }
-        step("consent")
+        step("choices")
         pause(1.5)
         tap("Continue", after: 2)
-        step("notifications")
-        tap("Allow nudges", after: 1)
+        step("permissions")
+        tap("Allow: Gentle nudges", after: 1)
         let allow = springboard.buttons["Allow"]
         if allow.waitForExistence(timeout: 4) { allow.tap() }
         pause(1.5)
-        step("meet")
-        let mascot = app.descendants(matching: .any)["Kaiku"].firstMatch
-        if mascot.exists && mascot.isHittable { mascot.tap() }
-        pause(1.5)
-        tap("Let's start", after: 3)
+        tap("Continue", after: 2)
+        step("first hello and first task")
+        _ = see("good to meet you")
+        pause(2.5)
+        tap("That's it", after: 3)                // the practice dial: completion moment
+        _ = see("You did it")
+        tap("Go to Today", after: 3)
 
         step("today")
         _ = see("Aino", timeout: 10)

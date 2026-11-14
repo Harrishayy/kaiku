@@ -2,9 +2,9 @@ part = "ky039"
 board = "unoq-mcu"
 program = "ky039.ino"
 flash = "App Lab: new app, paste ky039.ino into sketch/sketch.ino, Run; open the serial monitor (KY-053 wired first)"
-steps = ["Rest a fingertip lightly in the lid's finger cradle (don't press), keep still for 15 s",
+steps = ["Rest a fingertip lightly in the lid's finger cradle (don't press), keep still for 20 s",
          "Shade it from room light with your other hand if the range stays small"]
-duration_s = 20
+duration_s = 25
 
 [[check]]
 name = "KY-053 answers on Wire at 0x48"
@@ -35,7 +35,12 @@ event = "batch"
 field = "max"
 all_max = 26000
 [[check]]
-name = "rough pulse in a human range at least once"
+name = "a steady pulse (30-220 bpm) is detected at least once"
 event = "batch"
-field = "bpm_rough"
-any_min = 40
+field = "bpm"
+any_min = 30
+[[check]]
+name = "never an impossible pulse (> 220 bpm)"
+event = "batch"
+field = "bpm"
+all_max = 220

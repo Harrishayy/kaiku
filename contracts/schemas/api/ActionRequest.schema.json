@@ -37,6 +37,20 @@
       ],
       "default": null,
       "title": "Note"
+    },
+    "ts": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "when the action really happened (default: now). Never in the future; lets a call be logged after the fact",
+      "title": "Ts"
     }
   },
   "required": [

@@ -20,10 +20,19 @@ class PresenceTracker:
         confirm_s: float = 1.0,
         hysteresis_cm: float = 20,
         last_arrival: datetime | None = None,
+        leave_s: float | None = None,
+        stale_s: float | None = None,
     ):
         self.near_cm = near_cm
         self.after = timedelta(hours=first_of_day_after_h)
         self.confirm = timedelta(seconds=confirm_s)
+        # The distance comes from the face box (D39: no distance sensor): a face turned away or looking down at the
+        # drum reads as "far". `leave_s` waits longer before calling that a departure.
+        self.leave = timedelta(seconds=confirm_s if leave_s is None else leave_s)
+        # No reading at all for `stale_s` (camera off, UNO Q down) = unknown, treated as not present.
+        self.stale = None if stale_s is None else timedelta(seconds=stale_s)
+        self.last_reading: datetime | None = None
+        self.visit_s = 0.0  # length of the last finished visit
         self.hysteresis_cm = hysteresis_cm
         self.last_arrival = last_arrival
         self.present = False
@@ -39,6 +48,7 @@ class PresenceTracker:
     def update(self, cm: float, now: datetime) -> dict | None:
         """Feed one distance reading. Returns an obs.presence payload on confirmed arrival."""
         self._window.append(cm)
+        self.last_reading = now
         d = self.distance
         assert d is not None
         if not self.present:
@@ -51,13 +61,29 @@ class PresenceTracker:
         else:
             if d > self.near_cm + self.hysteresis_cm:
                 self._far_since = self._far_since or now
-                if now - self._far_since >= self.confirm:
-                    self.present = False
-                    self._far_since = None
-                    self._near_since = None
+                if now - self._far_since >= self.leave:
+                    self._depart(self._far_since)
             else:
                 self._far_since = None
         return None
+
+    def _depart(self, at: datetime) -> None:
+        if self.arrived_at is not None:
+            self.visit_s = max(0.0, (at - self.arrived_at).total_seconds())
+        self.present = False
+        self._far_since = None
+        self._near_since = None
+
+    def expire(self, now: datetime) -> bool:
+        """Call regularly. True when presence was dropped because the distance stream went silent."""
+        if self.stale is None or self.last_reading is None or now - self.last_reading < self.stale:
+            return False
+        self._window.clear()
+        self._near_since = None
+        if not self.present:
+            return False
+        self._depart(self.last_reading)
+        return True
 
     def _arrive(self, d: float, now: datetime) -> dict:
         prev = self.last_arrival

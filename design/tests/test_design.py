@@ -96,6 +96,34 @@ def test_text_colours_are_readable_in_both_themes():
         assert _contrast(c["crisis-ink"], c["crisis"]) >= 4.5, f"{theme}: crisis button text"
 
 
+def test_soft_fills_states_and_series_are_readable():
+    """components.md: chip text is ink/ink-2 on a soft fill; a tone's own ink there is icon/large-text only."""
+    softs = ("clay-soft", "sage-soft", "sky-soft", "honey-soft", "crisis-soft", "surface-2")
+    for theme in ("light", "dark"):
+        c = TOKENS["color"][theme]
+        for bg in softs:
+            for fg in ("ink", "ink-2"):
+                assert _contrast(c[fg], c[bg]) >= 4.5, f"{theme}: {fg} on {bg} is {_contrast(c[fg], c[bg]):.2f}"
+        for tone in ("clay", "sage", "sky", "honey", "crisis"):
+            assert _contrast(c[tone], c[f"{tone}-soft"]) >= 3, f"{theme}: {tone} icon on its soft fill"
+        assert _contrast(c["muted"], c["surface-2"]) >= 4.5, f"{theme}: muted on surface-2"
+        assert _contrast(c["bg"], c["ink"]) >= 4.5, f"{theme}: toast text"
+        assert _contrast(c["focus"], c["bg"]) >= 3 and _contrast(c["focus"], c["surface"]) >= 3, f"{theme}: focus ring"
+        sem = TOKENS["color"]["$semantic"]
+        for k in ("series-1", "series-2", "series-3", "series-4", "chart-value", "state-stable", "state-watch",
+                  "state-needs-call", "state-insufficient", "state-safety"):
+            assert _contrast(c[sem[k]], c["surface"]) >= 4.5, f"{theme}: {k} on surface"
+
+
+def test_semantic_aliases_resolve():
+    sem = TOKENS["color"]["$semantic"]
+    for k, ref in sem.items():
+        assert ref in TOKENS["color"]["light"], f"$semantic.{k}: unknown colour {ref}"
+    for state in ("stable", "watch", "needs-call", "insufficient", "safety"):
+        assert f"state-{state}" in sem and f"state-{state}-soft" in sem, f"state-{state} needs ink + soft"
+    assert len({sem[f"series-{i}"] for i in range(1, 5)}) == 4, "chart series colours must differ"
+
+
 def test_copy_tables_match():
     copy = json.loads((DESIGN / "copy.json").read_text())
     langs = [k for k in copy if not k.startswith("$")]
@@ -119,5 +147,13 @@ def test_copy_has_no_banned_words():
 def test_motion_budget():
     d = TOKENS["motion"]["duration"]
     assert all(v >= 300 for k, v in d.items() if k not in ("blink",)), "character motion is never faster than 300 ms"
+    fb = {k: v for k, v in TOKENS["motion"]["feedback"].items() if not k.startswith("$")}
+    assert set(fb) == {"press", "release", "hover"} and all(0 < v <= 200 for v in fb.values()), "feedback is direct and quick"
+    for k, e in TOKENS["elevation"].items():
+        if not k.startswith("$"):
+            assert 0 < e["opacity"] <= 0.2 and e["radius"] > 0, f"elevation.{k}: shadows stay soft"
+    assert TOKENS["size"]["button-min"] >= TOKENS["size"]["tap-min"] >= 44 and TOKENS["size"]["row-min"] >= 44
+    for k, v in TOKENS["type"]["scale"].items():
+        assert v["size"] >= 12 and v.get("apple"), f"type.scale.{k}: ≥ 12 pt and a Dynamic Type style"
     gb = TOKENS["motion"]["guide-breath"]
     assert 60000 / gb["breaths-per-minute"] == SPEC["states"]["breathing"]["duration"]

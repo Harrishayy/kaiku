@@ -53,12 +53,14 @@ TOOLS: dict[str, dict[str, Any]] = {
         "executor": "device", "surfaces": ["glasses"],
         "parameters": {"type": "object", "required": ["kind"], "properties": {"kind": {"type": "string"}}}},
     "remember": {
-        "description": "Keep a short fact the person agreed to share (stored only if allowed; they can see and "
-                       "delete it). Never health details.",
+        "description": "Keep a short fact the person told you and wants kept (stored only if allowed; they can see "
+                       "and delete it). Never health details. In a conversation always pass `said`: the person's "
+                       "own words it comes from. Without it, or if it does not contain the fact, nothing is stored.",
         "executor": "cloud", "surfaces": _ALL,
         "parameters": {"type": "object", "required": ["category", "text"], "properties": {
             "category": {"type": "string", "enum": list(MEMORY_CATEGORIES)},
-            "text": {"type": "string", "maxLength": 200}}}},
+            "text": {"type": "string", "maxLength": 200},
+            "said": {"type": "string", "maxLength": 300}}}},
     "forget": {
         "description": "The person said \"don't remember that\" (scope last) or wants everything forgotten (all).",
         "executor": "cloud", "surfaces": _ALL,
@@ -72,8 +74,8 @@ TOOLS: dict[str, dict[str, Any]] = {
         "description": "Get today's one small suggestion (phrase it, never change it).",
         "executor": "cloud", "surfaces": _ALL, "parameters": _EMPTY},
     "ask_mind": {
-        "description": "Ask Kaiku's mind when unsure, when you need a fact the person told you before, or for a care "
-                       "or hard emotional question. Returns an answer to say in your own words (may say to ask the "
+        "description": "Ask Kaiku's shared Gemma mind for missing or conflicting personal knowledge, planning, care "
+                       "or deeper emotional reasoning. Use prepared context directly when sufficient. Returns an answer to say in your own words (may say to ask the "
                        "person or the care team). kind: fact | care | memory | plan | emotional.",
         "executor": "cloud", "surfaces": _ALL,
         "parameters": {"type": "object", "required": ["question", "kind"], "properties": {
@@ -81,7 +83,7 @@ TOOLS: dict[str, dict[str, Any]] = {
             "kind": {"type": "string", "enum": list(get_args(MindKind))}}}},
     "send_friend_ping": {
         "description": "Light the friend's lamp.",
-        "executor": "device", "surfaces": ["robot", "iphone"], "parameters": _EMPTY},
+        "executor": "device", "surfaces": ["robot"], "parameters": _EMPTY},
     "start_phq9": {
         "description": "Start the two-weekly questionnaire (read items verbatim; code scores it).",
         "executor": "device", "surfaces": ["robot", "iphone", "mac", "web"], "parameters": _EMPTY},
@@ -100,7 +102,9 @@ TOOLS: dict[str, dict[str, Any]] = {
                 "skill": {"type": "string", "enum": list(SKILLS)},
                 "topic": {"type": "string", "maxLength": 80}}}}}},
     "look_at_this": {
-        "description": "Ask for ONE camera frame from the glasses (only while the person holds the tap).",
+        "description": "Check whether you can see through the glasses camera right now, and get one fresh picture "
+                       "if you can. Only works while the person has turned on Let Kaiku see; otherwise the result "
+                       "says you cannot see.",
         "executor": "device", "surfaces": ["glasses"], "parameters": _EMPTY},
 }
 

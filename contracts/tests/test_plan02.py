@@ -66,3 +66,18 @@ def test_nested_criteria_field_and_conservative_new_metrics():
 def test_me_response_defaults_are_additive():
     me = MeResponse(home_id="h", summary="s")
     assert me.mascot.mood == "idle" and me.highlights == [] and me.garden.plants == 0
+
+
+def test_task_camera_requires_provenance_and_rejects_raw_media():
+    base = {"game": "firefly", "device": "phone", "duration_s": 60}
+    # Not seen is missing, not a zero movement score.
+    validate(_env("obs.play_session", {**base, "camera_face_coverage": 0, "camera_samples": 100,
+                                       "camera_method": "vision_landmarks"}))
+    camera = {**base, "expressivity_index": 0.15, "camera_face_coverage": 0.9,
+              "camera_samples": 100, "camera_method": "vision_landmarks"}
+    validate(_env("obs.play_session", camera))
+    for bad in ({**camera, "camera_method": None}, {**camera, "camera_face_coverage": 0},
+                {**camera, "camera_samples": 0}, {**camera, "frames": ["raw"]},
+                {**camera, "emotion": "happy"}, {**camera, "audio": "raw"}):
+        with pytest.raises(ContractError):
+            validate(_env("obs.play_session", bad))

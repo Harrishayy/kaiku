@@ -39,12 +39,22 @@ def test_opt_in_transcript_is_stored_listed_and_deletable(client):
     assert episode(client, "e2", TURNS[:1])["transcript_stored"] is True
     got = client.get("/v1/me/transcripts?home_id=h1").json()["transcripts"]
     assert {t["episode_id"] for t in got} == {"e1", "e2"}
-    assert next(t for t in got if t["episode_id"] == "e1")["turns"] == TURNS
+    assert next(t for t in got if t["episode_id"] == "e1")["turns"] == [{**t, "complete": None} for t in TURNS]
     assert client.get("/v1/me/transcripts?home_id=other").json()["transcripts"] == []
     assert client.delete("/v1/me/transcripts/e1?home_id=other").status_code == 404   # not that home's
     assert client.delete("/v1/me/transcripts/e1?home_id=h1").json() == {"deleted": 1}
     assert client.delete("/v1/me/transcripts?home_id=h1").json() == {"deleted": 1}
     assert client.get("/v1/me/transcripts?home_id=h1").json()["transcripts"] == []
+
+
+def test_transcription_completion_is_independent_metadata_and_never_changes_words(client):
+    turns = [{"role": "person", "text": "A quiet minute, please.", "complete": True},
+             {"role": "kaiku", "text": "We can sit", "complete": False},
+             {"role": "person", "text": "An older note."}]
+    assert episode(client, "transcription-status", turns)["transcript_stored"]
+    saved = client.get("/v1/me/transcripts?home_id=h1").json()["transcripts"][0]["turns"]
+    assert [t["text"] for t in saved] == [t["text"] for t in turns]
+    assert [t["complete"] for t in saved] == [True, False, None]
 
 
 def test_crisis_conversations_are_never_stored(client):
@@ -76,7 +86,8 @@ def test_training_export_is_de_identified(tmp_path):
     assert "[PERSON]" in out and "[PHONE]" in out
     assert transcripts_export.identifiers([{"category": "people", "text": "My sister Liisa"},
                                            {"category": "likes", "text": "Loves Moomins"}]) == {"Liisa": "[PERSON]"}
-    exported = transcripts_export.export(s, "salt")
+    assert transcripts_export.export(s, "salt") == []  # retention consent is not training consent
+    exported = transcripts_export.export(s, "salt", reviewed_episode_ids={"x1", "x2"})
     assert len(exported) == 1                                    # a person-only conversation is useless: skipped
     row = exported[0]
     assert [m["role"] for m in row["messages"]] == ["model", "user", "model"]

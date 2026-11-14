@@ -1,6 +1,6 @@
 """Sim twin of the glasses (source 2). HTTPS only: POSTs obs.outing + obs.intervention_response (activity "walk")
-to the cloud, like the iPhone app's DAT glasses bridge does: walk minutes from phone location, cadence / gait
-regularity / head-up ratio from the glasses IMU (`method: dat_imu`), daylight minutes from sparse camera frames.
+to the cloud. The current demo models phone-supported outing duration/steps only; it does not invent
+glasses motion, camera daylight, or evidence that the outing occurred outdoors.
 
     uv run python -m sim.nodes.glasses_sim [--every 300] [--once]
 """
@@ -30,11 +30,7 @@ class GlassesSim:
         pre = self.rng.choice([2, 3, 3, 4])
         post = min(5, pre + self.rng.choice([0, 1, 1]))
         return [
-            ("obs.outing", {"minutes": minutes, "steps": steps, "method": "dat_imu",
-                            "cadence_spm": round(self.rng.gauss(106, 4), 1),
-                            "gait_regularity": round(min(1.0, max(0.0, self.rng.gauss(0.82, 0.05))), 3),
-                            "head_up_ratio": round(min(1.0, max(0.0, self.rng.gauss(0.62, 0.06))), 3),
-                            "daylight_min": round(minutes * self.rng.uniform(0.4, 0.8), 1)}),
+            ("obs.outing", {"minutes": minutes, "steps": steps, "method": "steps"}),
             ("obs.intervention_response", {"activity": "walk", "pre": {"mood": pre}, "post": {"mood": post},
                                            "delta": {"mood": float(post - pre)}}),
         ]

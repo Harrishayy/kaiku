@@ -1,8 +1,9 @@
 import Foundation
 import Security
 
-/// A pairing = which cloud, which home, and the home token (if the cloud has one). Comes from a link
-/// `https://<cloud>/<any path>?home=<home_id>&t=<token>` (the QR on the robot / `/me` encodes the same link).
+/// Companion service configuration: origin, private home profile and scoped token when required.
+/// Local demo services can provision a stable device profile through discovery; authenticated services use an
+/// account access link. Robot hardware and Meta registration are independent of this service connection.
 public struct Pairing: Codable, Sendable, Equatable {
     public var baseURL: URL
     public var homeID: String

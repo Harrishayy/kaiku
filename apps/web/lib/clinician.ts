@@ -9,22 +9,6 @@ type State = Consensus['state'];
 type Agreement = Consensus['agreement'];
 type Verdict = SourceVerdict['verdict'];
 
-/** Consensus wording (root AGENTS.md): "Needs a call", "Worth a check-in", "Stable", "Not enough data". */
-export function consensusChip(state: State, agreement: Agreement): { label: string; cls: string } {
-  if (state === 'safety') return { label: 'Safety: call today', cls: 'safety' };
-  if (state === 'needs_call') return { label: 'Needs a call', cls: 'call' };
-  if (state === 'watch' && agreement === 'low_coverage') return { label: 'Not enough data', cls: 'ins' };
-  if (state === 'watch') return { label: 'Worth a check-in', cls: 'watch' };
-  return { label: 'Stable', cls: 'ok' };
-}
-
-export function verdictChip(v: Verdict | undefined): { label: string; cls: string } {
-  if (v === 'worse') return { label: 'Change from usual', cls: 'watch' };
-  if (v === 'better') return { label: 'Better than usual', cls: 'ok' };
-  if (v === 'as_usual') return { label: 'As usual', cls: 'ok' };
-  return { label: 'Not enough data', cls: 'ins' };
-}
-
 export const VERDICT_WORD: Record<Verdict, string> = {
   worse: 'change from usual',
   better: 'better',
@@ -44,11 +28,42 @@ export function num(v: number | null | undefined): string {
   return (s.includes('.') ? s.replace(/\.?0+$/, '') : s) || '0'; // 8900 stays 8900; 2.50 → 2.5
 }
 
-const UNITLESS = new Set(['', 'count', 'ratio', '0–1', '1–5']);
-export function withUnit(v: number | null | undefined, unit: string | undefined): string {
-  const n = num(v);
-  if (n === '—' || !unit || UNITLESS.has(unit)) return n;
-  return `${n} ${unit}`;
+/** Format raw clinical units without changing the underlying measurement. */
+export function durationMinutes(value: number): string {
+  const minutes = Math.max(0, Math.round(value));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60), rest = minutes % 60;
+  return `${hours} h${rest ? ` ${rest} min` : ''}`;
+}
+
+export function clockMinutes(value: number): string {
+  const minute = ((Math.round(value) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+}
+
+export function withUnit(v: number | null | undefined, unit: string | undefined, missing = 'Not recorded'): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return missing;
+  if (unit?.includes('midnight')) return clockMinutes(v);
+  if (unit === 'min') return durationMinutes(v);
+  if (unit === 's') return v >= 60 ? durationMinutes(v / 60) : `${Math.round(v)} sec`;
+  if (unit === 'ratio') return `${Math.round(v * 100)}%`;
+  if (unit === 'steps' || unit === 'count') return `${Math.round(v).toLocaleString('en-GB')}${unit === 'steps' ? ' steps' : ''}`;
+  if (unit === 'ms') return `${Math.round(v)} ms`;
+  if (!unit || ['', '0–1', '1–5'].includes(unit)) return num(v);
+  return `${num(v)} ${unit}`;
+}
+
+export function metricUnitLabel(unit: string | undefined): string {
+  if (unit?.includes('midnight')) return 'Time of day';
+  if (unit === 'min' || unit === 's') return 'Duration';
+  if (unit === 'ratio') return 'Percent';
+  return unit ?? '';
+}
+
+export function shortDay(date: string | null | undefined): string {
+  if (!date) return 'Date not recorded';
+  const d = new Date(`${date.slice(0, 10)}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? 'Date not recorded' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 export interface EvidenceRow {
@@ -56,6 +71,7 @@ export interface EvidenceRow {
   label: string;
   source: string;
   today: string;
+  date: string | null;
   usual: string;
   z: string;
   direction: string;
@@ -67,16 +83,16 @@ export interface EvidenceRow {
 
 /** |z| in plain words: how many of the person's usual day-to-day spreads away from their usual. */
 export function zWords(z: number | null | undefined): string {
-  if (typeof z !== 'number') return '—';
+  if (typeof z !== 'number') return 'Rule-based evidence';
   const a = Math.abs(z);
   return a >= 4 ? 'far from usual' : a >= 2.5 ? 'clearly different' : a >= 1.5 ? 'somewhat different' : 'a little';
 }
 
 /** Usual range "(low–high)", never below 0 for a metric that is never negative (minutes, counts, rates). */
 export function usualRange(p: TimelinePoint, unit: string | undefined, nonNegative: boolean): string {
-  if (typeof p.baseline_median !== 'number') return '—';
+  if (typeof p.baseline_median !== 'number') return 'Baseline not established';
   const lo = typeof p.band_low === 'number' && nonNegative ? Math.max(0, p.band_low) : p.band_low;
-  return `${withUnit(p.baseline_median, unit)} (${num(lo)}–${num(p.band_high)})`;
+  return `${withUnit(p.baseline_median, unit)} (${typeof lo === 'number' && typeof p.band_high === 'number' ? `${withUnit(lo, unit)} to ${withUnit(p.band_high, unit)}` : 'range not established'})`;
 }
 
 /** Evidence table: every drifting metric any source reports, joined with its timeline numbers, biggest |z| first. */
@@ -94,10 +110,11 @@ export function evidenceRows(c: Consensus, series: MetricSeries[]): EvidenceRow[
         metric: e.metric,
         label: s?.label ?? (ruleLabel || e.metric.replace(/_/g, ' ')),
         source: v.source,
-        today: last ? withUnit(last.value, s?.unit) : ruleValue || '—',
-        usual: last && s ? usualRange(last, s.unit, s.points.every((p) => typeof p.value !== 'number' || p.value >= 0)) : '—',
-        z: typeof e.z === 'number' ? `${e.z > 0 ? '+' : e.z < 0 ? '−' : ''}${Math.abs(e.z).toFixed(1)}` : '—',
-        direction: `${e.direction === 'up' ? '↑ higher' : '↓ lower'}${e.days ? ` on ${e.days} of the last days` : ''}`,
+        today: last ? withUnit(last.value, s?.unit) : ruleValue || 'See rule evidence',
+        date: last?.date ?? null,
+        usual: last && s ? usualRange(last, s.unit, s.points.every((p) => typeof p.value !== 'number' || p.value >= 0)) : 'Rule threshold',
+        z: typeof e.z === 'number' ? `${e.z > 0 ? '+' : e.z < 0 ? '−' : ''}${Math.abs(e.z).toFixed(1)}` : '',
+        direction: `${e.direction === 'up' ? 'Higher' : 'Lower'}${e.days ? ` on ${e.days} recent ${e.days === 1 ? 'day' : 'days'}` : ''}`,
         size: zWords(e.z),
         worse,
         absZ: typeof e.z === 'number' ? Math.abs(e.z) : 99,
@@ -127,9 +144,9 @@ export function sourceMissing(v: SourceVerdict | undefined, series: MetricSeries
 export function consensusSentence(c: Consensus): string {
   const withData = c.sources.filter((s) => s.verdict !== 'insufficient');
   const worse = withData.filter((s) => s.verdict === 'worse').length;
-  if (withData.length === 0) return 'No source has enough recent data yet';
-  if (worse === 0) return `All ${withData.length} sources with data look as usual or better`;
-  return `${worse} of ${withData.length} sources with data show a change from usual`;
+  if (withData.length === 0) return 'No signal group has enough recent data yet';
+  if (worse === 0) return `All ${withData.length} signal groups with data look as usual or better`;
+  return `${worse} of ${withData.length} signal groups with data show a change from usual`;
 }
 
 /** Sparkline geometry over the last `days` points: value line, last-point band, last point. */

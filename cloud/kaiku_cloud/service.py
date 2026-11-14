@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -29,7 +31,9 @@ from kaiku_contracts.api import (
     SourceBadge,
     TimelinePoint,
 )
+from kaiku_contracts.config import get
 from kaiku_contracts.criteria import Criteria, criteria_path, load_criteria
+from kaiku_contracts.sources import SOURCE_LABELS
 
 from . import companion
 from .analytics import bandit
@@ -92,27 +96,47 @@ def set_criteria(store: Store, settings: Settings, crit: Criteria | None, by: st
     return criteria_response(store)
 
 
-def patient_data(store: Store, home_id: str, crit: Criteria) -> PatientData:
-    return build(home_id, store.events_for_home(home_id), crit, store.actions(home_id))
+CUMULATIVE = ("sum", "count")  # a day's total only means something once the day is over
+ROBOT_SOURCES = {"hub", "head", "sensors"}  # envelope sources that only a robot at home produces
+ROBOT_ARMS = {"drum"}  # suggestions that need the robot's hardware
+
+
+def patient_data(store: Store, home_id: str, crit: Criteria, today: date | None = None) -> PatientData:
+    """Today's running total of a cumulative metric (steps, minutes, counts) reads low until the day ends, so it
+    is neither scored nor charted yet; it appears tomorrow as a complete day."""
+    data = build(home_id, store.events_for_home(home_id), crit, store.actions(home_id))
+    today = today or today_local()
+    for m in crit.metrics:
+        if m.agg in CUMULATIVE and m.name in data.series:
+            data.series[m.name] = {d: v for d, v in data.series[m.name].items() if d < today}
+    return data
+
+
+def nudge_arms(store: Store, home_id: str) -> tuple[str, ...]:
+    """Suggestions this home can actually do: no drumming without a robot that has ever reported."""
+    arms = bandit.enabled_arms()
+    if any(e["source"] in ROBOT_SOURCES for e in store.events_for_home(home_id)):
+        return arms
+    return tuple(a for a in arms if a not in ROBOT_ARMS) or ("breathe",)
 
 
 def explain_ctx(home_id: str, c: Consensus, notes: list[str], sim: bool, families: list[str] | None = None
                 ) -> dict[str, Any]:
     return {
-        "display_name": display_name(home_id) + (" (SIMULATED)" if sim else ""),
+        "display_name": display_name(home_id), "simulated": sim,
         "state": c.state, "agreement": c.agreement, "rule_version": c.rule_version,
         "acknowledged": c.acknowledged_by is not None, "notes": notes, "correlated_families": families or [],
-        "sources": [v.model_dump(mode="json", exclude={"computed_at", "home_id"}) for v in c.sources],
+        "sources": [{**v.model_dump(mode="json", exclude={"computed_at", "home_id"}),
+                     "label": SOURCE_LABELS[v.source]} for v in c.sources],
     }
 
 
 def evaluate_home(store: Store, home_id: str, crit: Criteria, today: date | None = None) -> dict[str, Any]:
     """Compute (don't save) the summary row for one home under `crit`."""
-    data = patient_data(store, home_id, crit)
     end = today or today_local()
-    if data.last_activity_at is not None:
-        end = max(end, local_date(data.last_activity_at))
+    data = patient_data(store, home_id, crit, end)
     c, last = compute(data, crit, end)
+    c.simulated = data.sim
     ctx = explain_ctx(home_id, c, last.notes, data.sim, last.correlated_families)
     c.explanation = template_explanation(ctx)
     summary = PatientSummary(
@@ -174,6 +198,9 @@ def ranked_summaries(rows: list[dict[str, Any]]) -> list[PatientSummary]:
     return sorted(out, key=lambda s: (STATE_RANK[s.state], s.display_name))
 
 
+_EXPLANATION_LOCKS: dict[str, Any] = defaultdict(threading.Lock)
+
+
 def get_consensus(store: Store, settings: Settings, row: dict[str, Any], log: Any = None) -> Consensus:
     """Consensus with the configured explainer (LLM if KAIKU_LLM says so), cached by input hash."""
     c = Consensus.model_validate(row["consensus"])
@@ -181,14 +208,26 @@ def get_consensus(store: Store, settings: Settings, row: dict[str, Any], log: An
         return c
     ctx = explain_ctx(c.home_id, c, row.get("notes", []), bool(row["summary"].get("sim")),
                       row.get("correlated_families"))
-    h = hashlib.sha256(json.dumps([ctx, settings.llm], sort_keys=True, default=str).encode()).hexdigest()[:16]
-    cached = store.get_explanation(c.home_id)
-    if cached and cached[0] == h:
-        c.explanation = Explanation.model_validate(cached[1])
+    # Arrival timestamps are presentation metadata, not new explanation evidence.
+    semantic = {**ctx, "sources": [{k: v for k, v in source.items() if k != "last_data_at"}
+                                    for source in ctx["sources"]]}
+    h = hashlib.sha256(json.dumps(["verified-selection-v2", semantic, settings.llm], sort_keys=True, default=str).encode()).hexdigest()[:16]
+    with _EXPLANATION_LOCKS[f"{settings.db_path}:{c.home_id}"]:
+        cached = store.get_explanation(c.home_id)
+        cooldown = float(get("gemma_hosted", "explanation_cooldown_s", 300))
+        age = float("inf")
+        if cached:
+            last = Explanation.model_validate(cached[1])
+            age = (datetime.now(UTC) - last.generated_at).total_seconds() if last.generated_at else float("inf")
+            if cached[0] == h and (last.by != "template" or age < cooldown):
+                c.explanation = last
+                return c
+            if age < cooldown:
+                # New evidence is always represented by today's deterministic explanation; never show stale prose.
+                return c
+        c.explanation = make_explanation(ctx, settings, log)
+        store.save_explanation(c.home_id, h, c.explanation.model_dump(mode="json"))
         return c
-    c.explanation = make_explanation(ctx, settings, log)
-    store.save_explanation(c.home_id, h, c.explanation.model_dump(mode="json"))
-    return c
 
 
 def timeline(store: Store, home_id: str, metrics: list[str] | None, days: int = 30) -> list[MetricSeries]:
@@ -196,8 +235,6 @@ def timeline(store: Store, home_id: str, metrics: list[str] | None, days: int = 
     crit = active_criteria(store)
     data = patient_data(store, home_id, crit)
     end = today_local()
-    if data.last_activity_at is not None:
-        end = max(end, local_date(data.last_activity_at))
     start = end - timedelta(days=days - 1)
     specs = [m for m in crit.metrics if m.enabled and (metrics is None or m.name in metrics)]
     out: list[MetricSeries] = []
@@ -213,7 +250,8 @@ def timeline(store: Store, home_id: str, metrics: list[str] | None, days: int = 
             pts.append(TimelinePoint(date=d, value=round(s[d], 3) if d in s else None,
                                      baseline_median=round(b.median, 3) if b else None,
                                      band_low=round(b.median - z * b.scale, 3) if b else None,
-                                     band_high=round(b.median + z * b.scale, 3) if b else None))
+                                     band_high=round(b.median + z * b.scale, 3) if b else None,
+                                     early=bool(b and b.early)))
         out.append(MetricSeries(metric=m.name, label=m.label, unit=m.unit, source=m.source, worse_when=m.worse_when,
                                 points=pts))
     return out
@@ -279,7 +317,7 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
         if avg > 0:
             lines.append(f"Breathing with Kaiku calmed your heart rhythm on average (+{avg:.0f} ms HRV).")
     helps = [HelpStat(**h) for h in bandit.help_stats(data.nudge_outcomes, data.interventions)]
-    nxt = NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions))
+    nxt = NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions, arms=nudge_arms(store, home_id)))
     return MeResponse(home_id=home_id, summary=ME_STATE[state], last_week=lines, what_helps=helps,
                       next_suggestion=nxt, phq9_due=phq9_due(data, settings.phq9_every_days, today),
                       mascot=companion.mascot_for(state, now_local.hour, companion.together_recently(events, today)),
@@ -289,7 +327,7 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
 
 def nudge(store: Store, settings: Settings, home_id: str) -> NudgeResponse:
     data = patient_data(store, home_id, active_criteria(store))
-    return NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions))
+    return NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions, arms=nudge_arms(store, home_id)))
 
 
 def now_utc() -> datetime:

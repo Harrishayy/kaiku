@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "ObsTypeCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "captured_by": {
+          "description": "envelope sources that sent it (hub, phone, …)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Captured By",
+          "type": "array"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "days": {
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "last_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last At"
+        },
+        "simulated": {
+          "default": 0,
+          "description": "how many of these observations carry sim=true",
+          "minimum": 0,
+          "title": "Simulated",
+          "type": "integer"
+        },
+        "type": {
+          "description": "obs.* type",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "label",
+        "count",
+        "days"
+      ],
+      "title": "ObsTypeCoverage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "days_last_14": {
+      "maximum": 14,
+      "minimum": 0,
+      "title": "Days Last 14",
+      "type": "integer"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "last_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last At"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "sufficient": {
+      "description": "enough recent usable data for this group to give a verdict",
+      "title": "Sufficient",
+      "type": "boolean"
+    },
+    "types": {
+      "items": {
+        "$ref": "#/$defs/ObsTypeCoverage"
+      },
+      "title": "Types",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source",
+    "label",
+    "sufficient",
+    "days_last_14"
+  ],
+  "title": "GroupCoverage",
+  "type": "object"
+}

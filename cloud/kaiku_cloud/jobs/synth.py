@@ -15,15 +15,17 @@ seeded RNG, so every plan-01 event — and its id — is unchanged (re-seeding s
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
 from kaiku_contracts import validate
-from kaiku_contracts.payloads import NUDGE_ARMS
 
+from ..analytics.bandit import enabled_arms
 from ..settings import TZ
+
+NUDGE_ARMS = enabled_arms()
 
 CLINICAL_LAG_DAYS = 10  # when a clinician would otherwise notice (lead-time reference)
 RAMP_DAYS = 7
@@ -83,9 +85,18 @@ DEMO_PATIENTS: tuple[PatientSpec, ...] = (
     PatientSpec("sim-helmi", 13, "robot-only drift", drift=frozenset({"robot"}), onset=18, favourite_arm="friend_ping"),
     PatientSpec("sim-kaisa", 15, "low coverage (robot only)", present=frozenset({"robot"}), favourite_arm="breathe"),
     PatientSpec("sim-lauri", 16, "PHQ-9 item 9 positive", safety_day=27, favourite_arm="icbt_exercise"),
-    PatientSpec("sim-mirja", 17, "glasses-only drift", drift=frozenset({"glasses"}), onset=17, favourite_arm="drum"),
+    PatientSpec("sim-mirja", 17, "recent outing decline", drift=frozenset({"glasses"}), onset=20, favourite_arm="drum"),
     PatientSpec("sim-onni", 18, "improving", improving=True, onset=12, favourite_arm="daylight_walk"),
 )
+
+# A demo opens after baseline collection, with mostly complete ordinary records. Keep the deliberately
+# noisy and low-coverage examples for explicit edge-case review, rather than making every chart thin.
+DEMO_PATIENTS = tuple(replace(p, days=45,
+                             onset=p.onset + 15 if p.onset is not None else None,
+                             safety_day=p.safety_day + 15 if p.safety_day is not None else None,
+                             p_miss=p.p_miss if p.home_id == "sim-juho" else 0.0,
+                             noise=p.noise if p.home_id == "sim-juho" else 0.6)
+                      for p in DEMO_PATIENTS)
 
 
 def _sim_id(rng: random.Random) -> UUID:
@@ -140,7 +151,20 @@ def generate(spec: PatientSpec, end: date | None = None) -> list[dict[str, Any]]
         env = validate({"id": str(_sim_id(r)), "ts": local_dt.astimezone(UTC), "home_id": spec.home_id,
                         "source": source, "type": type_, "payload": payload, "sim": True,
                         "quality": round(r.uniform(0.75, 0.98), 2)})
-        events.append(env.model_dump(mode="json", exclude_none=True))
+        # The demo mirrors currently supported capture. Preserve RNG consumption for reproducibility,
+        # but never invent fitted light/force, validated pulse, retired browser tasks or glasses camera data.
+        if type_ in {"obs.light_level", "obs.laptop_session", "obs.hrv_session", "obs.friend_link"}:
+            return
+        if type_ == "obs.intervention_response" and payload.get("activity") == "breathe":
+            return
+        row = env.model_dump(mode="json", exclude_none=True)
+        if type_ == "obs.drum_session":
+            row["payload"].pop("force_mean", None)
+        if type_ == "obs.outing":
+            for field in ("daylight_min", "cadence_spm", "gait_regularity", "head_up_ratio"):
+                row["payload"].pop(field, None)
+            row["payload"]["method"] = "steps"
+        events.append(row)
 
     def ramp(i: int, source: str) -> float:
         if spec.onset is None or i < spec.onset or source not in spec.drift | spec.subtle:

@@ -5,7 +5,7 @@ UV ?= uv
 RUN := $(UV) run --quiet
 MOSQUITTO ?= $(shell command -v mosquitto 2>/dev/null || ls /opt/homebrew/sbin/mosquitto /usr/local/sbin/mosquitto /usr/sbin/mosquitto 2>/dev/null | head -1)
 TOPIC ?= kaiku/v1/\#
-NODES ?= head,sensors,friendlink,glasses,laptop,phone
+NODES ?= head,sensors,glasses,laptop,phone
 ROLE ?= all
 
 .PHONY: help
@@ -23,13 +23,15 @@ env: ## create .env from .env.example if missing
 	@[ -f .env ] || (cp .env.example .env && echo "created .env — fill in secrets")
 
 # ---------------------------------------------------------------- contracts
-.PHONY: contracts test-contracts agents criteria tune design
+.PHONY: contracts test-contracts agents criteria tune calibrate design
 design: ## regenerate design/generated (tokens.css, Tokens.swift) + design/mascot.svg from design/*.json
 	$(RUN) python design/gen.py
 criteria: ## validate config/criteria.toml and print the effective rule version + metrics per source
 	$(RUN) python -c "from kaiku_contracts.criteria import load_criteria as L; c=L(); print(c.rule_version); [print(f'  {s:8} ', ', '.join(m.name+('' if m.weight==1 else f'x{m.weight:g}') for m in c.metrics_for(s)), '| rules:', ', '.join(r.name for r in c.rules_for(s)) or '-') for s in c.active_sources()]"
 tune: ## simulate consensus quality for a criteria file: make tune [CRITERIA=path] [COMPARE=path] [N=40]
 	$(RUN) python -m kaiku_cloud.jobs.simulate --criteria $(or $(CRITERIA),config/criteria.toml) $(if $(COMPARE),--compare $(COMPARE)) --n $(or $(N),40)
+calibrate: ## how well does the rule tell "not well" from "ok"? labelled synthetic courses: make calibrate [CRITERIA=path] [COMPARE=path] [N=40]
+	$(RUN) python -m kaiku_cloud.analytics.calibration --criteria $(or $(CRITERIA),config/criteria.toml) $(if $(COMPARE),--compare $(COMPARE)) --n $(or $(N),40)
 agents: ## regenerate the module index in AGENTS.md, then check the one-AGENTS.md-per-module rule
 	$(RUN) python tools/agents_sync.py
 contracts: ## regenerate JSON Schemas + TS types from the pydantic models
@@ -58,8 +60,8 @@ replay: ## replay a recording: make replay FILE=logs/x.jsonl [SPEED=1]
 
 # ---------------------------------------------------------------- cloud & web
 .PHONY: cloud-local cloud-dev cloud-deploy gemma-download gemma-deploy gemma-smoke seed web web-build voice-prerender
-cloud-local: ## run the cloud API locally on :8000 (no Modal needed)
-	$(RUN) uvicorn kaiku_cloud.api.local:app --reload --port 8000
+cloud-local: ## run the LAN demo API with Bonjour discovery (no robot or Modal needed)
+	KAIKU_DEMO_MODE=1 $(RUN) python tools/cloud_local.py --reload $(ARGS)
 cloud-dev: ## modal serve (hot-reload on Modal)
 	cd cloud && $(RUN) modal serve app.py
 cloud-deploy: web-build ## modal deploy (public URL)
@@ -80,7 +82,7 @@ web-build: ## static-export the Next.js app to apps/web/out (served by the cloud
 	@if [ -f apps/web/package.json ]; then cd apps/web && pnpm install --silent && pnpm build; fi
 
 # ---------------------------------------------------------------- quality
-.PHONY: test lint fmt doctor demo-reset check smoke eval-companion spend
+.PHONY: test lint fmt doctor demo demo-reset live-day check smoke eval-companion spend
 spend: ## paid model spend so far vs the hard cap (config/kaiku.toml [budget])
 	$(RUN) python -m kaiku_contracts.budget
 smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
@@ -118,5 +120,9 @@ atech-setup: ## Atech SDK venv + pinned ESP32 toolchain, all inside firmware/ate
 eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
 	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing
-demo-reset: ## reset demo state (< 30 s)
-	./demo/reset.sh
+demo: ## ONE command: broker + local API + dashboard + Aino's 16-day record, prints the links [KAIKU_DEMO_PORT=8000]
+	@./scripts/demo.sh
+demo-reset: ## drop simulated data on the local API and seed Aino's 16 days again (< 30 s; live recordings stay)
+	@./demo/reset.sh
+live-day: ## what a good vs a rough day today does to Aino's reading (throwaway copy; ARGS="--url http://127.0.0.1:8000 --kind good" posts to a local API)
+	$(RUN) python scripts/live_day.py $(ARGS)

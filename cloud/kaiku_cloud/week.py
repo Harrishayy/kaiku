@@ -48,10 +48,10 @@ from .store.db import Store
 # activity key -> (person label, care-team label, consensus source it is observed by)
 ACTIVITIES: dict[str, tuple[str, str, str | None]] = {
     "ritual": ("Morning ritual with Kaiku", "Morning ritual (robot)", "robot"),
-    "walk": ("Walks outside", "Walks (glasses)", "glasses"),
+    "walk": ("Walks and outings", "Walks and outings", "glasses"),
     "drum": ("Drumming with Kaiku", "Drum sessions (robot)", "robot"),
     "breathe": ("Breathing with Kaiku", "Guided breathing", "robot"),
-    "checkin": ("Weather checks", "Self-report check-ins (apps)", "laptop"),
+    "checkin": ("Weather checks", "Self-report check-ins (apps)", "robot"),
     "laptop": ("Laptop check-in", "Laptop sessions", "laptop"),
     "play": ("Games with Kaiku", "Games (apps)", "laptop"),
     "sleep": ("Going to sleep", "Sleep onset (watch)", "wearable"),
@@ -60,7 +60,7 @@ EPISODE_ACTIVITY = {"walk": "walk", "breathe": "breathe", "break": "breathe", "r
                     "checkin": "checkin"}
 GRAPH_LABEL = {"laptop": "the laptop check-in", "play": "games"}  # kg labels for obs-only activities
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-CARE_TYPES = {"me", "activity", "helper", "routine"}
+CARE_TYPES = {"me", "activity", "routine"}  # free-text helpers may include private names/places
 _SHARE_KEY = "share_care:{}"
 
 
@@ -154,23 +154,27 @@ def _routine_text(key: str, cadence: str, weekday: str | None, usual: str | None
         at = f", usually in the {part} around {usual}" if usual else ""
         return f"{when}{at}. {this_week} day{'s' if this_week != 1 else ''} this week."
     if key == "sleep":
-        return f"Usual onset ~{usual}; {this_week} nights recorded this week."
-    when = {"daily": "Daily", "most_days": "Most days"}.get(cadence) or f"Weekly ({weekday})"
-    return f"{when}, ~{usual} · usual {per_week:.1f}/wk · {this_week}/7 days this week."
+        return f"Usually asleep around {usual}; {this_week} nights recorded this week."
+    when = {"daily": "Every day", "most_days": "Most days"}.get(cadence) or f"{weekday}s"
+    return f"{when} around {usual}, usually {per_week:.1f} days a week; {this_week} of the last 7 days."
 
 
-def routines(occ: dict[str, list[datetime]], end: date, audience: str, basis: dict[str, set[str]] | None = None
+def routines(occ: dict[str, list[datetime]], end: date, audience: str, basis: dict[str, set[str]] | None = None,
+             collection_start: date | None = None
              ) -> list[Routine]:
     weeks = int(cfg("usual_weeks", 3))
     week_start = end - timedelta(days=6)
     usual_start = week_start - timedelta(days=7 * weeks)
-    n_usual = 7 * weeks
+    collection_start = collection_start or min((ts.date() for stamps in occ.values() for ts in stamps), default=week_start)
+    observed_start = max(usual_start, collection_start)
+    n_usual = max(1, (week_start - observed_start).days)
+    early = n_usual < 7 * weeks
     out: list[Routine] = []
     for key, stamps in occ.items():
         first: dict[date, datetime] = {}
         for ts in sorted(stamps):
             first.setdefault(_day_of(key, ts), ts)
-        usual_days = {d for d in first if usual_start <= d < week_start}
+        usual_days = {d for d in first if observed_start <= d < week_start}
         week_days = {d for d in first if week_start <= d <= end}
         if len(usual_days) < int(cfg("min_occurrences", 3)):
             continue
@@ -185,7 +189,7 @@ def routines(occ: dict[str, list[datetime]], end: date, audience: str, basis: di
             for d in usual_days:
                 by_wd[d.weekday()].add((d - usual_start).days // 7)
             wd, wks = max(by_wd.items(), key=lambda kv: (len(kv[1]), -kv[0]))
-            if len(wks) >= min(weeks, int(cfg("weekday_min_weeks", 3))):
+            if len(wks) >= min(weeks, max(1, (n_usual + 6) // 7), int(cfg("weekday_min_weeks", 3))):
                 cadence, weekday = "weekly", wd
         if cadence is None:
             continue
@@ -199,7 +203,7 @@ def routines(occ: dict[str, list[datetime]], end: date, audience: str, basis: di
                 abs(shift) > 2 * tol else "partly"
             per_week = round(share * 7, 1)
         elif cadence == "weekly":
-            per_week = round(len(usual_days) / weeks, 1)
+            per_week = round(len(usual_days) / (n_usual / 7), 1)
             on_day = any(d.weekday() == weekday for d in week_days)
             status = "kept" if on_day else "partly" if week_days else "slipped"
         else:
@@ -212,8 +216,10 @@ def routines(occ: dict[str, list[datetime]], end: date, audience: str, basis: di
         out.append(Routine(activity=key, label=ACTIVITIES[key][0 if audience == "person" else 1], cadence=cadence,
                            weekday=wd_name, day_part=_day_part(usual_m), usual_time=usual,
                            usual_per_week=min(7.0, per_week), this_week=min(7, len(week_days)), status=status,
-                           text=_routine_text(key, cadence, wd_name, usual, _day_part(usual_m), per_week,
-                                              len(week_days), audience),
+                           text=(f"Emerging pattern: recorded on {len(usual_days)} of {n_usual} earlier days, "
+                                 f"around {usual}. {len(week_days)} of 7 days this week."
+                                 if early else _routine_text(key, cadence, wd_name, usual, _day_part(usual_m),
+                                                           per_week, len(week_days), audience)),
                            basis=sorted((basis or {}).get(key, {"obs"}))))  # type: ignore[arg-type]
     order = {"daily": 0, "most_days": 1, "weekly": 2}
     out.sort(key=lambda r: (r.activity == "sleep", order[r.cadence], -r.usual_per_week))
@@ -271,6 +277,11 @@ def _person_week(r_list: list[Routine], helps: list[dict[str, Any]], occ_week: d
     return well, look
 
 
+def _z(d: Any) -> float | None:
+    """The z of the days that actually voted (drift.z_flag); the latest day's z only when nothing was flagged."""
+    return d.z_flag if getattr(d, "z_flag", None) is not None else d.z_last
+
+
 def _care_week(r_list: list[Routine], helps: list[dict[str, Any]], c: Consensus, drifts: list[tuple[Any, Any]],
                data: Any, settings: Settings, week_start: date, end: date) -> tuple[list[WeekItem], list[WeekItem]]:
     well: list[WeekItem] = []
@@ -278,10 +289,10 @@ def _care_week(r_list: list[Routine], helps: list[dict[str, Any]], c: Consensus,
     for ts in data.safety_flags:
         if week_start <= local_date(ts) <= end:
             look.append(WeekItem(kind="safety", text=f"Safety flag on {local_date(ts):%a %d %b}: call today."))
-    worse = sorted((md for md in drifts if md[1].status == "drifting"), key=lambda md: -(md[1].z_last or 0))
+    worse = sorted((md for md in drifts if md[1].status == "drifting"), key=lambda md: -(_z(md[1]) or 0))
     top = int(cfg("max_metric_items", 3))
     for m, d in worse[:top]:
-        z = f"z {d.z_last:+.1f}, " if d.z_last is not None else ""
+        z = f"z {_z(d):+.1f}, " if _z(d) is not None else ""
         look.append(WeekItem(kind="metric", metric=m.name, source=m.source,
                              text=f"{m.label}: change from usual ({'higher' if m.worse_when == 'up' else 'lower'}), "
                                   f"{z}{d.worse_days} of {d.scored_days} recent days."))
@@ -294,6 +305,11 @@ def _care_week(r_list: list[Routine], helps: list[dict[str, Any]], c: Consensus,
                                  text=f"Fewer than usual: {r.label}, {r.this_week}/7 days (usual "
                                       f"{r.usual_per_week:.1f}/wk)." if r.activity != "sleep" else
                                  f"Shifted: {r.label} this week, away from the usual ~{r.usual_time}."))
+    # Put specific improving measurements ahead of generic maintained-source/routine messages so the
+    # bounded summary cannot hide the evidence a practitioner needs when comparing progress.
+    for m, d in [md for md in drifts if md[1].status == "improved"][:2]:
+        well.append(WeekItem(kind="metric", metric=m.name, source=m.source,
+                             text=f"{m.label}: better than usual on {d.better_days} of {d.scored_days} recent days."))
     for v in c.sources:
         if v.verdict == "insufficient" and v.source in data.last_data_at:
             look.append(WeekItem(kind="source", source=v.source,
@@ -320,9 +336,6 @@ def _care_week(r_list: list[Routine], helps: list[dict[str, Any]], c: Consensus,
     for h in _helped(helps):
         well.append(WeekItem(kind="helped", text=f"Best response: {h['label']}, mean effect {h['mean_effect']:.2f} "
                                                  f"over {h['tries']} tries (bandit)."))
-    for m, d in [md for md in drifts if md[1].status == "improved"][:2]:
-        well.append(WeekItem(kind="metric", metric=m.name, source=m.source,
-                             text=f"{m.label}: better than usual on {d.better_days} of {d.scored_days} recent days."))
     return well, look
 
 
@@ -339,12 +352,20 @@ def source_week(events: list[dict[str, Any]], week_start: date, end: date) -> li
     last: dict[str, datetime] = {}
     c: dict[str, float] = defaultdict(float)
     walk_days: set[date] = set()
+    # Health summaries are revisable snapshots for a measured date, not additive nights/step readings.
+    snapshots = {}
     for e in events:
+        if e["type"] == "obs.wearable_daily":
+            key = e["payload"].get("date") or str(local_date(e["ts"]))
+            if key not in snapshots or parse_ts(e["ts"]) > parse_ts(snapshots[key]["ts"]):
+                snapshots[key] = e
+    effective = [e for e in events if e["type"] != "obs.wearable_daily"] + list(snapshots.values())
+    for e in effective:
         src = "robot" if e["type"] == "obs.ritual" else SOURCE_OF.get(e["type"])  # the ritual happens on the robot
         if src not in per:
             continue
         ts = parse_ts(e["ts"])
-        d = local_date(ts)
+        d = date.fromisoformat(e["payload"]["date"]) if e["type"] == "obs.wearable_daily" and e["payload"].get("date") else local_date(ts)
         if not week_start <= d <= end:
             continue
         per[src][(d - week_start).days] += 1
@@ -373,19 +394,22 @@ def source_week(events: list[dict[str, Any]], week_start: date, end: date) -> li
         elif t == "obs.screen_activity":
             c["screen_days"] += 0  # counted below as days
         elif t == "obs.wearable_daily":
-            c["nights"] += 1
-            c["steps"] += float(p.get("steps") or 0)
+            if p.get("sleep_min") is not None:
+                c["nights"] += 1
+            if p.get("steps") is not None:
+                c["step_days"] += 1
+                c["steps"] += float(p["steps"])
     screen_days = len({local_date(e["ts"]) for e in events if e["type"] == "obs.screen_activity"
                        and week_start <= local_date(e["ts"]) <= end})
     counts = {
         "robot": [_count("morning rituals", c["rituals"]), _count("drum sessions", c["drum"]),
-                  _count("breathing rounds", c["breathe"]), _count("chats", c["talks"])],
-        "glasses": [_count("walks", c["walks"]), _count("minutes outside", c["walk_min"]),
+                  _count("breathing rounds", c["breathe"]), _count("chats", c["talks"]), _count("weather checks", c["checks"])],
+        "glasses": [_count("outings", c["walks"]), _count("outing minutes", c["walk_min"]),
                     _count("minutes of daylight", c["daylight"])],
         "laptop": [_count("games", c["games"]), _count("laptop check-ins", c["laptop"]),
-                   _count("weather checks", c["checks"]), _count("days of Mac rhythm", screen_days)],
+                   _count("days of Mac rhythm", screen_days)],
         "wearable": [_count("nights of sleep", c["nights"]),
-                     _count("steps a day", c["steps"] / c["nights"] if c["nights"] else 0)],
+                     _count("steps a day", c["steps"] / c["step_days"] if c["step_days"] else 0)],
     }
     return [SourceWeek(source=s, per_day=per[s], days=sum(1 for v in per[s] if v),  # type: ignore[arg-type]
                        counts=[x for x in counts.get(s, []) if x], last_at=last.get(s)) for s in per]
@@ -402,7 +426,7 @@ def next_steps(c: Consensus, r_list: list[Routine], helps: list[dict[str, Any]],
     if any(week_start <= local_date(ts) <= end for ts in data.safety_flags) or c.state == "safety":
         steps.append(NextStep(when="today", text="Call today.",
                               why="A safety flag was raised; the person was shown the crisis numbers on their device."))
-    worse = [m.label.lower() for m, d in sorted(drifts, key=lambda md: -(md[1].z_last or 0)) if d.status == "drifting"]
+    worse = [m.label.lower() for m, d in sorted(drifts, key=lambda md: -(_z(md[1]) or 0)) if d.status == "drifting"]
     about = " and ".join(worse[:2])
     if c.state == "needs_call":
         steps.append(NextStep(when="this_week", text="Worth a check-in call this week.",
@@ -411,13 +435,16 @@ def next_steps(c: Consensus, r_list: list[Routine], helps: list[dict[str, Any]],
         steps.append(NextStep(when="next_contact", text="Worth a check-in at the next contact.",
                               why="One source shows a change from the usual; nothing needs a call yet."
                               if c.agreement != "low_coverage" else "Too little recent data to say more."))
-    acts = set(c.explanation.suggested_actions if c.explanation else [])
-    if "flag_booster" in acts:
-        steps.append(NextStep(when="this_week", action="flag_booster", text="Consider a booster TMS review with the team.",
-                              why="Suggested by the consensus template for this pattern; your decision."))
-    if "flag_icbt_referral" in acts:
-        steps.append(NextStep(when="this_week", action="flag_icbt_referral", text="Consider an iCBT referral.",
-                              why="Suggested by the consensus template for this pattern; your decision."))
+    # Care-process steps only: what to ask about or look at. Treatment choices are never suggested by code.
+    flagged = [m for m, d in sorted(drifts, key=lambda md: -(_z(md[1]) or 0)) if d.status == "drifting"]
+    sleep = [m.label.lower() for m in flagged if "sleep" in m.name]
+    if sleep:
+        steps.append(NextStep(when="next_contact" if c.state != "needs_call" else "this_week",
+                              text="Ask about sleep and evenings.",
+                              why=f"Change from the usual in {' and '.join(sleep[:2])}."))
+    if c.state == "needs_call":
+        steps.append(NextStep(when="this_week", action="send_message", text="Send a short message before the call.",
+                              why="So the person expects the call; it is shown on their own device."))
     every = settings.phq9_every_days
     if not data.phq9 or (end - data.phq9[-1].day).days >= every:
         steps.append(NextStep(when="next_contact", text="Ask for a PHQ-9.",
@@ -460,7 +487,7 @@ def week(store: Store, settings: Settings, home_id: str, audience: str, now: dat
         basis[k].add("obs")
     for k in occurrences([], eps):
         basis[k].add("episodes")
-    r_list = routines(occ, end, audience, basis)
+    r_list = routines(occ, end, audience, basis, min((local_date(e["ts"]) for e in events), default=None))
     occ_week = {k: len({_day_of(k, t) for t in v if week_start <= _day_of(k, t) <= end}) for k, v in occ.items()}
     crit = service.active_criteria(store)
     data = service.patient_data(store, home_id, crit)
@@ -568,7 +595,10 @@ def graph(store: Store, settings: Settings, home_id: str, audience: str, now: da
                           "weight": round(min(1.0, days / mind_graph.EPISODE_DAYS), 3), "evidence": days})
     with_eps = audience == "person" or shared
     today = now.astimezone(TZ).date()
-    r_list = routines(occurrences(all_events, eps if with_eps else None), week_end(all_events, today), audience)
+    observed = occurrences(all_events, eps if with_eps else None)
+    end = week_end(all_events, today)
+    r_list = routines(observed, end, audience,
+                      collection_start=min((local_date(e["ts"]) for e in all_events), default=None))
     for r in r_list:
         cad = {"daily": "daily", "most_days": "most days"}.get(r.cadence) or f"{r.weekday}s"
         rid = virtual()
@@ -576,7 +606,9 @@ def graph(store: Store, settings: Settings, home_id: str, audience: str, now: da
                       "label": (f"asleep around {r.usual_time}" if r.activity == "sleep" else f"{cad} · {r.usual_time}")}
         expected = 1.0 if r.cadence == "weekly" else max(r.usual_per_week, 1.0)
         edges.append({"src": me["id"], "dst": rid, "rel": "keeps", "weight": round(min(1.0, r.this_week / expected), 3),
-                      "evidence": int(round(r.usual_per_week * int(cfg("usual_weeks", 3)))) + r.this_week})
+                      "evidence": len({_day_of(r.activity, ts) for ts in observed[r.activity]
+                                       if end - timedelta(days=7 * (int(cfg("usual_weeks", 3)) + 1) - 1)
+                                       <= _day_of(r.activity, ts) <= end})})
         a = activity_node(r.activity)
         if a is not None:
             edges.append({"src": rid, "dst": a["id"], "rel": "of", "weight": 1.0, "evidence": r.this_week})

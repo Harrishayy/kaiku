@@ -20,9 +20,12 @@ public struct Envelope<P: Codable & Sendable>: Codable, Sendable {
     public var type: String
     public var payload: P
     public var sim: Bool = false
+    /// 0..1, optional: criteria metrics skip readings below their `quality_min` (a doubtful game session).
+    public var quality: Double?
 
     public init(id: String = UUID7.make(), ts: Date = Date(), home_id: String, source: EnvelopeSource,
-                type: String, payload: P, sim: Bool = false) {
+                type: String, payload: P, sim: Bool = false, quality: Double? = nil) {
+        self.quality = quality.map { min(1, max(0, $0)) }
         self.id = id
         self.ts = KaikuTime.iso(ts)
         self.home_id = home_id
@@ -43,12 +46,14 @@ public struct AnyEnvelope: Codable, Sendable, Identifiable, Hashable {
     public var type: String
     public var payload: JSONValue
     public var sim: Bool?
+    public var quality: Double?
 
     public init<P>(_ e: Envelope<P>) throws {
         let data = try JSONEncoder().encode(e.payload)
         v = e.v; id = e.id; ts = e.ts; home_id = e.home_id; source = e.source.rawValue; type = e.type
         payload = try JSONDecoder().decode(JSONValue.self, from: data)
         sim = e.sim
+        quality = e.quality
     }
 }
 
@@ -106,10 +111,19 @@ public struct SelfReport: Codable, Sendable, Equatable {
 
 public enum PlayGame: String, Codable, Sendable, CaseIterable, Identifiable {
     case firefly, pebbles, tell, breathe
+    case lantern, seeds, watering
     public var id: String { rawValue }
 }
 
 public enum PlayDevice: String, Codable, Sendable { case phone, mac, web }
+
+/// How the person answered in a game (timing provenance: a touch, a click and a key have different latencies).
+public enum PlayInput: String, Codable, Sendable { case touch, pointer, keyboard, mixed }
+
+/// Why a game session is doubtful (it is still sent, with `valid: false` and a low envelope quality).
+public enum PlayFlag: String, Codable, Sendable, CaseIterable {
+    case few_trials, false_starts, low_accuracy, too_fast, interrupted
+}
 
 /// obs.play_session — one short game. Fields a game doesn't produce stay nil (and are not sent).
 public struct PlaySession: Codable, Sendable, Equatable {
@@ -123,10 +137,31 @@ public struct PlaySession: Codable, Sendable, Equatable {
     public var speech_rate: Double?
     public var pause_ratio: Double?
     public var pitch_variability: Double?
+    public var expressivity_index: Double?
+    public var face_movement: Double?
+    public var camera_face_coverage: Double?
+    public var camera_samples: Int?
+    public var camera_method: String?
     public var hr_before_bpm: Double?
     public var hr_after_bpm: Double?
     public var span_max: Int?
     public var accuracy: Double?
+    // research-inspired games (lantern, seeds, watering; docs/validation.md → Games)
+    public var trials_n: Int?
+    public var valid_n: Int?
+    public var input: PlayInput?
+    public var session_index: Int?
+    public var warmup: Bool?
+    public var valid: Bool?
+    public var flags: [PlayFlag]?
+    public var false_starts: Int?
+    public var response_speed: Double?
+    public var reaction_ms_cv: Double?
+    public var throughput_per_min: Double?
+    public var hard_choice_ratio: Double?
+    public var tap_rate_hz: Double?
+    public var rt_ms: [Int]?
+    public var trial_codes: String?
 
     public init(game: PlayGame, device: PlayDevice, duration_s: Double) {
         self.game = game
@@ -246,6 +281,7 @@ public struct CompanionSessionRequest: Codable, Sendable {
     public var intent: CompanionIntent
     public var language: String?
     public var others_present: Bool = false
+    public var resume_session_id: String? = nil
 }
 
 public struct LiveToken: Codable, Sendable, Equatable {
@@ -280,6 +316,8 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var persona_version: String
     public var safety_phrases_version: String
     public var live_token: LiveToken?
+    public var max_session_seconds: Int? = nil
+    public var context_refresh_seconds: Int? = nil
     /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
     public var live_setup: JSONValue?
 }
@@ -307,6 +345,7 @@ public enum TranscriptRole: String, Codable, Sendable { case person, kaiku }
 public struct TranscriptTurn: Codable, Sendable, Equatable {
     public var role: TranscriptRole
     public var text: String
+    public var complete: Bool? = nil
 }
 
 public struct EpisodeIn: Codable, Sendable {

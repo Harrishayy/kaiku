@@ -1,4 +1,5 @@
 import { SOURCE_LABELS as CONTRACT_SOURCE_LABELS, type Envelope } from '@contracts';
+import { label } from './labels';
 
 /** Consensus states (handoff §6.4). Wording per §12: never diagnostic. */
 export type State = 'stable' | 'watch' | 'needs_call' | 'safety';
@@ -6,42 +7,27 @@ export type Verdict = 'better' | 'as_usual' | 'worse' | 'insufficient';
 export type Agreement = 'agree' | 'disagree' | 'low_coverage';
 
 export const STATE_LABEL: Record<State, string> = {
-  safety: 'Safety',
-  needs_call: 'Needs a call',
-  watch: 'Worth a check-in',
-  stable: 'Stable',
+  safety: label('state.safety'),
+  needs_call: label('state.needs_call'),
+  watch: label('state.watch'),
+  stable: label('state.stable'),
 };
 
 export const STATE_HINT: Record<State, string> = {
-  safety: 'A crisis trigger fired. The scripted crisis response ran locally — call today.',
-  needs_call: 'Two or more independent sources show a change from their usual.',
-  watch: 'One source shows a change, or only one source has enough data.',
+  safety: 'A safety flag is recorded. Prioritise review and direct contact.',
+  needs_call: 'Multiple signal groups show a change from this person’s usual.',
+  watch: 'Check recent coverage and the person’s usual before interpreting changes.',
   stable: 'Sources with enough data look as usual or better.',
 };
 
 /** Ranking for "who needs a call": safety first. Mirrors kaiku_contracts.api.STATE_RANK. */
 export const STATE_RANK: Record<State, number> = { safety: 0, needs_call: 1, watch: 2, stable: 3 };
 
-/** CSS chip class per state (red / amber / soft / green). */
-export const STATE_CLASS: Record<State, string> = {
-  safety: 'chip-red',
-  needs_call: 'chip-amber',
-  watch: 'chip-watch',
-  stable: 'chip-green',
-};
-
 export const VERDICT_LABEL: Record<Verdict, string> = {
-  worse: 'Worse than usual',
-  as_usual: 'As usual',
-  better: 'Better than usual',
-  insufficient: 'Not enough data',
-};
-
-export const VERDICT_CLASS: Record<Verdict, string> = {
-  worse: 'chip-amber',
-  as_usual: 'chip-green',
-  better: 'chip-green',
-  insufficient: 'chip-neutral',
+  worse: label('verdict.worse'),
+  as_usual: label('verdict.as_usual'),
+  better: label('verdict.better'),
+  insufficient: label('verdict.insufficient'),
 };
 
 export const AGREEMENT_LABEL: Record<Agreement, string> = {
@@ -53,9 +39,9 @@ export const AGREEMENT_LABEL: Record<Agreement, string> = {
 /** Display names for consensus sources. Unknown (future) sources fall back to a prettified id. */
 const SOURCE_LABELS: Record<string, string> = CONTRACT_SOURCE_LABELS;
 const SOURCE_BLURB: Record<string, string> = {
-  robot: 'Morning ritual: dial, heart rate & HRV, drumming, speech, get-up time, room light',
-  glasses: 'Walk companion: outings, time outdoors, steps, cadence',
-  laptop: 'Phone, Mac and web: games, short sessions, usage rhythm and PHQ-9',
+  robot: 'Check-in ratings, knock timing and first interaction',
+  glasses: 'Recorded outings: duration and phone steps',
+  laptop: 'Native games, Mac activity rhythm and PHQ-9',
   wearable: 'Watch: sleep, resting heart rate, HRV, steps',
 };
 export const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? prettify(s);
@@ -90,9 +76,9 @@ export function sortByState<T extends { state: State; display_name: string }>(li
 }
 
 export function relTime(iso: string | null | undefined, now: number = Date.now()): string {
-  if (!iso) return '—';
+  if (!iso) return 'not recorded';
   const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
+  if (Number.isNaN(t)) return 'date unavailable';
   const s = Math.round((now - t) / 1000);
   if (s < 0) return 'just now';
   if (s < 60) return `${s}s ago`;
@@ -111,7 +97,7 @@ export function clockTime(iso: string): string {
 }
 
 export function dateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso) return 'not recorded';
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
@@ -135,7 +121,7 @@ export function describe(env: Envelope<Record<string, unknown>>): { title: strin
   switch (env.type) {
     case 'obs.presence':
       return {
-        title: p.first_of_day ? 'First hello of the day' : 'Someone is near Kaiku',
+        title: p.first_of_day ? 'First interaction of the day' : 'Someone is near Kaiku',
         detail: `${n('distance_cm')} cm away · stayed ${n('dwell_s')} s`,
       };
     case 'obs.self_report':
@@ -151,7 +137,7 @@ export function describe(env: Envelope<Record<string, unknown>>): { title: strin
     case 'obs.drum_session':
       return {
         title: 'Drummed on Kaiku’s head',
-        detail: `${n('taps')} taps · ${n('tempo_bpm')} bpm · force ${n('force_mean', 2)} · regularity ${n('regularity', 2)}`,
+        detail: `${n('taps')} taps · ${n('tempo_bpm')} bpm · regularity ${n('regularity', 2)}` + (typeof p.force_mean === 'number' ? ` · recorded force ${n('force_mean', 2)}` : ''),
       };
     case 'obs.light_level':
       return { title: 'Room light', detail: `≈${n('lux_est')} lux over ${n('window_min')} min` };
@@ -170,7 +156,7 @@ export function describe(env: Envelope<Record<string, unknown>>): { title: strin
     }
     case 'obs.outing':
       return {
-        title: 'Time outside',
+        title: 'Recorded outing',
         detail:
           `${n('minutes')} min` +
           (typeof p.steps === 'number' ? ` · ${n('steps')} steps` : '') +

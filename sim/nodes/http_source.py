@@ -30,12 +30,12 @@ class HttpSource:
         self.sent = 0
         self.failed = 0
 
-    def envelope(self, type_: str, payload: dict[str, Any]) -> Envelope[Any]:
-        return make(type_, payload, source=self.source, home_id=self.home_id, sim=True)
+    def envelope(self, type_: str, payload: dict[str, Any], quality: float | None = None) -> Envelope[Any]:
+        return make(type_, payload, source=self.source, home_id=self.home_id, sim=True, quality=quality)
 
-    async def post(self, items: list[tuple[str, dict[str, Any]]]) -> bool:
-        """Validate + send one batch. Returns True if the cloud accepted it."""
-        envs = [self.envelope(t, p) for t, p in items]  # raises ContractError on a bad payload (a sim bug)
+    async def post(self, items: list[tuple[Any, ...]]) -> bool:
+        """Validate + send one batch of (type, payload) or (type, payload, quality). True if the cloud accepted it."""
+        envs = [self.envelope(*item) for item in items]  # raises ContractError on a bad payload (a sim bug)
         body = '{"events":[' + ",".join(to_json(e) for e in envs) + "]}"
         headers = {"content-type": "application/json"}
         if self.token:

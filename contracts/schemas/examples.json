@@ -32,6 +32,43 @@
     "taps": 72,
     "tempo_bpm": 96.0
   },
+  "obs.engagement": {
+    "agreement": 0.8,
+    "confidence": 0.71,
+    "cues": [
+      {
+        "available": true,
+        "basis": "mood 3, energy 3",
+        "confidence": 1.0,
+        "cue": "dial",
+        "level": 0.5
+      },
+      {
+        "available": true,
+        "basis": "1.8 taps/s, 41 taps",
+        "confidence": 0.9,
+        "cue": "drum",
+        "level": 0.6
+      },
+      {
+        "available": true,
+        "basis": "face in view 70% of 240 looks",
+        "confidence": 0.6,
+        "cue": "face",
+        "level": 0.7
+      },
+      {
+        "available": false,
+        "basis": "not measured",
+        "confidence": 0.0,
+        "cue": "pulse"
+      }
+    ],
+    "cues_available": 3,
+    "level": 0.58,
+    "method": "robot-multicue-v1",
+    "session_id": "0199b2c4-ritual"
+  },
   "obs.friend_link": {
     "ack": true,
     "direction": "sent"
@@ -111,8 +148,12 @@
     "total": 7
   },
   "obs.play_session": {
+    "camera_face_coverage": 0.9,
+    "camera_method": "vision_landmarks",
+    "camera_samples": 120,
     "device": "phone",
     "duration_s": 60.0,
+    "expressivity_index": 0.15,
     "false_taps": 0,
     "game": "firefly",
     "lapses": 1,

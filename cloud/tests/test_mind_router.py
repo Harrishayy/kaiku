@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from kaiku_cloud.analytics import bandit
 from kaiku_cloud.api.main import create_app
 from kaiku_cloud.jobs.synth import DEMO_PATIENTS, generate
-from kaiku_cloud.llm import gemini, ledger
+from kaiku_cloud.llm import gemini, gemma_hosted, ledger
 from kaiku_cloud.mind import graph, router
 from kaiku_cloud.settings import Settings
 from kaiku_contracts import make
@@ -69,6 +69,8 @@ class Fake:
 def _spend(tmp_path, monkeypatch):
     monkeypatch.setenv("KAIKU_SPEND_DB", str(tmp_path / "spend.sqlite"))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("KAIKU_MIND_PRIMARY", "gemini")  # these tests exercise the Gemini fallback chain
+    load_config.cache_clear()
     yield
     load_config.cache_clear()  # config env overrides set by a test must not leak
 
@@ -84,12 +86,13 @@ def fake(monkeypatch):
     f = Fake()
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
     monkeypatch.setattr(gemini, "_client", lambda key, timeout_s: f)
+    monkeypatch.setattr(gemma_hosted, "generate", lambda *a, **kw: json.dumps({"diffs": []}))
     return f
 
 
 @pytest.fixture
 def app(tmp_path):
-    a = create_app(Settings(db_path=str(tmp_path / "t.sqlite"), web_dir=None))
+    a = create_app(Settings(demo_mode=True, db_path=str(tmp_path / "t.sqlite"), web_dir=None))
     return a
 
 
@@ -142,9 +145,21 @@ def test_memory_hit_answers_without_a_model(app, c, fake):
     fake.calls.clear()
     res = ask(c, "What's my sister's name?", "memory")["result"]
     assert res["route"] == "memory" and "Maija" in res["answer"] and res["cites"] == [f"mem:{ids['sister']}"]
-    assert fake.models_called() == []  # never a text model
+    assert fake.calls == []  # no text model or query embedding for an exact local notebook hit
     outcome = [r for r in rows(app) if r["task"] == "ask_mind.route"]
     assert [(r["model"], r["route"]) for r in outcome] == [("deterministic", "memory")]
+
+
+def test_stateless_interactions_disable_provider_conversation_storage(fake, monkeypatch):
+    from kaiku_contracts import genai_client
+
+    monkeypatch.setattr(genai_client, "backend", lambda: "developer")
+    monkeypatch.setattr(genai_client, "available", lambda: True)
+    fake.replies[FLASH] = "Synthetic answer"
+    fake.replies[IMAGE] = "image"
+    assert gemini.generate("synthetic input") == "Synthetic answer"
+    assert gemini.image("synthetic illustration")[0]
+    assert len(fake.calls) == 2 and all(c["store"] is False for c in fake.calls)
 
 
 def test_low_flash_confidence_escalates_to_argon(app, c, fake):
@@ -266,7 +281,7 @@ def test_same_sister_twice_is_not_a_conflict(c, fake):
 # ------------------------------------------------------------------ prompt hygiene (property over seeded patients)
 @pytest.fixture(scope="module")
 def cohort(tmp_path_factory):
-    s = Settings(db_path=str(tmp_path_factory.mktemp("router") / "t.sqlite"), web_dir=None)
+    s = Settings(demo_mode=True, db_path=str(tmp_path_factory.mktemp("router") / "t.sqlite"), web_dir=None)
     a = create_app(s)
     cl = TestClient(a)
     for p in DEMO_PATIENTS:

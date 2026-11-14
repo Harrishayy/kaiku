@@ -30,7 +30,7 @@ def _no_key(monkeypatch):
 @pytest.fixture(scope="module")
 def cohort(tmp_path_factory):
     """All 8 seeded demo patients in one cloud (seeding is the slow part, so once per module)."""
-    s = Settings(db_path=str(tmp_path_factory.mktemp("mind") / "t.sqlite"), web_dir=None)
+    s = Settings(demo_mode=True, db_path=str(tmp_path_factory.mktemp("mind") / "t.sqlite"), web_dir=None)
     c = TestClient(create_app(s))
     for p in DEMO_PATIENTS:
         ev = generate(p)
@@ -95,7 +95,7 @@ def test_session_for_unknown_home_and_bad_surface(client):
 
 
 def test_session_needs_home_token_when_set(make_client):
-    c = make_client(home_token="secret")
+    c = make_client(home_token="secret", home_id="h1")
     body = {"home_id": "h1", "surface": "robot"}
     assert c.post("/v1/companion/session", json=body).status_code == 401
     assert c.post("/v1/companion/session", json=body, headers={"Authorization": "Bearer secret"}).status_code == 200
@@ -310,6 +310,57 @@ def test_episode_endpoint_idempotent_and_opens_thread(client):
     assert client.post("/v1/companion/episode", json=body | {"home_id": "h2"}).status_code == 422
 
 
+@pytest.mark.parametrize("close_thread", [False, True])
+def test_completed_episode_retries_preserve_newer_cross_device_thread_after_restart(client, close_thread):
+    now = datetime.now(UTC)
+    body = {"home_id": "h1", "surface": "robot", "intent": "ritual", "id": "durable-thread-episode",
+            "start": (now - timedelta(minutes=1)).isoformat(), "end": now.isoformat(), "outcome": "completed",
+            "close_thread": close_thread, "open_thread": {"skill": "walk_companion", "topic": "the lake walk"}}
+    assert client.post("/v1/companion/episode", json=body).status_code == 200
+    store = client.app.state.store
+    initial = memory.current_thread(store, "h1", now)
+    assert initial["topic"] == "the lake walk"
+    assert client.post("/v1/companion/episode", json=body).status_code == 200
+    assert memory.current_thread(store, "h1", now)["id"] == initial["id"]
+    newer = memory.open_thread(store, "h1", "walk_companion", "the phone's next walk", now)
+    restarted = TestClient(create_app(client.app.state.settings))
+    assert restarted.post("/v1/companion/episode", json=body).status_code == 200
+    assert memory.current_thread(restarted.app.state.store, "h1", now)["id"] == newer
+
+
+def test_tool_completion_and_device_upload_share_thread_phases(client):
+    now = datetime.now(UTC)
+    robot = session(client, "h1", "robot", "ritual")
+    follow_up = {"skill": "walk_companion", "topic": "the lake walk"}
+    first = tool(client, "end_session", {"outcome": "completed", "follow_up": follow_up},
+                 session_id=robot["session_id"])
+    store = client.app.state.store
+    first_thread = first["result"]["thread_id"]
+    newer = memory.open_thread(store, "h1", "walk_companion", "the phone's next walk", now)
+    body = {"home_id": "h1", "surface": "robot", "intent": "ritual", "id": robot["session_id"],
+            "start": now.isoformat(), "outcome": "completed", "open_thread": follow_up}
+    assert client.post("/v1/companion/episode", json=body).status_code == 200
+    replay = tool(client, "end_session", {"outcome": "completed", "follow_up": follow_up},
+                  session_id=robot["session_id"])
+    assert replay["result"]["thread_id"] == first_thread
+    assert memory.current_thread(store, "h1", now)["id"] == newer
+
+
+def test_later_completion_can_apply_close_phase_without_reopening_follow_up(client):
+    now = datetime.now(UTC)
+    body = {"home_id": "h1", "surface": "iphone", "intent": "checkin", "id": "two-phase-episode",
+            "start": now.isoformat(), "outcome": "ended_early",
+            "open_thread": {"skill": "walk_companion", "topic": "the lake walk"}}
+    assert client.post("/v1/companion/episode", json=body).status_code == 200
+    store = client.app.state.store
+    follow_up_id = memory.current_thread(store, "h1", now)["id"]
+    # A later completion closes a weather-check thread, but must not replay its previously opened walk.
+    newer = memory.open_thread(store, "h1", "walk_companion", "the next phone walk", now)
+    body["outcome"] = "completed"
+    assert client.post("/v1/companion/episode", json=body).status_code == 200
+    assert newer != follow_up_id and memory.current_thread(store, "h1", now)["id"] == newer
+
+
 # ---------------------------------------------------------------- routines (count rule)
 def _walks(store, days):
     for i, d in enumerate(days):
@@ -367,7 +418,8 @@ def test_live_token_none_without_key():
     assert live_token.mint("gemini-3.8-live", api_key="") is None
 
 
-def test_live_token_minted_with_mock_transport():
+def test_live_token_minted_with_mock_transport(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAIKU_SPEND_DB", str(tmp_path / "spend.sqlite"))
     seen = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -375,7 +427,7 @@ def test_live_token_minted_with_mock_transport():
         return httpx.Response(200, json={"name": "auth_tokens/abc"})
 
     t = live_token.mint("gemini-3.8-live", api_key="k", now=NOW, transport=httpx.MockTransport(handler))
-    assert t.token == "auth_tokens/abc" and t.expires_at == NOW + timedelta(minutes=30)
+    assert t.token == "auth_tokens/abc" and t.expires_at == NOW + timedelta(minutes=5)
     assert seen["key"] == "k" and seen["body"]["uses"] == 1
     assert seen["body"]["bidiGenerateContentSetup"]["model"] == "models/gemini-3.8-live"
     assert seen["body"]["fieldMask"] == "model"  # lock only the model, never the device's setup

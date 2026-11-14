@@ -3,7 +3,7 @@ from kaiku_contracts import example, to_json
 from kaiku_hub.cloudlink import CloudLink, local_nudge
 
 
-async def test_commands_dedupe_and_since():
+async def test_commands_repeat_until_ack_and_never_advance_since():
     cmd = example("cmd.hub", home_id="demo-aino", source="cloud")
     other_home = example("cmd.hub", home_id="someone-else", source="cloud")
     seen_params = []
@@ -18,8 +18,8 @@ async def test_commands_dedupe_and_since():
     first = await cl.poll_commands()
     second = await cl.poll_commands()
     assert [str(e.id) for e in first] == [str(cmd.id)]
-    assert second == []
-    assert "since" in seen_params[1]
+    assert [str(e.id) for e in second] == [str(cmd.id)]
+    assert "since" not in seen_params[1]
 
 
 async def test_nudge_fallback_offline():

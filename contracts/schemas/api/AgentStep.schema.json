@@ -1,0 +1,112 @@
+{
+  "additionalProperties": false,
+  "description": "One step the cloud really ran to build this insight. Counts and categories only; never record content.",
+  "properties": {
+    "actor": {
+      "enum": [
+        "code",
+        "gemma",
+        "template"
+      ],
+      "title": "Actor",
+      "type": "string"
+    },
+    "cache_hit": {
+      "default": false,
+      "title": "Cache Hit",
+      "type": "boolean"
+    },
+    "detail": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Detail",
+      "type": "string"
+    },
+    "items": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "how many records / findings / nodes this step handled",
+      "title": "Items"
+    },
+    "label": {
+      "maxLength": 80,
+      "title": "Label",
+      "type": "string"
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Ms"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "rejected": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "validator category -> count",
+      "title": "Rejected",
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "cached",
+        "skipped",
+        "rejected",
+        "fallback"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "step": {
+      "enum": [
+        "retrieve",
+        "consensus",
+        "compare",
+        "course",
+        "select",
+        "interpret",
+        "overview",
+        "validate",
+        "graph",
+        "render"
+      ],
+      "title": "Step",
+      "type": "string"
+    }
+  },
+  "required": [
+    "step",
+    "label",
+    "actor",
+    "status"
+  ],
+  "title": "AgentStep",
+  "type": "object"
+}

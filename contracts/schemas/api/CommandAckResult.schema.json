@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "description": "POST /v1/commands/{command_id}/ack?home_id= after successful application.",
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok",
+    "id"
+  ],
+  "title": "CommandAckResult",
+  "type": "object"
+}

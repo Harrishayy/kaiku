@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "description": "One claim in the review. `meaning`/`consider` are interpretation (Gemma when `by` = gemma: validated, no\nnumbers, no state words); `facts` are rendered by code from the cited records and carry every number.",
+  "properties": {
+    "by": {
+      "enum": [
+        "gemma",
+        "template"
+      ],
+      "title": "By",
+      "type": "string"
+    },
+    "cites": {
+      "description": "ids into PatientInsight.evidence",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cites",
+      "type": "array"
+    },
+    "consider": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "what the practitioner could consider",
+      "title": "Consider"
+    },
+    "facts": {
+      "description": "verified record facts, numbers rendered by code",
+      "items": {
+        "type": "string"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "meaning": {
+      "description": "what it likely means, in plain words",
+      "maxLength": 400,
+      "title": "Meaning",
+      "type": "string"
+    },
+    "theme": {
+      "enum": [
+        "change",
+        "improvement",
+        "steady",
+        "routine",
+        "what_helps",
+        "coverage"
+      ],
+      "title": "Theme",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 120,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "theme",
+    "title",
+    "meaning",
+    "by"
+  ],
+  "title": "ReviewFinding",
+  "type": "object"
+}

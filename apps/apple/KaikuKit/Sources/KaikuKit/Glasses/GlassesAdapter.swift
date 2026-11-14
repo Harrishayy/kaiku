@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import simd
 
@@ -7,6 +8,8 @@ import simd
 public enum GlassesState: String, Equatable, Sendable {
     case off            // not set up / not started
     case searching
+    case registrationRequired
+    case motionUnavailable
     case connected
     case batteryLow
     case disconnected   // was connected during this walk, now gone
@@ -25,6 +28,13 @@ public enum GlassesEvent: Sendable {
     /// Mean brightness 0…1 of one sparse camera frame (the frame itself is discarded on the device).
     case brightness(Double)
     case tap
+    /// One camera frame (only while the camera is on). In memory only; the walk passes it to Live or drops it.
+    case frame(GlassesFrame)
+    case camera(GlassesCameraState, note: String?)
+    /// The glasses went on (true) or came off (false) the person's face.
+    case worn(Bool)
+    /// Something failed; plain words for the check screen and the log.
+    case problem(String)
 }
 
 public protocol GlassesAdapter: AnyObject, Sendable {
@@ -32,6 +42,12 @@ public protocol GlassesAdapter: AnyObject, Sendable {
     var kind: String { get }
     func start(_ events: @escaping @Sendable (GlassesEvent) -> Void) async
     func stop() async
+    /// Turns the camera stream on or off. Called only with the person's "Let Kaiku see" choice on.
+    func setCamera(_ on: Bool) async
+}
+
+public extension GlassesAdapter {
+    func setCamera(_ on: Bool) async {}
 }
 
 /// Synthetic glasses: a person walking at ~108 steps/min, looking ahead most of the time with short look-downs,
@@ -41,6 +57,35 @@ public final class MockGlasses: GlassesAdapter, @unchecked Sendable {
     private var task: Task<Void, Never>?
     private let dropAfter: TimeInterval?
     private let cadence: Double
+    private let cameraLock = NSLock()
+    private var cameraOn = false
+    private var events: (@Sendable (GlassesEvent) -> Void)?
+
+    public func setCamera(_ on: Bool) async {
+        swapCamera(on)?(.camera(on ? .streaming : .off, note: nil))
+    }
+
+    private func swapCamera(_ on: Bool) -> (@Sendable (GlassesEvent) -> Void)? {
+        cameraLock.lock(); defer { cameraLock.unlock() }
+        cameraOn = on
+        return events
+    }
+
+    private func keep(_ ev: @escaping @Sendable (GlassesEvent) -> Void) {
+        cameraLock.lock(); defer { cameraLock.unlock() }
+        events = ev
+    }
+
+    private var wantsFrames: Bool { cameraLock.lock(); defer { cameraLock.unlock() }; return cameraOn }
+
+    /// A flat synthetic picture (no real scene): proves the frame path, nothing else.
+    static func syntheticFrame(_ i: Int) -> GlassesFrame? {
+        guard let ctx = CGContext(data: nil, width: 90, height: 160, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(red: 0.45, green: 0.7 + 0.05 * Double(i % 3), blue: 0.5, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: 90, height: 160))
+        return ctx.makeImage().flatMap { GlassesVision.encode($0) }
+    }
 
     public init(dropAfter: TimeInterval? = nil, cadence: Double = 108) {
         self.dropAfter = dropAfter
@@ -49,18 +94,26 @@ public final class MockGlasses: GlassesAdapter, @unchecked Sendable {
 
     public func start(_ events: @escaping @Sendable (GlassesEvent) -> Void) async {
         events(.state(.searching))
+        keep(events)
         let cadence = cadence, dropAfter = dropAfter
-        task = Task.detached {
+        task = Task.detached { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
             events(.state(.connected))
             var gen = MockGait(cadence: cadence)
             let begin = Date()
             var lastBright = -100.0
+            var lastFrame = -100.0
+            var frames = 0
             while !Task.isCancelled {
                 let elapsed = Date().timeIntervalSince(begin)
                 if let d = dropAfter, elapsed > d { events(.state(.disconnected)); return }
                 events(.imu(gen.next(seconds: 0.2)))
                 if elapsed - lastBright >= 20 { lastBright = elapsed; events(.brightness(0.62)) }
+                if self?.wantsFrames == true, elapsed - lastFrame >= GlassesVision.minInterval,
+                   let f = MockGlasses.syntheticFrame(frames) {
+                    lastFrame = elapsed; frames += 1
+                    events(.frame(f))
+                }
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }

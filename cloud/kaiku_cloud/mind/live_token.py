@@ -12,23 +12,29 @@ bootstrap. Without a mask the token would lock every field and the device's resu
 behaviour would be silently ignored. The cloud's recommended setup (persona, voice, `[live]` VAD) still goes back to
 the device as `live_setup`; Kaiku's apps send exactly that plus their own transport fields.
 
-Defaults: 1 min to start a session, 30 min session lifetime; resume with sessionResumption inside that window.
-No GEMINI_API_KEY, or any error -> None (the device falls back: hub with its own key, apps to scripted lines).
+Defaults: 1 min to start, configured session authorization/resumption lifetime. Clients enforce the duration.
+No GEMINI_API_KEY, budget admission or provider availability -> None; apps keep the microphone closed.
+Robot bootstrap skips token minting because its server-side Live adapter meters its own key.
 """
 
 from __future__ import annotations
 
 import os
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from kaiku_contracts import budget
 from kaiku_contracts.api import LiveToken
 from kaiku_contracts.config import get
 from kaiku_contracts.jlog import get_logger
 
+from ..llm import ledger
+
 URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
-SESSION_MIN = 30
+_MINT_LOCK = threading.Lock()
 START_MIN = 1
 log = get_logger("cloud.live_token")
 
@@ -74,23 +80,36 @@ def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str,
 
 def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str | None = None,
          now: datetime | None = None, transport: httpx.BaseTransport | None = None,
-         timeout_s: float = 8.0) -> LiveToken | None:
+         timeout_s: float = 8.0, home_id: str | None = None) -> LiveToken | None:
     key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
     if not key:
         return None
     now = now or datetime.now(UTC)
-    expires, start_by = now + timedelta(minutes=SESSION_MIN), now + timedelta(minutes=START_MIN)
+    minutes = float(get("live", "session_max_minutes", 5))
+    expires, start_by = now + timedelta(minutes=minutes), now + timedelta(minutes=START_MIN)
     body = {"uses": 1, "expireTime": _z(expires), "newSessionExpireTime": _z(start_by),
             "bidiGenerateContentSetup": {"model": model_path(model)}, "fieldMask": "model"}
+    started = time.perf_counter()
+    estimate = budget.estimate(model, audio_min=minutes)
     try:
-        with httpx.Client(timeout=timeout_s, transport=transport) as c:
-            r = c.post(URL, json=body, headers={"x-goog-api-key": key})
-            r.raise_for_status()
-            token = r.json().get("name")
-        if not token:
-            raise ValueError("no token in response")
+        # The estimate reserves the full client-enforced duration. Token expiry governs authorization,
+        # not a guaranteed server-side end to an already established audio stream.
+        with _MINT_LOCK:
+            budget.charge("gemini", model, estimate, task="live_reservation", component="cloud",
+                          units=f"reserved_audio_minutes={minutes:g}")
+            with httpx.Client(timeout=timeout_s, transport=transport) as c:
+                r = c.post(URL, json=body, headers={"x-goog-api-key": key})
+                r.raise_for_status()
+                token = r.json().get("name")
+            if not token:
+                raise ValueError("no token in response")
+        ledger.record(model, "live_reservation", ok=True, home_id=home_id,
+                      latency_ms=(time.perf_counter() - started) * 1000)
         return LiveToken(token=token, expires_at=expires, new_session_expires_at=start_by)
-    except Exception as e:  # fail soft: never break the session bootstrap
+    except Exception as e:  # fail soft: no unmetered token when the budget or provider is unavailable
         status = getattr(getattr(e, "response", None), "status_code", None)
+        reason = "budget" if isinstance(e, budget.BudgetExceeded) else "unavailable"
+        ledger.record(model, "live_reservation", ok=False, home_id=home_id, route=reason,
+                      latency_ms=(time.perf_counter() - started) * 1000)
         log.warning("live_token_failed", type(e).__name__, status=status)
         return None

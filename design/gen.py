@@ -55,6 +55,9 @@ def render_css(t: dict) -> str:
         lines.append(f"  --k-space-{k}: {v}px;")
     for k, v in t["size"].items():
         lines.append(f"  --k-size-{k}: {v}px;")
+    for k, v in t["elevation"].items():
+        if not k.startswith("$"):
+            lines.append(f"  --k-shadow-{k}: 0 {v['y']}px {v['radius'] * 2}px color-mix(in srgb, var(--k-ink) {_num(v['opacity'] * 100)}%, transparent);")
     for k, v in t["type"]["family"].items():
         lines.append(f"  --k-font-{k}: {v['web']};")
     for k, v in t["type"]["scale"].items():
@@ -62,6 +65,9 @@ def render_css(t: dict) -> str:
         lines.append(f"  --k-text-{k}-size: {v['size']}px;")
     for k, v in t["motion"]["duration"].items():
         lines.append(f"  --k-dur-{k}: {v}ms;")
+    for k, v in t["motion"]["feedback"].items():
+        if not k.startswith("$"):
+            lines.append(f"  --k-dur-{k}: {v}ms;")
     for k, v in t["motion"]["easing"].items():
         lines.append(f"  --k-ease-{k}: cubic-bezier({', '.join(_num(x) for x in v)});")
     seen: set[str] = set()
@@ -109,11 +115,17 @@ def render_swift(t: dict) -> str:
     out += [f"        public static let {_camel(k)}: CGFloat = {v}" for k, v in t["space"].items()]
     out += ["    }", "", "    public enum Size {"]
     out += [f"        public static let {_camel(k)}: CGFloat = {v}" for k, v in t["size"].items()]
+    out += ["    }", "", "    /// Shadows in the ink colour: `.kaikuShadow(KaikuTokens.Elevation.card)`.", "    public enum Elevation {"]
+    for k, v in t["elevation"].items():
+        if not k.startswith("$"):
+            out.append(f"        public static let {_camel(k)} = KaikuShadow(radius: {_num(v['radius'])}, y: {_num(v['y'])}, opacity: {_num(v['opacity'])})")
     out += ["    }", "", "    /// SF Pro Rounded on Apple: Font.system(size:weight:design: .rounded).", "    public enum TextStyle {"]
     for k, v in t["type"]["scale"].items():
         out.append(f"        public static let {_camel(k)} = KaikuTextStyle(size: {v['size']}, lineHeight: {v['line']}, weight: {v['weight']})")
     out += ["    }", "", "    /// Seconds.", "    public enum Duration {"]
     out += [f"        public static let {_camel(k)}: Double = {_num(v / 1000)}" for k, v in m["duration"].items()]
+    out += ["    }", "", "    /// Seconds. Direct feedback only (press, release, hover); never character motion.", "    public enum Feedback {"]
+    out += [f"        public static let {_camel(k)}: Double = {_num(v / 1000)}" for k, v in m["feedback"].items() if not k.startswith("$")]
     out += ["    }", "", "    public enum Easing {"]
     for k, v in m["easing"].items():
         a, b, c, d = (_num(x) for x in v)
@@ -151,6 +163,19 @@ def render_swift(t: dict) -> str:
         "    public let name: String",
         "    public let color: UInt32",
         "    public let intensity: Double",
+        "}",
+        "",
+        "public struct KaikuShadow: Sendable {",
+        "    public let radius: CGFloat",
+        "    public let y: CGFloat",
+        "    public let opacity: Double",
+        "}",
+        "",
+        "public extension View {",
+        "    /// A token shadow in the ink colour (KaikuTokens.Elevation).",
+        "    func kaikuShadow(_ e: KaikuShadow) -> some View {",
+        "        shadow(color: KaikuTokens.Colors.ink.opacity(e.opacity), radius: e.radius, x: 0, y: e.y)",
+        "    }",
         "}",
         "",
         "extension SwiftUI.Color {",

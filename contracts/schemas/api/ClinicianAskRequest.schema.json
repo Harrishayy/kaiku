@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "question": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Question",
+      "type": "string"
+    }
+  },
+  "required": [
+    "question"
+  ],
+  "title": "ClinicianAskRequest",
+  "type": "object"
+}

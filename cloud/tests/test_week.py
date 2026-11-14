@@ -16,6 +16,30 @@ from kaiku_cloud.settings import TZ, Settings
 END = date(2026, 11, 13)  # a Friday
 
 
+def test_source_record_counts_corrected_watch_snapshots_by_measured_day():
+    rows = [
+        {"type": "obs.wearable_daily", "ts": "2026-11-13T08:00:00Z",
+         "payload": {"date": "2026-11-12", "steps": 1000, "sleep_min": 400}},
+        {"type": "obs.wearable_daily", "ts": "2026-11-13T09:00:00Z",
+         "payload": {"date": "2026-11-12", "steps": 2000, "sleep_min": 420}},
+        {"type": "obs.wearable_daily", "ts": "2026-11-13T10:00:00Z",
+         "payload": {"date": "2026-11-13", "steps": 3000}},
+    ]
+    watch = next(s for s in week.source_week(rows, END - timedelta(days=6), END) if s.source == "wearable")
+    counts = {c.label: c.value for c in watch.counts}
+    assert watch.per_day == [0, 0, 0, 0, 0, 1, 1]
+    assert counts["nights of sleep"] == 1 and counts["steps a day"] == 2500
+
+
+def test_app_checkin_is_attributed_to_shared_checkin_group_without_claiming_outdoors():
+    rows = [{"type": "obs.self_report", "ts": "2026-11-13T08:00:00Z", "payload": {"channel": "phone"}},
+            {"type": "obs.outing", "ts": "2026-11-13T15:00:00Z", "payload": {"minutes": 12}}]
+    by = {s.source: s for s in week.source_week(rows, END - timedelta(days=6), END)}
+    assert any(c.label == "weather checks" for c in by["robot"].counts)
+    assert not any(c.label == "weather checks" for c in by["laptop"].counts)
+    assert not any("outside" in c.label for c in by["glasses"].counts)
+
+
 def at(d: date, hh: int, mm: int = 0) -> datetime:
     return datetime(d.year, d.month, d.day, hh, mm, tzinfo=TZ)
 
@@ -48,7 +72,7 @@ def test_too_few_days_is_not_a_routine_and_sleep_after_midnight_belongs_to_the_e
 # ---------------------------------------------------------------- API over the seeded cohort
 @pytest.fixture(scope="module")
 def cohort(tmp_path_factory):
-    s = Settings(db_path=str(tmp_path_factory.mktemp("week") / "t.sqlite"), web_dir=None)
+    s = Settings(demo_mode=True, db_path=str(tmp_path_factory.mktemp("week") / "t.sqlite"), web_dir=None)
     c = TestClient(create_app(s))
     for p in DEMO_PATIENTS:
         ev = generate(p)
@@ -97,7 +121,7 @@ def test_safety_flag_this_week_is_first_for_the_care_team(cohort):
 def test_care_graph_needs_sharing_and_never_shows_people_or_places(cohort):
     remember(cohort, "sim-eero", "people", "Neighbour Ritva bakes pulla")
     remember(cohort, "sim-eero", "places", "Likes the library on Saturdays")
-    remember(cohort, "sim-eero", "what_helps", "A sauna on Sunday evening helps")
+    remember(cohort, "sim-eero", "what_helps", "A sauna with Maija in Helsinki on Sunday evening helps")
     assert cohort.get("/v1/me/sharing?home_id=sim-eero").json() == {"share_with_care_team": False}  # default off
     off = cohort.get("/v1/patients/sim-eero/graph").json()
     assert off["shared"] is False and off["nodes"] == [] and off["edges"] == []
@@ -110,11 +134,12 @@ def test_care_graph_needs_sharing_and_never_shows_people_or_places(cohort):
     assert cohort.put("/v1/me/sharing?home_id=sim-eero", json={"share_with_care_team": True}).json() == \
         {"share_with_care_team": True}
     on = cohort.get("/v1/patients/sim-eero/graph")
-    assert "Ritva" not in on.text and "library" not in on.text
+    assert all(private not in on.text for private in ("Ritva", "library", "Maija", "Helsinki"))
     g = on.json()
     assert g["shared"] and {"person", "place"} <= set(g["withheld"])
     assert {n["type"] for n in g["nodes"]} <= {"me", "activity", "helper", "routine"}
-    assert any(n["type"] == "helper" and "sauna" in n["label"] for n in g["nodes"])
+    assert "helper" in g["withheld"]
+    assert not any(n["type"] == "helper" for n in g["nodes"])
     ids = {n["id"] for n in g["nodes"]}
     assert all(e["src"] in ids and e["dst"] in ids for e in g["edges"])
     assert all(n["evidence"] > 0 for n in g["nodes"])
@@ -151,7 +176,7 @@ def test_one_record_shows_what_each_source_added(cohort):
     assert set(by) == {"robot", "glasses", "laptop", "wearable"}
     assert all(len(s["per_day"]) == 7 and s["days"] == sum(1 for v in s["per_day"] if v) for s in by.values())
     assert any(c["label"] == "morning rituals" for c in by["robot"]["counts"])
-    assert any(c["label"] == "walks" for c in by["glasses"]["counts"])
+    assert any(c["label"] == "outings" for c in by["glasses"]["counts"])
     assert w["next_steps"] == []  # suggested steps are for the care team only
     eero = {s["source"]: s for s in cohort.get("/v1/me/week?home_id=sim-eero").json()["sources"]}
     assert eero["wearable"]["days"] == 0 and eero["wearable"]["counts"] == []  # no watch: nothing invented
@@ -165,4 +190,7 @@ def test_suggested_next_steps_follow_the_state(cohort, home, first):
     for s in steps:
         assert not contains_banned(s["text"] + " " + s["why"]), s
     if home == "demo-aino":
-        assert "flag_booster" in {s["action"] for s in steps}
+        # care-process steps only: nothing a practitioner would read as a treatment recommendation
+        assert {s["action"] for s in steps} <= {None, "send_message"}
+        assert "Ask about sleep and evenings." in [s["text"] for s in steps]
+    assert not any(w in (s["text"] + s["why"]).lower() for s in steps for w in ("icbt", "booster", "referral", "tms"))

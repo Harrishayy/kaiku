@@ -50,10 +50,19 @@ async def amain(a: argparse.Namespace) -> None:
               ("breathe", "started"): ("breathe", "Breathing"), ("drum", "started"): ("drum", "Drumming"),
               ("nudge", "started"): ("suggestion", "Suggestion"), ("close", "started"): ("goodbye", "Goodbye")}
 
+    async def accept_invitation() -> None:
+        await asyncio.sleep(0.4)
+        mark("consent", "Person presses the button to accept")
+        await watch.publish("raw.head.button", {"id": "head", "pressed": True}, source="head")
+        await asyncio.sleep(0.1)
+        await watch.publish("raw.head.button", {"id": "head", "pressed": False}, source="head")
+
     async def on_ritual(_t, env) -> None:
         p = env.payload
         if (p.step, p.status) in labels:
             mark(*labels[(p.step, p.status)])
+        if p.step == "greet" and p.status == "started":
+            asyncio.create_task(accept_invitation())
         if p.step == "close" and p.status in ("completed", "skipped", "aborted"):
             done.set()
 
@@ -74,8 +83,6 @@ async def amain(a: argparse.Namespace) -> None:
         await asyncio.sleep(8)
         mark("glasses", "Glasses: walk done", ok=await glasses.walk_done())
         await asyncio.sleep(2)
-        mark("laptop", "Laptop: session", ok=await laptop.session())
-        await asyncio.sleep(1)
         mark("mac", "Mac: an hour of screen time + firefly", ok=await laptop.mac_hour())
         await asyncio.sleep(1)
         mark("phone", "Phone: morning check", ok=await phone.morning())

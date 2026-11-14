@@ -7,12 +7,19 @@ import SwiftUI
 /// the longest path as art. Mac: digits 1–9, or arrows + Space.
 public struct PebbleGame: View {
     @State private var bestPath: [Int] = []
+    @State private var span = 0
     public init() {}
     public var body: some View {
         GameShell(titleKey: "game.pebbles.t", scene: .pond, introText: T("pb.intro"), introState: .idle, endText: T("pb.end"),
                   demo: { PebbleDemo() },
-                  field: { finish in PebbleField { s, path in bestPath = path; finish(s) } },
-                  endArt: { PathArt(path: bestPath).frame(width: 170, height: 130) })
+                  field: { finish in PebbleField { s, path in bestPath = path; span = s?.span_max ?? 0; finish(s) } },
+                  endArt: {
+                      VStack(spacing: KaikuTokens.Space.s2) {
+                          PathArt(path: bestPath).frame(width: 170, height: 130)
+                          Text(T("pb.recap", n: span)).kText(.title3).wraps()
+                          Text(T("pb.recap.body")).kText(.footnote).wraps()
+                      }
+                  })
     }
 }
 
@@ -29,10 +36,12 @@ public struct PebbleEngine: Sendable {
     public var taps = 0
     public var correctTaps = 0
     public var over = false
+    public var rounds = 0
 
     public init() {}
 
     public mutating func newRound<R: RandomNumberGenerator>(using rng: inout R) {
+        rounds += 1
         var pool = Array(0..<Self.count)
         pool.shuffle(using: &rng)
         sequence = Array(pool.prefix(length))
@@ -62,6 +71,13 @@ public struct PebbleEngine: Sendable {
     public var accuracy: Double { taps == 0 ? 0 : Double(correctTaps) / Double(taps) }
 }
 
+/// Practice is a separate state, discarded before the unchanged scored protocol begins.
+struct PebbleSession {
+    var engine = PebbleEngine()
+    private(set) var practicing = true
+    mutating func startScored() { engine = PebbleEngine(); practicing = false }
+}
+
 /// Fixed pebble spots in a pond (0..1 coordinates), loosely scattered like stepping stones (reading order = 1…9).
 let pebbleSpots: [CGPoint] = [
     CGPoint(x: 0.16, y: 0.20), CGPoint(x: 0.50, y: 0.13), CGPoint(x: 0.83, y: 0.24),
@@ -72,7 +88,11 @@ let pebbleSpots: [CGPoint] = [
 struct PebbleField: View {
     let finish: (PlaySession?, [Int]) -> Void
     enum Mode { case watching, yourTurn, feedback }
-    @State private var engine = PebbleEngine()
+    @State private var session = PebbleSession()
+    private var engine: PebbleEngine { session.engine }
+    @State private var roundTask: Task<Void, Never>?
+    @State private var active = true
+    @State private var roundRevision = 0
     @State private var mode: Mode = .watching
     @State private var lit: Int?
     @State private var pressed: Int?
@@ -85,6 +105,7 @@ struct PebbleField: View {
     @State private var started = Date()
     @State private var rng = SystemRandomNumberGenerator()
     @State private var keyFocus: Int?
+    @State private var input = InputTracker()
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var rm
 
@@ -92,6 +113,13 @@ struct PebbleField: View {
 
     var body: some View {
         VStack(spacing: KaikuTokens.Space.s3) {
+            if session.practicing {
+                HStack {
+                    Text(T("pb.practice")).kText(.footnote).wraps()
+                    Spacer(minLength: 8)
+                    Button(T("pb.practice.skip")) { beginScored() }.buttonStyle(.bordered)
+                }
+            }
             // Whose turn it is, in a quiet pill (no score). Progress = the path length dots under it.
             HStack(spacing: KaikuTokens.Space.s2) {
                 Text(message).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
@@ -137,7 +165,8 @@ struct PebbleField: View {
         .focused($focused)
         .focusEffectDisabled()
         .onKeyPress(phases: .down) { press in handleKey(press) }
-        .task { focused = true; KSound.warmUp([.note(0), .note(1), .note(2), .wobble]); await playRound() }
+        .task { active = true; focused = true; KSound.warmUp([.note(0), .note(1), .note(2), .wobble]); await playRound() }
+        .onDisappear { active = false; roundTask?.cancel() }
     }
 
     // MARK: drawing
@@ -148,7 +177,7 @@ struct PebbleField: View {
         let shakeT = now.timeIntervalSince(shakeAt)
         let dx: CGFloat = (shaking == i && shakeT < 0.45 && !rm) ? CGFloat(sin(shakeT * 42) * 7 * (1 - shakeT / 0.45)) : 0
         let tilt = Double((i * 29) % 17) - 8
-        Button { tap(i) } label: {
+        Button { input.note(InputTracker.pointing); tap(i) } label: {
             ZStack {
                 if isLit {
                     Ellipse().fill(KaikuTokens.glowColor.opacity(0.55)).blur(radius: 12)
@@ -204,20 +233,27 @@ struct PebbleField: View {
     }
 
     private func playRound() async {
-        engine.newRound(using: &rng)
+        let revision = roundRevision
+        guard active, !Task.isCancelled else { return }
+        if session.practicing { session.engine = PebbleEngine() }
+        session.engine.newRound(using: &rng)
         mode = .watching
         message = T("pb.watch")
         cheer = false
         try? await Task.sleep(nanoseconds: 700_000_000)
+        guard active, !Task.isCancelled, revision == roundRevision else { return }
         for (k, p) in engine.sequence.enumerated() {
+            guard active, !Task.isCancelled, revision == roundRevision else { return }
             hopTo(p)
             try? await Task.sleep(nanoseconds: 300_000_000)
+            guard active, !Task.isCancelled, revision == roundRevision else { return }
             lit = p
             KSound.play(.note(k))
             try? await Task.sleep(nanoseconds: 450_000_000)
             lit = nil
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
+        guard active, !Task.isCancelled, revision == roundRevision else { return }
         mode = .yourTurn
         message = T("pb.yourturn")
         focused = true
@@ -225,7 +261,7 @@ struct PebbleField: View {
 
     private func tap(_ i: Int) {
         guard mode == .yourTurn else { return }
-        let r = engine.tap(i)
+        let r = session.engine.tap(i)
         switch r {
         case .good, .roundDone:
             hopTo(i)
@@ -249,14 +285,23 @@ struct PebbleField: View {
         mode = .feedback
         cheer = r == .roundDone
         withAnimation { message = r == .miss ? T("pb.oops") : T("pb.nice") }
-        Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
+        roundTask = Task {
+            do { try await Task.sleep(nanoseconds: 1_200_000_000) } catch { return }
+            guard active else { return }
             shaking = nil
+            if session.practicing && r == .roundDone { session.startScored(); started = Date() }
             if engine.over { end() } else { await playRound() }
         }
     }
 
+    private func beginScored() {
+        roundTask?.cancel(); roundRevision += 1
+        session.startScored(); started = Date(); lit = nil
+        roundTask = Task { await playRound() }
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        if mode == .yourTurn { input.note(.keyboard) }
         if let n = Int(press.characters), (1...9).contains(n) { keyFocus = n - 1; tap(n - 1); return .handled }
         let cur = keyFocus ?? 4
         func nearest(_ dx: CGFloat, _ dy: CGFloat) -> Int {
@@ -283,9 +328,16 @@ struct PebbleField: View {
     }
 
     private func end() {
+        guard active, !session.practicing else { return }
+        active = false
         var s = PlaySession(game: .pebbles, device: KaikuPlatform.device, duration_s: Date().timeIntervalSince(started))
         s.span_max = engine.spanMax
         s.accuracy = engine.accuracy
+        s.trials_n = engine.rounds
+        s.valid_n = max(0, engine.rounds - engine.misses)
+        s.input = input.value
+        s.valid = engine.spanMax >= 2          // never repeated even the first short path: not a reading
+        s.flags = engine.spanMax >= 2 ? nil : [.few_trials]
         finish(s, engine.bestPath)
     }
 }

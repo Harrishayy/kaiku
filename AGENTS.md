@@ -1,9 +1,17 @@
 # AGENTS.md — rules for every coding agent (Claude Code, Codex, Gemini CLI, Cursor, Muse) and human
 
 Kaiku helps people stay well at home after TMS depression treatment (Junction 2026, Aalto "Beyond the Clinic").
-**Three independent sources** — home robot, Meta glasses, laptop apps — each give a verdict about the person's
-state against their own baseline; a **deterministic consensus engine** combines them on one clinician dashboard.
-`docs/plans/` holds the plans in order (`01-foundation.md` done, `02-companion-apps.md` current, later plans after it); this file is the condensed law. Every module folder has its own `AGENTS.md`.
+**Signal groups** — check-ins/robot, walks/outings, apps and optional wearable data — each give a verdict against
+the person's own baseline; a **deterministic consensus engine** combines them on one clinician dashboard.
+**The product in one paragraph:** people who have finished treatment collect data on devices they already live with
+(phone, Mac, watch, glasses, a small robot). Kaiku accumulates it at home into one trusted record, and the
+**intelligence layer** is the product: it turns every input into what it means for this person (went outside, kept
+the morning ritual, slept short, sounded low in the evening reflection), answers them with real emotional
+attunement (a sad thing gets a gentle, curious reply, never "ok, anyway"), and shows the practitioner what changed
+and why, so staying well after treatment does not depend on expensive clinic visits. Every module exists to feed
+or express that layer; a new robot signal is done only when Gemma's review can cite it.
+Groups are not proof of independent connected devices: actual envelope source and capture provenance stay visible.
+`docs/plans/` holds the plans in order (`01-foundation.md` done, `08-product-integration.md` current); this file is the condensed law. Every module folder has its own `AGENTS.md`.
 **Public MIT repo: never write API keys, tokens, Wi-Fi passwords or credit codes into any file.**
 
 ## Start here (in order)
@@ -51,10 +59,14 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    in `sources.py`, run `make contracts`, update producers/consumers/sims, note it in `docs/progress.md`.
    Breaking change → bump `SCHEMA_VERSION`.
 5. **No raw media leaves the device that captured it.** Only `obs.*` is uplinked (the cloud rejects anything else).
-   Raw audio only to Gemini Live during a consented robot conversation. Robot camera and laptop webcam are
-   processed in memory, never stored or sent. Browser apps never hold the Gemini key.
+   Raw audio only to Gemini Live during an active, consented companion conversation. Robot camera and laptop webcam are
+   processed in memory, never stored or sent. One exception for pictures (D43): with the separate opt-in "Let Kaiku
+   see through the glasses during walks" (off by default), about one glasses camera frame a second goes from the
+   iPhone straight to that same Gemini Live conversation while it is open and unmuted; frames are never stored,
+   logged or sent to the Kaiku cloud, and no observation is derived from them. Browser apps never hold the Gemini key.
 6. **The consensus rule and the crisis path are deterministic.** No LLM decides a person's state or handles a
-   crisis. Gemma only explains. See `docs/safety.md`.
+   crisis. Gemma explains the verdict and organises permitted companion knowledge (D35); Gemini Live uses
+   the prepared context for conversation and calls the shared mind only when needed. See `docs/safety.md`.
 7. **Config, not code,** for model IDs, endpoints, thresholds (`config/kaiku.toml`). Look model IDs up in current
    docs (geminiDocs MCP) — never guess. Placeholders are marked `VERIFY-`.
 8. **Fail soft.** Timeouts + retry with backoff on every network call; every node heartbeats on `health/<node>`.
@@ -84,16 +96,16 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 |---|---|---|---|---|---|
 | contracts | [`contracts/`](contracts/AGENTS.md) | all | library | no | Message envelope, payloads, topics, API models, consensus source map; shared Bus/config/jlog |
 | hub | [`hub/`](hub/AGENTS.md) | B | node | no | Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink |
-| cloud | [`cloud/`](cloud/AGENTS.md) | C | service | no | Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma explanations, simulation, web hosting |
-| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js static export: person /me (+ firefly game), clinician dashboard, laptop /session, /phq9, /consent; team menu: /live, /health, /eval, /tune |
+| cloud | [`cloud/`](cloud/AGENTS.md) | C | service | no | Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma reasoning and graph organisation, simulation, web hosting |
+| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune |
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
 | apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
-| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (hall homing), speaker; MQTT on the LAN |
-| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: knock drum, KY-039 pulse (KY-053), KY-054 light, KY-035 hall, buzzer chimes, camera (faces, distance, backup pulse/light) |
+| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (power-on home, optional hall), speaker; MQTT on the LAN |
+| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: knock drum, KY-039 pulse (KY-053), buzzer chimes, camera (faces, distance, room light, backup pulse); optional KY-035 hall / KY-054 light |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
 | sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder |
-| tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard) |
+| tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, local API discovery, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard) |
 | config | [`config/`](config/AGENTS.md) | all | docs | no | criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), voice lines, safety phrases, mosquitto.conf |
 | design | [`design/`](design/AGENTS.md) | D | library | no | Look ground truth: tokens.json, mascot.spec.json (+ generated mascot.svg, tokens.css, Tokens.swift), motion.md |
 | hardware | [`hardware/`](hardware/AGENTS.md) | A | docs | yes | CAD (with provenance), wiring, BOM |
@@ -124,9 +136,18 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 - Web apps are **Next.js** (App Router, TS, static export) served by the Modal cloud from one URL. Client-side
   fetching only; dynamic pages use query params (`/clinician/patient/?id=`), not `[id]` segments.
 - Modal: one warm ASGI container (single SQLite writer). Check current Modal docs for parameter names.
+- **English first.** Every surface must work fully in English before any fi/sv work; untranslated or draft
+  fi/sv copy never blocks or delays an English fix.
+- **Who uses what.** The website is the practitioner dashboard only (one viewport, panels). Everything the person
+  does (onboarding, Today, Play, Talk, walks, Your days) lives in the iPhone/Mac apps and on the robot.
+- **Show the intelligence.** A practitioner must be able to see what Gemma concluded and why (review, cited
+  evidence, agent trace, knowledge graph, routine, period comparison): `GET /v1/patients/{id}/insight`.
+- **Real over plausible.** No hand-written model output, no hard-coded patient data in a UI, no claim in docs or
+  copy that the code or a physical test has not shown. Seeded records go through the real routes and rules.
 - Wording in UI/explanations: "change from your usual", "worth a check-in", "consensus", "needs a call".
   Never "diagnosis", "relapse detected", "predicts relapse". Drum = "inspired by research on improvisational
-  music therapy". Robot light is not light therapy. Glasses don't "see" unless the DAT camera app exists.
+  music therapy". Robot light is not light therapy. Kaiku "can see" only during a walk with "Let Kaiku see" on and frames flowing (the walk screen shows it); everywhere
+  else the glasses are a voice in the ear and never "see".
 
 ## Don'ts
 - Don't edit another module's folder; leave its owner a `Broken/blocked` line in `docs/progress.md`.

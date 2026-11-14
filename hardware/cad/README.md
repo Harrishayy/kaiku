@@ -24,7 +24,8 @@ The pre-event concept renders mentioned in `docs/plans/01-foundation.md` §8 wer
 - **Neck.** The pan base, glued on the body top, carries a fixed hollow axle. All the head cables go through it.
   - The turntable has a 40-tooth ring gear (module 1.25). It turns on the axle and the head glues onto its disc.
   - The pan motor hangs under the pan base in a sleeve and drives a 12-tooth pinion: 3.33 : 1 reduction.
-  - A 6 × 3 mm magnet in the gear and a KY-035 hall sensor under the flange give the home position.
+  - A pocket for a 6 × 3 mm magnet in the gear and a KY-035 spot under the flange (optional; not fitted in this build,
+    D39: home is the power-on position).
 - **Body (104 × 136 × 100 mm).** It holds:
   - the Atech board, standing on the left wall;
   - the UNO Q on four standoffs (UNO hole pattern), with its USB-C at the rear;

@@ -96,6 +96,12 @@
           "title": "Date",
           "type": "string"
         },
+        "early": {
+          "default": false,
+          "description": "this day's baseline is a provisional one of a young record",
+          "title": "Early",
+          "type": "boolean"
+        },
         "value": {
           "anyOf": [
             {

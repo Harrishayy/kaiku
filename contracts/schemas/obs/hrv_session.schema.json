@@ -3,6 +3,20 @@
     "HrvSession": {
       "additionalProperties": false,
       "properties": {
+        "beats": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "heartbeats found in the recording",
+          "title": "Beats"
+        },
         "breath_bpm": {
           "exclusiveMinimum": 0,
           "maximum": 30,
@@ -19,6 +33,23 @@
           "exclusiveMinimum": 0,
           "title": "Hr Bpm",
           "type": "number"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "enum": [
+                "finger",
+                "camera"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "finger = KY-039 cradle (HR + RMSSD); camera = forehead-green backup (HR only, never RMSSD: ~15 Hz is too coarse for beat-to-beat timing)",
+          "title": "Method"
         },
         "rmssd_post_ms": {
           "anyOf": [

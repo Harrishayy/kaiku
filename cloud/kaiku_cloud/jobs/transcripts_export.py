@@ -1,12 +1,11 @@
-"""Opt-in conversation transcripts → a de-identified JSONL training set for Gemma (chat format).
+"""Export only independently reviewed, explicitly training-consented episodes.
 
-Only transcripts the person opted into exist (device consent `transcripts`, off by default; crisis conversations are
-never stored, see mind/session.py). De-identification, per home: the person's name and every capitalised word from
-their `name`, `people` and `places` memories become [NAME] / [PERSON] / [PLACE]; emails, phone numbers, URLs and long
-digit runs are replaced; the home id becomes a salted hash. Run after a person deletes something and the next export
-no longer contains it (the export reads the live table; it keeps no copy).
+Transcript retention consent is not training consent. An allowlist is therefore required; it attests that each
+listed episode has separate training permission AND a human reviewed its text for identifiers. Regex scrubbing
+is only an additional aid: it cannot guarantee anonymization of names, places or sensitive facts in natural text.
+No allowlist means no exported conversations. Deletions and crisis suppression are respected on each export.
 
-    uv run --package kaiku-cloud python -m kaiku_cloud.jobs.transcripts_export OUT.jsonl [--salt S]
+    python -m kaiku_cloud.jobs.transcripts_export OUT.jsonl --reviewed-episodes ids.json --salt RANDOM_SALT
 """
 
 from __future__ import annotations
@@ -52,14 +51,16 @@ def scrub(text: str, ids: dict[str, str]) -> str:
     for pat, rep in _PATTERNS:
         text = pat.sub(rep, text)
     for w in sorted(ids, key=len, reverse=True):
-        text = re.sub(rf"\b{re.escape(w)}\b", ids[w], text)
+        text = re.sub(rf"\b{re.escape(w)}\b", ids[w], text, flags=re.IGNORECASE)
     return text
 
 
-def export(store: Store, salt: str) -> list[dict[str, Any]]:
+def export(store: Store, salt: str, *, reviewed_episode_ids: set[str] | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     cache: dict[str, dict[str, str]] = {}
     for t in store.transcripts():
+        if t["episode_id"] not in (reviewed_episode_ids or set()):
+            continue
         home = t["home_id"]
         if home not in cache:
             cache[home] = identifiers(store.memories(home))
@@ -75,9 +76,14 @@ def export(store: Store, salt: str) -> list[dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out", type=Path)
-    ap.add_argument("--salt", default="kaiku")
+    ap.add_argument("--salt", required=True)
+    ap.add_argument("--reviewed-episodes", type=Path, required=True,
+                    help="JSON array of independently reviewed, training-consented episode IDs")
     a = ap.parse_args(argv)
-    rows = export(Store(Settings().db_path), a.salt)
+    reviewed = json.loads(a.reviewed_episodes.read_text())
+    if not isinstance(reviewed, list) or not all(isinstance(eid, str) for eid in reviewed):
+        ap.error("reviewed episodes must be a JSON array of episode IDs")
+    rows = export(Store(Settings().db_path), a.salt, reviewed_episode_ids=set(reviewed))
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
     print(f"{len(rows)} conversations → {a.out}", file=sys.stderr)

@@ -15,6 +15,7 @@ from typing import Any
 
 from kaiku_contracts import wording
 from kaiku_contracts.api import BriefSection, ClinicianBrief, Consensus
+from kaiku_contracts.sources import SOURCE_LABELS
 
 from ..llm import gemini, ledger
 from ..llm.errors import LlmUnavailable
@@ -47,12 +48,14 @@ def facts(c: Consensus) -> dict[str, Any]:
                         for v in c.sources]}
 
 
-def template(c: Consensus) -> list[BriefSection]:
+def template(c: Consensus, labels: dict[str, str] | None = None) -> list[BriefSection]:
+    labels = labels or {}
     out = [BriefSection(text=f"Consensus this week: {c.state.replace('_', ' ')} ({c.agreement.replace('_', ' ')}).")]
     for v in c.sources:
         if v.evidence:
             names = [e.metric for e in v.evidence]
-            out.append(BriefSection(text=f"{v.source}: change from their usual in {', '.join(names)}.",
+            shown = ", ".join(labels.get(n, n.replace("_", " ")).lower() for n in names)
+            out.append(BriefSection(text=f"{SOURCE_LABELS[v.source]}: change from their usual in {shown}.",
                                     metrics=names))
     if len(out) == 1:
         out.append(BriefSection(text="No source shows a change from their usual this week."))
@@ -84,7 +87,10 @@ def generate(store: Store, home_id: str, c: Consensus, *, now: datetime | None =
     now = now or datetime.now(UTC)
     gen = gen or gemini.generate
     allowed = {e.metric for v in c.sources for e in v.evidence}
-    sections, by, model = template(c), "template", None
+    from .. import service  # local import: service imports the explainers
+
+    labels = {m.name: m.label for m in service.active_criteria(store).metrics}
+    sections, by, model = template(c, labels), "template", None
     if use_model and gemini.available() and router.argon_left(store, home_id, now):
         try:
             raw = gen(json.dumps(facts(c), indent=1), tier="flagship", system=SYSTEM, schema=SCHEMA, timeout_s=60,
@@ -98,3 +104,13 @@ def generate(store: Store, home_id: str, c: Consensus, *, now: datetime | None =
 
 def key(home_id: str) -> str:
     return f"brief:{home_id}"
+
+
+def current(cached: Any, c: Consensus, now: datetime | None = None) -> ClinicianBrief | None:
+    """A stored brief is shown only while it still describes this week's consensus. New data that moves the state,
+    a new rule version or a new week retires it, so prose never contradicts the deterministic result beside it."""
+    if not cached:
+        return None
+    b = ClinicianBrief.model_validate(cached)
+    fresh = b.week == week_of(now or datetime.now(UTC)) and b.state == c.state and b.rule_version == c.rule_version
+    return b if fresh else None

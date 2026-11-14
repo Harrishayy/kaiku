@@ -23,22 +23,94 @@
           "description": "None when the drum can't sense force (KY-031 knock switch)",
           "title": "Force Mean"
         },
+        "pauses": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "gaps > 2 s inside the session",
+          "title": "Pauses"
+        },
         "regularity": {
           "maximum": 1,
           "minimum": 0,
           "title": "Regularity",
           "type": "number"
         },
+        "rejected_taps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "double-triggers dropped by the refractory window",
+          "title": "Rejected Taps"
+        },
         "taps": {
           "minimum": 0,
           "title": "Taps",
           "type": "integer"
+        },
+        "taps_per_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "energy proxy that needs no force sensor",
+          "title": "Taps Per S"
         },
         "tempo_bpm": {
           "maximum": 400,
           "minimum": 0,
           "title": "Tempo Bpm",
           "type": "number"
+        },
+        "tempo_end_bpm": {
+          "anyOf": [
+            {
+              "maximum": 400,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tempo of the last third of the taps",
+          "title": "Tempo End Bpm"
+        },
+        "tempo_start_bpm": {
+          "anyOf": [
+            {
+              "maximum": 400,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tempo of the first third of the taps",
+          "title": "Tempo Start Bpm"
         }
       },
       "required": [

@@ -36,6 +36,11 @@
       "schema": "obs/drum_session.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/drum_session"
     },
+    "obs.engagement": {
+      "payload_model": "Engagement",
+      "schema": "obs/engagement.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/engagement"
+    },
     "obs.friend_link": {
       "payload_model": "FriendLink",
       "schema": "obs/friend_link.schema.json",

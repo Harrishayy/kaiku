@@ -159,7 +159,7 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="kaiku-e2e-"))
     port = free_port()
     base = f"http://127.0.0.1:{port}"
-    env = {**os.environ, "KAIKU_DB_PATH": str(tmp / "e2e.sqlite"), "KAIKU_VOICE_CACHE": str(tmp / "voice"),
+    env = {**os.environ, "KAIKU_DEMO_MODE": "1", "KAIKU_DB_PATH": str(tmp / "e2e.sqlite"), "KAIKU_VOICE_CACHE": str(tmp / "voice"),
            "KAIKU_CLOUD_URL": base, "KAIKU_NO_DOTENV": "1"}
     for k in ("KAIKU_HOME_TOKEN", "KAIKU_ADMIN_TOKEN"):
         env.pop(k, None)

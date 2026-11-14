@@ -1,0 +1,192 @@
+{
+  "additionalProperties": false,
+  "description": "One measure: this week vs the week before vs the person's own usual. Medians of recorded days.",
+  "properties": {
+    "baseline_days": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "recorded days behind the usual",
+      "title": "Baseline Days"
+    },
+    "days_previous_week": {
+      "maximum": 7,
+      "minimum": 0,
+      "title": "Days Previous Week",
+      "type": "integer"
+    },
+    "days_this_week": {
+      "maximum": 7,
+      "minimum": 0,
+      "title": "Days This Week",
+      "type": "integer"
+    },
+    "early_baseline": {
+      "default": false,
+      "description": "the usual is a provisional baseline of a young record",
+      "title": "Early Baseline",
+      "type": "boolean"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "meaning": {
+      "maxLength": 300,
+      "title": "Meaning",
+      "type": "string"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "previous_week": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Week"
+    },
+    "previous_week_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Week Text"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "sustained": {
+      "description": "the rule engine's reading over recent days (criteria thresholds), not a one-week difference",
+      "enum": [
+        "change_from_usual",
+        "better_than_usual",
+        "as_usual",
+        "not_enough_data"
+      ],
+      "title": "Sustained",
+      "type": "string"
+    },
+    "this_week": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "This Week"
+    },
+    "this_week_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "This Week Text"
+    },
+    "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
+    },
+    "usual": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "personal baseline median for the latest scored day",
+      "title": "Usual"
+    },
+    "usual_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Usual Text"
+    },
+    "vs_previous": {
+      "enum": [
+        "better",
+        "worse",
+        "similar",
+        "unknown"
+      ],
+      "title": "Vs Previous",
+      "type": "string"
+    },
+    "vs_usual": {
+      "enum": [
+        "better",
+        "worse",
+        "similar",
+        "unknown"
+      ],
+      "title": "Vs Usual",
+      "type": "string"
+    },
+    "worse_when": {
+      "enum": [
+        "up",
+        "down"
+      ],
+      "title": "Worse When",
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric",
+    "label",
+    "source",
+    "worse_when",
+    "days_this_week",
+    "days_previous_week",
+    "vs_previous",
+    "vs_usual",
+    "sustained",
+    "meaning"
+  ],
+  "title": "MetricComparison",
+  "type": "object"
+}

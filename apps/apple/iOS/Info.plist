@@ -37,6 +37,8 @@
 	<false/>
 	<key>KaikuAppGroup</key>
 	<string>$(KAIKU_APP_GROUP)</string>
+	<key>KaikuServiceURL</key>
+	<string>$(KAIKU_SERVICE_URL)</string>
 	<key>MWDAT</key>
 	<dict>
 		<key>Analytics</key>
@@ -54,6 +56,15 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>To walk with your Meta glasses.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_kaiku-api._tcp</string>
+		<string>_bonjour._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Find nearby Kaiku companion services for voice, and reach your Meta glasses' camera when you let Kaiku see.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

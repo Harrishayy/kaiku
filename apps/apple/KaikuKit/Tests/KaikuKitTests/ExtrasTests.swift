@@ -234,6 +234,15 @@ final class WearableTests: XCTestCase {
         XCTAssertNil(WearableDailyBuilder.build(morning: Date(), WearableDailyBuilder.Inputs(), calendar: cal))
     }
 
+    func testLateHealthSamplesGetNewIDAndEqualSnapshotsRetry() {
+        var morning = WearableDaily(date: "2026-11-14", device: .apple_watch)
+        morning.sleep_min = 390
+        let first = WearableDailyBuilder.envelopeID(home: "demo-aino", summary: morning)
+        XCTAssertEqual(first, WearableDailyBuilder.envelopeID(home: "demo-aino", summary: morning))
+        morning.sleep_min = 420
+        XCTAssertNotEqual(first, WearableDailyBuilder.envelopeID(home: "demo-aino", summary: morning))
+    }
+
     func testIdempotentID() {
         let a = WearableDailyBuilder.envelopeID(home: "demo-aino", date: "2026-11-14")
         XCTAssertEqual(a, WearableDailyBuilder.envelopeID(home: "demo-aino", date: "2026-11-14"))

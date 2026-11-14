@@ -28,17 +28,54 @@ public final class WalkModel {
     /// The live companion for this walk (nil when off or unavailable).
     public private(set) var companion: Conversation?
     public var talking: Bool { companion?.isLive == true }
+    /// Where the conversation's sound comes in and goes out (shown on the walk screen).
+    public private(set) var route = TalkAudio.Route()
+    /// The glasses camera on this walk (only ever on with the person's "Let Kaiku see" choice).
+    public private(set) var camera: GlassesCameraState = .off
+    public private(set) var cameraNote: String?
+    public private(set) var visionPaused = false
+    /// nil = the glasses do not report it.
+    public private(set) var worn: Bool?
+    /// Why Kaiku's voice is not there (nil = it is, or it was never tried).
+    public private(set) var voiceProblem: Conversation.UnavailableReason?
+    public private(set) var summary: Summary?
+
+    public struct Summary: Equatable, Sendable {
+        public enum Saved: Equatable, Sendable { case saved, tooShort, walksOff, notConnected }
+        public var minutes: Double
+        public var steps: Int?
+        /// Times the person spoke (a count, never the words).
+        public var turns: Int
+        public var frames: Int
+        public var inTheEar: Bool
+        public var saved: Saved
+    }
+
+    public var seeAllowed: Bool { app?.allowed(.see) == true }
+    /// Kaiku's voice stopped by itself (session length limit or a lost connection): offer "Talk again".
+    public var companionEnded: Bool {
+        guard active, let c = companion else { return false }
+        return !c.isLive && c.phase != .connecting
+    }
 
     @ObservationIgnored private var gait = GaitAnalyzer()
     @ObservationIgnored private var daylight = DaylightCounter()
     @ObservationIgnored private var adapter: GlassesAdapter?
     @ObservationIgnored private weak var app: AppModel?
     @ObservationIgnored private var envelopeID = UUID7.make()
+    @ObservationIgnored private var adapterTask: Task<Void, Never>?
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var usedGlasses = false
+    @ObservationIgnored private var simulated = false
+    @ObservationIgnored private var scope: WalkScope?
     @ObservationIgnored private var announcedDrop = false
     @ObservationIgnored private var lastMinuteEvent = 0
     @ObservationIgnored private var audioTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private var lastFrameSent = Date.distantPast
+    /// The newest frame, in memory only, replaced about once a second and dropped when the walk ends.
+    @ObservationIgnored private var latestFrame: (frame: GlassesFrame, at: Date)?
+    @ObservationIgnored private var toldSeeing = false
+    @ObservationIgnored private var heardInEar = false
     #if os(iOS)
     @ObservationIgnored private let pedometer = CMPedometer()
     @ObservationIgnored private var phoneSteps: Int?
@@ -53,7 +90,9 @@ public final class WalkModel {
     public func begin(app: AppModel, adapter: GlassesAdapter?) {
         guard !active else { return }
         self.app = app
+        scope = app.pairing.map(WalkScope.init)
         self.adapter = adapter
+        simulated = adapter?.kind == "mock" || adapter?.kind == "dat-mock"
         active = true
         finished = nil
         found = 0
@@ -76,9 +115,23 @@ public final class WalkModel {
         }
         #endif
         lastMinuteEvent = 0
-        startCompanion(app: app)
-        if let adapter {
-            Task { await adapter.start { [weak self] ev in Task { @MainActor in self?.handle(ev) } } }
+        camera = .off; cameraNote = nil; visionPaused = false; worn = nil; summary = nil; voiceProblem = nil
+        latestFrame = nil; lastFrameSent = .distantPast; toldSeeing = false; heardInEar = false
+        GlassesStatus.shared.resetFrames(); GlassesStatus.shared.clearError()
+        GlassesStatus.shared.camera = .off; GlassesStatus.shared.cameraNote = nil
+        GlassesLog.shared.log("walk_begin", ["adapter": adapter?.kind ?? "phone only", "see": app.allowed(.see),
+                                             "paired": app.isPaired, "headset_available": TalkAudio.headsetAvailable ?? ""])
+        let voice = startCompanion(app: app)
+        // Order matters (Meta DAT docs, "Microphones and speakers"): the hands-free audio route must be up and
+        // settled before the device session and its camera stream start, or the audio route can fail silently.
+        adapterTask = Task { [weak self] in
+            _ = await voice.value
+            let headset = await TalkAudio.settleHeadset()
+            guard let self, self.active, !Task.isCancelled else { return }
+            self.noteRoute("walk start", settled: headset)
+            guard let adapter else { return }
+            await adapter.start { [weak self] ev in Task { @MainActor in self?.handle(ev) } }
+            await self.applyVision()
         }
         saveDraft()
         ticker = Task { [weak self] in
@@ -91,6 +144,24 @@ public final class WalkModel {
     }
 
     func clearFinished() { finished = nil }
+
+    /// A new paired home must not inherit a previous person's active walk or completion screen.
+    func clearForPairingChange() {
+        active = false
+        ticker?.cancel(); ticker = nil
+        adapterTask?.cancel(); adapterTask = nil
+        stopCompanion()
+        let previousAdapter = adapter
+        adapter = nil
+        Task { await previousAdapter?.stop() }
+        #if os(iOS)
+        pedometer.stopUpdates(); phoneSteps = nil
+        KaikuLiveActivities.endAllWalks()
+        #endif
+        start = nil; finished = nil; found = 0; steps = nil; glasses = .off; scope = nil
+        camera = .off; cameraNote = nil; latestFrame = nil; summary = nil; worn = nil; voiceProblem = nil
+        gait = GaitAnalyzer(); daylight = DaylightCounter()
+    }
 
     /// `byKaiku`: the model's `log_walk_moment` already knows (it heard it), so no context event goes back.
     public func foundOne(byKaiku: Bool = false) {
@@ -113,6 +184,79 @@ public final class WalkModel {
         } else {
             companion?.setMuted(true)
         }
+        GlassesLog.shared.log("walk_talking", ["on": on])
+        Task { await applyVision() }
+    }
+
+    // MARK: seeing (glasses camera → the live conversation only)
+
+    /// Pause / resume seeing without changing the person's choice.
+    public func setVisionPaused(_ paused: Bool) {
+        visionPaused = paused
+        GlassesLog.shared.log("vision_paused", ["paused": paused])
+        Task { await applyVision() }
+    }
+
+    /// Brings the camera in line with: the person's choice, the pause button, and an open, unmuted conversation.
+    /// Call it after any of those change (the walk screen calls it when the choice is flipped mid-walk).
+    public func applyVision() async {
+        guard active, let adapter else { return }
+        let want = seeAllowed && !visionPaused && talking && !companionMuted
+        await adapter.setCamera(want)
+        if !want {
+            latestFrame = nil
+            setCamera(seeAllowed && visionPaused ? .paused : .off, note: nil)
+        }
+    }
+
+    private func setCamera(_ state: GlassesCameraState, note: String?) {
+        if state != camera { GlassesLog.shared.log("camera_state", ["state": state.rawValue, "note": note ?? ""]) }
+        camera = state; cameraNote = note
+        GlassesStatus.shared.camera = state; GlassesStatus.shared.cameraNote = note
+        if state != .streaming { tellSeeing(false) }
+    }
+
+    /// Kaiku is told when it starts and stops receiving pictures, so it never talks as if it could see when it can't.
+    private func tellSeeing(_ on: Bool) {
+        guard toldSeeing != on else { return }
+        toldSeeing = on
+        companion?.context(on
+            ? "[glasses camera on · you now get about one still picture a second of what the person is looking at]"
+            : "[glasses camera off · you cannot see now]")
+    }
+
+    private func take(_ f: GlassesFrame) {
+        guard active, seeAllowed, !visionPaused else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastFrameSent) >= GlassesVision.minInterval * 0.9 else { return }
+        latestFrame = (f, now)
+        guard companion?.sendFrame(f.jpeg) == true else { return }
+        lastFrameSent = now
+        GlassesStatus.shared.frameSent(at: now)
+        if camera != .streaming { setCamera(.streaming, note: nil) }
+        tellSeeing(true)
+        if GlassesStatus.shared.framesSent == 1 || GlassesStatus.shared.framesSent % 30 == 0 {
+            GlassesLog.shared.log("frames_sent", ["n": GlassesStatus.shared.framesSent, "bytes": f.jpeg.count,
+                                                  "w": f.width, "h": f.height, "brightness": f.luminance])
+        }
+    }
+
+    private func noteRoute(_ why: String, settled: Bool? = nil) {
+        let was = route
+        route = TalkAudio.route
+        GlassesStatus.shared.route = route
+        if route.inTheEar { heardInEar = true }
+        var f: [String: Any] = ["why": why, "in": route.input, "in_type": route.inputType,
+                                "out": route.output, "out_type": route.outputType]
+        if let settled { f["headset_settled"] = settled }
+        GlassesLog.shared.log("audio_route", f)
+        guard was.active, was.headsetMic != route.headsetMic else { return }
+        if route.headsetMic {
+            companion?.context("[glasses audio back]")
+        } else {
+            companion?.context("[glasses audio lost · the conversation continues on the phone]")
+            app?.showToast(T("walk.route.lost"))
+        }
     }
 
     public var companionMuted: Bool { companion?.phase == .muted }
@@ -122,9 +266,14 @@ public final class WalkModel {
         guard active, let start else { return }
         active = false
         ticker?.cancel()
+        adapterTask?.cancel(); adapterTask = nil
+        let turns = companion?.lines.filter(\.me).count ?? 0
+        let frames = GlassesStatus.shared.framesSent
         stopCompanion()
         await adapter?.stop()
         adapter = nil
+        latestFrame = nil
+        setCamera(.off, note: nil)
         #if os(iOS)
         pedometer.stopUpdates()
         #endif
@@ -137,9 +286,15 @@ public final class WalkModel {
         Self.clearDraft()
         glasses = .off
         guard let app else { return }
+        let saved: Summary.Saved = outing.minutes < 1 ? .tooShort : !app.allowed(.walks) ? .walksOff
+            : scope?.matches(app.pairing) == true ? .saved : .notConnected
+        summary = Summary(minutes: outing.minutes, steps: outing.steps, turns: turns, frames: frames,
+                          inTheEar: heardInEar, saved: saved)
+        GlassesLog.shared.log("walk_end", ["minutes": outing.minutes, "steps": outing.steps ?? -1, "turns": turns,
+                                           "frames": frames, "in_ear": heardInEar, "method": outing.method.rawValue,
+                                           "saved": String(describing: saved)])
         VoiceLines.shared.play("walk.done", lang: app.language)
-        if outing.minutes >= 1, app.allowed(.walks) {
-            await app.emit("obs.outing", outing, id: envelopeID, ts: start)
+        if await Self.emitOuting(outing, id: envelopeID, start: start, simulated: simulated, scope: scope, app: app) {
             app.celebrate()
             await app.loadToday()
         }
@@ -150,7 +305,19 @@ public final class WalkModel {
     private func handle(_ ev: GlassesEvent) {
         guard active else { return }
         switch ev {
+        case .frame(let f): take(f)
+        case .camera(let state, let note): setCamera(state, note: note)
+        case .worn(let on):
+            guard worn != on else { return }
+            let first = worn == nil
+            worn = on
+            GlassesLog.shared.log("glasses_worn", ["on": on])
+            if !first || !on {
+                companion?.context(on ? "[glasses back on]" : "[glasses taken off · wait quietly until they are back on]")
+            }
+        case .problem(let text): GlassesStatus.shared.error(text, where: "glasses")
         case .state(let s):
+            if s != glasses { GlassesLog.shared.log("glasses_state", ["state": s.rawValue]) }
             if s == .connected { usedGlasses = true }
             if s == .disconnected, !announcedDrop, let app {
                 announcedDrop = true
@@ -167,6 +334,10 @@ public final class WalkModel {
     }
 
     private func tick() {
+        // The toolkit delivers pictures only while the app is on screen: say so instead of showing "can see".
+        if camera == .streaming, Date().timeIntervalSince(lastFrameSent) > 8 {
+            setCamera(.paused, note: T("walk.see.background"))
+        }
         let m = minutes
         if talking, m >= lastMinuteEvent + 10 {
             lastMinuteEvent = m - m % 10
@@ -202,8 +373,10 @@ public final class WalkModel {
 
     // MARK: companion (live conversation through the glasses)
 
-    private func startCompanion(app: AppModel) {
+    @discardableResult
+    private func startCompanion(app: AppModel) -> Task<Bool, Never> {
         stopCompanion()
+        voiceProblem = nil
         let c = Conversation(surface: .glasses, intent: .walk)
         companion = c
         c.deviceTool = { [weak self] name, args in await self?.walkTool(name, args) ?? .object(["ok": .bool(false)]) }
@@ -211,23 +384,29 @@ public final class WalkModel {
             Task { await self?.end() }
             app?.crisis(trigger: "phrase")
         }
-        c.onReady = { [weak c] in c?.context("[walk started · light hunt: spot \(Self.goal) green or bright things]") }
+        c.onReady = { [weak c] in c?.context("[walk started · the person chose to walk with you: greet them in a few warm words, then mostly listen]") }
+        c.onReconnected = { [weak self] in self?.toldSeeing = false }
         if audioTokens.isEmpty {
             audioTokens = TalkAudio.observe { [weak self] ev in
                 switch ev {
                 case .interrupted: self?.companion?.pause()
-                case .resumed: self?.companion?.resume()
-                case .routeChanged: break
+                case .resumed(let shouldResume): if shouldResume { self?.companion?.resume() }
+                case .routeChanged: self?.noteRoute("route change")
                 }
             }
         }
-        Task {
+        return Task {
             let ok = await c.start(app: app)
-            guard self.active, self.companion === c else { c.stop(); return }
+            guard self.active, self.companion === c else { c.stop(); return false }
             if !ok {
+                voiceProblem = c.unavailableReason ?? .connection
+                GlassesStatus.shared.error("Kaiku's voice could not start: \(String(describing: voiceProblem!))", where: "walk voice")
                 companion = nil
-                VoiceLines.shared.play("walk.light_hunt.1", lang: app.language)
+            } else {
+                noteRoute("voice started")
+                await applyVision()
             }
+            return ok
         }
     }
 
@@ -250,14 +429,19 @@ public final class WalkModel {
         case "record_dial":
             guard let app, let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)),
                   let v = args["value"]?.int ?? companion?.lastSpokenDial else { return .object(["ok": .bool(false)]) }
-            await app.emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel, context: "adhoc"))
-            return .object(["ok": .bool(true)])
+            return .object(["ok": .bool(await app.recordDial(item: item, value: v))])
         case "start_activity":
             let kind = args["kind"]?.string ?? ""
             return .object(["ok": .bool(kind == "walk" || kind == "light_hunt")])
         case "look_at_this":
-            // Camera frames need the DAT camera stream (not wired yet): say so instead of pretending to see.
-            return .object(["ok": .bool(false), "error": .string("the glasses camera is not connected; you cannot see")])
+            // Only true when a frame from the last three seconds really went to Live: never pretend to see.
+            if camera == .streaming, let l = latestFrame, Date().timeIntervalSince(l.at) < 3, companion?.sendFrame(l.frame.jpeg) == true {
+                return .object(["ok": .bool(true), "seeing": .bool(true),
+                                "note": .string("a fresh picture of what the person is looking at was just sent to you")])
+            }
+            return .object(["ok": .bool(false), "seeing": .bool(false), "error": .string(seeAllowed
+                ? "the glasses camera is not sending pictures right now; you cannot see"
+                : "seeing is turned off; you cannot see. They can turn on Let Kaiku see in the Kaiku app if they want")])
         default:
             return .object(["ok": .bool(false), "error": .string("not on this device")])
         }
@@ -265,32 +449,52 @@ public final class WalkModel {
 
     // MARK: draft (app killed mid-walk → partial outing on next launch)
 
+    /// Persist only destination identity, never the pairing token.
+    struct WalkScope: Codable, Equatable {
+        var server: URL
+        var home: String
+        init(_ pairing: Pairing) { server = pairing.baseURL; home = pairing.homeID }
+        func matches(_ pairing: Pairing?) -> Bool { pairing.map { WalkScope($0) == self } ?? false }
+    }
+
     struct Draft: Codable {
         var id: String
         var start: Date
         var lastSeen: Date
         var outing: Outing
+        var simulated: Bool? = nil
+        var scope: WalkScope? = nil
     }
 
     static var draftURL: URL { KaikuPaths.support.appendingPathComponent("walk.json") }
 
     private func saveDraft() {
         guard let start else { return }
-        let d = Draft(id: envelopeID, start: start, lastSeen: Date(), outing: makeOuting(minutes: Date().timeIntervalSince(start) / 60))
+        let d = Draft(id: envelopeID, start: start, lastSeen: Date(), outing: makeOuting(minutes: Date().timeIntervalSince(start) / 60), simulated: simulated, scope: scope)
         if let data = try? JSONEncoder().encode(d) { try? data.write(to: Self.draftURL, options: .atomic) }
     }
 
     static func clearDraft() { try? FileManager.default.removeItem(at: draftURL) }
 
     /// On launch: a draft without a running walk means the app was killed mid-walk → post what we had.
-    public static func recover(app: AppModel) async {
-        guard !shared.active, let data = try? Data(contentsOf: draftURL),
+    public static func recover(app: AppModel) async { await recover(app: app, from: draftURL) }
+
+    static func recover(app: AppModel, from url: URL) async {
+        guard !shared.active, let data = try? Data(contentsOf: url),
               let d = try? JSONDecoder().decode(Draft.self, from: data) else { return }
-        clearDraft()
+        // Legacy unscoped drafts stay quarantined. A changed pairing cannot claim another home's walk.
+        guard d.scope?.matches(app.pairing) == true else { return }
         #if os(iOS)
         KaikuLiveActivities.endAllWalks()
         #endif
-        guard d.outing.minutes >= 1, app.allowed(.walks) else { return }
-        await app.emit("obs.outing", d.outing, id: d.id, ts: d.start)
+        guard await emitOuting(d.outing, id: d.id, start: d.start, simulated: d.simulated ?? false, scope: d.scope, app: app) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @discardableResult static func emitOuting(_ outing: Outing, id: String, start: Date,
+                                             simulated: Bool, scope: WalkScope?, app: AppModel) async -> Bool {
+        guard outing.minutes >= 1, app.allowed(.walks), scope?.matches(app.pairing) == true else { return false }
+        await app.emit("obs.outing", outing, id: id, ts: start, sim: simulated)
+        return true
     }
 }

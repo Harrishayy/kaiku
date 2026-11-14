@@ -16,10 +16,20 @@ on the priority uplink → consensus state **Safety** (overrides every source) w
 ## Limits (say these out loud)
 - The phrase list will miss things (sarcasm, indirect language, other languages, ASR errors) and will
   sometimes false-trigger. It is a safety net, not detection.
-- Offline: the local script and numbers still show; the clinician is only notified once the uplink
-  reconnects (queued with priority).
+- Offline: the local script and numbers still show; a safety flag reaches the dashboard only after the uplink
+  reconnects (queued with priority). This does not confirm a clinician has seen it or that an external call was made.
 - State **Safety** comes only from `safety_flag`. The consensus rule (deterministic, no LLM) can at most produce
   **needs a call**; Gemma only writes the explanation and never changes a state.
+
+## Seeing through the glasses (D43)
+- Optional and off by default. When on, Gemini Live receives about one picture a second during a walk conversation.
+  The model is told by context events when pictures start and stop, and `look_at_this` answers "cannot see"
+  whenever no fresh frame was sent; it must not talk as if it sees otherwise.
+- What it sees never decides anything: no state, no observation, no crisis trigger comes from a picture. The
+  crisis path stays the phrase gate on the words the person says (on-device listener + input transcripts).
+- It is not a navigation or hazard aid and must not be relied on for traffic, steps or obstacles. Surface rules
+  forbid describing or identifying people in view. Pictures stop when the walk conversation is muted, paused,
+  ended, or the app leaves the foreground (the Meta toolkit delivers raw frames only in the foreground).
 
 ## Changing the list
 Add phrases freely; removing one needs a note in `docs/progress.md` with the reason. Review with a

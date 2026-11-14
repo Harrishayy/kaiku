@@ -299,6 +299,12 @@
       "default": null,
       "title": "Safety Since"
     },
+    "simulated": {
+      "default": false,
+      "description": "the record contains simulated observations (provenance flag; never written into headline or text)",
+      "title": "Simulated",
+      "type": "boolean"
+    },
     "sources": {
       "items": {
         "$ref": "#/$defs/SourceVerdict"

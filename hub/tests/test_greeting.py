@@ -85,8 +85,8 @@ async def test_companion_session_404_and_ok():
 
 def test_live_config_fields():
     cfg = live_config("sys", TOOLS, "Sulafat")
-    assert cfg["enable_affective_dialog"] is True
-    assert cfg["proactivity"] == {"proactive_audio": True}
+    assert not cfg.get("enable_affective_dialog", False)
+    assert "proactivity" not in cfg
     assert cfg["speech_config"]["voice_config"]["prebuilt_voice_config"]["voice_name"] == "Sulafat"
     assert cfg["tools"][0]["function_declarations"][0]["name"] == "record_dial"
     assert "input_audio_transcription" in cfg and cfg["response_modalities"] == ["AUDIO"]
@@ -120,7 +120,7 @@ async def test_person_approaching_greets_and_offers_ritual(hub, capsys):
     await asyncio.sleep(0.05)
     assert hub.attention.state == "at_desk"
     assert hub.machine.running and hub.ritual_reason == "attention"
-    assert "Huomenta" in capsys.readouterr().err  # greet.morning in the greeting language (fi)
+    assert "Good morning" in capsys.readouterr().err  # English demo greeting by default
     assert any("check-in" in s for s in hub.voice.said)  # GREET step offers instead of greeting twice
     await hub.on_utterance("not now")
     await asyncio.sleep(0.05)
@@ -131,14 +131,14 @@ async def test_person_approaching_greets_and_offers_ritual(hub, capsys):
 
 async def test_two_people_no_offer(hub, capsys):
     await _approach(hub, T(8), faces=2)
-    assert "te kaksi" in capsys.readouterr().err
+    assert "hello you two" in capsys.readouterr().err
     assert not hub.machine.running
 
 
 async def test_ritual_done_today_no_offer(hub, capsys):
     hub.state.mark_ritual_done(T(8).date())
     await _approach(hub, T(8))
-    assert "Huomenta" in capsys.readouterr().err
+    assert "Good morning" in capsys.readouterr().err
     assert not hub.machine.running
 
 
@@ -158,5 +158,5 @@ async def test_own_face_echo_ignored(hub):
 def test_live_config_validates_against_installed_sdk():
     types = pytest.importorskip("google.genai.types")
     c = types.LiveConnectConfig(**live_config("sys", TOOLS, "Sulafat"))
-    assert c.enable_affective_dialog and c.proactivity.proactive_audio
+    assert not c.enable_affective_dialog and c.proactivity is None
     assert c.speech_config.voice_config.prebuilt_voice_config.voice_name == "Sulafat"

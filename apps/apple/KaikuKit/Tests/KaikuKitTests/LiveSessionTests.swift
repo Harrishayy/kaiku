@@ -112,11 +112,16 @@ final class LiveSessionTests: XCTestCase {
     }
 
     func testTranscriptsAreOptInAndMapRoles() {
+        let long = Conversation.Line(text: String(repeating: "a", count: 2001), me: false, transcriptFinished: true)
+        XCTAssertEqual(Conversation.transcript([long]).first?.text.count, 2000)
+        XCTAssertEqual(Conversation.transcript([long]).first?.complete, false, "a bounded prefix is not a complete transcript")
+        var unknownLong = long; unknownLong.completionUnknown = true
+        XCTAssertEqual(Conversation.transcript([unknownLong]).first?.complete, false, "known truncation overrides unknown provider status")
         XCTAssertFalse(Signal.transcripts.defaultOn)
         XCTAssertTrue(Signal.forThisDevice.contains(.transcripts))
         let lines = [Conversation.Line(text: "Morning!", me: false), Conversation.Line(text: "  ", me: true),
                      Conversation.Line(text: "Hi Kaiku", me: true)]
-        XCTAssertEqual(Conversation.transcript(lines), [TranscriptTurn(role: .kaiku, text: "Morning!"),
-                                                       TranscriptTurn(role: .person, text: "Hi Kaiku")])
+        XCTAssertEqual(Conversation.transcript(lines), [TranscriptTurn(role: .kaiku, text: "Morning!", complete: false),
+                                                       TranscriptTurn(role: .person, text: "Hi Kaiku", complete: false)])
     }
 }

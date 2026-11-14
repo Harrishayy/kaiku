@@ -19,8 +19,8 @@ camera, the eyes display, the knob ear, the microphone and the knock sensor, cab
   - **Linux side (Qualcomm QRB2210, Debian).** Runs the Python `hub/` (ritual state machine, safety gate, uplink to
     Modal) and the Mosquitto broker. It also reads the Arduino USB Camera.
   - **Microcontroller side (STM32U585).** Reads the KY-031 knock sensor (the drum on top of the head), the KY-039
-    pulse sensor (through the KY-053 ADC), the KY-054 light sensor and the KY-035 hall sensor (pan homing). It also
-    drives the Modulino Buzzer on Qwiic.
+    pulse sensor (through the KY-053 ADC) and drives the Modulino Buzzer on Qwiic. (No KY-054 light or KY-035 hall in
+    this build, D39: room light comes from the camera and home is the head's power-on position.)
 
 In the README's terms, both boards together are **Source 1: Robot**. Only derived numbers leave the home. Camera
 frames and raw audio stay on the UNO Q and are never stored.
@@ -50,8 +50,8 @@ Physical placement and sizes are in `hardware/cad/README.md`, `hardware/assembly
 | [Modulino Buzzer](https://docs.arduino.cc/hardware/modulino-buzzer/) (ABX00108) | STM32C011F4 + PKLCS1212E4001, I2C 0x3C | Qwiic (Wire1), 3.3 V | Body, right wall above the speaker | Chimes and alerts |
 | KY-031 knock sensor | Spring switch + 10 kΩ resistor | 1 digital GPIO, 3.3 V | Under the head top, wired to the UNO Q through the neck | Drumming energy |
 | KY-039 pulse + KY-053 ADC | IR LED + phototransistor; ADS1115 16-bit | Analog → I2C | Lid, under the finger cradle; ADC on the body floor | Resting HR / HRV before and after breathing |
-| KY-054 light sensor | Phototransistor | Analog, 3.3 V | Lid, under the Ø5 window | Room light |
-| KY-035 hall sensor + 6×3 mm magnet | 49E linear hall | Analog / digital, 3.3 V | Under the pan base flange; magnet in the turntable | Pan homing |
+| ~~KY-054 light sensor~~ | Phototransistor | Analog, 3.3 V | **Not fitted (D39)**; the lid window stays empty | Room light comes from the camera |
+| ~~KY-035 hall sensor + 6×3 mm magnet~~ | 49E linear hall | Analog, 3.3 V | **Not fitted (D39)**; the CAD keeps the spot and the magnet pocket | Optional pan homing |
 | Powered USB-C hub (PD) | Any USB-C hub with PD input | USB-C | Outside, behind the robot | Powers the UNO Q and lets it host the camera |
 | Arduino power supply (TPX00242) | USB-C, VERIFY rating (spec assumes 5 V / 3 A PD) | USB-C | Outside | Main power |
 
@@ -69,7 +69,7 @@ body's rear opening.
 | 5 V / 3 A USB-C PD | Arduino supply → hub PD input | Hub → UNO Q + USB Camera | UNO Q accepts USB-C 5 V up to 3 A, or VIN 7–24 V, or the 5 V pin |
 | USB-C 5 V | Second USB-C supply, or a hub USB port | Atech motherboard (USB-C module, port 8) | Every port carries 12 V, 5 V, 3.3 V and GND; power pins are shared; Atech publishes no current ratings |
 | 3.3 V (Qwiic) | UNO Q | Modulino Buzzer | About 6.4 mA while sounding |
-| 3.3 V (header) | UNO Q 3V3 pin | KY-031, KY-039, KY-053, KY-054, KY-035 | Run them all at 3.3 V so their signals stay in 3.3 V logic |
+| 3.3 V (header) | UNO Q 3V3 pin | KY-031, KY-039, KY-053 | Run them all at 3.3 V so their signals stay in 3.3 V logic |
 
 Rules for the code and the build:
 
@@ -145,10 +145,10 @@ body), not snapped onto it. Confirm the GPIO numbers with `atech validate`; don'
 | Speaker | 1–2 | Same side as the motor, away from the mic |
 | Color Display | 3–4 | — |
 | Knob | 5–6 | — |
-| DC Motor (pan) | 7 | Speaker side, away from the mic |
-| Microphone | 9–10 | Other side from the speaker and motor, so less noise reaches it |
-| Button | 11 | — |
-| LED Grid left / right | 13 / 14 | — |
+| Button | 7 | — |
+| Microphone | 9–10 | — |
+| LED Grid left / right | 11 / 14 | Port 11 (GPIO43/44, UART0) stayed dark on the bench: see `hardware/wiring.md` |
+| DC Motor (pan) | 13 | Matches the build (Xavier, 2026-11-14) |
 
 With every port taken, there is **one motor** (pan) and no Atech IMU. A second motor (the "purr" mount in the CAD)
 needs a free port: drop one LED grid, or drop the Speaker and play audio from the laptop.
@@ -203,13 +203,13 @@ timing; `glow` and `pulse` are for status.
 - API: `forward(speed)` / `reverse(speed)` with speed 0–255. `set_speed(-255..255)`, where the sign is the
   direction. `stop` lets it coast; `brake` stops it actively.
 - **What it moves.** It turns the head through a 12-tooth pinion on a 40-tooth ring gear (3.33 : 1), about ±100°.
-  There is no end stop: **home** is a 6×3 mm magnet in the turntable passing over the KY-035 hall sensor (read by
-  the UNO Q) when the head faces front.
+  There is no end stop and, in this build, no hall sensor (D39): **home is the head's position at power-on**, so face
+  it forward before powering up. Soft limit ±80°. (With a KY-035 + magnet, `HAS_HALL 1` brakes on the hall edge.)
 - **No position feedback** between homings. Gestures are timed pulses:
   - `look_left` / `look_right`: turn about 300 ms one way, then brake.
   - `shake`: two short alternating pulses of about 120 ms each, then brake (it pans, so there is no nod).
-  - `home`: the hub drives slowly (speed about 80) towards the front and brakes when the UNO Q reports the hall
-    edge; give up after 2 s. Use it at boot and after every gesture sequence, so drift doesn't build up.
+  - `home`: drive back to the dead-reckoned 0° (the power-on position). Used after every gesture sequence. Face
+    tracking is relative (the camera is in the head), so small drift doesn't affect looking at the person.
 - Firmware behaviour: ramp speed over about 100 ms. Never run longer than 1 s per command. Ignore commands while a
   gesture is running. Publish `motor/state`. All pulse times need tuning on the real head.
 
@@ -241,7 +241,7 @@ Functions the **sketch provides** (Python calls them):
 | `buzz_pattern` | `name: str` | `wake`, `ok`, `start_drum`, `end_drum`, `alert` |
 | `drum_arm` | `window_ms` | Starts a drumming window; the sketch counts knocks |
 | `pulse_arm` | `window_ms` | Samples the KY-039 through the KY-053 at ≥ 100 Hz for the window |
-| `light_read` | — | Returns the KY-054 reading |
+| `light_read` | — | Returns the KY-054 reading (unused: not fitted, D39) |
 | `ping` | — | Returns firmware version, for `make doctor` |
 
 Functions **Python provides** (the sketch notifies them):
@@ -251,7 +251,7 @@ Functions **Python provides** (the sketch notifies them):
 | `on_knock` | `t_ms` | Every knock, debounced |
 | `on_drum_done` | `count, mean_interval_ms, cv` | When the drum window ends |
 | `on_pulse_done` | `samples` (batched) | When the pulse window ends; the hub computes HR/HRV |
-| `on_home` | `t_ms` | Hall sensor edge: the head faces front |
+| `on_home` | `t_ms` | Hall sensor edge (only with `HAS_HALL 1`; not fitted, D39) |
 | `mcu_ready` | — | Once after boot |
 
 **UNO Q LED matrix.** The board lies inside the body, so the matrix isn't visible. Use it for boot/status only. The
@@ -262,8 +262,8 @@ eyes are on the Atech display.
 | Signal | UNO Q pin | Notes |
 | --- | --- | --- |
 | KY-031 S | D2 | Interrupt on CHANGE; 3.3 V logic |
-| KY-035 hall out | D3 | Interrupt; magnet edge = home |
-| KY-054 light | A0 | Analog |
+| ~~KY-035 hall out~~ | (A1 if fitted) | Not fitted (D39) |
+| ~~KY-054 light~~ | — | Not fitted (D39) |
 | KY-053 ADC (KY-039 on its A0) | SDA / SCL header pins (`Wire`) | Not A4/A5 |
 | All KY + | 3V3 | — |
 | All KY − | GND | — |
@@ -295,9 +295,9 @@ No driver is needed.
 | Get-up time | Clock time of the first "present" seen after 04:00 local each day | `first_seen_local` | Once a day |
 | Pulse (optional backup) | Remote photoplethysmography: mean green channel over a forehead box, band-pass 0.7–3 Hz, 30 s window during breathing | `hr_bpm`, `hrv_rmssd_ms`, `quality` 0–1 | Once a ritual, only if the KY-039 reading fails |
 
-- **Room light** comes from the KY-054 under the lid window, not from the camera. A camera fallback is possible:
-  lock exposure through `v4l2-ctl` (`exposure_auto=1`, a fixed `exposure_absolute`), ring light **off**. Store it as
-  a relative index against the person's own baseline, not as lux.
+- **Room light** comes from the camera (D39, `[unoq] light_source = "camera"`): exposure locked through `v4l2-ctl`
+  (`exposure_auto=1`, a fixed `exposure_absolute`), ring light **off**. Store it as a relative index against the
+  person's own baseline, not as lux. The camera is `/dev/video2` on the UNO Q (`camera_index = 2`).
 - **Pulse.** The KY-039 in the finger cradle is the main source. Camera-based HRV is noisy: send `quality` with
   every reading and let the cloud drop readings below 0.6. If neither works, mark HR/HRV "not measured"; don't send
   fake values.
@@ -365,14 +365,12 @@ Every physical connection, in one place. Record the final port and pin numbers i
 | Atech Speaker (body) | Atech ports 1–2 | Atech cable | `play_rtttl` test |
 | Atech Color Display (head) | Atech ports 3–4 | Atech cables, through the neck | Eyes appear |
 | Atech Knob (head) | Atech ports 5–6 | Atech cables, through the neck | `knob` events 1–5 |
-| Atech DC Motor (pan) | Atech port 7 | Atech cable | `home` gesture moves the head |
+| Atech DC Motor (pan) | Atech port 13 | Atech cable | `home` gesture moves the head |
 | Atech Microphone (head) | Atech ports 9–10 | Atech cables, through the neck | `mic/level` rises when you talk |
-| Atech Button (lid) | Atech port 11 | Atech cable | `button` event |
-| Atech LED Grid ×2 | Atech ports 13, 14 | Atech cables | Breathing glow |
+| Atech Button (lid) | Atech port 7 | Atech cable | `button` event |
+| Atech LED Grid ×2 | Atech ports 11 (left), 14 (right) | Atech cables | Breathing glow |
 | Modulino Buzzer | UNO Q Qwiic | Qwiic cable | I2C scan on `Wire1` finds 0x3C |
 | KY-031 S / + / − (head) | UNO Q D2 / 3V3 / GND | Dupont jumpers, through the neck | Knock prints in the serial monitor |
-| KY-035 out / + / − | UNO Q D3 / 3V3 / GND | Dupont jumpers | Edge when the head faces front |
-| KY-054 S / + / − | UNO Q A0 / 3V3 / GND | Dupont jumpers | Reading changes when you cover the lid window |
 | KY-053 SDA / SCL / + / − (KY-039 on its A0) | UNO Q SDA / SCL / 3V3 / GND | Dupont jumpers | I2C scan on `Wire` finds 0x48 |
 
 Charge-only USB-C cables can't program the Atech board. The head carries 6 Atech cables, 3 jumper wires and the
@@ -385,7 +383,7 @@ measures. Step lengths are starting values for tuning.
 
 | # | State | Robot does (outputs) | Measures (inputs) | Length |
 | --- | --- | --- | --- | --- |
-| 0 | Idle | Eyes `sleep`, motor still, mic level only | Camera at 2 Hz for a face; room light (KY-054) once a minute | — |
+| 0 | Idle | Eyes `sleep`, motor still, mic level only | Camera at 2 Hz for a face; room light (camera) once a minute | — |
 | 1 | Wake | Buzzer `wake`; eyes `open` → `blink`; head turns to the face, then `home` | Get-up time (first face of the day); room light at ritual start | 3 s |
 | 2 | Greet | Speaker: greeting from Gemini Live; eyes `happy` | — | 10 s |
 | 3 | Check-in dial | Asks mood, then energy, then sleep. Each answer: **turn the ear knob to 1–5 and press** (buzzer `ok` after each), or a spoken number | `mood`, `energy`, `sleep` (1–5 each) | 45 s |
@@ -442,7 +440,7 @@ There are three programs to generate. Each has its own `AGENTS.md` under the rep
 - The eyes are the Atech Color Display in the head. The UNO Q's matrix is hidden in the body.
 - The mood/energy/sleep dial is the Atech Knob (left ear), confirmed by a press or answered by voice.
 - HR/HRV comes from the KY-039 finger sensor; camera pulse is an optional backup.
-- The DC motor turns the head left and right through a printed gear; home is a hall sensor, not an end stop.
+- The DC motor turns the head left and right through a printed gear; home is the power-on position (D39).
 - The Arduino supply (TPX00242) is a 5 V / 3 A USB-C PD supply. VERIFY on its label.
 
 **Open questions**
@@ -462,7 +460,7 @@ There are three programs to generate. Each has its own `AGENTS.md` under the rep
 | Audio over MQTT stutters | Choppy voice | 200 ms ring buffer; drop to RTTTL and short canned clips |
 | 2 GB RAM is tight with OpenCV + Gemini Live + Mosquitto | Slow or killed processes | 640×480 at 15 fps; face detection at 2 Hz; camera pulse only as a backup |
 | Pulse too noisy | Bad HR/HRV | KY-039 first, camera second, send `quality`; mark as not measured |
-| Motor drift without feedback | Head ends up off-centre | `home` on the hall sensor after every sequence |
+| Motor drift without feedback | Head ends up off-centre | Face tracking is relative; ±80° soft limit; add a KY-035 + magnet (`HAS_HALL 1`) if drift shows |
 | Motor vibration trips the knock sensor | False drum counts | Ignore knocks while the motor is moving; the sensor is in the head, the motor in the body |
 | Cable bundle through the 19 mm neck axle | Head can't turn freely, plugs pulled | Leave a service loop in the body; limit pan to about ±100° |
 

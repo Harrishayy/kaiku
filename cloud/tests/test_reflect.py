@@ -99,7 +99,7 @@ def test_explain_auto_chain_falls_through_to_template(monkeypatch):
             raise LlmUnavailable(name)
         return f
 
-    monkeypatch.setattr(explain, "BACKENDS", {"gemma_hosted": down("gemma_hosted"), "gemini": down("gemini")})
+    monkeypatch.setattr(explain, "BACKENDS", {"gemma": down("gemma"), "gemini": down("gemini")})
 
     class S:
         llm = "auto"
@@ -109,5 +109,5 @@ def test_explain_auto_chain_falls_through_to_template(monkeypatch):
         ex = explain.make_explanation(ctx, S())
     except Exception:  # template may need a richer ctx; the chain order is what we check
         ex = None
-    assert calls == ["gemma_hosted", "gemini"]
+    assert calls == ["gemma", "gemini"]  # "gemma" = the provider selected in [gemma].provider
     assert ex is None or ex.by != "gemma"

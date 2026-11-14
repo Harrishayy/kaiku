@@ -16,18 +16,18 @@ public struct WeatherCheckView: View {
     var dial: Double? { done ? nil : Double(values[active] ?? 3) }
 
     public var body: some View {
-        KScreen(T("wx.title"), back: { dismiss() }, maxWidth: 980, spacing: KaikuTokens.Space.s4) {
+        KScreen(T("wx.title"), back: { dismiss() }, maxWidth: KaikuTokens.Size.paneMax) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.4) {
                 WideAware { wide in
                     if wide {
                         VStack(spacing: KaikuTokens.Space.s4) {
-                            GlowingMascot(state: done ? .happy : .listening, size: 180, dial: dial)
+                            GlowingMascot(state: done ? .happy : .listening, size: KaikuTokens.Size.mascotL, dial: dial)
                             Bubble(bubble, big: true, centered: true)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.top, KaikuTokens.Space.s5)
                     } else {
-                        MascotWithBubble(state: done ? .happy : .listening, text: bubble, size: 100, dial: dial, big: true)
+                        MascotWithBubble(state: done ? .happy : .listening, text: bubble, size: KaikuTokens.Size.mascotM, dial: dial, big: true)
                     }
                 }
             } trailing: {

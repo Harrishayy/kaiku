@@ -30,6 +30,11 @@ Defines all of them. The topic is derived from the fully-qualified `type`:
 Only `obs.*` may be uplinked (`UPLINKABLE`). Glasses, laptop/Mac and phone apps send the same envelopes over
 `POST /v1/events`.
 
+`GET /v1/discovery` returns `APIDiscoveryResponse`: service identity `kaiku-api`, schema version, explicit
+demo/authenticated/unconfigured mode, whether credentials are required, and supported API capabilities.
+It exposes no home IDs or credentials. Native discovery uses `_kaiku-api._tcp`, separate from robot discovery;
+discovering a service never grants access to an existing person's record.
+
 Plan 02 additions (all computed on the device; only derived numbers): envelope source `phone` ·
 `obs.self_report.channel` (`robot|phone|mac|web|glasses_voice`, default `robot`; always the robot source's daily
 dial) · `obs.outing` `method: dat_imu` + `cadence_spm`, `gait_regularity`, `head_up_ratio` ·
@@ -38,6 +43,12 @@ communication, social, video, news, games, other}`, `switches_per_hour`, `longes
 no titles/URLs/keystrokes — `extra=forbid` rejects them) · `obs.play_session` (`game: firefly|breathe|tell`,
 `device: phone|mac|web`, reaction/speech/HR features) · `obs.wearable_daily` (`date` = the morning; sleep, sleep
 midpoint in min from local midnight, regularity, resting HR, HRV SDNN, steps, exercise, `device`).
+Clinician record assistant: `ClinicianAskRequest`, `ClinicianAskResponse`, `RecordCitation` define
+`POST /v1/patients/{id}/ask`: scoped care-team access, grounded evidence citations, no private notebook.
+`ContextCard.source_context` carries at most four prepared source-labelled activity facts into Live;
+`CompanionSessionResponse` includes session duration and context-refresh bounds.
+Command delivery: `GET /v1/commands` peeks pending commands; `POST /v1/commands/{command_id}/ack?home_id=`
+returns `CommandAckResult {ok, id}` after the device successfully applies the command.
 API: `MeResponse.mascot {mood: idle|happy|cozy|crisis, line_key}`, `highlights [{date, kind: good|hard, text,
 source}]`, `garden {plants, resting}`; `VoiceLinesResponse` (`GET /v1/voice`).
 Companion mind (plan 03 §3–§6, workstream I1): `companion_tools.py` = the tool registry (12 tools: JSON-schema
@@ -65,6 +76,26 @@ week_start/end, routines: Routine[], going_well/worth_a_look: WeekItem[], shared
 {label, value}`, `last_at`) and `WeekSummary.next_steps: NextStep[]` (care team: `{text, why, when: today|this_week|
 next_contact, action: ActionName?}`), `KnowledgeGraph {audience, shared, nodes: GraphNode[], edges: GraphEdge[], withheld}` (`GraphNode.type` adds
 `routine`; `GraphEdge.rel` adds `keeps`, `of`; both carry `evidence` counts; negative node ids = derived for the view).
+Practitioner insight (additive): `PatientInsight {review: PatientReview{headline, findings: ReviewFinding[], by,
+model, cached, fallback_reason}, evidence: RecordCitation[], trace: AgentStep[], comparison: PeriodComparison
+{groups: GroupComparison[{metrics: MetricComparison[]}], improved, changed}, routine: LearnedRoutine{routines,
+helps: HelpEffect[], kept/partly/slipped}, graph: InsightGraph{nodes: InsightNode[], edges: InsightEdge[]},
+coverage: DataCoverage{groups: GroupCoverage[{types: ObsTypeCoverage[]}], other}}` for
+`GET /v1/patients/{id}/insight`. `Trend = better|worse|similar|unknown` is always relative to the person's own data.
+
+Measured games (additive, `SCHEMA_VERSION` 1): `obs.play_session.game` adds `lantern` (simple reaction time), `seeds`
+(symbol–digit), `watering` (effort choice); new optional fields `trials_n`, `valid_n`, `input`
+(`touch|pointer|keyboard|mixed`), `session_index`, `warmup`, `valid`, `flags[]` (`few_trials|false_starts|low_accuracy|
+too_fast|interrupted`), `false_starts`, `response_speed`, `reaction_ms_cv`, `throughput_per_min`, `hard_choice_ratio`,
+`tap_rate_hz`, and the compact trial record `rt_ms[≤120]` + `trial_codes`. One example per game:
+`registry.PLAY_EXAMPLES`. A doubtful session is sent with envelope `quality` 0.2. Why: `docs/validation.md` → Games.
+Story of the record (additive): `PatientInsight.course: Course {phase, summary, events: CourseEvent[]}`,
+`.days: DayAccount[] {date, text, parts}`, `.reflections: ReflectionOverview | null`, `PatientReview.overview` +
+`.overview_cites`, `InsightNode.layer` / `InsightEdge.layer` (`learned|structure`) + `InsightGraph.layers`, new
+edge rels `moved_first|followed|moved_together|kept_through|slipped_during|after|talked_about`, node kinds
+`care_action|shared_topic`, `AgentStep.step` adds `course|overview`. `ContextCard.last_reflection: LastReflection
+{when, valence, themes, declined}`, `.today_facts[]`, `.recent_reflection`. `ActionRequest.ts`, `Consensus.simulated`,
+`RecordCitation.simulated`, `TimelinePoint.early`; tool `remember` takes optional `said`.
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 
@@ -141,3 +172,21 @@ on the device (or let the hub adapter fill it).
 
 ## Known issues
 `make contracts` needs Node for the TS step; commit `schemas/` + `ts/` together with the model change.
+
+Paid-call admission: `budget.charge()` checks and reserves the conservative estimate in one SQLite
+`BEGIN IMMEDIATE` transaction before provider work. `metered()` uses that reservation and retains it after
+failures because dispatched requests may bill. `guard()` is advisory only. Concurrent processes sharing
+one ledger cannot oversubscribe its configured estimate cap; separate device/cloud ledgers enforce separate
+caps, and estimates are not a provider invoice or an account-wide billing limit.
+
+Task sensing: optional `PlaySession.expressivity_index`, `face_movement`, `camera_face_coverage`,
+`camera_samples`, `camera_method` describe local aggregate geometry only. Features require positive coverage
+and samples plus a named method; no-face sessions may retain coverage zero with no derived facial features.
+MediaPipe blendshapes and Vision landmarks must not be pooled as equivalent measurements. These new camera
+features are descriptive and have no consensus weight until separately calibrated.
+`TaskObservationsResponse` serves the last 100 typed task envelopes to authorised care teams.
+
+Conversation completion metadata: `TranscriptTurn.complete` is optional `bool | null` for upload and person-only
+readback. `true` means transcription explicitly finished; `false` means interrupted/not final; absent/null means
+unknown for legacy records. Audio `turnComplete` does not establish transcription completion. Producers retain
+the received words unchanged; completion metadata never authorises transcript retention or raw-media upload.

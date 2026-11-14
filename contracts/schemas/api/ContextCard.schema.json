@@ -1,6 +1,54 @@
 {
+  "$defs": {
+    "LastReflection": {
+      "additionalProperties": false,
+      "description": "How the latest talk with Kaiku went: a level and themes, never the words.",
+      "properties": {
+        "declined": {
+          "default": false,
+          "description": "they did not want to talk or asked to stop",
+          "title": "Declined",
+          "type": "boolean"
+        },
+        "themes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Themes",
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valence"
+        },
+        "when": {
+          "description": "e.g. \"yesterday evening\", \"this morning\"",
+          "title": "When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "title": "LastReflection",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
-  "description": "What the model is told about today — deterministic, small, built by the cloud. Never the consensus state,\nscores, numbers or watch data: `tone` is the only (soft) cue derived from the consensus.",
   "properties": {
     "care_info": {
       "anyOf": [
@@ -77,6 +125,17 @@
       "title": "Language",
       "type": "string"
     },
+    "last_reflection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LastReflection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "memories": {
       "items": {
         "type": "string"
@@ -108,6 +167,19 @@
       "title": "Phq9 Due",
       "type": "boolean"
     },
+    "recent_reflection": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "how the latest reflection with Kaiku went, as a level and themes only (never the words), so Kaiku can be gentle about it",
+      "title": "Recent Reflection"
+    },
     "routines": {
       "description": "e.g. \"usually walks on Tuesdays\"",
       "items": {
@@ -115,6 +187,15 @@
       },
       "maxItems": 2,
       "title": "Routines",
+      "type": "array"
+    },
+    "source_context": {
+      "description": "prepared source-labelled activity facts; no clinical metrics or raw content",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Source Context",
       "type": "array"
     },
     "suggestion": {
@@ -139,6 +220,15 @@
       ],
       "title": "Time Of Day",
       "type": "string"
+    },
+    "today_facts": {
+      "description": "plain facts the person recorded themselves today, in everyday words (\"a short night\"); never a number or a judgement",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Today Facts",
+      "type": "array"
     },
     "tone": {
       "default": "steady",

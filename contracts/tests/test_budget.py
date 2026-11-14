@@ -39,6 +39,74 @@ def test_total_cap(monkeypatch):
     assert r["spent_usd"] == pytest.approx(0.95) and r["remaining_usd"] == pytest.approx(0.05)
 
 
+def test_concurrent_calls_reserve_before_provider_work(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    monkeypatch.setenv("KAIKU_BUDGET_DAILY_USD", "1")
+    started, release = Event(), Event()
+
+    def provider():
+        started.set()
+        assert release.wait(5)
+        return "first"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(budget.metered, "fake", "x", 0.75, provider)
+        try:
+            assert started.wait(5)
+            second = pool.submit(budget.metered, "fake", "x", 0.75,
+                                 lambda: pytest.fail("unadmitted provider must never run"))
+            with pytest.raises(budget.BudgetExceeded):
+                second.result(timeout=5)
+            assert budget.spent() == pytest.approx(0.75)
+        finally:
+            release.set()
+        assert first.result(timeout=5) == "first"
+
+
+def test_processes_share_atomic_admission(monkeypatch):
+    import os
+    import subprocess
+    import sys
+
+    monkeypatch.setenv("KAIKU_BUDGET_DAILY_USD", "1")
+    # Independent Python processes have independent threading locks but share the SQLite reservation.
+    code = """
+from kaiku_contracts import budget
+try:
+    budget.charge('fake', 'x', 0.75)
+except budget.BudgetExceeded:
+    raise SystemExit(3)
+"""
+    children = [subprocess.Popen([sys.executable, "-c", code], env=os.environ.copy()) for _ in range(3)]
+    try:
+        results = sorted(p.wait(timeout=10) for p in children)
+        assert results == [0, 3, 3]
+        assert budget.spent() == pytest.approx(0.75)
+    finally:
+        for process in children:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+
+def test_failed_provider_keeps_reservation():
+    def provider():
+        raise TimeoutError("possibly billed")
+
+    with pytest.raises(TimeoutError):
+        budget.metered("fake", "x", 0.25, provider)
+    assert budget.spent() == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize("cost", [-1, float("nan"), float("inf")])
+def test_invalid_estimate_cannot_reduce_reserved_spend(cost):
+    with pytest.raises(ValueError):
+        budget.charge("fake", "x", cost)
+    assert budget.spent() == 0
+
+
 def test_dotenv_never_loaded_under_pytest(tmp_path, monkeypatch):
     from kaiku_contracts import config
 

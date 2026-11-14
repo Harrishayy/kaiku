@@ -6,8 +6,10 @@
 #   bus.jsonl      every MQTT message (tools/record.py)
 #   hub.log        hub stderr, each line prefixed with epoch seconds (spoken lines, context events, JSON logs)
 #   markers.jsonl  story moments (approach, greeting, dial, ...) from the driver
+#   session*.json the hub's local session store for the ritual (tools/session.py show + rederive)
 #   cloud/*.json   what the cloud saw afterwards (/v1/me, consensus, companion session, intelligence, constellation)
 set -euo pipefail
+export KAIKU_DEMO_MODE=1
 cd "$(dirname "$0")/.."
 
 OUT=${1:-demo/recordings/robot-sim}
@@ -24,6 +26,7 @@ unset GEMINI_API_KEY GOOGLE_API_KEY KAIKU_HOME_TOKEN KAIKU_ADMIN_TOKEN
 export MQTT_HOST=127.0.0.1 MQTT_PORT=$BROKER_PORT KAIKU_CLOUD_URL="http://127.0.0.1:$CLOUD_PORT" KAIKU_HOME_ID=$HOME_ID
 export KAIKU_DB_PATH="$TMP/cloud.sqlite" KAIKU_SPEND_DB="$TMP/spend.sqlite" KAIKU_HUB_STATE_PATH="$TMP/hub_state.json"
 export KAIKU_UPLINK_QUEUE_PATH="$TMP/uplink.sqlite"
+export KAIKU_HUB_STORE_PATH="$TMP/hub_sessions.sqlite"  # local session store: never the developer's logs/
 # Short, demo-paced ritual; button dial (the knob-out build); faces from the sensors twin, never the webcam.
 export KAIKU_ROBOT_DIAL_INPUT=button KAIKU_ATTENTION_FACE_SOURCE=unoq_yolo
 export KAIKU_ATTENTION_NIGHT_START=00:00 KAIKU_ATTENTION_NIGHT_END=00:00 KAIKU_ATTENTION_REGREET_H=0
@@ -68,4 +71,7 @@ get "/v1/me/memories?home_id=$HOME_ID" memories
 get "/v1/health/intelligence?days=1" intelligence
 curl -fsS -X POST "$KAIKU_CLOUD_URL/v1/companion/session" -H 'content-type: application/json' \
   -d "{\"home_id\":\"$HOME_ID\",\"surface\":\"robot\",\"intent\":\"ritual\"}" -o "$OUT/cloud/companion_session.json" || true
+# What the hub kept locally for the ritual, and proof that the uplinked numbers re-derive from it.
+uv run --quiet python tools/session.py --store "$TMP/hub_sessions.sqlite" show last >"$OUT/session.json" 2>&1 || true
+uv run --quiet python tools/session.py --store "$TMP/hub_sessions.sqlite" rederive last >"$OUT/session_rederive.json" 2>&1 || true
 echo "recorded $(wc -l <"$OUT/bus.jsonl") bus messages -> $OUT"

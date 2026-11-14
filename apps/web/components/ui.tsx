@@ -2,50 +2,27 @@
 
 import type { ReactNode } from 'react';
 import type { ApiError } from '@/lib/api';
-import {
-  AGREEMENT_LABEL,
-  STATE_CLASS,
-  STATE_LABEL,
-  VERDICT_CLASS,
-  VERDICT_LABEL,
-  type Agreement,
-  type State,
-  type Verdict,
-} from '@/lib/format';
+import { AGREEMENT_LABEL, type Agreement, type State, type Verdict } from '@/lib/format';
+import { stateChip, verdictChip } from '@/lib/labels';
+import { Chip, SimMark } from './dash/kit';
 
-export function StateChip({ state, large = false }: { state: State; large?: boolean }) {
-  return (
-    <span className={`chip ${STATE_CLASS[state]}${large ? ' chip-lg' : ''}`}>
-      <span className="chip-dot" aria-hidden="true" />
-      {STATE_LABEL[state]}
-    </span>
-  );
+/** Team pages use the dashboard's one chip. A bare state has no agreement, so it is shown as the cloud named it. */
+export function StateChip({ state }: { state: State; large?: boolean }) {
+  const c = stateChip(state, 'agree');
+  return <Chip tone={c.tone}>{c.label}</Chip>;
 }
 
-export function VerdictChip({ verdict, compact = false }: { verdict: Verdict; compact?: boolean }) {
-  const short: Record<Verdict, string> = { worse: 'worse', as_usual: 'as usual', better: 'better', insufficient: 'no data' };
-  return (
-    <span className={`chip ${VERDICT_CLASS[verdict]}${verdict === 'insufficient' ? ' chip-dashed' : ''}`}>
-      <span className="chip-dot" aria-hidden="true" />
-      {compact ? short[verdict] : VERDICT_LABEL[verdict]}
-    </span>
-  );
+export function VerdictChip({ verdict }: { verdict: Verdict; compact?: boolean }) {
+  const c = verdictChip(verdict);
+  return <Chip tone={c.tone}>{c.label}</Chip>;
 }
 
 export function AgreementBadge({ agreement }: { agreement: Agreement }) {
-  if (agreement === 'agree') return <span className="tag">{AGREEMENT_LABEL.agree}</span>;
-  return (
-    <span className={agreement === 'disagree' ? 'tag tag-disagree' : 'tag tag-coverage'}>{AGREEMENT_LABEL[agreement]}</span>
-  );
+  return <Chip tone={agreement === 'agree' ? 'neutral' : agreement === 'disagree' ? 'warn' : 'ins'}>{AGREEMENT_LABEL[agreement]}</Chip>;
 }
 
 export function SimBadge({ show = true }: { show?: boolean }) {
-  if (!show) return null;
-  return (
-    <span className="badge-sim" title="Synthetic data produced by the simulator — not a real person">
-      SIMULATED
-    </span>
-  );
+  return show ? <SimMark /> : null;
 }
 
 export function Loading({ label = 'Loading…' }: { label?: string }) {
@@ -69,7 +46,7 @@ export function ErrorBox({ error, onRetry, what }: { error: ApiError; onRetry?: 
         )}
       </div>
       {onRetry && (
-        <button type="button" className="btn btn-ghost" onClick={onRetry}>
+        <button type="button" className="d-btn" onClick={onRetry}>
           Try again
         </button>
       )}

@@ -23,6 +23,7 @@ def test_face_payload_and_distance():
 
 async def test_node_bridges_knock_hall_light_and_chimes(broker, monkeypatch):
     monkeypatch.setenv("KAIKU_UNOQ_LIGHT_EVERY_S", "0.2")
+    monkeypatch.setenv("KAIKU_UNOQ_LIGHT_SOURCE", "ky054")   # this build uses the camera (D39); test the KY-054 path
     from kaiku_contracts.config import load_config
     load_config.cache_clear()
     bridge = FakeBridge()

@@ -134,9 +134,12 @@ final class LiveIntegrationTests: XCTestCase {
             case .ready: o["ev"] = "ready"
             case .userText(let s): o["ev"] = "user_text"; o["text"] = s
             case .kaikuText(let s): o["ev"] = "kaiku_text"; o["text"] = s
+            case .modelOutput: o["ev"] = "model_output"
             case .audio(let d): o["ev"] = "audio"; o["bytes"] = d.count
             case .interrupted: o["ev"] = "interrupted"
             case .turnComplete: o["ev"] = "turn_complete"
+            case .userTranscriptComplete: o["ev"] = "user_transcript_complete"
+            case .kaikuTranscriptComplete: o["ev"] = "kaiku_transcript_complete"
             case .toolCall(_, let n, let a): o["ev"] = "tool_call"; o["name"] = n; o["args"] = JSONValue.object(a).any
             case .toolCancelled(let ids): o["ev"] = "tool_cancelled"; o["n"] = ids.count
             case .resumable: o["ev"] = "resumption_handle"

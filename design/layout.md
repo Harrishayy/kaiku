@@ -8,9 +8,13 @@ applies all four at once. Check it before you call a screen done.
 ## Sizes
 - Phone widths: design at 375 pt, must hold at 320 pt. Mac window min 720 × 480 pt; under 720 the sidebar turns
   into a top strip. Web `/me` goes to one column under 760 px.
-- Screen side padding 18 pt (iPhone), 26 pt (Mac pane), at least 16 px on the web. Respect safe areas (status bar,
-  home indicator, Dynamic Island, notch).
-- Tap targets are at least 44 × 44 pt. Primary buttons are at least 52 pt tall and full width on iPhone.
+- Screen side padding `space.4` 16 pt (iPhone, web under 760 px), `space.5` 24 pt (Mac pane, desktop web). Respect
+  safe areas (status bar, home indicator, Dynamic Island, notch). Text columns cap at `size.content-max` (680),
+  multi-column panes at `size.pane-max` (1000).
+- Every gap is a `space.*` step, never token arithmetic. The gap ladder and component sizes are in
+  [`components.md`](components.md).
+- Tap targets are at least 44 × 44 pt (`size.tap-min`). Primary buttons are at least 52 pt tall
+  (`size.button-min`) and full width on iPhone.
 - Running text is at most about 38 em wide (`.ui p`). Wide panes cap their text columns.
 
 ## Text scaling
@@ -40,7 +44,7 @@ applies all four at once. Check it before you call a screen done.
 ## Scrolling
 - **One viewport first.** Every app screen and game fits without scrolling at the default Mac window (980 × 720)
   and on a 6.1–6.3″ iPhone at default text size: compact headers (title + pill on one row), two columns on the
-  Mac pane (≥ 600 pt), section gaps of 16–24 pt, no giant empty areas. Scrolling is the fallback only (accessibility
+  Mac pane (≥ 600 pt), section gap `space.5` (24 pt) on every screen, no giant empty areas. Scrolling is the fallback only (accessibility
   text sizes, iPhone SE, the 720 × 480 minimum window) and never bounces when the content fits.
 - The screen body is still a vertical `ScrollView` for that fallback. Children never shrink to fit (`flex-shrink: 0`,
   the `.scr > *` rule). Shrinking clipped the consent list in testing.

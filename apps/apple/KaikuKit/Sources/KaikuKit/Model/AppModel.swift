@@ -5,15 +5,18 @@ import SwiftUI
 /// The signals the person can allow (onboarding consent, "What Kaiku saw today" pauses). Ids match copy keys
 /// `sig.<id>.{t,d}`. Check-ins + walks default on, the rest off (design/ia.md → Onboarding).
 public enum Signal: String, CaseIterable, Identifiable, Sendable {
-    case checkins, walks, voice, mac, watch
+    case checkins, walks, voice, camera, mac, watch
     /// Keep the words of conversations with Kaiku (opt-in, off by default): the person can read and delete them;
     /// never shown to the care team; used de-identified to teach Kaiku's own model. Crisis talk is never kept.
     case transcripts
+    /// "Let Kaiku see through the glasses during walks" (off by default): about one picture a second goes to the
+    /// live conversation only, while it is open. Never saved, never sent to the Kaiku cloud.
+    case see
     public var id: String { rawValue }
     public var defaultOn: Bool { self == .checkins || self == .walks }
     /// Signals this platform can actually produce (others are shown but explained as another device's).
     public static var forThisDevice: [Signal] {
-        KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .watch, .transcripts] : [.checkins, .voice, .mac, .transcripts]
+        KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .camera, .watch, .transcripts, .see] : [.checkins, .voice, .camera, .mac, .transcripts]
     }
 }
 
@@ -24,9 +27,14 @@ public enum VoicePace: String, CaseIterable, Sendable { case slow, normal }
 @Observable @MainActor
 public final class AppModel {
     public private(set) var pairing: Pairing?
+    private(set) var pairingRevision = 0
     @ObservationIgnored public let api: APIClient
     @ObservationIgnored let queue: OfflineQueue
+    @ObservationIgnored let episodes: EpisodeOutbox
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored let serviceDiscovery: ServiceDiscovery
+    @ObservationIgnored private var connectionTask: Task<Bool, Never>?
+    @ObservationIgnored private let saveService: (Pairing) -> Bool
 
     // cloud state
     public var me: MeResponse?
@@ -43,6 +51,8 @@ public final class AppModel {
     public var showCrisis = false
     public var toast: String?
     public var celebrateUntil: Date?
+    /// Bumped by every finished task, game, walk or check-in: the root view plays one completion moment per bump.
+    public private(set) var celebration = 0
     public var selectedTab: KaikuTab = .today
     public var deepLink: KaikuRoute?
     // A2 (iPhone extras)
@@ -53,13 +63,23 @@ public final class AppModel {
     public var healthState: HealthState = .off
     /// Which glasses adapter a walk uses (the iOS shell sets DAT or mock; nil = phone only).
     @ObservationIgnored public var makeGlasses: (() -> GlassesAdapter?)?
+    @ObservationIgnored public var connectGlasses: (() async -> Bool)?
+    public var glassesRegistered = false
+    /// The DAT SDK for the Glasses check screen (iOS shell); nil where the SDK is not linked.
+    @ObservationIgnored public var glassesControl: (any GlassesControl)?
 
     // settings
     public var onboarded: Bool { didSet { defaults.set(onboarded, forKey: "kaiku.onboarded") } }
+    /// Where first-run setup was left (`SetupStep` raw value): closing the app mid-setup resumes there.
+    public var setupStep: Int { didSet { defaults.set(setupStep, forKey: "kaiku.setupStep") } }
     public var language: KaikuLanguage {
-        didSet { L10n.shared.language = language; defaults.set(language.rawValue, forKey: "kaiku.lang") }
+        get { .en }
+        set { L10n.shared.language = .en; defaults.set("en", forKey: "kaiku.lang") }
     }
-    public var consents: [Signal: Bool] { didSet { saveDict(consents.mapKeys(\.rawValue), "kaiku.consents") } }
+    public var consents: [Signal: Bool] { didSet {
+        saveDict(consents.mapKeys(\.rawValue), "kaiku.consents")
+        if consents[.transcripts] != true { episodes.removeTranscripts() }
+    } }
     public var pausedAll: Bool { didSet { defaults.set(pausedAll, forKey: "kaiku.pausedAll") } }
     public var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "kaiku.pausedUntil") } }
     public var pace: VoicePace { didSet { defaults.set(pace.rawValue, forKey: "kaiku.pace") } }
@@ -74,11 +94,21 @@ public final class AppModel {
     public var marks: [String: HighlightKind] { didSet { saveDict(marks.mapValues(\.rawValue), "kaiku.marks") } }
     /// Game (PlayGame raw value) → the local day it was last finished on this device. Drives Today's path ticks.
     public var playedDays: [String: String] { didSet { saveDict(playedDays, "kaiku.played") } }
+    /// Local day → conversations finished on this device (the evidence list; episodes are not in /v1/events).
+    public var talkDays: [String: Int] { didSet { saveDict(talkDays, "kaiku.talks") } }
+    public var talksToday: Int { talkDays[Self.dayKey(Date())] ?? 0 }
     /// Name override for layout stress tests (`-kaikuName Annemarie-Kristiina`); otherwise from memories.
     @ObservationIgnored private let nameOverride: String?
 
-    public init(defaults: UserDefaults = .standard, pairing: Pairing? = PairingStore.load()) {
+    public convenience init(defaults: UserDefaults = .standard, pairing: Pairing? = PairingStore.load()) {
+        self.init(defaults: defaults, pairing: pairing, api: nil, queue: OfflineQueue(), episodes: EpisodeOutbox())
+    }
+
+    init(defaults: UserDefaults, pairing: Pairing?, api injectedAPI: APIClient?, queue: OfflineQueue, episodes: EpisodeOutbox, discovery: ServiceDiscovery? = nil,
+         saveService: @escaping (Pairing) -> Bool = PairingStore.save) {
         self.defaults = defaults
+        self.serviceDiscovery = discovery ?? ServiceDiscovery()
+        self.saveService = saveService
         // Dev/test launch arguments (UserDefaults argument domain): -kaikuPairLink <url>, -kaikuSkipOnboarding YES
         var p = pairing
         if let link = defaults.string(forKey: "kaikuPairLink"), let parsed = Pairing.parse(link) {
@@ -86,12 +116,14 @@ public final class AppModel {
             PairingStore.save(parsed)
         }
         self.pairing = p
-        api = APIClient(pairing: p)
+        if let p { ServiceIdentity.remember(p, defaults: defaults) }
+        api = injectedAPI ?? APIClient(pairing: p)
         VoiceLines.shared.api = api   // lines not cached yet are fetched in Kaiku's real voice (never a synthesizer)
-        queue = OfflineQueue()
+        self.queue = queue
+        self.episodes = episodes
         onboarded = defaults.bool(forKey: "kaiku.onboarded") || defaults.bool(forKey: "kaikuSkipOnboarding")
-        let langRaw = defaults.string(forKey: "kaiku.lang") ?? KaikuLanguage.system.rawValue
-        language = KaikuLanguage(rawValue: langRaw) ?? .en
+        setupStep = SetupStep.resume(saved: defaults.object(forKey: "kaiku.setupStep") as? Int,
+                                     launchArgument: defaults.string(forKey: "kaikuOnboardingStep")).rawValue
         let saved = defaults.dictionary(forKey: "kaiku.consents") as? [String: Bool] ?? [:]
         consents = Dictionary(uniqueKeysWithValues: Signal.allCases.map { ($0, saved[$0.rawValue] ?? $0.defaultOn) })
         pausedAll = defaults.bool(forKey: "kaiku.pausedAll")
@@ -107,10 +139,12 @@ public final class AppModel {
         let m = defaults.dictionary(forKey: "kaiku.marks") as? [String: String] ?? [:]
         marks = m.compactMapValues { HighlightKind(rawValue: $0) }
         playedDays = defaults.dictionary(forKey: "kaiku.played") as? [String: String] ?? [:]
+        talkDays = (defaults.dictionary(forKey: "kaiku.talks") as? [String: Int] ?? [:]).filter { $0.key == Self.dayKey(Date()) }
         nameOverride = defaults.string(forKey: "kaikuName")
         if let tab = defaults.string(forKey: "kaikuTab").flatMap(KaikuTab.init(rawValue:)) { selectedTab = tab }
         if let r = defaults.string(forKey: "kaikuRoute").flatMap(KaikuRoute.init(rawValue:)) { deepLink = r }
         L10n.shared.language = language
+        if consents[.transcripts] != true { episodes.removeTranscripts() }
         // Screenshot hook: show the crisis screen without emitting a flag.
         if defaults.bool(forKey: "kaikuShowCrisis") { showCrisis = true }
     }
@@ -166,36 +200,92 @@ public final class AppModel {
         return f.string(from: d)
     }
 
+    // MARK: companion service (independent of robot hardware)
+
+    /// Automatic provisioning is restricted to a build-configured, explicitly demo service. Discovery on the
+    /// LAN only lists candidates; it never moves an existing profile or sends credentials to those candidates.
+    @discardableResult func ensureServiceConnection() async -> Bool {
+        if pairing != nil { return true }
+        guard !defaults.bool(forKey: "kaiku.serviceAutoDisabled") else { return false }
+        if let connectionTask { return await connectionTask.value }
+        let revision = pairingRevision
+        let task = Task { [weak self] in
+            guard let self, let candidate = await serviceDiscovery.configuredDemo(),
+                  pairing == nil, revision == pairingRevision else { return self?.pairing != nil }
+            return await connectService(candidate, expectedRevision: revision)
+        }
+        connectionTask = task
+        let result = await task.value
+        connectionTask = nil
+        return result
+    }
+
+    /// Called for an explicit service selection, or the vetted configured-service bootstrap above.
+    @discardableResult func connectService(_ candidate: DiscoveredService, expectedRevision: Int? = nil) async -> Bool {
+        let revision = expectedRevision ?? pairingRevision
+        guard let checked = await serviceDiscovery.inspect(candidate.baseURL),
+              checked.descriptor.permitsDemoConnection, revision == pairingRevision else { return false }
+        if let pairing, ServiceDiscovery.origin(pairing.baseURL.absoluteString) == checked.baseURL { return true }
+        let next = Pairing(baseURL: checked.baseURL,
+                           homeID: ServiceIdentity.home(for: checked.baseURL, defaults: defaults), token: nil)
+        guard saveService(next) else { return false }
+        defaults.set(false, forKey: "kaiku.serviceAutoDisabled")
+        await updatePairing(next)
+        serviceDiscovery.stop()
+        return true
+    }
+
     // MARK: pairing
 
     @discardableResult
     public func pair(link: String) async -> Bool {
         guard let p = Pairing.parse(link) else { return false }
         PairingStore.save(p)
-        pairing = p
-        await api.setPairing(p)
+        await updatePairing(p)
         await refresh()
         return true
     }
 
     public func unpair() async {
+        defaults.set(true, forKey: "kaiku.serviceAutoDisabled")
         PairingStore.clear()
-        pairing = nil
-        await api.setPairing(nil)
-        me = nil; nudge = nil; memories = []; todayEvents = []
+        await updatePairing(nil)
+    }
+
+    /// Invalidate in-flight reads before any suspension. Device preferences survive; person data does not.
+    func updatePairing(_ next: Pairing?) async {
+        guard pairing != next else { return }
+        let changedHome = pairing?.baseURL != next?.baseURL || pairing?.homeID != next?.homeID
+        pairingRevision += 1
+        pairing = next
+        if let next { ServiceIdentity.remember(next, defaults: defaults) }
+        if changedHome {
+            WalkModel.shared.clearForPairingChange()
+            me = nil; nudge = nil; memories = []; todayEvents = []
+            remember = true; memoriesLoaded = false; conversationsKept = nil
+            savedConversations = []; conversationsLoading = false; conversationsFailed = false
+            healthState = .off; loading = false; offline = false; queued = 0
+            toast = nil; celebrateUntil = nil; showCrisis = false; crisisShownForMood = false
+            phq9Requested = false; deepLink = nil
+            marks = [:]; playedDays = [:]; weatherDoneDay = nil; talkDays = [:]
+        }
+        await api.setPairing(next)
     }
 
     // MARK: loading
 
     public func refresh() async {
-        guard pairing != nil else { return }
+        guard await ensureServiceConnection() else { return }
+        let revision = pairingRevision
         loading = true
-        defer { loading = false }
+        defer { if revision == pairingRevision { loading = false } }
         await flush()
+        guard revision == pairingRevision else { return }
         async let meR = try? api.me()
         async let nudgeR = try? api.nudge()
         async let memR = try? api.memories()
         let (m, n, mem) = await (meR, nudgeR, memR)
+        guard revision == pairingRevision else { return }
         if let m { me = m; offline = false } else { offline = true }
         // Cloud state `safety` → mood `crisis`: the scripted screen, once per launch (no new flag: the cloud knows).
         if m?.mascot?.mood == .crisis, !crisisShownForMood { crisisShownForMood = true; present(crisis: true) }
@@ -205,58 +295,111 @@ public final class AppModel {
     }
 
     public func loadToday() async {
+        guard let paired = pairing else { return }
+        let revision = pairingRevision
         let start = Calendar.current.startOfDay(for: Date())
-        if let r = try? await api.todaysEvents(since: start) { todayEvents = r.events.filter { $0.home_id == pairing?.homeID } }
+        if let r = try? await api.todaysEvents(since: start), revision == pairingRevision {
+            todayEvents = r.events.filter { $0.home_id == paired.homeID }
+        }
     }
 
     public func loadMemories() async {
+        guard pairing != nil else { return }
+        let revision = pairingRevision
         do {
             let r = try await api.memories()
+            guard revision == pairingRevision else { return }
             memories = r.memories; remember = r.remember; memoriesLoaded = true; offline = false
-        } catch { offline = true; memoriesLoaded = true }
+        } catch { if revision == pairingRevision { offline = true; memoriesLoaded = true } }
     }
 
     public func deleteMemory(_ m: Memory) async {
+        let revision = pairingRevision
         memories.removeAll { $0.id == m.id }
-        if (try? await api.deleteMemory(m.id)) != nil { toast = T("toast.deleted") } else { offline = true; await loadMemories() }
+        let result = try? await api.deleteMemory(m.id)
+        guard revision == pairingRevision else { return }
+        if result != nil { toast = T("toast.deleted") } else { offline = true; await loadMemories() }
     }
 
     public func forgetAll() async {
+        let revision = pairingRevision
         let before = memories
         memories = []
-        if (try? await api.deleteAllMemories()) != nil { toast = T("toast.deleted") } else { memories = before; offline = true }
+        let result = try? await api.deleteAllMemories()
+        guard revision == pairingRevision else { return }
+        if result != nil { toast = T("toast.deleted") } else { memories = before; offline = true }
     }
 
     /// Stored conversations (opt-in `transcripts` signal); nil = not loaded / offline.
     public var conversationsKept: Int?
+    public var savedConversations: [StoredTranscript] = []
+    public var conversationsLoading = false
+    public var conversationsFailed = false
 
     public func loadConversations() async {
-        conversationsKept = (try? await api.transcripts())?.transcripts.count
+        let revision = pairingRevision
+        conversationsLoading = true; conversationsFailed = false
+        let result = try? await api.transcripts()
+        guard revision == pairingRevision else { return }
+        conversationsLoading = false
+        if let result, result.home_id == pairing?.homeID {
+            savedConversations = result.transcripts
+            conversationsKept = result.transcripts.count
+        } else { conversationsFailed = true }
     }
 
     public func forgetConversations() async {
-        if (try? await api.deleteAllTranscripts()) != nil { conversationsKept = 0; toast = T("toast.deleted") } else { offline = true }
+        let revision = pairingRevision
+        episodes.removeTranscripts()
+        let result = try? await api.deleteAllTranscripts()
+        guard revision == pairingRevision else { return }
+        if result != nil { conversationsKept = 0; savedConversations = []; conversationsFailed = false; toast = T("toast.deleted") } else { conversationsFailed = true; offline = true }
     }
 
     public func setRemember(_ on: Bool) async {
+        let revision = pairingRevision
         remember = on
-        if let r = try? await api.setRemember(on) { remember = r.remember } else { offline = true }
+        let result = try? await api.setRemember(on)
+        guard revision == pairingRevision else { return }
+        if let result { remember = result.remember } else { offline = true }
     }
 
     // MARK: recording (everything goes through the offline queue)
 
-    func emit<P: Codable & Sendable>(_ type: String, _ payload: P, id: String = UUID7.make(), ts: Date = Date()) async {
-        guard let p = pairing else { return }
-        let env = Envelope(id: id, ts: ts, home_id: p.homeID, source: KaikuPlatform.source, type: type, payload: payload)
+    func emit<P: Codable & Sendable>(_ type: String, _ payload: P, id: String = UUID7.make(), ts: Date = Date(), sim: Bool = false,
+                                    quality: Double? = nil, pairedTo expected: Pairing? = nil) async {
+        guard let p = pairing, expected == nil || p == expected else { return }
+        let env = Envelope(id: id, ts: ts, home_id: p.homeID, source: KaikuPlatform.source, type: type, payload: payload,
+                           sim: sim, quality: quality)
         guard let any = try? AnyEnvelope(env) else { return }
-        await queue.enqueue(any)
+        await queue.enqueue(any, server: p.baseURL)
         await flush()
     }
 
     public func flush() async {
+        let revision = pairingRevision
         let ok = await queue.flush(using: api)
-        queued = await queue.count
-        if !ok { offline = true }
+        let episodesOK = await episodes.flush(using: api)
+        guard revision == pairingRevision else { return }
+        queued = await queue.count + episodes.entries.count
+        if !ok || !episodesOK { offline = true }
+    }
+
+    func finishEpisode(_ episode: EpisodeIn, pairing: Pairing) {
+        if !episodes.enqueue(episode, pairing: pairing) { offline = true }
+        // A conversation the person took part in counts as one of today's moments (never after a crisis).
+        if episode.outcome == .completed || episode.outcome == .ended_early, self.pairing == pairing {
+            talkDays = [Self.dayKey(Date()): talksToday + 1]
+        }
+        queued += 1
+        Task { await flush() }
+    }
+
+    /// Device tools share the same consent gate as manual check-ins.
+    func recordDial(item: DialItem, value: Int) async -> Bool {
+        guard allowed(.checkins), (1...5).contains(value) else { return false }
+        await emit("obs.self_report", SelfReport(item: item, value: value, channel: KaikuPlatform.channel, context: "adhoc"))
+        return true
     }
 
     /// The weather check: three obs.self_report (channel phone|mac). Sent only with the check-ins signal on.
@@ -277,13 +420,24 @@ public final class AppModel {
     }
 
     /// One finished game → obs.play_session. Speech features only with the voice signal on.
-    public func recordPlay(_ session: PlaySession) async {
+    public func recordPlay(_ session: PlaySession, sim: Bool = false) async {
         playedDays[session.game.rawValue] = Self.dayKey(Date())
         celebrate()
         guard allowed(.checkins) else { return }
         var s = session
         if s.game == .tell && !allowed(.voice) { s.speech_rate = nil; s.pause_ratio = nil; s.pitch_variability = nil }
-        await emit("obs.play_session", s)
+        if !allowed(.camera) {
+            s.expressivity_index = nil; s.face_movement = nil; s.camera_face_coverage = nil
+            s.camera_samples = nil; s.camera_method = nil
+        }
+        // Measured games: the nth session on this device (the first few are warm-up: practice effects), and a
+        // doubtful session goes out with a low quality so no metric counts it.
+        var quality: Double?
+        if GameHistory.measured.contains(s.game) {
+            s = GameHistory.stamp(s, defaults: defaults)
+            quality = GameHistory.quality(s)
+        }
+        await emit("obs.play_session", s, sim: sim, quality: quality)
         await loadToday()
     }
 
@@ -302,7 +456,21 @@ public final class AppModel {
         Task { await emit("obs.safety_flag", SafetyFlag(trigger: trigger, handled_locally: true)) }
     }
 
-    public func celebrate() { celebrateUntil = Date().addingTimeInterval(6) }
+    public func celebrate() { celebrateUntil = Date().addingTimeInterval(6); celebration += 1 }
+
+    /// First-run setup finished (or skipped where that is safe): land on Today.
+    public func finishSetup() {
+        setupStep = SetupStep.welcome.rawValue
+        selectedTab = .today
+        onboarded = true
+    }
+
+    /// You → "Run setup again": the same flow from the start. Choices, pairing and data are untouched.
+    public func restartSetup() {
+        setupStep = SetupStep.welcome.rawValue
+        deepLink = nil
+        onboarded = false
+    }
 
     public func showToast(_ text: String) { toast = text }
 }

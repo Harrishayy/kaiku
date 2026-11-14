@@ -15,7 +15,7 @@ from typing import Any, Literal
 ConsensusSource = Literal["robot", "glasses", "laptop", "wearable"]
 CONSENSUS_SOURCES: tuple[str, ...] = ("robot", "glasses", "laptop", "wearable")
 # Display labels (person + clinician UI). The key "laptop" stays for compatibility; it means "Apps" now.
-SOURCE_LABELS: dict[str, str] = {"robot": "Home robot", "glasses": "Glasses", "laptop": "Apps", "wearable": "Watch"}
+SOURCE_LABELS: dict[str, str] = {"robot": "Check-ins & robot", "glasses": "Walks & outings", "laptop": "Apps", "wearable": "Watch"}
 
 # obs type -> consensus source | "learner" | "adherence" | "override"
 SOURCE_OF: dict[str, str] = {
@@ -33,6 +33,7 @@ SOURCE_OF: dict[str, str] = {
     "obs.wearable_daily": "wearable",
     "obs.phq9": "laptop",  # counts toward laptop wherever it was completed; also the clinical anchor
     "obs.ritual": "adherence",
+    "obs.engagement": "adherence",  # robot multi-cue session summary: stored with provenance, feeds no verdict
     "obs.intervention_response": "learner",
     "obs.nudge_offered": "learner",
     "obs.nudge_outcome": "learner",
