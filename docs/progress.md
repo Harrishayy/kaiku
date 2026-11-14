@@ -1298,3 +1298,17 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `motor_pins` not read yet (MQTT only, and both boards were off the hotspot after the flash). The standalone pan is
   a fixed 600 ms pulse with no angle estimate or soft limit, so `raw.head.pan` always says `deg: 0`.
 - Next: confirm both directions on the charger, read `motor_pins`, set the pan sign for the robot.
+
+## 2026-11-14 22:05 — Claude Code — firmware/atech-head (A), unoq-sensors: no display, port 14 confirmed, UNO Q redeployed
+- Did: the display was taken off the head, so the standalone firmware no longer builds or drives it (`project.yaml`,
+  `pins.h`, `main.cpp` drawing code, `build.sh` shim); `eyes` commands are still accepted. New serial command `net`
+  (Wi-Fi/MQTT state, scan for the configured network). UNO Q: the repo's app + current contracts and `kaiku.toml`
+  copied to `~/ArduinoApps/kaiku-sensors` over ssh, app restarted (sketch rebuilt and flashed); the old app is at
+  `~/kaiku-sensors.bak` on the board.
+- Verified: on the robot, `cmd.head` pans over MQTT turned the motor both ways on port 14; `motor_pins` = `36:ok
+  35:ok`. Head and UNO Q both on the broker over the hotspot (health ok; UNO Q camera_ok, mcu_ok, distance/face/light).
+- Contract changes: none.
+- Broken/blocked: the head stayed off Wi-Fi for a while because `secrets.h` had the wrong hotspot password (fixed
+  locally; the file is gitignored). `arduino-app-cli app restart` stopped the app and then failed with "app is
+  running": `app start` afterwards worked. The MQTT firmware and the wiring/BOM/decision docs still describe a display.
+- Next: decide whether the display is gone for good (then D44, wiring, BOM, MQTT firmware); set the pan sign.

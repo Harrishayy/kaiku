@@ -9,7 +9,6 @@
 #include "esp_system.h"
 #include "pins.h"
 #include "modules/shared/atech_helpers.h"
-#include "modules/display/st7735_tft.h"
 #include "modules/input/rotary_encoder.h"
 #include "modules/audio/speaker.h"
 #include "modules/audio/microphone.h"
@@ -20,7 +19,6 @@
 #include "kaiku_net.h"   // kaiku_net: Wi-Fi + MQTT to the UNO Q and hub (contracts)
 #include "driver/gpio.h"   // kaiku: motor pin check
 
-ST7735_TFT st7735_tft(PIN_ST7735_TFT_D, PIN_ST7735_TFT_B, PIN_ST7735_TFT_C, PIN_ST7735_TFT_A);
 RotaryEncoder rotary_encoder_knob(PIN_ROTARY_ENCODER_KNOB_A, PIN_ROTARY_ENCODER_KNOB_B, PIN_ROTARY_ENCODER_KNOB_C, PIN_ROTARY_ENCODER_KNOB_D);
 Speaker speaker(PIN_SPEAKER_B, PIN_SPEAKER_A, PIN_SPEAKER_D);
 Microphone microphone(PIN_MICROPHONE_A, PIN_MICROPHONE_B, PIN_MICROPHONE_C, PIN_MICROPHONE_D);
@@ -69,7 +67,7 @@ static int panSpeed = 0;             // -100..100
 static unsigned long panUntil = 0;
 static unsigned long purrUntil = 0;
 
-static EveryTimer micTimer, frameTimer, statusTimer, ledTimer;
+static EveryTimer micTimer, statusTimer, ledTimer;
 static bool dirty = true;
 static bool pressedLatch = false;
 static int knobSteps = 0;
@@ -184,61 +182,8 @@ static void updateChest() {
   neopixel_grid.show();
 }
 
-static void drawEyes(int cy) {
-  const uint16_t W = ST7735_TFT::COLOR_WHITE, K = ST7735_TFT::COLOR_BLACK;
-  bool blink = (millis() % 4000) < 140 && eyes != EYES_WIDE;
-  for (int i = 0; i < 2; i++) {
-    int cx = i ? 58 : 22;
-    if (blink) { st7735_tft.fillRect(cx - 14, cy - 2, 28, 4, W); continue; }
-    switch (eyes) {
-      case EYES_WIDE:  st7735_tft.fillCircle(cx, cy, 17, W); st7735_tft.fillCircle(cx, cy, 6, K); break;
-      case EYES_HAPPY: st7735_tft.fillCircle(cx, cy, 14, W); st7735_tft.fillRect(cx - 15, cy, 30, 16, K); break;
-      case EYES_SAD:   st7735_tft.fillCircle(cx, cy, 13, W); st7735_tft.fillTriangle(cx - 15, cy - 15, cx + 15, cy - 15, i ? cx + 15 : cx - 15, cy - 2, K); break;
-      case EYES_SLEEPY: st7735_tft.fillCircle(cx, cy, 13, W); st7735_tft.fillRect(cx - 15, cy - 15, 30, 13, K); break;
-      default: st7735_tft.fillCircle(cx, cy, 13, W); st7735_tft.fillCircle(cx + 3, cy + 2, 5, K); break;
-    }
-  }
-}
-
-static void drawFrame() {
-  char buf[24];
-  st7735_tft.clear();
-  drawEyes(40);
-  switch (mode) {
-    case IDLE: st7735_tft.displayText("hei!", 26, 120, 1, ST7735_TFT::COLOR_CYAN); break;
-    case GREET:
-      st7735_tft.displayText("Huomenta!", 13, 92, 1, ST7735_TFT::COLOR_YELLOW);
-      st7735_tft.displayText("press ear", 13, 120, 1, ST7735_TFT::COLOR_WHITE);
-      st7735_tft.displayText("to start", 16, 132, 1, ST7735_TFT::COLOR_WHITE); break;
-    case DIAL_MOOD: case DIAL_ENERGY: case DIAL_SLEEP:
-      st7735_tft.displayText(mode == DIAL_MOOD ? "MOOD" : mode == DIAL_ENERGY ? "ENERGY" : "SLEEP",
-                             8, 86, 1, ST7735_TFT::COLOR_CYAN);
-      snprintf(buf, sizeof buf, "%d", dialValue);
-      st7735_tft.displayText(buf, 8, 100, 3, ST7735_TFT::COLOR_WHITE);
-      st7735_tft.drawRect(8, 132, 64, 10, ST7735_TFT::COLOR_WHITE);
-      st7735_tft.fillRect(10, 134, 6 * dialValue, 6, ST7735_TFT::COLOR_ORANGE);
-      st7735_tft.displayText("press = ok", 8, 148, 1, ST7735_TFT::COLOR_MAGENTA); break;
-    case BREATHE: {
-      bool in; float l = breathLevel(&in);
-      st7735_tft.displayText(in ? "breathe in" : "breathe out", 6, 92, 1, ST7735_TFT::COLOR_CYAN);
-      st7735_tft.fillCircle(40, 128, 4 + (int)(l * 22), ST7735_TFT::COLOR_BLUE);
-      break;
-    }
-    case DRUM: {
-      // the clock starts at the first tap; until then the full time is shown
-      unsigned long ran = taps ? millis() - firstTap : 0;
-      unsigned long left = ran >= drumMs ? 0 : (drumMs - ran) / 1000;
-      st7735_tft.displayText("DRUM!", 14, 86, 2, ST7735_TFT::COLOR_MAGENTA);
-      snprintf(buf, sizeof buf, "taps %d", taps);
-      st7735_tft.displayText(buf, 8, 112, 1, ST7735_TFT::COLOR_WHITE);
-      snprintf(buf, sizeof buf, "%lus left", left);
-      st7735_tft.displayText(buf, 8, 128, 1, ST7735_TFT::COLOR_WHITE);
-      break;
-    }
-    case DONE: st7735_tft.displayText("kiitos!", 18, 110, 1, ST7735_TFT::COLOR_GREEN); break;
-  }
-  st7735_tft.display();
-}
+// kaiku: no display on the head in this build (removed 2026-11-14): the eye and screen drawing is gone; `eyes`
+// is still tracked so `cmd.head` eyes and the serial `eyes` command stay accepted.
 
 static const char* resetReason() {
   switch (esp_reset_reason()) {
@@ -282,8 +227,6 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   p2p_transport_setup();
   icm40608_imu_i2c.begin(100000);
-  st7735_tft.begin();
-  st7735_tft.setRotation(2);   // portrait, image top toward the board's top edge
   rotary_encoder_knob.begin();
   speaker.begin();
   microphone.begin();
@@ -300,11 +243,9 @@ void setup() {
   rotary_encoder_knob.setRingBrightness(40);
   lastKnobPos = rotary_encoder_knob.getPosition();
   setMode(IDLE);
-  drawFrame();
   kaiku_net::begin();   // kaiku_net
 
   Serial.printf("{\"type\":\"boot\",\"payload\":{\"reset_reason\":\"%s\",\"free_heap\":%u,\"modules\":["
-                "{\"instance\":\"st7735_tft\",\"module\":\"st7735_tft\",\"ok\":true,\"detectable\":false},"
                 "{\"instance\":\"rotary_encoder_knob\",\"module\":\"rotary_encoder_knob\",\"ok\":true,\"detectable\":false},"
                 "{\"instance\":\"speaker\",\"module\":\"speaker\",\"ok\":true,\"detectable\":false},"
                 "{\"instance\":\"microphone\",\"module\":\"microphone\",\"ok\":true,\"detectable\":false},"
@@ -330,6 +271,7 @@ void loop() {
     else if (!strcmp(a, "idle") || !strcmp(a, "stop")) { panUntil = purrUntil = 0; setMode(IDLE); }
     else if (!strcmp(a, "pan")) { panSpeed = constrain(atoi(cmd.value), -100, 100); panUntil = millis() + 600; }
     else if (!strcmp(a, "purr")) purr(cmd.value[0] ? constrain(atoi(cmd.value), 100, 10000) : 1500);
+    else if (!strcmp(a, "net")) { static char nb[320]; kaiku_net::report(nb, sizeof nb); emit("net", nb); }   // kaiku_net
     else if (!strcmp(a, "eyes")) { eyes = eyesFrom(cmd.value); dirty = true; }
     else if (!strcmp(a, "chirp")) chirp();
     else if (!strcmp(a, "threshold")) soundThreshold = (int16_t)constrain(atoi(cmd.value), 100, 32000);
@@ -417,7 +359,6 @@ void loop() {
     emit("status", b);
   }
 
-  if (!frameTimer.ready(mode == BREATHE ? 80 : 120) && !dirty) { delay(1); return; }
-  dirty = false;
-  drawFrame();
+  dirty = false;   // kaiku: nothing to redraw without the display
+  delay(1);
 }

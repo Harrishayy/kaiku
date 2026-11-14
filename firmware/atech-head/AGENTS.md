@@ -118,11 +118,13 @@ No LED grids in this build (ports 11/14 free).
 Standalone (D44), on hardware: runs untethered on its own USB-C power. `build.sh` mutes the Atech drivers' debug prints
 (with nobody reading USB they stalled the loop and knob presses were missed; `VERBOSE=1` keeps them). Opening the
 serial port resets the board. Commands with a value must be JSON lines (`{"action":"pan","value":"100"}`).
+Standalone, no display (removed from the head 2026-11-14): the driver, pins and all eye/screen drawing are out of
+`standalone/`; `cmd.head` eyes and the serial `eyes` command are still accepted and do nothing visible. Ports 3-4 free.
 Standalone motor port: **14** (GPIO36/35; `standalone/project.yaml` + `src/pins.h`), moved from 11 where only one
 direction turned. At boot the firmware drives both motor lines high and low together and reports the read-back in
-`health/head` details as `motor_pins` (e.g. `36:ok 35:ok`). Flashed 2026-11-14; the firmware ran pans in both
-directions over USB serial, but both directions turning on the robot and the `motor_pins` value are not yet
-confirmed. A `cmd.head` pan runs a fixed 600 ms at `speed` (sign from `target_deg`); there is no position estimate.
+`health/head` details as `motor_pins`. Seen on the robot (2026-11-14, on its charger): `36:ok 35:ok`, and `cmd.head`
+pans over MQTT turned the motor both ways. Serial `net` prints the Wi-Fi/MQTT state and, when offline, whether the
+configured network is in range (never the password). A `cmd.head` pan runs a fixed 600 ms at `speed` (sign from `target_deg`); there is no position estimate.
 `build.sh` clears its copied sources before `atech build` (a rebuild compiled them without their libraries).
 `kaiku_net` verified on the board (2026-11-14, iPhone hotspot): joins Wi-Fi, connects to the broker, `health/head`
 every 5 s + `raw.head.pan`, takes `cmd.head` eyes, and a face seen by the UNO Q woke the head from idle to greet.

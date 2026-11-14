@@ -14,7 +14,7 @@ Decisions: D44 (standalone head firmware), D48 (parts removed, own charger, hots
 | UNO Q | `172.20.10.12`, app `kaiku-sensors` = default app (starts at boot); health, faces, distance, light | yes |
 | Atech | `172.20.10.13`, standalone ritual + `kaiku_net`; health, pan, `cmd.head` eyes; UNO Q face woke it | yes |
 | Knock → head drum, head → UNO Q chimes | built in `kaiku_net` | **not yet seen** |
-| Pan motor | turns only with the Atech on its own USB-C charger; port 13 on the MQTT firmware, 14 on the standalone (port 11: reverse only) | port 14: both directions not yet confirmed |
+| Pan motor | turns only with the Atech on its own USB-C charger; port 13 on the MQTT firmware, 14 on the standalone (port 11: reverse only) | yes: both directions on port 14 (standalone, over MQTT) |
 | Pulse | camera only (no KY-053, D48), `ppg_source = "camera"` | camera pulse is noisy (quality 0.6) |
 
 Addresses are DHCP from the phone; they can change after a reconnect. Check with the broker log ("New client

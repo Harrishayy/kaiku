@@ -34,7 +34,7 @@ cp src/*.cpp src/*.h build/src/
 cp ../kaiku_link/secrets.h build/src/secrets.h
 python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text()
 if "PubSubClient" not in s: p.write_text(s.replace("lib_deps =\n", "lib_deps =\n    knolleary/PubSubClient@^2.8\n    bblanchon/ArduinoJson@^7.2\n", 1))'
-for m in shared/atech_helpers display/st7735_tft input/rotary_encoder audio/speaker audio/microphone \
+for m in shared/atech_helpers input/rotary_encoder audio/speaker audio/microphone \
          motor/dc_motor sensor/icm40608 led/neopixel; do
   mkdir -p "build/src/modules/$(dirname "$m")"
   printf '#pragma once\n#include <%s.h>\n' "$(basename "$m")" > "build/src/modules/$m.h"

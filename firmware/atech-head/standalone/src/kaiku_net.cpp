@@ -223,6 +223,33 @@ void ear(int value, int delta, bool pressed) {
   publish("raw.head.ear", "raw", "head/ear", p);
 }
 
+// Why is the head offline? Status codes: wifi 3 = connected, 1 = network not found, 4 = connect failed (password),
+// 6 = disconnected; mqtt 0 = connected, -2 = broker unreachable. The scan says whether our network is in range and
+// on which channel (the ESP32 only hears 2.4 GHz, channels 1-13). Never prints the password.
+void report(char* out, size_t n) {
+  int st = WiFi.status(), ms = mqtt.state();
+  String ip = WiFi.localIP().toString();
+  long rssi = st == WL_CONNECTED ? WiFi.RSSI() : 0;
+  int seen = -1, ch = 0, sr = 0, auth = -1, best = -127;
+  int count = 0;
+  if (st != WL_CONNECTED) {
+    WiFi.disconnect();
+    delay(200);
+    count = WiFi.scanNetworks();
+    for (int i = 0; i < count; i++) {
+      if (WiFi.RSSI(i) > best) best = WiFi.RSSI(i);
+      if (WiFi.SSID(i) == WIFI_SSID) { seen = 1; ch = WiFi.channel(i); sr = WiFi.RSSI(i); auth = (int)WiFi.encryptionType(i); }
+    }
+    if (seen < 0 && count >= 0) seen = 0;
+    WiFi.scanDelete();
+    nextNetTry = 0;
+    backoff = BACKOFF_MAX_MS;   // give the next join the full window
+  }
+  snprintf(out, n, "{\"wifi\":%d,\"mqtt\":%d,\"ip\":\"%s\",\"rssi\":%ld,\"ssid_len\":%d,\"scan_count\":%d,\"best_rssi\":%d,"
+           "\"ours_seen\":%d,\"ours_channel\":%d,\"ours_rssi\":%d,\"ours_auth\":%d,\"broker\":\"%s\"}",
+           st, ms, ip.c_str(), rssi, (int)strlen(WIFI_SSID), count, best, seen, ch, sr, auth, MQTT_HOST_IP);
+}
+
 void motorPins(const char* result) { strlcpy(motorPinCheck, result, sizeof(motorPinCheck)); }
 
 void moving(bool m) {
