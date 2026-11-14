@@ -6,8 +6,9 @@ relative to the day you run it), so today is empty and waiting for live recordin
     days 1-8    her usual settles: robot ritual ~07:20, an afternoon lake walk, evening video call with her sister
     day 9       the first late night on the Mac; no call that evening
     days 10-12  short nights, later mornings, low dials, flat drumming, hardly out, slower reaction game
-    day 12      the care team rings; PHQ-9 that evening
-    days 13-14  morning walks with a friend, the sister calls again; still below her usual
+    day 12      the daily signals alone are enough: the consensus flags "needs a call" (no questionnaire yet)
+    day 13      the care team rings the next morning; the PHQ-9 that evening confirms what the signals showed
+    day 14      a morning walk with a friend, the sister calls again; still below her usual
     days 15-16  dials and walks back near her usual; resting pulse and reaction game recover last
 
 Every value is derived from one table (`DAYS`), so the sources agree with each other on the same day: a short night
@@ -30,6 +31,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import random
 import sys
 from dataclasses import dataclass
@@ -52,6 +54,7 @@ from ..store.db import Store
 
 HOME = "aino"
 N_DAYS = 16
+CARE_DAY = 13  # the day after the flag on day 12
 CARE_BY = "Riitta Salo"
 CARE_NOTE = ("Rang Aino after four short nights and very little time outside. Agreed: a morning walk with her "
              "friend, the evening call with her sister, keep the drum ritual. PHQ-9 repeated; review in a week.")
@@ -147,20 +150,20 @@ DAYS: tuple[Day, ...] = (
     Day("Stayed in bed, skipped the robot; a phone check-in at lunch. Watch left on the charger.", "01:55", "08:50",
         (2, 2, 1), ritual=None, walk=("15:40", 9, 90), mac="late", call=False, late=96,
         firefly=(447, 118, 6, 2), pebbles=(4, .60), nudge="breathe", accepted=False),
-    Day("Care team rings in the afternoon; PHQ-9 in the evening.", "01:35", "08:25", (2, 2, 2), ritual="no_drum",
+    Day("Third short night; hardly out. No questionnaire, no call yet: the daily signals speak for themselves.",
+        "01:35", "08:25", (2, 2, 2), ritual="no_drum",
         speech=(3.4, .33), walk=("16:20", 11, 91), mac="late", call=False, late=9,
-        watch=(67, 29, 2700, 6), efficiency=.86, phq9=(2, 2, 2, 2, 1, 1, 1, 0, 0), nudge="drum", accepted=False,
-        talk="call"),
-    Day("Morning walk with Leena; Maija calls again.", "00:25", "07:40", (3, 3, 3), drum=(94, 36, .72),
-        speech=(3.7, .28), walk=("09:35", 21, 96), evening=(3, 3), mac="easing",
+        watch=(67, 29, 2700, 6), efficiency=.86, nudge="drum", accepted=False),
+    Day("The care team rings in the morning, the day after the flag; PHQ-9 in the evening.", "01:05", "08:10",
+        (2, 2, 2), ritual="no_drum", speech=(3.5, .32), walk=("16:00", 13, 92), mac="late", call=False, late=14,
+        firefly=(440, 112, 5, 2), watch=(66, 30, 3100, 8), efficiency=.86,
+        phq9=(2, 2, 2, 2, 1, 1, 1, 0, 0), nudge="breathe", accepted=False, talk="call"),
+    Day("Morning walk with Leena; Maija calls again.", "00:25", "07:40", (3, 3, 4), drum=(99, 43, .76),
+        speech=(3.95, .24), walk=("09:35", 27, 100), evening=(3, 3), mac="easing",
         firefly=(438, 110, 5, 1), pebbles=(4, .67), watch=(66, 31, 5200, 18), efficiency=.87,
         nudge="daylight_walk", lift=(1, 1), talk="walked"),
-    Day("Walk with Leena again; Mac stays shut.", "-23:59", "07:10", (3, 3, 3), drum=(99, 43, .76),
-        speech=(3.95, .24), walk=("09:40", 28, 99), evening=(3, 3), mac=None, call=False,
-        firefly=(424, 96, 4, 1), pebbles=(5, .75), tell=(3.7, .27, 2.2), watch=(65, 33, 6100, 24),
-        efficiency=.87, nudge="daylight_walk", lift=(1, 1)),
-    Day("Earlier night; a proper afternoon drum.", "-23:35", "07:10", (4, 3, 4), drum=(101, 45, .79),
-        speech=(4.0, .23), walk=("09:30", 33, 102), mac="easing", firefly=(396, 80, 2, 1),
+    Day("Earlier night; a proper afternoon drum.", "-23:35", "07:10", (4, 4, 4), drum=(101, 45, .79),
+        speech=(4.0, .23), walk=("09:30", 36, 104), mac="easing", firefly=(396, 80, 2, 1),
         pebbles=(5, .80), watch=(63, 38, 6700, 29), efficiency=.90, nudge="drum", lift=(1, 0)),
     Day("Close to her usual: lake loop, library, scheduled PHQ-9.", "-23:25", "07:05", (4, 4, 4),
         drum=(103, 48, .81), speech=(4.1, .21), walk=("09:35", 36, 104), errand=("15:30", 12),
@@ -174,7 +177,7 @@ TALKS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "loop": ("iphone", "18:40", (
         "Evening, Kaiku. I walked the whole lake loop today.",
         "The whole loop! How was the light out there?",
-        "Low and golden. Leena wants to go to the market hall on Saturday.",
+        "Soft and golden. Leena wants to go to the market hall on Saturday.",
         "That sounds lovely. I will remember the market hall with Leena.",
         "Do. I will bring the buns.",
         "Then it is a plan. Enjoy your evening, Aino.")),
@@ -203,6 +206,29 @@ TALKS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "Leena and I are doing the long loop on Saturday.",
         "The long loop with Leena on Saturday. I will remember. Coffee after?",
         "Always.")),
+}
+# Short reflections with Kaiku, by day index: (local time, outcome, her line, Kaiku's reply). She keeps these
+# transcripts and shares their summary level (how it sounded, what it was about) with her care team. The labels are
+# never written here: the cloud's own labeller reads the words (mind/affect.py), as it would for anyone.
+REFLECTIONS: dict[int, tuple[tuple[str, str, str, str], ...]] = {
+    0: (("20:10", "completed", "A calm day. I enjoyed the walk by the lake.", "That sounds like a good one."),),
+    1: (("20:15", "completed", "An ordinary day, nothing much to tell.", "Ordinary days count too."),),
+    4: (("20:05", "completed", "A good day. I felt rested after the walk.", "I am glad to hear it."),),
+    6: (("20:20", "completed", "Nothing special today. The usual things.", "The usual things, then."),),
+    7: (("20:10", "completed", "A nice day, I was glad to be outside.", "Outside suits you."),),
+    9: (("20:30", "completed", "I barely slept and I have no energy. I felt lonely all day.",
+         "That is a heavy day. I am here."),),
+    10: (("08:20", "completed", "A rough night again. I am exhausted and I didn't want to get up.",
+          "Thank you for telling me. No hurry this morning."),
+         ("20:40", "ended_early", "Not now, Kaiku. Leave me be.", "Of course. I will be here.")),
+    11: (("08:15", "completed", "Another bad night, I couldn't sleep. I can't be bothered with anything and nobody "
+                                "is around.", "That sounds hard. One small thing at a time."),),
+    12: (("08:25", "completed", "Still bad. I couldn't sleep and I feel empty, alone in the flat.",
+          "I hear you. I am staying close today."),),
+    14: (("20:10", "completed", "A good day. I enjoyed the walk outside with my friend Leena.",
+          "A walk with Leena. That is a good day."),),
+    15: (("08:10", "completed", "Nice and calm this morning. My sister Maija called me yesterday.",
+          "Maija called. Lovely."),),
 }
 THREADS = {"call": ("walk_companion", "the morning walk with Leena"),
            "ahead": ("walk_companion", "the long lake loop with Leena on Saturday")}
@@ -491,6 +517,11 @@ def episodes(end: date, home_id: str = HOME) -> list[EpisodeIn]:
                 transcript=[TranscriptTurn(role="person" if k % 2 == 0 else "kaiku", text=text, complete=True)
                             for k, text in enumerate(lines)],
                 open_thread=ThreadIn(skill=thread[0], topic=thread[1]) if thread else None)  # type: ignore[arg-type]
+        for k, (at, outcome, said, reply) in enumerate(REFLECTIONS.get(i, ())):
+            add(i, f"reflection-{k}", "iphone" if _hm(at) > 12 * 60 else "robot", "talk", _hm(at), 2, [],
+                transcript=[TranscriptTurn(role="person", text=said, complete=True),
+                            TranscriptTurn(role="kaiku", text=reply, complete=True)])
+            out[-1].outcome = outcome  # type: ignore[assignment]
     return out
 
 
@@ -532,14 +563,20 @@ class SeedError(RuntimeError):
 
 def _local(url: str) -> None:
     parsed = urlsplit(url)
+    clean = not (parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"))
+    # Our own deployed demonstration API: only when named explicitly in KAIKU_SEED_REMOTE and with its admin
+    # credential, over https. The API must still answer mode "demo" (checked in seed()).
+    if (clean and parsed.scheme == "https" and os.environ.get("KAIKU_ADMIN_TOKEN")
+            and url.rstrip("/") == os.environ.get("KAIKU_SEED_REMOTE", "").rstrip("/")):
+        return
     if (parsed.scheme not in ("http", "https") or parsed.hostname not in ("localhost", "127.0.0.1", "::1")
-            or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/")):
+            or not clean):
         raise ValueError("Choose an explicit local API origin for the authored record")
 
 
 def care_ts(end: date) -> str:
-    """The care team's call on day 12 of the sixteen, mid-afternoon local time (UTC, ms, Z)."""
-    at = datetime.combine(end - timedelta(days=N_DAYS - 12), time(14, 30), TZ).astimezone(UTC)
+    """The care team's call on day 13 of the sixteen: the morning after the consensus flagged (UTC, ms, Z)."""
+    at = datetime.combine(end - timedelta(days=N_DAYS - CARE_DAY), time(10, 15), TZ).astimezone(UTC)
     return at.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
@@ -555,7 +592,11 @@ def seed(url: str, rows: list[dict], reset: bool = False, jobs: bool = True, cli
         client = client or stack.enter_context(
             httpx.Client(base_url=url, timeout=120, transport=httpx.HTTPTransport(retries=2)))
 
+        admin = os.environ.get("KAIKU_ADMIN_TOKEN")
+
         def call(method: str, path: str, **kwargs: Any) -> Any:
+            if admin and path.startswith("/v1/admin/"):  # a deployed demo keeps its admin routes closed
+                kwargs["headers"] = {"Authorization": f"Bearer {admin}"}
             response = client.request(method, path, **kwargs)
             if response.status_code >= 400:
                 raise SeedError(f"{method} {path} answered {response.status_code}: {response.text[:200]}")

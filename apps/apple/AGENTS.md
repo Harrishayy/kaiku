@@ -328,26 +328,37 @@ Expect: Today greets Aino with the cozy (scarf) mascot; the weather check lands 
 seeded memories. With `KAIKU_HOME_TOKEN` set on the cloud, add `&t=<token>` to the pairing link.
 
 ## Recording a demo
-`apps/apple/scripts/record_app_demo.sh [ios|mac|post|all]` against a seeded local cloud (no paid calls:
-`KAIKU_NO_DOTENV=1`, template LLM, no Live token → Talk shows its typed offline path):
+`apps/apple/scripts/record_app_demo.sh [ios|mac|mac-snap|post|all]` against a local cloud seeded with the one
+person (no keys, so no paid calls: where Kaiku's voice would play its words are on screen):
 ```
-KAIKU_NO_DOTENV=1 KAIKU_DB_PATH=/tmp/k.db uv run --package kaiku-cloud uvicorn kaiku_cloud.api.main:app --port 18020 &
-KAIKU_NO_DOTENV=1 KAIKU_CLOUD_URL=http://127.0.0.1:18020 uv run python -m sim.seed_demo --reset
-KAIKU_TEST_CLOUD=http://127.0.0.1:18020 apps/apple/scripts/record_app_demo.sh all   # → demo/recordings/ (gitignored)
+KAIKU_NO_DOTENV=1 KAIKU_LLM=template KAIKU_VOICE=text KAIKU_DEMO_MODE=1 KAIKU_DB_PATH=/tmp/k.db \
+  uv run uvicorn kaiku_cloud.api.main:app --port 18020 &
+uv run python -m kaiku_cloud.jobs.single_person --url http://127.0.0.1:18020
+KAIKU_TEST_CLOUD=http://127.0.0.1:18020 apps/apple/scripts/record_app_demo.sh ios    # then: ... post
 ```
-- **ios**: `iOSUITests/DemoTourTests` (paced ~1.5 s a step, numbered so they run in story order), one
-  `simctl io recordVideo` per method on a dedicated "Kaiku Demo 17 Pro" simulator (app uninstalled first →
-  onboarding): `test1Tour` (onboarding + explicit account link → Today → weather dials → Firefly, Pebble path, Breathe,
-  Tell Kaiku → Talk typed → Your days → You: remembers, saw today, devices), `test2GlassesWalk` (mock glasses,
-  Dynamic Island expanded + Found one, Lock Screen Live Activity, End walk), `test3Notification` (check-in reminder →
-  "Low"), `test4Health` (sample night → Devices). A missing control logs `DEMO-MISSING` and the tour goes on.
-- **mac**: one launch of the Debug build; `kaiku://` links switch screens (the Mac shell now follows them like
-  iPhone; `kaiku://you/<memories|saw|voice|quiet|devices|help>` added for both), keys play the games, the menu bar
-  popover's debug "Simulate a late evening" makes the island peek, `scripts/demo_mouse.swift` hovers/clicks it.
-  Needs Screen Recording + Accessibility for the terminal. The full-screen capture is cropped to the Kaiku window +
-  notch (`mac-tour`) and the popover (`mac-menubar`) and then deleted, so no other window ends up in a video.
-- **post**: title card, trims the home-screen wait, 1.25× speed, ≤ 1080 p h264, plus `<clip>-sheet.png` and
-  `<clip>.gif` previews.
+- **ios**: `iOSUITests/DemoTourTests`, one method = one flow = one `simctl io recordVideo` clip, driven at a
+  person's pace on a dedicated "Kaiku Demo 17 Pro" simulator: `testA_FirstRun` (fresh install + Keychain reset →
+  the six setup steps → Today), `testB_TodayPath` (weather dials → Kaiku's suggestion → Lantern played → the
+  rotating game played → "All done for today"), `testC_TodaySoFar` (Your days → Today, so far → What Kaiku saw
+  today), `testD_Talk` (the voice control, the voice-unavailable state, a typed message and the scripted reply),
+  `testE_YouAndGlassesCheck` (sharing choices, Glasses check, self-test). Extras through `TESTS=method:clip ...`:
+  `testF_Firefly`, `testG_GlassesWalkSimulated` (`-kaikuGlasses mock`). A missing control logs `DEMO-MISSING` plus
+  what was on screen and the flow goes on; `DEMO-STEP` lines become chapter time codes; step screenshots land in
+  `demo/recordings/shots/`. The games are played through two test-only accessibility identifiers that are never
+  spoken or shown: `lantern-lit` / `lantern-dark` on the lantern field and `seed-pot-<n>` on the seed packet.
+- Build products go to `~/Library/Caches/kaiku-record-dd` (`DERIVED`). Not under `~/Documents`: macOS privacy
+  protection blocks a simulator app launched by XCUITest from loading the test dylibs there (white screen, then
+  "Setting up automation session" times out with `kAXErrorServerNotFound`).
+- **mac**: one launch of the Debug build; `kaiku://` links switch screens (the Mac shell follows them like
+  iPhone; `kaiku://you/<memories|saw|voice|quiet|devices|help>`), keys play the games, the menu bar popover's debug
+  "Simulate a late evening" makes the island peek, `scripts/demo_mouse.swift` hovers/clicks it. Needs Screen
+  Recording + Accessibility for the terminal (without them ffmpeg and osascript just hang). The full-screen
+  capture is cropped to the Kaiku window + notch (`mac-tour`) and the popover (`mac-menubar`) and then deleted.
+- **mac-snap**: no permission needed: `-kaikuSnapshot` stills of the panes → `demo/recordings/mac-snapshots/`
+  (layout checks, not demo footage: no scrolling, switches and text fields are placeholders).
+- **post**: trims the wait before the app and the home screen after it, real speed (`SPEED`), ≤ 1080 p h264, plus
+  `<clip>-sheet.png`, `<clip>.gif` and `<clip>-steps.txt` (chapter time codes). A title card is added only when
+  ffmpeg has `drawtext`.
 
 ## Config & env
 - Signing / store: App Store Connect name **Kaikuu** (Kaiku was taken), bundle `fi.kaiku.app`; home-screen name
@@ -703,3 +714,25 @@ Microphone and speakers are not toolkit features: they are Bluetooth hands-free 
   (`KAIKU_VISION_TEST_CLOUD` + `KAIKU_VISION_TEST_WAV48`; passed 2026-11-14 against an isolated cloud: the spoken
   question was transcribed and Kaiku named the word on the generated sign). New copy keys have English text in
   the `fi` table for now (English first).
+
+## Fixes from the simulator walkthrough (2026-11-14)
+- **Talk hang** (tapping the message field with voice unavailable): the transcript was a `LazyVStack` with a 1 pt
+  bottom sentinel whose `onAppear`/`onDisappear` wrote view state. With the keyboard up the viewport is shorter
+  than the welcome content, the sentinel sat on the edge, and every state write rebuilt the lazy stack and toggled
+  it again: an endless update cycle on the main thread. Now a plain `VStack`; following the newest line comes from
+  geometry through `TalkFollow` (dead band, always true with no lines). Never write state from a lazy child's
+  appear/disappear in a scroll view that is anchored to the bottom. Tests: `RecordingBugTests`,
+  `iOSUITests/TalkComposerTests` (needs a key-less cloud: `KAIKU_NO_DOTENV=1`).
+- Talk says why voice is not there once (header). `TalkView.stateNote` adds "The connection dropped" only when
+  the conversation really was live (`Conversation.wasLive`).
+- Today's path: `AppModel.suggestedStep` keeps a completed suggestion stop when the nudge changes later that day.
+- Little moments: the cloud's highlight source `laptop` is the apps signal group (phone or Mac), shown as
+  "Kaiku app" (`source.apps`), never "Mac". The cloud should send the real envelope source.
+- Core Motion is touched only when a walk starts (`WalkModel.pedometer` is created then): `stopUpdates()` during a
+  pairing change used to raise the Motion & Fitness question in setup.
+- Setup: `VoiceLines.playReporting` tells the hello step whether audio really started ("That was my voice" only
+  then; otherwise "Kaiku's voice isn't available right now…"). Connect step: "Continue without connecting" is the
+  primary action with one line on what works offline; the address field stays under Advanced.
+- `kTopEdgeBackdrop()` (in `KScreen` and setup pages) fills the top safe area so scrolled content does not run
+  under the clock. Glasses check shows results as rows only; raw log lines travel with "Share log"; the speaker
+  step reports "played" only when audio started.

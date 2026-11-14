@@ -668,3 +668,37 @@ readable but cannot cause an unavailable activity to be selected.
    `moved_first` / `followed` links like every other measure.
 7. Pulse is reported honestly: with a robot but no `obs.hrv_session`, the record says "Not measured".
 Tested end to end with a made-up registered type in `tests/test_course.py`.
+- Reflections, round three: `ReflectionOverview.days[] {date, part, valence, themes, declined}` (14 days) and a
+  fortnight `summary` ("sounded low in 3 of 3 between 7 Nov and 9 Nov; lighter since the evening of 9 Nov. Themes:
+  sleep, being alone, then outdoors, friends."); counts stay 7-day. `CourseEvent.kind` adds `reflection_low` /
+  `reflection_lighter` (shared only; supporting cites, they never decide a finding's theme). A bare "not now" is
+  `declined` with no valence. `days[].parts` say which side of usual each flagged measure was on ("drum tempo below
+  usual") and name a missing daily routine ("no walk", "morning ritual skipped"). The nightly Gemma relabel is
+  capped by `[insight].reflection_labels_per_night`. `jobs/single_person.py` seeds eleven short reflections
+  (`REFLECTIONS`) through the episode route; their labels come from the labeller and are pinned by test.
+
+## One coherent statement (2026-11-14, after the judge-style review)
+- `PatientInsight.status_line` (code): when the state was raised (first day of the current run in the rule's own
+  replay), who acknowledged it and when, how many measures are back since the low point, and WHY the state still
+  shows (groups still changed over the last scored days / held for `hysteresis_stable_days` / young record cannot be
+  as usual before `min_history_days_for_stable`). For `safety` it says Kaiku showed the crisis numbers and contacts
+  nobody. A UI should show this line beside the state badge and the course phase.
+- `Course.low_date`, `.moved`, `.back`; `PeriodComparison.since_low`, `.back_in_range[]`, `.still_away[]`; the
+  comparison `summary` leads with the low-point sentence and says the week medians still include the low days.
+- A `still_away` event always quotes a day that was away ("last below their usual on …; within usual on …, one day
+  so far" when the latest day is in range); a day that prints the same as the usual is never "away".
+- Provenance is one value: `Consensus.simulated` = `DataCoverage.simulated` = every `RecordCitation.simulated` =
+  "the record contains simulated observations" (envelope `sim`); per-type counts say how many.
+- `service.display_name(home_id, started)`: a home whose id is an installation id is shown as
+  "New record · started 14 Nov", never an id fragment. The notebook's first name is not used: care routes do not
+  read the notebook.
+- Seeded story (`jobs/single_person.py`): signals move on day 9, the consensus raises "needs a call" on day 12 from
+  daily signals alone, the care team rings on day 13 (`CARE_DAY`), the PHQ-9 that evening confirms, measures
+  come back from day 13-14. Pinned in `tests/test_single_person.py` and `tests/test_followups.py`.
+- Reconciled truth for the model: the review evidence carries `status:line`, `course:back` and `course:still_away`,
+  and every measure in the course has `now: back within usual | still away from usual`. New validator categories:
+  `contradiction` (a measure said to be away when the course has it back, the reverse, or both in one text; a
+  clause about the rule still flagging is not an "away" claim; a word that maps to measures on both sides is not
+  judged) and `directive` (a consider line that tells someone to increase / reduce / do more of an activity). A
+  rejected overview is null: show `course.summary` in its place (trace step `overview`, `rejected`).
+- Time-of-day measures read "later / earlier than usual" in consensus evidence, week items and day lines.

@@ -54,9 +54,9 @@ public final class GlassesSelfTest {
         GlassesStatus.shared.route = route
         GlassesLog.shared.log("selftest_route", ["in": route.input, "in_type": route.inputType, "out": route.output,
                                                  "out_type": route.outputType, "headset_settled": settled])
-        VoiceLines.shared.play("welcome.hello", lang: app.language, fallback: T("gc.test.line"))
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        let spoke = VoiceLines.shared.speaking
+        // "Played" only when audio really started (a service without a voice must read as silent).
+        let spoke = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("gc.test.line"))
+        try? await Task.sleep(nanoseconds: 300_000_000)
         var waited = 0
         while VoiceLines.shared.speaking && waited < 60 { try? await Task.sleep(nanoseconds: 100_000_000); waited += 1 }
         let through = route.output.isEmpty ? T("gc.route.none") : route.output
@@ -150,7 +150,7 @@ public struct GlassesCheckView: View {
                 fact("gc.route.out", status.route.output.ifEmpty(T("gc.route.none")), ok: status.route.headsetOut)
             }
             KSection(T("gc.sec.live"), icon: "waveform", tone: .clay) {
-                fact("gc.service", app.isPaired ? (app.offline ? T("gc.service.offline") : app.pairing?.baseURL.host ?? "") : T("you.notpaired"),
+                fact("gc.service", app.isPaired ? (app.offline ? T("gc.service.offline") : T("service.connected")) : T("you.notpaired"),
                      ok: app.isPaired && !app.offline)
                 KDivider()
                 fact("gc.live", walk.active ? status.live : T("gc.live.nowalk"), ok: ["listening", "hearing", "speaking", "thinking"].contains(status.live) && walk.active)
@@ -190,11 +190,8 @@ public struct GlassesCheckView: View {
             }
             NavigationLink(value: KaikuRoute.walk) { Text(T("walk.start")) }.buttonStyle(.kPrimary)
             KSection(T("gc.sec.log"), subtitle: T("gc.log.d"), icon: "doc.text", tone: .clay) {
+                // The results are the readable rows above; the raw log lines travel only with "Share log".
                 ShareLink(item: GlassesLog.url) { Text(T("gc.log.share")) }.buttonStyle(.kSecondary).padding(KaikuTokens.Space.s3)
-                ForEach(Array(GlassesLog.shared.recent(8).enumerated()), id: \.offset) { _, line in
-                    Text(line).font(.caption2.monospaced()).foregroundStyle(KaikuTokens.Colors.muted)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, KaikuTokens.Space.s4).lineLimit(3)
-                }
             }
         }
         .task {

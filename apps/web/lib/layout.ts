@@ -13,7 +13,7 @@ export const PANEL_TITLE: Record<PanelId, string> = {
   review: 'Kaiku’s review',
   routine: 'Routine',
   graph: 'Knowledge graph',
-  evidence: 'Evidence by day',
+  evidence: 'Daily account',
   care: 'Care actions & notes',
   ask: 'Ask the record',
   coverage: 'Coverage',
@@ -26,13 +26,13 @@ export interface Layout {
   docked: PanelId[];
 }
 
-export const LAYOUT_KEY = 'kaiku.dashboard.layout.v4';
+export const LAYOUT_KEY = 'kaiku.dashboard.layout.v5';
 
-const PRIORITY: PanelId[] = ['trends', 'consensus', 'review', 'routine', 'graph', 'evidence', 'care', 'ask', 'coverage'];
+const PRIORITY: PanelId[] = ['trends', 'consensus', 'review', 'evidence', 'routine', 'graph', 'care', 'ask', 'coverage'];
 
 /**
  * Default layout for a viewport: Trends (main), Consensus now and Kaiku's review are always open, side by side;
- * Routine and Knowledge graph join them when the screen is at least 800 high. The rest wait in the dock.
+ * the Daily account and Routine join them when the screen is at least 800 high. The rest wait in the dock.
  */
 export const defaultLayout = (width = 1440, height = 900): Layout => {
   const open = width >= 1280 && height >= 800 ? 5 : 3;

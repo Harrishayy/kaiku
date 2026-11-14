@@ -95,7 +95,7 @@ standard Bluetooth (HFP), not a DAT capability; the Motion capability is beta, d
 
 ## 3. Gaps ranked by judging impact
 
-1. **No public deployment.** Modal Demo 15% is zero and Effective use 40% is unproven; Junction's "demo link" is empty. `make cloud-deploy`, tokens set, seed, record the URL.
+1. **Public deployment: done (14 Nov).** https://harrish21raj--kaiku-web.us-east.modal.run/?id=aino serves the dashboard with one seeded, simulated record in read-only demo mode; admin routes need a token. Still open for Modal: the Gemma GPU class has answered one smoke call only and is not in the default path.
 2. **No video and no deck.** Both are submission conditions; the video limit is 2:00, not 3:00.
 3. **README contradicts the code** in the Gemma, Meta and overview sections (§5). A judge who opens the repo first reads claims the product does not support.
 4. **No validation beyond the team.** Atech weighs it 25%; Aalto's "would someone actually use it" needs it too.
@@ -147,7 +147,7 @@ Fixed in this pass (files owned by docs): `docs/tracks.md`, `docs/submission.md`
 | Laptop "voice features, facial expressivity" as a source | Browser tasks retired from scoring. | "games and check-ins on phone and Mac; optional Mac rhythm" |
 | Meta: "Ray-Ban Display web app (WebMCP tools)", "glanceable cards", "what is shared screen", Android DAT daylight app | Those folders hold instructions only. The integration is the iPhone DAT adapter with Gen 2 audio. | The Meta row in `docs/tracks.md` |
 | Gemma "runs on our own Modal GPU ... never goes to a third-party API" | Runs through Google's hosted API. | The Gemma row in `docs/tracks.md` |
-| Modal "One public URL the judges can open" | Not deployed. | State the URL only once it exists |
+| Modal "One public URL the judges can open" | Deployed and seeded (simulated record): https://harrish21raj--kaiku-web.us-east.modal.run/?id=aino | Say the record is simulated |
 | "a lamp that glows at a friend's home", "a message to a friend", LoRa friend link | No friendlink firmware; removed from suggestions. | Remove |
 | "Catches change early enough for a booster or a referral" | No evidence of lead time. | "shows change from a person's usual so a clinician can decide to check in" |
 | "Day 23 (simulated)", `/me/`, `/session/`, `/phq9/` page table | Record is 16 days; person web pages are being retired. | Practitioner dashboard only (verify) |

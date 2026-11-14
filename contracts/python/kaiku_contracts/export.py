@@ -44,7 +44,7 @@ API_MODELS = [
     api.CareSharing, api.SourceCount, api.SourceWeek, api.NextStep, api.Routine, api.WeekItem, api.WeekSummary, api.GraphNode, api.GraphEdge, api.KnowledgeGraph,
     api.ReviewFinding, api.PatientReview, api.AgentStep, api.MetricComparison, api.GroupComparison,
     api.PeriodComparison, api.HelpEffect, api.LearnedRoutine, api.InsightNode, api.InsightEdge, api.InsightGraph,
-    api.ObsTypeCoverage, api.GroupCoverage, api.DataCoverage, api.CourseEvent, api.Course, api.DayAccount, api.ReflectionOverview, api.StateDay, api.CareAction, api.PatientInsight,
+    api.ObsTypeCoverage, api.GroupCoverage, api.DataCoverage, api.CourseEvent, api.Course, api.DayAccount, api.ReflectionDay, api.ReflectionOverview, api.StateDay, api.CareAction, api.PatientInsight,
 ]
 
 

@@ -10,11 +10,13 @@ public struct LanternGame: View {
     public init() {}
 
     public var body: some View {
-        GameShell(titleKey: "game.lantern.t", scene: .night, introText: KaikuPlatform.isPhone ? T("ln.intro") : T("ln.intro.mac"), introState: .idle,
+        // Read here, in this view's own body: the end picture must be rebuilt when the result arrives.
+        let grown = stars
+        return GameShell(titleKey: "game.lantern.t", scene: .night, introText: KaikuPlatform.isPhone ? T("ln.intro") : T("ln.intro.mac"), introState: .idle,
                   endText: stars > 0 ? T("ln.end") : T("ln.end.none"),
                   demo: { LanternDemo() },
                   field: { finish in LanternField { session, n in stars = n; finish(session) } },
-                  endArt: { StarPatch(count: stars).frame(width: 130, height: 130) })
+                  endArt: { StarPatch(count: grown).frame(width: 130, height: 130) })
     }
 }
 
@@ -222,6 +224,7 @@ struct LanternField: View {
             }
             .accessibilityElement()
             .accessibilityLabel(T("a11y.lantern"))
+            .accessibilityIdentifier(engine.phase == .lit ? "lantern-lit" : "lantern-dark")   // UI-test hook (demo recording)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { respond(InputTracker.pointing) }
         }

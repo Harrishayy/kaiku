@@ -166,12 +166,40 @@
       "additionalProperties": false,
       "description": "How the record has moved against the person's own usual: what moved first, what followed, what has come\nback, what has not. Temporal order only, never a cause. Computed by code from the daily series.",
       "properties": {
+        "back": {
+          "default": 0,
+          "description": "of those, how many are back within usual",
+          "minimum": 0,
+          "title": "Back",
+          "type": "integer"
+        },
         "events": {
           "items": {
             "$ref": "#/$defs/CourseEvent"
           },
           "title": "Events",
           "type": "array"
+        },
+        "low_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the day most measures were away from usual",
+          "title": "Low Date"
+        },
+        "moved": {
+          "default": 0,
+          "description": "measures that moved away from usual in this spell",
+          "minimum": 0,
+          "title": "Moved",
+          "type": "integer"
         },
         "phase": {
           "enum": [
@@ -231,7 +259,9 @@
             "care_action",
             "phq9",
             "back_in_range",
-            "still_away"
+            "still_away",
+            "reflection_low",
+            "reflection_lighter"
           ],
           "title": "Kind",
           "type": "string"
@@ -341,7 +371,7 @@
           "type": "integer"
         },
         "simulated": {
-          "description": "every observation in this record carries sim=true",
+          "description": "the record contains simulated observations (envelope sim flag); the same value as Consensus.simulated and RecordCitation.simulated; per-type counts show how many",
           "title": "Simulated",
           "type": "boolean"
         },
@@ -1247,6 +1277,14 @@
     "PeriodComparison": {
       "additionalProperties": false,
       "properties": {
+        "back_in_range": {
+          "description": "metric names back within usual after a spell",
+          "items": {
+            "type": "string"
+          },
+          "title": "Back In Range",
+          "type": "array"
+        },
         "changed": {
           "description": "metric names worse than the week before",
           "items": {
@@ -1291,6 +1329,21 @@
           "format": "date",
           "title": "Previous Week Start",
           "type": "string"
+        },
+        "since_low": {
+          "default": "",
+          "description": "against the spell's low point, e.g. '12 of 18 measures back within usual since the low on 8 Nov'; empty when nothing moved",
+          "maxLength": 240,
+          "title": "Since Low",
+          "type": "string"
+        },
+        "still_away": {
+          "description": "metric names still away from usual",
+          "items": {
+            "type": "string"
+          },
+          "title": "Still Away",
+          "type": "array"
         },
         "summary": {
           "maxLength": 400,
@@ -1421,6 +1474,60 @@
       "title": "RecordCitation",
       "type": "object"
     },
+    "ReflectionDay": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "declined": {
+          "default": false,
+          "title": "Declined",
+          "type": "boolean"
+        },
+        "part": {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening"
+          ],
+          "title": "Part",
+          "type": "string"
+        },
+        "themes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Themes",
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valence"
+        }
+      },
+      "required": [
+        "date",
+        "part"
+      ],
+      "title": "ReflectionDay",
+      "type": "object"
+    },
     "ReflectionOverview": {
       "additionalProperties": false,
       "description": "Reflections with Kaiku at summary level: how many sounded low / neutral / bright and what they were about.\nPresent only when the person shares with the care team. Never their words.",
@@ -1429,6 +1536,14 @@
           "minimum": 0,
           "title": "Bright",
           "type": "integer"
+        },
+        "days": {
+          "description": "the last 14 days, oldest first",
+          "items": {
+            "$ref": "#/$defs/ReflectionDay"
+          },
+          "title": "Days",
+          "type": "array"
         },
         "declined": {
           "description": "the person asked to stop or did not want to talk",
@@ -1457,7 +1572,8 @@
           "type": "boolean"
         },
         "summary": {
-          "maxLength": 300,
+          "description": "the fortnight in one or two sentences; counts are 7 days",
+          "maxLength": 400,
           "title": "Summary",
           "type": "string"
         },
@@ -1867,6 +1983,13 @@
       },
       "title": "State History",
       "type": "array"
+    },
+    "status_line": {
+      "default": "",
+      "description": "one statement by code that reconciles the rule state with the course: when it was raised, what has come back, why it still shows",
+      "maxLength": 600,
+      "title": "Status Line",
+      "type": "string"
     },
     "trace": {
       "items": {

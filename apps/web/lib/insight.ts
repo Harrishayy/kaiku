@@ -293,6 +293,9 @@ export function deriveComparison(c: Consensus, series: MetricSeries[], labelOf: 
     groups,
     day_of_record: stage.day,
     early_baseline: stage.early,
+    since_low: '',
+    back_in_range: [],
+    still_away: [],
   };
 }
 
@@ -584,6 +587,12 @@ export interface InsightView {
   coverage: Deep<DataCoverage>;
   /** the code-written arc of the record (null until the cloud sends it) */
   course: Deep<PatientInsight>['course'];
+  /** the one code-built sentence that reconciles the rule state with the course ('' until the cloud sends it) */
+  statusLine: string;
+  /** one plain-language line per day, newest first (empty until the cloud sends it) */
+  days: Deep<PatientInsight>['days'];
+  /** reflection levels and themes, only when the person shares; never their words */
+  reflections: Deep<PatientInsight>['reflections'];
   stage: RecordStage;
   /** the consensus replayed per day, oldest first (empty when the cloud does not send it) */
   stateHistory: Deep<PatientInsight>['state_history'];
@@ -615,6 +624,9 @@ export function insightView(
       graph: full.graph,
       coverage: full.coverage,
       course: full.course ?? null,
+      statusLine: cleanText(full.status_line ?? ''),
+      days: full.days ?? [],
+      reflections: full.reflections ?? null,
       stage: {
         day: full.day_of_record,
         early: full.early_record,
@@ -637,6 +649,9 @@ export function insightView(
     graph: deriveGraph(graph),
     coverage: deriveCoverage(c, events, series, sourceOf, labelOf, stage),
     course: null,
+    statusLine: '',
+    days: [],
+    reflections: null,
     stage,
     stateHistory: [],
     actions: [],

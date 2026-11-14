@@ -209,3 +209,9 @@ export function edgeWords(e: Pick<Edge, 'rel' | 'label' | 'evidence' | 'weight'>
   // a label that already carries its count ("kept: 6 of the last 7 days") needs no second one
   return /\d/.test(said) ? said : `${said} · ${e.evidence} ${e.evidence === 1 ? 'record' : 'records'}`;
 }
+
+const REL_RANK: Record<string, number> = { helped: 3, after: 2.5, moved_first: 2.2, slipped_during: 1.8, followed: 1.5, moved_together: 1.4, kept_through: 1.2, keeps: 1 };
+
+/** How much a learned link says, for choosing which few labels to print without being asked. */
+export const edgeStrength = (e: Pick<Edge, 'rel' | 'weight' | 'evidence'>): number =>
+  (REL_RANK[e.rel] ?? 0) + Math.min(1, e.weight) * 0.3 + Math.min(10, e.evidence) / 40;

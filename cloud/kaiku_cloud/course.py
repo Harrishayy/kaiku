@@ -15,6 +15,7 @@ deterministic consensus supports: a young record is "settling" or "recovering", 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -47,6 +48,7 @@ class MetricCourse:
     onset: Point
     lowest: Point
     last: Point
+    last_away: Point  # the most recent day that was away from usual
     back: Point | None  # first day back within usual, when the latest two scored days are in range
     away_days: frozenset[date]
 
@@ -95,12 +97,15 @@ def metric_course(m: Any, series: dict[date, float], crit: Any, start: date, end
     last_away = max(i for i, p in enumerate(spell) if p.z >= thr)
     tail = spell[last_away + 1:]
     return MetricCourse(metric=m, onset=spell[0], lowest=max(spell, key=lambda p: p.z), last=spell[-1],
+                        last_away=spell[last_away],
                         back=tail[0] if len(tail) >= 2 else None,
                         away_days=frozenset(p.day for p in spell if p.z >= thr))
 
 
 def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end: date, human_value: Any,
-          day_of_record: int, early: bool) -> tuple[Course, dict[str, MetricCourse]]:
+          day_of_record: int, early: bool, reflections: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
+          ) -> tuple[Course, dict[str, MetricCourse]]:
+    """`reflections`: (those that sounded low, the rated ones after the last low one), only when shared."""
     start = end - timedelta(days=int(get("insight", "course_days", 28)) - 1)
     found: dict[str, MetricCourse] = {}
     for m in crit.metrics:
@@ -132,8 +137,13 @@ def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end
             add(mc.back.day, 3, "back_in_range", name, f"{name} back within their usual from "
                 f"{human_date(mc.back.day)}; {val(mc.last)} on {human_date(mc.last.day)}.", m)
         else:
-            add(mc.last.day, 4, "still_away", name, f"{name} still {_side(mc.last, m.unit)} their usual on "
-                f"{human_date(mc.last.day)}: {val(mc.last)} (usual {human_value(mc.last.base.median, m.unit)}).", m)
+            # Always quote a day that WAS away. One in-range day since is said as such, never as "still below".
+            p = mc.last_away
+            text = (f"{name} {'still' if p.day == mc.last.day else 'last'} {_side(p, m.unit)} their usual on "
+                    f"{human_date(p.day)}: {val(p)} (usual {human_value(p.base.median, m.unit)})")
+            if p.day != mc.last.day:
+                text += f"; within usual on {human_date(mc.last.day)}, one day so far"
+            add(p.day, 4, "still_away", name, text + ".", m)
     care_days = []
     for a in actions:
         day = parse_ts(a["ts"]).astimezone(TZ).date()
@@ -144,6 +154,18 @@ def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end
     for p in data.phq9:
         if start <= p.day <= end:
             add(p.day, 2, "phq9", "PHQ-9", f"PHQ-9 total {p.total} of 27 on {human_date(p.day)}.")
+    low_talks, lighter = reflections or ([], [])
+    low_talks = [r for r in low_talks if start <= r["day"] <= end]
+    if low_talks:
+        r = low_talks[0]
+        add(r["day"], 2, "reflection_low", "Reflections with Kaiku",
+            f"Reflections with Kaiku first sounded low on the {r['part']} of {human_date(r['day'])}"
+            + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else "."))
+        if lighter:
+            r = lighter[0]
+            add(r["day"], 3, "reflection_lighter", "Reflections with Kaiku",
+                f"Reflections with Kaiku sounded lighter from the {r['part']} of {human_date(r['day'])}"
+                + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else "."))
     events.sort(key=lambda e: (e[0], e[1]))
 
     def names(items: list[MetricCourse]) -> str:
@@ -186,6 +208,9 @@ def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end
         if back and rule_worse:
             parts.append("The consensus still reads a change from usual, because it counts the last several days, "
                          "not only the latest.")
+        if low_talks:
+            parts.append(f"Their reflections with Kaiku sounded low from {human_date(low_talks[0]['day'])}"
+                         + (f" and lighter from {human_date(lighter[0]['day'])}." if lighter else "."))
         if early:
             parts.append(f"Day {day_of_record} of the record: this rests on an early baseline, so read it with lower "
                          "confidence.")
@@ -196,7 +221,10 @@ def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end
             phase = "recovering"  # the consensus has not returned to stable (or cannot yet): not "recovered"
         else:
             phase = "recovered"
-    return Course(phase=phase, summary=summary[:700], events=[e for _d, _o, e in events]), found  # type: ignore[arg-type]
+    away_on = Counter(day for mc in found.values() for day in mc.away_days)
+    low_date = max(away_on, key=lambda d: (away_on[d], d)) if away_on else None
+    return Course(phase=phase, low_date=low_date, moved=len(found), back=len(back) if onsets else 0,  # type: ignore[arg-type]
+                  summary=summary[:700], events=[e for _d, _o, e in events]), found
 
 
 # ------------------------------------------------------------------ what was learned, as graph links

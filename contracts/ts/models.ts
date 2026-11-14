@@ -512,7 +512,19 @@ export interface ConstellationResponse {
  * via the `definition` "Course".
  */
 export interface Course {
+  /**
+   * of those, how many are back within usual
+   */
+  back?: number;
   events?: CourseEvent[];
+  /**
+   * the day most measures were away from usual
+   */
+  low_date?: string | null;
+  /**
+   * measures that moved away from usual in this spell
+   */
+  moved?: number;
   phase: "settling" | "steady" | "dip" | "recovering" | "recovered";
   summary: string;
 }
@@ -525,7 +537,15 @@ export interface Course {
 export interface CourseEvent {
   date: string;
   group?: ("robot" | "glasses" | "laptop" | "wearable") | null;
-  kind: "onset" | "lowest" | "care_action" | "phq9" | "back_in_range" | "still_away";
+  kind:
+    | "onset"
+    | "lowest"
+    | "care_action"
+    | "phq9"
+    | "back_in_range"
+    | "still_away"
+    | "reflection_low"
+    | "reflection_lighter";
   label: string;
   metric_id?: string | null;
   text: string;
@@ -848,7 +868,7 @@ export interface DataCoverage {
   other?: ObsTypeCoverage[];
   recorded_days: number;
   /**
-   * every observation in this record carries sim=true
+   * the record contains simulated observations (envelope sim flag); the same value as Consensus.simulated and RecordCitation.simulated; per-type counts show how many
    */
   simulated: boolean;
   span_days: number;
@@ -2078,6 +2098,10 @@ export interface PatientInsight {
    * oldest first, one row per day replayed
    */
   state_history?: StateDay[];
+  /**
+   * one statement by code that reconciles the rule state with the course: when it was raised, what has come back, why it still shows
+   */
+  status_line?: string;
   trace?: AgentStep[];
 }
 /**
@@ -2085,6 +2109,10 @@ export interface PatientInsight {
  * via the `definition` "PeriodComparison".
  */
 export interface PeriodComparison {
+  /**
+   * metric names back within usual after a spell
+   */
+  back_in_range?: string[];
   /**
    * metric names worse than the week before
    */
@@ -2101,6 +2129,14 @@ export interface PeriodComparison {
   improved?: string[];
   previous_week_end: string;
   previous_week_start: string;
+  /**
+   * against the spell's low point, e.g. '12 of 18 measures back within usual since the low on 8 Nov'; empty when nothing moved
+   */
+  since_low?: string;
+  /**
+   * metric names still away from usual
+   */
+  still_away?: string[];
   summary: string;
   this_week_end: string;
   this_week_start: string;
@@ -2115,6 +2151,10 @@ export interface PeriodComparison {
 export interface ReflectionOverview {
   bright: number;
   /**
+   * the last 14 days, oldest first
+   */
+  days?: ReflectionDay[];
+  /**
    * the person asked to stop or did not want to talk
    */
   declined: number;
@@ -2125,11 +2165,25 @@ export interface ReflectionOverview {
    */
   reflections: number;
   shared: boolean;
+  /**
+   * the fortnight in one or two sentences; counts are 7 days
+   */
   summary: string;
   /**
    * theme -> reflections it came up in
    */
   themes?: SourceCount[];
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ReflectionDay".
+ */
+export interface ReflectionDay {
+  date: string;
+  declined?: boolean;
+  part: "morning" | "afternoon" | "evening";
+  themes?: string[];
+  valence?: ("low" | "neutral" | "bright") | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema

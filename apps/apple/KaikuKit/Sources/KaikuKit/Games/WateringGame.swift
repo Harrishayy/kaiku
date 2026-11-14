@@ -12,10 +12,12 @@ public struct WateringGame: View {
     public init() {}
 
     public var body: some View {
-        GameShell(titleKey: "game.watering.t", scene: .calm, introText: T("wt.intro"), introState: .idle, endText: T("wt.end"),
+        // Read here, in this view's own body: the end picture must be rebuilt when the result arrives.
+        let grown = flowers
+        return GameShell(titleKey: "game.watering.t", scene: .calm, introText: T("wt.intro"), introState: .idle, endText: T("wt.end"),
                   demo: { WateringDemo() },
                   field: { finish in WateringField { session, n in flowers = n; finish(session) } },
-                  endArt: { FlowerBed(count: flowers).frame(width: 150, height: 120) })
+                  endArt: { FlowerBed(count: grown).frame(width: 150, height: 120) })
     }
 }
 

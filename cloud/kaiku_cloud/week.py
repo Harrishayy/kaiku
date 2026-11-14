@@ -277,6 +277,13 @@ def _person_week(r_list: list[Routine], helps: list[dict[str, Any]], occ_week: d
     return well, look
 
 
+def _side(m: Any) -> str:
+    """Which way the unhelpful direction points, in the measure's own terms (a time of day is later/earlier)."""
+    if m.unit in ("min after midnight", "min from midnight"):
+        return "later" if m.worse_when == "up" else "earlier"
+    return "higher" if m.worse_when == "up" else "lower"
+
+
 def _z(d: Any) -> float | None:
     """The z of the days that actually voted (drift.z_flag); the latest day's z only when nothing was flagged."""
     return d.z_flag if getattr(d, "z_flag", None) is not None else d.z_last
@@ -294,7 +301,7 @@ def _care_week(r_list: list[Routine], helps: list[dict[str, Any]], c: Consensus,
     for m, d in worse[:top]:
         z = f"z {_z(d):+.1f}, " if _z(d) is not None else ""
         look.append(WeekItem(kind="metric", metric=m.name, source=m.source,
-                             text=f"{m.label}: change from usual ({'higher' if m.worse_when == 'up' else 'lower'}), "
+                             text=f"{m.label.replace(' (later = up)', '')}: change from usual ({_side(m)}), "
                                   f"{z}{d.worse_days} of {d.scored_days} recent days."))
     if len(worse) > top:
         rest = ", ".join(m.label for m, _d in worse[top:top + 3]) + ("…" if len(worse) > top + 3 else "")
@@ -458,7 +465,8 @@ def next_steps(c: Consensus, r_list: list[Routine], helps: list[dict[str, Any]],
     best = _helped(helps)
     if best and c.state != "stable":
         h = best[0]
-        steps.append(NextStep(when="next_contact", text=f"Encourage {CARE_HELP.get(h['activity'], h['label'].lower())}.",
+        steps.append(NextStep(when="next_contact",
+                              text=f"Ask whether {CARE_HELP.get(h['activity'], h['label'].lower())} still feel worth doing.",
                               why=f"The best response so far ({h['tries']} tries, mean effect {h['mean_effect']:.2f})."))
     if c.agreement == "disagree":
         same = [SOURCE_LABELS[v.source].lower() for v in c.sources if v.verdict == "as_usual"]

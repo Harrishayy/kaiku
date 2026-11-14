@@ -27,21 +27,27 @@ export function ConsensusPanel({ data, onMetric }: { data: DashData; onMetric: (
   return (
     <div className="d-stack">
       <div className="d-verdict">
-        <Chip tone={chip.tone}>{chip.label}</Chip>
-        <p className="d-strong">{consensusSentence(c)}.</p>
-        <p>
-          {lowCoverage
-            ? 'This is not a confirmed steady picture: too few signal groups can vote yet.'
-            : STATE_HINT[c.state]}
-        </p>
-        {(stage.early || stage.building) && (
-          <p className="d-callout">
-            Day {stage.day} of record: {stage.building ? 'still building their usual, so nothing can be compared yet' : 'early baseline, lower confidence'}.
-            {stage.steadyAfter && stage.day < stage.steadyAfter ? ` A record is not read as stable before day ${stage.steadyAfter}.` : ''}
-          </p>
+        <Chip tone={chip.tone}>
+          {chip.label}
+          {c.acknowledged_by ? ' · acknowledged' : ''}
+        </Chip>
+        {view.statusLine ? (
+          // one sentence from the cloud says what the state is, when it was raised, what is back and why it still shows
+          <p className="d-status">{view.statusLine}</p>
+        ) : (
+          <>
+            <p className="d-strong">{consensusSentence(c)}.</p>
+            <p>{lowCoverage ? 'This is not a confirmed steady picture: too few signal groups can vote yet.' : STATE_HINT[c.state]}</p>
+            {(stage.early || stage.building) && (
+              <p className="d-callout">
+                Day {stage.day} of record: {stage.building ? 'still building their usual, so nothing can be compared yet' : 'early baseline, lower confidence'}.
+                {stage.steadyAfter && stage.day < stage.steadyAfter ? ` A record is not read as stable before day ${stage.steadyAfter}.` : ''}
+              </p>
+            )}
+            {c.acknowledged_by && <p className="d-meta">Acknowledged by {c.acknowledged_by}.</p>}
+          </>
         )}
         {c.safety_since && <p className="d-strong">Safety flag recorded {relTime(c.safety_since)}.</p>}
-        {c.acknowledged_by && <p className="d-meta">Acknowledged by {c.acknowledged_by}.</p>}
       </div>
 
       <section aria-label="Signal groups">

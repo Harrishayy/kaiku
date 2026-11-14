@@ -928,7 +928,7 @@
 .d-chart {
   position: relative;
   flex: 1 1 210px;
-  min-height: 210px;
+  min-height: 170px;
   min-width: 0;
 }
 .d-chart svg {
@@ -1623,8 +1623,8 @@ button.d-heat-cell {
     display: none;
   }
   .d-chart {
-    flex-basis: 180px;
-    min-height: 180px;
+    flex-basis: 150px;
+    min-height: 140px;
   }
   .d-trends {
     min-height: 0;
@@ -1847,4 +1847,173 @@ button.d-heat-cell {
 .d-overview-k {
   color: var(--k-ink-2);
   font: var(--d-text-strong);
+}
+
+/* ------------------------------------------------------------------ round three: daily account, reflections */
+.d-refl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+.d-refl-strip {
+  display: flex;
+  gap: 2px;
+}
+.d-refl-cell {
+  box-sizing: border-box;
+  display: inline-block;
+  width: var(--k-space-4);
+  height: var(--k-space-3);
+  border-radius: var(--k-radius-xs);
+  border: 1px dashed var(--k-line);
+  flex: none;
+}
+.d-refl-low {
+  background: var(--k-state-watch-soft);
+  border: 2px solid var(--k-state-watch);
+}
+.d-refl-neutral {
+  background: var(--k-muted);
+  border-color: transparent;
+}
+.d-refl-bright {
+  background: var(--k-state-stable);
+  border-color: transparent;
+}
+.d-refl-declined {
+  background: transparent;
+  border: 1.5px solid var(--k-muted);
+}
+.d-days {
+  display: flex;
+  flex-direction: column;
+}
+.d-day {
+  border-top: 1px solid var(--k-line);
+}
+.d-day.is-flagged {
+  background: color-mix(in srgb, var(--k-state-watch-soft) 45%, transparent);
+}
+.d-day.d-day-call {
+  background: color-mix(in srgb, var(--k-state-needs-call-soft) 40%, transparent);
+}
+.d-day.d-day-crisis {
+  background: color-mix(in srgb, var(--k-state-safety-soft) 55%, transparent);
+}
+.d-day-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-3);
+  width: 100%;
+  padding: var(--k-space-2) var(--k-space-1);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--k-dur-hover);
+}
+.d-day-head:hover {
+  background: color-mix(in srgb, var(--k-surface-2) 60%, transparent);
+}
+.d-day-date {
+  flex: none;
+  width: 11ch;
+  white-space: nowrap;
+  font: var(--d-text-strong);
+}
+.d-day-wd {
+  color: var(--k-muted);
+  font-weight: 400;
+}
+.d-day-body {
+  flex: 1;
+  min-width: 0;
+}
+.d-day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+}
+.d-day-chips .d-chip {
+  white-space: normal;
+  flex: 0 1 auto;
+}
+.d-day-state {
+  flex: none;
+  color: var(--k-ink-2);
+  font: var(--d-micro);
+}
+.d-day-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-1) var(--k-space-4);
+}
+@container (max-width: 420px) {
+  .d-day-head {
+    flex-wrap: wrap;
+    gap: var(--k-space-1) var(--k-space-2);
+  }
+  .d-day-body {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .d-day-state {
+    margin-left: auto;
+  }
+}
+.d-panel-body {
+  position: relative;
+}
+.d-graph-side[hidden] {
+  display: none;
+}
+
+.d-refl summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1) var(--k-space-3);
+  cursor: pointer;
+}
+.d-refl details[open] > summary {
+  margin-bottom: var(--k-space-2);
+}
+.d-refl details > * + * {
+  margin-top: var(--k-space-2);
+}
+.d-day-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+.d-day-did {
+  color: var(--k-ink);
+}
+
+.d-status {
+  max-width: 72ch;
+}
+.d-since {
+  grid-column: 1 / -1;
+}
+@media (max-height: 800px) {
+  .dash .d-compare-tones .d-meta.d-week {
+    display: inline;
+  }
+  .d-trends > .d-legend li:last-child,
+  .d-since .d-meta {
+    display: none;
+  }
+  .dash .d-compare-tones .d-meta.d-week {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .d-compare {
+    padding-top: var(--k-space-2);
+    gap: var(--k-space-1) var(--k-space-4);
+  }
 }

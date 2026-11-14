@@ -135,14 +135,15 @@ def test_sources_agree_with_each_other_on_the_same_day(rows):
     assert all(300 <= v <= 460 for v in sleep.values()) and all(55 <= v <= 70 for v in
                                                                  by_day(rows, "obs.wearable_daily", "resting_hr_bpm").values())
     assert [r["payload"]["total"] for r in rows if r["type"] == "obs.phq9"] == [5, 11, 8]
-    assert [day_index(r) for r in rows if r["type"] == "obs.phq9"] == [1, 11, 15]  # fortnightly + one after the call
+    assert [day_index(r) for r in rows if r["type"] == "obs.phq9"] == [1, 12, 15]  # fortnightly + one the evening of the call
 
 
 # ---------------------------------------------------------------------------------------------- what the rule says
 def test_the_real_rule_reaches_the_story_day_by_day(record):
     """Pinned on purpose: if the criteria or the record change, this says which day's reading moved.
-    Days 1-10 the baseline is forming; day 11 the first source group is worse (worth a check-in); from day 12
-    several agree (needs a call) and stay so; today opens acknowledged, waiting for new recordings."""
+    Days 1-10 the baseline is forming; day 11 the first source group is worse (worth a check-in); on day 12 the
+    daily signals alone raise "needs a call", a day BEFORE the care team rings and the questionnaire is taken
+    (day 13); the flag then holds, acknowledged, while the measures come back."""
     store, exported = record
     days = replay(store)
     assert [r.day for r in days] == [FIRST + timedelta(days=i) for i in range(17)]
@@ -150,20 +151,23 @@ def test_the_real_rule_reaches_the_story_day_by_day(record):
     assert all(r.agreement == "low_coverage" and not worse(r) for r in days[:10])
     assert worse(days[10]) == {"laptop"}  # the late nights and missed calls show first
     assert {"robot", "laptop", "wearable"} <= worse(days[11])
-    assert all(len(worse(r)) >= 3 for r in days[11:16])
+    assert all(len(worse(r)) >= 3 for r in days[11:15]) and worse(days[15]) == {"robot", "wearable"}
     assert "glasses" not in worse(days[11]) and "glasses" in worse(days[12])  # walks lag by a day
-    assert "glasses" not in worse(days[16])  # ... and are back first
+    assert "laptop" in worse(days[14]) and "laptop" not in worse(days[15])  # late nights and calls are back first
     assert days[16].state == "needs_call" and days[16].acknowledged_by == single_person.CARE_BY
-    # the call is logged on the day it happened (day 12), not at seed time
-    assert all(r.acknowledged_by is None for r in days[:11])
-    assert all(r.acknowledged_by == single_person.CARE_BY for r in days[11:])
+    # Lead time: the flag is raised on day 12 by the daily signals, with no questionnaire and no call yet.
+    assert days[11].state == "needs_call" and days[10].state == "watch" and days[11].acknowledged_by is None
+    high = next(r for r in single_person.build(END) if r["type"] == "obs.phq9" and r["payload"]["total"] >= 10)
+    assert day_index(high) == 12 and single_person.CARE_DAY == 13  # the call and the PHQ-9 come the day after
+    assert all(r.acknowledged_by is None for r in days[:12])
+    assert all(r.acknowledged_by == single_person.CARE_BY for r in days[12:])
     assert store.actions("aino")[0]["ts"] == single_person.care_ts(FIRST + timedelta(days=15))
     assert exported["consensus"]["state"] == "needs_call" and not any(
         banned in json.dumps(exported["consensus"]).lower() for banned in ("diagnos", "relapse", "predict"))
 
 
 @pytest.mark.parametrize(("kind", "state", "worse_sources"), [("good", "watch", set()),
-                                                              ("rough", "needs_call", {"robot", "laptop", "wearable"})])
+                                                              ("rough", "needs_call", {"robot", "wearable"})])
 def test_todays_recordings_move_the_reading_either_way(record, kind, state, worse_sources):
     store, _exported = record
     before = replay(store)[-1]
@@ -191,7 +195,7 @@ def test_what_helps_is_learned_from_coherent_attempts(record, rows):
     responses = [r for r in rows if r["type"] == "obs.intervention_response"]
     assert len(offers) == 16 and len(outcomes) == 15  # yesterday's offer is answered this morning
     declined = [day_index(r) for r in outcomes if not r["payload"]["accepted"]]
-    assert len(declined) == 3 and set(declined) <= set(DIP)  # she said no on the hard days
+    assert len(declined) == 4 and set(declined) <= set(DIP)  # she said no on the hard days
     for r in responses:
         p = r["payload"]
         assert all(p["delta"][k] == p["post"][k] - p["pre"][k] for k in ("mood", "energy"))
@@ -206,7 +210,7 @@ def test_what_helps_is_learned_from_coherent_attempts(record, rows):
             assert (p["next_day"]["mood"], p["next_day"]["energy"]) == single_person.DAYS[i].dial[:2]
     data = service.patient_data(store, "aino", service.active_criteria(store))
     stats = {h["activity"]: h for h in bandit.help_stats(data.nudge_outcomes, data.interventions)}
-    assert stats["walk"]["tries"] == 8 and stats["walk"]["mean_effect"] > max(
+    assert stats["walk"]["tries"] == 7 and stats["walk"]["mean_effect"] > max(
         stats["drum"]["mean_effect"], stats["breathe"]["mean_effect"])
     helped = [e for e in exported["graph"]["edges"] if e["rel"] == "helped"]
     nodes = {n["id"]: n for n in exported["graph"]["nodes"]}
@@ -230,7 +234,7 @@ def test_week_view_reads_as_a_harder_second_week_and_keeps_private_notes_out(rec
     refs = {r.id: r for r in clinician_chat.evidence(store, Settings(db_path=":memory:"), "aino",
                                                      store.home_summary("aino"), NOW)}
     assert "16 days of collection" in refs["pattern:collection"].detail
-    assert "mood 4 of 5 → 3 of 5" in refs["pattern:daily_context"].detail
+    assert "mood 4 of 5 → 2 of 5" in refs["pattern:daily_context"].detail
     assert not any(word in json.dumps([r.model_dump(mode="json") for r in refs.values()]) for word in private)
 
 
@@ -268,7 +272,44 @@ def test_seeding_twice_through_the_real_routes_adds_nothing_the_second_time(api)
     store = api.app.state.store
     assert len(store.events_for_home("aino")) == len(rows)
     assert len(store.memories("aino")) == len(single_person.NOTES)
-    assert len(store.transcripts("aino")) == len(single_person.TALKS) == 5
+    reflections = sum(len(v) for v in single_person.REFLECTIONS.values())
+    assert len(single_person.TALKS) == 5 and len(store.transcripts("aino")) == 5 + reflections == 17
+    # How each talk sounded comes from the cloud's own labeller reading the seeded words, never from a hand-set
+    # field. Pinned by day of the sixteen: settled, flat on the first late night, low through the dip (one evening
+    # she did not want to talk), lighter from the evening of the care call, steady at the end.
+    from kaiku_cloud.mind import affect
+
+    first = yesterday() - timedelta(days=15)
+    heard = sorted(affect.rows(store, "aino").values(), key=lambda r: r["start"])
+    assert all(r["by"] == "rule" for r in heard)  # no model key in tests: the nightly relabel kept the rules
+    sequence = [((affect.parse_ts(r["start"]).astimezone(affect.TZ).date() - first).days + 1, affect._part(r["start"]),
+                 r["valence"], r["declined"]) for r in heard]
+    assert sequence == [
+        (1, "evening", "bright", False), (2, "evening", "neutral", False), (3, "evening", "neutral", False),
+        (5, "evening", "bright", False), (7, "evening", "neutral", False), (8, "evening", "bright", False),
+        (9, "evening", "neutral", False),
+        (10, "evening", "low", False), (11, "morning", "low", False), (11, "evening", None, True),
+        (12, "morning", "low", False), (13, "morning", "low", False), (13, "evening", "bright", False),
+        (14, "evening", "bright", False), (15, "evening", "bright", False), (16, "morning", "bright", False),
+        (16, "evening", "neutral", False)]
+    themes = {(day, part): r["themes"] for (day, part, _v, _d), r in zip(sequence, heard, strict=True)}
+    assert themes[(10, "evening")] == ["sleep", "being alone"] and "sleep" in themes[(12, "morning")]
+    assert "being alone" in themes[(13, "morning")] and "friends" in themes[(15, "evening")]
+    assert "family" in themes[(16, "morning")]
+    insight = api.get("/v1/patients/aino/insight", params={"generate": "false"}).json()
+    talk = insight["reflections"]
+    assert talk["summary"].startswith("Reflections with Kaiku sounded low in 4 of 4 between ")
+    assert "lighter since the evening of" in talk["summary"] and "Themes: sleep, being alone, then " in talk["summary"]
+    assert "Did not want to talk on" in talk["summary"] and len(talk["days"]) >= 14
+    kinds = [e["kind"] for e in insight["course"]["events"]]
+    assert "reflection_low" in kinds and "reflection_lighter" in kinds
+    assert "reflections with Kaiku sounded low from" in insight["course"]["summary"]
+    dip = {d["date"]: d for d in insight["days"]}
+    low_day = dip[str(first + timedelta(days=9))]
+    assert "evening reflection low (sleep, being alone)" in low_day["parts"]
+    assert any(p.endswith(" usual") for p in low_day["parts"]) and "no walk" in low_day["parts"]
+    assert "did not want to talk in the evening" in dip[str(first + timedelta(days=10))]["parts"]
+    assert "barely slept" not in json.dumps(insight) and "Leave me be" not in json.dumps(insight)
     assert len(store.episodes("aino")) == len(single_person.episodes(yesterday()))
     assert [(a["action"], a["by"]) for a in store.actions("aino")] == [("acknowledge", single_person.CARE_BY)]
     assert week.sharing(store, "aino").share_with_care_team

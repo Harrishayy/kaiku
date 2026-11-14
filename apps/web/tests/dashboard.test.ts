@@ -29,7 +29,7 @@ test('layout: saved layouts recover from junk, stale ids, duplicates and missing
   assert.equal(defaultLayout(1280, 720).order.length, 3);
   assert.equal(defaultLayout(1920, 1080).order.length, 5);
   assert.deepEqual(defaultLayout(1280, 720).order, ['trends', 'consensus', 'review'], 'the review is always open by default');
-  assert.deepEqual(defaultLayout(1440, 900).order.slice(3), ['routine', 'graph']);
+  assert.deepEqual(defaultLayout(1440, 900).order.slice(3), ['evidence', 'routine']);
   assert.equal(defaultLayout(1280, 720).order[0], 'trends');
 });
 
@@ -216,4 +216,19 @@ test('learned graph: learned layer only, routines folded into their activity, me
   // without layer tags (older cloud): activities, routines and what helped still count as learned
   const old = { nodes: g.nodes.map((x: object) => ({ ...x, layer: 'structure' })), edges: g.edges.map((x: object) => ({ ...x, layer: 'structure' })) } as never;
   assert.ok(learnedView(old).nodes.some((x) => x.node.id === 'walk'));
+});
+
+import { dayChips, dayValence } from '../lib/evidence.ts';
+
+test('daily account: parts become typed chips; reflection level only, unknown phrases stay neutral', () => {
+  const chips = dayChips(['morning ritual, drum session, game, walk (21 min), weather check', 'mood 3 of 5', "away from usual: mood dial, energy dial, last night's sleep and 14 more", 'evening reflection bright (outdoors)', 'care team follow-up']);
+  assert.deepEqual(chips.filter((c) => c.kind === 'did').map((c) => c.label), ['Morning ritual', 'Drum session', 'Game', 'Walk (21 min)', 'Weather check']);
+  assert.deepEqual(chips.filter((c) => c.kind !== 'did').map((c) => c.kind), ['mood', 'away', 'reflection', 'care']);
+  assert.equal(chips.find((c) => c.kind === 'reflection')?.label, 'Reflection bright (outdoors)');
+  assert.equal(dayValence(['evening reflection low (sleep)']), 'low');
+  assert.equal(dayValence(['evening reflection ordinary (routine)']), 'neutral');
+  assert.equal(dayValence(['reflection declined']), 'declined');
+  assert.equal(dayValence(['mood 4 of 5']), null);
+  assert.deepEqual(dayChips(['Morning ritual done, Out for 28 min, Energy dial below usual, 4 more measures away']).map((c) => c.kind), ['did', 'did', 'away', 'away']);
+  assert.deepEqual(dayChips(['something new: the cloud said this']), [{ kind: 'other', label: 'Something new: the cloud said this' }]);
 });

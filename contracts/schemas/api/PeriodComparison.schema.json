@@ -277,6 +277,14 @@
   },
   "additionalProperties": false,
   "properties": {
+    "back_in_range": {
+      "description": "metric names back within usual after a spell",
+      "items": {
+        "type": "string"
+      },
+      "title": "Back In Range",
+      "type": "array"
+    },
     "changed": {
       "description": "metric names worse than the week before",
       "items": {
@@ -321,6 +329,21 @@
       "format": "date",
       "title": "Previous Week Start",
       "type": "string"
+    },
+    "since_low": {
+      "default": "",
+      "description": "against the spell's low point, e.g. '12 of 18 measures back within usual since the low on 8 Nov'; empty when nothing moved",
+      "maxLength": 240,
+      "title": "Since Low",
+      "type": "string"
+    },
+    "still_away": {
+      "description": "metric names still away from usual",
+      "items": {
+        "type": "string"
+      },
+      "title": "Still Away",
+      "type": "array"
     },
     "summary": {
       "maxLength": 400,

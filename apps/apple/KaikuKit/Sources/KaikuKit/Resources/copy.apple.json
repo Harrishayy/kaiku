@@ -463,7 +463,12 @@
     "gc.step.running": "running…",
     "gc.log.d": "States, counts and errors only. No audio, pictures or words.",
     "gc.log.share": "Share the log",
-    "walk.see.background": "No pictures are arriving. Kaiku can only see while this screen is open."
+    "walk.see.background": "No pictures are arriving. Kaiku can only see while this screen is open.",
+    "source.apps": "Kaiku app",
+    "setup.hello.unavailable": "Kaiku's voice isn't available right now. Here is what I would have said.",
+    "setup.hello.loading": "One moment…",
+    "setup.connect.offline.cta": "Continue without connecting",
+    "setup.connect.offline.d": "Check-ins, games and breathing work now and are kept safe on this device. Kaiku's voice and sharing with your care team start once you connect, any time in You."
   },
   "fi": {
     "today.greet.morning.noname": "Hyvää huomenta",
@@ -928,7 +933,12 @@
     "gc.step.running": "running…",
     "gc.log.d": "States, counts and errors only. No audio, pictures or words.",
     "gc.log.share": "Share the log",
-    "walk.see.background": "No pictures are arriving. Kaiku can only see while this screen is open."
+    "walk.see.background": "No pictures are arriving. Kaiku can only see while this screen is open.",
+    "source.apps": "Kaiku-sovellus",
+    "setup.hello.unavailable": "Kaikun ääni ei ole juuri nyt käytettävissä. Tässä on se, mitä olisin sanonut.",
+    "setup.hello.loading": "Hetki…",
+    "setup.connect.offline.cta": "Jatka yhdistämättä",
+    "setup.connect.offline.d": "Kirjautumiset, pelit ja hengitys toimivat nyt ja pysyvät tallessa tällä laitteella. Kaikun ääni ja jakaminen hoitotiimille alkavat, kun yhdistät, milloin tahansa Sinä-välilehdellä."
   },
   "sv": {
     "service.title": "Kaiku-tjänster i närheten",

@@ -13,7 +13,14 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from kaiku_contracts.api import DayAccount, RecordCitation, ReflectionOverview, SourceCount
+from kaiku_contracts.api import (
+    DayAccount,
+    RecordCitation,
+    ReflectionDay,
+    ReflectionOverview,
+    Routine,
+    SourceCount,
+)
 from kaiku_contracts.sources import CONSENSUS_SOURCES, SOURCE_OF
 
 from . import week
@@ -77,6 +84,52 @@ def generic_records(events: list[dict[str, Any]], crit: Any, data: Any, end: dat
     return out
 
 
+def _top(rows: list[dict[str, Any]], k: int = 2) -> str:
+    return ", ".join(t for t, _ in Counter(t for r in rows for t in r["themes"]).most_common(k))
+
+
+def low_spell(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(reflections that sounded low, the rated ones after the last low one)."""
+    rated = [r for r in rows if r["valence"]]
+    low = [r for r in rated if r["valence"] == "low"]
+    after = [r for r in rated if low and r["start"] > low[-1]["start"]]
+    return low, after
+
+
+def fortnight(rows: list[dict[str, Any]]) -> str:
+    """The last 14 days of reflections in one or two sentences: when they sounded low, since when lighter, and
+    what came up in each stretch. Level and themes only."""
+    rated = [r for r in rows if r["valence"]]
+    declined = [r for r in rows if r["declined"]]
+    if not rated and not declined:
+        return "No reflection summaries in the last 14 days."
+    low, after = low_spell(rows)
+    parts = []
+    if low:
+        first, final = low[0]["day"], low[-1]["day"]
+        span = [r for r in rated if low[0]["start"] <= r["start"] <= low[-1]["start"]]
+        when = human_date(first) if first == final else f"{human_date(first)} and {human_date(final)}"
+        parts.append(f"Reflections with Kaiku sounded low in {len(low)} of {len(span)} between {when}"
+                     if first != final else f"A reflection with Kaiku sounded low on {when}")
+        if after:
+            parts[-1] += f"; lighter since the {after[0]['part']} of {human_date(after[0]['day'])}"
+        parts[-1] += "."
+        was, now_ = _top(low), _top(after)
+        if was or now_:
+            parts.append("Themes: " + (was or "none named") + (f", then {now_}" if after and now_ else "") + ".")
+    else:
+        n = Counter(r["valence"] for r in rated)
+        parts.append(f"{len(rated)} reflection{'s' if len(rated) != 1 else ''} with Kaiku in the last 14 days: "
+                     f"{n['neutral']} ordinary, {n['bright']} bright, none low.")
+        if _top(rated, 3):
+            parts.append(f"Themes: {_top(rated, 3)}.")
+    if declined:
+        days_ = ", ".join(human_date(r["day"]) for r in declined[:3])
+        parts.append(f"Did not want to talk on {days_}.")
+    parts.append("Level and themes only; their words are not shared.")
+    return " ".join(parts)
+
+
 def reflections(store: Store, home_id: str, now: datetime, shared: bool
                 ) -> tuple[ReflectionOverview | None, list[dict[str, Any]], RecordCitation | None, str]:
     """(overview, rows of the last 14 days, citable record, direction). Nothing at all unless the person shares."""
@@ -88,43 +141,45 @@ def reflections(store: Store, home_id: str, now: datetime, shared: bool
     n = Counter(r["valence"] for r in rated)
     declined = sum(1 for r in last if r["declined"])
     themes = Counter(t for r in last for t in r["themes"])
-    if not last:
-        summary = "No reflection summaries in the last 7 days."
-    else:
-        parts = []
-        if rated:
-            parts.append(f"{len(rated)} reflection{'s' if len(rated) != 1 else ''} with Kaiku in the last 7 days: "
-                         f"{n['low']} sounded low, {n['neutral']} ordinary, {n['bright']} bright")
-        if declined:
-            parts.append(f"{declined} time{'s' if declined != 1 else ''} they did not want to talk or asked to stop")
-        summary = "; ".join(parts) + "."
-        if themes:
-            summary += " Came up most: " + ", ".join(t for t, _ in themes.most_common(3)) + "."
-        summary += " Level and themes only; their words are not shared."
-    overview = ReflectionOverview(shared=True, reflections=len(rated), low=n["low"], neutral=n["neutral"],
-                                  bright=n["bright"], declined=declined,
-                                  themes=[SourceCount(label=t, value=c) for t, c in themes.most_common(5)],
-                                  summary=summary[:300])
+    summary = fortnight(rows)
+    overview = ReflectionOverview(
+        shared=True, reflections=len(rated), low=n["low"], neutral=n["neutral"], bright=n["bright"],
+        declined=declined, themes=[SourceCount(label=t, value=c) for t, c in themes.most_common(5)],
+        days=[ReflectionDay(date=r["day"], part=r["part"], valence=r["valence"], themes=r["themes"],
+                            declined=r["declined"]) for r in rows], summary=summary[:400])
     tone = "unknown"
     if len(rated) >= 2:
         tone = "worse" if n["low"] * 2 > len(rated) else "better" if n["bright"] * 2 > len(rated) else "similar"
     record = RecordCitation(id="reflect:recent", label="Reflections with Kaiku", detail=summary,
-                            observed_at=last[-1]["day"]) if last else None
+                            observed_at=rows[-1]["day"]) if rows else None
     return overview, rows, record, tone
 
 
+MISSING = {"ritual": "morning ritual skipped", "walk": "no walk", "drum": "no drumming", "play": "no game"}
+DONE = {"ritual": "morning ritual done", "drum": "drum session", "breathe": "breathing round", "play": "game",
+        "checkin": "weather check", "laptop": "laptop check-in"}
+
+
+def _qualifier(mc: MetricCourse, day: date) -> str:
+    """'drum tempo below usual': the measure and which side of the person's usual it was on that day."""
+    m = mc.metric
+    side = ("later than" if m.worse_when == "up" else "earlier than") if m.unit in ("min after midnight", "min from midnight") \
+        else ("above" if m.worse_when == "up" else "below")
+    return f"{short(m.label).lower()} {side} usual"
+
+
 def days(events: list[dict[str, Any]], found: dict[str, MetricCourse], actions: list[dict[str, Any]],
-         reflection_rows: list[dict[str, Any]], end: date, human_value: Any, n: int = 14) -> list[DayAccount]:
+         reflection_rows: list[dict[str, Any]], end: date, human_value: Any, r_list: list[Routine] | None = None,
+         n: int = 14) -> list[DayAccount]:
     occ = week.occurrences(events, None)
-    done: dict[date, list[str]] = defaultdict(list)
+    done: dict[date, set[str]] = defaultdict(set)
     for key, stamps in occ.items():
-        if key == "sleep":
-            continue
         for day in {week._day_of(key, t) for t in stamps}:
-            done[day].append(week.ONE.get(key, key))
+            done[day].add(key)
     out_min: dict[date, float] = defaultdict(float)
     mood: dict[date, list[float]] = defaultdict(list)
-    first_day = min((local_date(e["ts"]) for e in events), default=end)
+    recorded = {local_date(e["ts"]) for e in events}
+    first_day = min(recorded, default=end)
     for e in events:
         day = local_date(e["ts"])
         if e["type"] == "obs.outing":
@@ -141,23 +196,35 @@ def days(events: list[dict[str, Any]], found: dict[str, MetricCourse], actions: 
                                    + (f" ({', '.join(r['themes'][:2])})" if r["themes"] else ""))
         elif r["declined"]:
             talks[r["day"]].append(f"did not want to talk in the {r['part']}")
+    usual = [r.activity for r in (r_list or []) if r.cadence == "daily" and r.activity in MISSING]
     out = []
     for i in range(n):
         day = end - timedelta(days=i)
         if day < first_day:
             break
         parts = []
-        acts = sorted(set(done.get(day, [])), key=lambda a: (a != "morning ritual", a))
-        if day in out_min and "walk" in acts:
-            acts = [f"walk ({human_value(out_min[day], 'min')})" if a == "walk" else a for a in acts]
-        if acts:
-            parts.append(", ".join(acts))
+        did = done.get(day, set())
+        if day in recorded:
+            for key in ("ritual", "drum", "breathe"):
+                if key in did:
+                    parts.append(DONE[key])
+                elif key in usual:
+                    parts.append(MISSING[key])
+            if "walk" in did:
+                parts.append(f"out for {human_value(out_min[day], 'min')}")
+            elif "walk" in usual:
+                parts.append(MISSING["walk"])
+            parts += [DONE[k] for k in ("play", "checkin", "laptop") if k in did]
+            parts += [MISSING[k] for k in ("play",) if k in usual and k not in did]
+        away = sorted((mc for mc in found.values() if day in mc.away_days),
+                      key=lambda mc: -mc.metric.weight * max(mc.lowest.z, 0.1))
+        phrases = list(dict.fromkeys(_qualifier(mc, day) for mc in away))
+        parts += phrases[:4]
+        if len(phrases) > 4:
+            more = len(phrases) - 4
+            parts.append(f"{more} more measure{'s' if more != 1 else ''} away from usual")
         if mood.get(day):
             parts.append(f"mood {human_value(sum(mood[day]) / len(mood[day]), '1–5')}")
-        away = sorted((mc for mc in found.values() if day in mc.away_days), key=lambda mc: -mc.metric.weight)
-        if away:
-            names = list(dict.fromkeys(short(mc.metric.label).lower() for mc in away))
-            parts.append("away from usual: " + ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else ""))
         parts += talks.get(day, []) + care.get(day, [])
         if not parts:
             parts = ["nothing recorded"]

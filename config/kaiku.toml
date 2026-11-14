@@ -12,7 +12,6 @@ gemini_live = "gemini-3.8-live"
 lyria_realtime = "lyria-realtime-exp"
 gemini_flagship = "gemini-4-argon"         # orchestration / reflection / eval judge (Hydrogen/Carbon: not listed yet)
 gemini_fast = "gemini-3.8-flash"           # bulk text: explanations fallback, simulated persons in evals
-gemini_vision = "VERIFY-gemini-flash-model-id"
 tts = "gemini-3.8-flash-tts"              # GA 2026-09-22, Interactions API; used by the cloud /v1/voice
 tts_lite = "gemini-3.8-flash-lite-tts"    # cheaper on-demand alternative
 gemma_hosted = "gemma-4-26b-a4b-it"       # larger: gemma-4-31b-it
@@ -257,3 +256,4 @@ similar_scale = 0.5        # week medians within this many baseline scales = "ab
 usual_scale = 1.0          # this week's median within this many baseline scales of the usual = "within their usual"
 help_early_tries = 3       # fewer attempts than this = too early to rely on
 help_consistent_tries = 8  # at least this many attempts and a narrow interval = consistent
+reflection_labels_per_night = 4  # reflections Gemma relabels per home in one nightly run (newest first)

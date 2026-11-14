@@ -68,12 +68,14 @@ def _evidence(d: MetricDrift, crit: Criteria) -> VerdictEvidence:
     raw_z = None if z is None else (z if m.worse_when == "up" else -z)
     days = d.worse_days if d.status == "drifting" else d.better_days
     direction = d.flag_direction or d.direction
-    word = "higher" if direction == "up" else "lower"
+    clock = m.unit in ("min after midnight", "min from midnight")  # a time of day is later/earlier, never higher
+    word = ("later" if direction == "up" else "earlier") if clock else ("higher" if direction == "up" else "lower")
+    name = m.label.replace(" (later = up)", "") if clock else m.label
     # a provisional baseline (young record, criteria early_baseline_*) is always labelled as such
     early = d.baseline is not None and d.baseline.early
     label = f" (early baseline: {d.baseline.n} days, lower confidence)" if early else ""
     return VerdictEvidence(metric=d.metric, z=raw_z, direction="up" if direction == "up" else "down", days=days,
-                           summary=f"{m.label} {word} than usual on {days} of the last {d.scored_days} days{label}")
+                           summary=f"{name} {word} than usual on {days} of the last {d.scored_days} days{label}")
 
 
 def verdict_for(data: PatientData, source: str, day: date, crit: Criteria, now: datetime | None = None

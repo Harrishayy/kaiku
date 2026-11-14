@@ -906,6 +906,10 @@ class PeriodComparison(ApiModel):
     day_of_record: int = Field(default=0, ge=0)
     early_baseline: bool = Field(default=False, description="at least one usual here is a provisional baseline")
     summary: str = Field(max_length=400)
+    since_low: str = Field(default="", max_length=240, description="against the spell's low point, e.g. '12 of 18 "
+                           "measures back within usual since the low on 8 Nov'; empty when nothing moved")
+    back_in_range: list[str] = Field(default_factory=list, description="metric names back within usual after a spell")
+    still_away: list[str] = Field(default_factory=list, description="metric names still away from usual")
     improved: list[str] = Field(default_factory=list, description="metric names better than the week before")
     changed: list[str] = Field(default_factory=list, description="metric names worse than the week before")
     groups: list[GroupComparison] = Field(default_factory=list)
@@ -999,7 +1003,9 @@ class DataCoverage(ApiModel):
     baseline_ready: bool = Field(description="at least one measure has a personal baseline")
     day_of_record: int = Field(default=0, ge=0, description="calendar days since the first observation")
     early_baseline: bool = Field(default=False, description="baselines in use are provisional (young record)")
-    simulated: bool = Field(description="every observation in this record carries sim=true")
+    simulated: bool = Field(description="the record contains simulated observations (envelope sim flag); the same "
+                                        "value as Consensus.simulated and RecordCitation.simulated; per-type counts "
+                                        "show how many")
     summary: str = Field(max_length=300)
     groups: list[GroupCoverage] = Field(default_factory=list)
     other: list[ObsTypeCoverage] = Field(default_factory=list, description="activity responses, ritual steps, flags")
@@ -1009,7 +1015,8 @@ class CourseEvent(ApiModel):
     """One dated point in the course of change. Text, dates and numbers are written by code."""
 
     date: date
-    kind: Literal["onset", "lowest", "care_action", "phq9", "back_in_range", "still_away"]
+    kind: Literal["onset", "lowest", "care_action", "phq9", "back_in_range", "still_away", "reflection_low",
+                  "reflection_lighter"]
     group: ConsensusSource | None = None
     metric_id: str | None = None
     label: str = Field(max_length=120)
@@ -1021,6 +1028,9 @@ class Course(ApiModel):
     back, what has not. Temporal order only, never a cause. Computed by code from the daily series."""
 
     phase: Literal["settling", "steady", "dip", "recovering", "recovered"]
+    low_date: date | None = Field(default=None, description="the day most measures were away from usual")
+    moved: int = Field(default=0, ge=0, description="measures that moved away from usual in this spell")
+    back: int = Field(default=0, ge=0, description="of those, how many are back within usual")
     summary: str = Field(max_length=700)
     events: list[CourseEvent] = Field(default_factory=list)
 
@@ -1034,6 +1044,14 @@ class DayAccount(ApiModel):
     parts: list[str] = Field(default_factory=list)
 
 
+class ReflectionDay(ApiModel):
+    date: date
+    part: Literal["morning", "afternoon", "evening"]
+    valence: Literal["low", "neutral", "bright"] | None = None
+    themes: list[str] = Field(default_factory=list)
+    declined: bool = False
+
+
 class ReflectionOverview(ApiModel):
     """Reflections with Kaiku at summary level: how many sounded low / neutral / bright and what they were about.
     Present only when the person shares with the care team. Never their words."""
@@ -1045,7 +1063,8 @@ class ReflectionOverview(ApiModel):
     bright: int = Field(ge=0)
     declined: int = Field(ge=0, description="the person asked to stop or did not want to talk")
     themes: list[SourceCount] = Field(default_factory=list, description="theme -> reflections it came up in")
-    summary: str = Field(max_length=300)
+    days: list[ReflectionDay] = Field(default_factory=list, description="the last 14 days, oldest first")
+    summary: str = Field(max_length=400, description="the fortnight in one or two sentences; counts are 7 days")
 
 
 class StateDay(ApiModel):
@@ -1074,6 +1093,8 @@ class PatientInsight(ApiModel):
     state: State
     agreement: Agreement
     rule_version: str
+    status_line: str = Field(default="", max_length=600, description="one statement by code that reconciles the "
+                             "rule state with the course: when it was raised, what has come back, why it still shows")
     review: PatientReview
     evidence: list[RecordCitation] = Field(default_factory=list, description="every record a finding cites")
     trace: list[AgentStep] = Field(default_factory=list)

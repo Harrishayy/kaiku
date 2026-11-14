@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kaiku — pitch deck</title>
+<!-- Source of demo/deck/kaiku-deck.pdf. Rebuild: uv run --with playwright python demo/deck/render.py -->
+<!-- Colours and type are the values in design/tokens.json (light theme). -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F6F0E6; --surface:#FFFBF4; --surface-2:#EFE6D8; --ink:#3A2C24; --ink-2:#5E4C40; --muted:#74635A;
+  --line:#E3D6C4; --clay:#9E4E32; --clay-ink:#FFF8F1; --clay-soft:#F3DCCF; --sage:#52714C; --sage-soft:#DDE7D6;
+  --sky:#466F8D; --sky-soft:#DCE7EF; --honey:#85600F; --honey-soft:#F5E6C4; --crisis:#B3261E; --crisis-soft:#F9DEDA;
+  --glow:#FFD98F;
+  --display:'Fredoka','SF Pro Rounded',ui-rounded,system-ui,sans-serif;
+  --body:'Nunito','SF Pro Rounded',ui-rounded,system-ui,sans-serif;
+  --mono:'DM Mono',ui-monospace,Menlo,monospace;
+}
+@page{ size:1280px 720px; margin:0 }
+*{ box-sizing:border-box; margin:0; padding:0 }
+html,body{ background:var(--bg); }
+body{ font-family:var(--body); color:var(--ink); font-size:17px; line-height:1.45; -webkit-font-smoothing:antialiased }
+.slide{ width:1280px; height:720px; position:relative; overflow:hidden; background:var(--bg);
+  padding:44px 56px 56px; display:flex; flex-direction:column; page-break-after:always; break-after:page }
+.slide:last-child{ page-break-after:auto; break-after:auto }
+.eyebrow{ font:600 13px/18px var(--body); letter-spacing:.09em; text-transform:uppercase; color:var(--clay); margin-bottom:6px }
+h1{ font:500 40px/46px var(--display); letter-spacing:-.005em; color:var(--ink); text-wrap:balance; max-width:1060px }
+.lede{ font-size:19px; line-height:27px; color:var(--ink-2); margin-top:8px; max-width:980px; text-wrap:pretty }
+.body{ flex:1; min-height:0; margin-top:24px; display:flex; gap:24px }
+.foot{ position:absolute; left:56px; right:56px; bottom:20px; display:flex; justify-content:space-between; align-items:center;
+  font:600 12px/16px var(--body); color:var(--muted) }
+.foot .brand{ display:flex; align-items:center; gap:8px }
+.foot img{ width:22px; height:22px }
+.foot .n{ font-family:var(--mono); font-weight:500 }
+.card{ background:var(--surface); border:1px solid var(--line); border-radius:24px; padding:22px 24px;
+  box-shadow:0 4px 20px rgba(58,44,36,.05) }
+.card h3{ font:600 22px/28px var(--display); margin-bottom:8px }
+.card p{ color:var(--ink-2) }
+.card p + p{ margin-top:8px }
+.soft{ background:var(--surface-2); border:0; box-shadow:none }
+.chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font:700 13px/18px var(--body); white-space:nowrap }
+.chip::before{ content:""; width:7px; height:7px; border-radius:50%; background:currentColor }
+.chip.plain::before{ display:none }
+.c-sage{ background:var(--sage-soft); color:var(--sage) } .c-honey{ background:var(--honey-soft); color:var(--honey) }
+.c-clay{ background:var(--clay-soft); color:var(--clay) } .c-sky{ background:var(--sky-soft); color:var(--sky) }
+.c-muted{ background:var(--surface-2); color:var(--muted) } .c-crisis{ background:var(--crisis-soft); color:var(--crisis) }
+.small{ font-size:14px; line-height:20px; color:var(--muted) }
+.mono{ font-family:var(--mono) }
+b,strong{ font-weight:800; color:var(--ink) }
+ul.clean{ list-style:none } ul.clean li{ padding-left:18px; position:relative; color:var(--ink-2) }
+ul.clean li + li{ margin-top:7px }
+ul.clean li::before{ content:""; position:absolute; left:2px; top:10px; width:7px; height:7px; border-radius:50%; background:var(--clay) }
+ul.sage li::before{ background:var(--sage) } ul.sky li::before{ background:var(--sky) } ul.honey li::before{ background:var(--honey) }
+.col{ display:flex; flex-direction:column; gap:16px; min-width:0 }
+.grow{ flex:1 }
+.shot{ border-radius:16px; border:1px solid var(--line); display:block; width:100%; box-shadow:0 8px 32px rgba(58,44,36,.10) }
+.placeholder{ border:2px dashed var(--clay); border-radius:24px; background:repeating-linear-gradient(135deg,#FBF1E6 0 14px,#F6E7D8 14px 28px);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px; color:var(--clay) }
+.placeholder .ph{ font:500 18px/24px var(--mono) }
+.placeholder .why{ font:600 13px/18px var(--body); color:var(--ink-2); margin-top:6px; max-width:230px }
+.tag{ position:absolute; font:700 12px/16px var(--body); letter-spacing:.06em; text-transform:uppercase; padding:5px 10px; border-radius:999px;
+  background:var(--ink); color:var(--surface) }
+
+/* 1 title */
+.s-title{ padding:0; flex-direction:row }
+.s-title .left{ flex:1; padding:64px 0 56px 72px; display:flex; flex-direction:column; justify-content:center }
+.s-title .word{ font:600 104px/104px var(--display); color:var(--clay); letter-spacing:-.01em }
+.s-title .promise{ font:500 36px/44px var(--display); margin-top:20px; max-width:640px; text-wrap:balance }
+.s-title .sub{ font-size:20px; line-height:29px; color:var(--ink-2); margin-top:18px; max-width:600px }
+.s-title .links{ margin-top:30px; display:flex; flex-direction:column; gap:6px; font:500 15px/21px var(--mono); color:var(--ink-2) }
+.s-title .links span{ font:700 12px/21px var(--body); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); display:inline-block; width:64px }
+.s-title .right{ width:480px; position:relative; display:flex; align-items:center; justify-content:center }
+.s-title .halo{ position:absolute; width:560px; height:560px; border-radius:50%; background:radial-gradient(circle,#FFD98F 0,rgba(255,217,143,.45) 38%,rgba(255,217,143,0) 70%) }
+.s-title .right img{ width:360px; height:360px; position:relative }
+.s-title .fine{ position:absolute; left:72px; bottom:26px; font:600 13px/18px var(--body); color:var(--muted) }
+
+.visits{ display:grid; grid-template-columns:150px 1fr; row-gap:10px; align-items:center; background:var(--surface-2); border-radius:20px; padding:16px 22px }
+.vlab{ font:700 13px/18px var(--body); letter-spacing:.08em; text-transform:uppercase; color:var(--clay) }
+.dots{ display:flex; gap:10px; align-items:center }
+.dots i{ width:22px; height:22px; border-radius:50%; background:var(--clay) }
+.dots.quiet i{ background:transparent; border:2px dashed var(--muted); opacity:.55 }
+.big .card{ padding:22px 26px } .big .card h3{ font-size:22px; line-height:28px; margin-bottom:8px } .big .card p{ font-size:17.5px; line-height:25px }
+.visits{ padding:22px 26px !important; row-gap:14px !important } .dots i{ width:26px !important; height:26px !important }
+/* 3 flow */
+.flow{ display:flex; align-items:stretch; gap:0; width:100% }
+.flow .step{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:24px; padding:20px 18px 20px; display:flex; flex-direction:column;
+  box-shadow:0 4px 20px rgba(58,44,36,.05) }
+.flow .step .k{ font:600 12px/16px var(--body); letter-spacing:.09em; text-transform:uppercase; color:var(--muted) }
+.flow .step h3{ font:600 21px/26px var(--display); margin:4px 0 10px }
+.flow .step p, .flow .step li{ font-size:16.5px; line-height:24px; color:var(--ink-2) }
+.flow .arrow{ width:30px; display:flex; align-items:center; justify-content:center; color:var(--clay); font:600 22px/1 var(--display) }
+.flow .dev{ display:flex; flex-direction:column; gap:6px }
+.flow .dev div{ background:var(--surface-2); border-radius:10px; padding:7px 10px; font:700 15px/21px var(--body); color:var(--ink) }
+.flow .dev div small{ font-weight:600; color:var(--muted); font-size:12.5px }
+.flow .states{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px }
+.band{ border-radius:16px; padding:16px 22px; background:var(--clay-soft); color:var(--ink); font-size:17px; line-height:24px }
+
+/* 4 person */
+.phones{ display:flex; gap:18px }
+.phone{ width:196px }
+.phone img{ width:196px; height:427px; object-fit:cover; object-position:top; border-radius:26px; border:5px solid var(--ink); display:block; background:#000 }
+.phone .cap{ margin-top:10px; font:700 15px/20px var(--body) }
+.phone .cap span{ display:block; font-weight:400; color:var(--ink-2); font-size:14px; line-height:19px; margin-top:2px }
+.bubble{ border-radius:20px; padding:12px 16px; font-size:17px; line-height:24px; max-width:92% }
+.bubble.me{ background:var(--clay); color:var(--clay-ink); align-self:flex-end; border-bottom-right-radius:6px }
+.bubble.k{ background:var(--sky-soft); color:var(--ink); align-self:flex-start; border-bottom-left-radius:6px }
+.who{ font:700 12px/16px var(--body); letter-spacing:.08em; text-transform:uppercase; color:var(--muted) }
+
+/* 8 timeline */
+.tl{ list-style:none; position:relative; padding-left:22px }
+.tl::before{ content:""; position:absolute; left:5px; top:8px; bottom:8px; width:2px; background:var(--line) }
+.tl li{ position:relative; padding-bottom:13px }
+.tl li:last-child{ padding-bottom:0 }
+.tl li::before{ content:""; position:absolute; left:-22px; top:6px; width:12px; height:12px; border-radius:50%; background:var(--surface); border:3px solid var(--muted) }
+.tl li.h::before{ border-color:var(--honey) } .tl li.c::before{ border-color:var(--clay); background:var(--clay) } .tl li.s::before{ border-color:var(--sage); background:var(--sage) }
+.tl .d{ font:500 14px/18px var(--mono); color:var(--muted) }
+.tl .t{ font-size:15.5px; line-height:21px; color:var(--ink) }
+
+/* 9 numbers */
+.stat{ flex:1 }
+.stat .num{ font:500 60px/62px var(--display); color:var(--clay); letter-spacing:-.01em }
+.stat .num small{ font-size:26px; color:var(--ink-2); font-weight:500 }
+.stat .lab{ font:700 16px/22px var(--body); margin-top:6px }
+.stat .det{ font-size:14px; line-height:20px; color:var(--ink-2); margin-top:4px }
+.tri{ display:flex; gap:16px }
+.tri > div{ flex:1; border-radius:20px; padding:16px 20px }
+.tri h4{ font:600 18px/24px var(--display); margin-bottom:6px }
+.tri li{ font-size:14.5px; line-height:20px }
+.tri ul.clean li + li{ margin-top:4px }
+.tri ul.clean li::before{ top:7px }
+
+/* 10 tracks */
+table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background:var(--surface); border:1px solid var(--line); border-radius:20px; overflow:hidden }
+.tracks th{ text-align:left; font:700 12px/16px var(--body); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:10px 16px; background:var(--surface-2) }
+.tracks td{ padding:9px 16px; vertical-align:top; font-size:14.5px; line-height:20px; color:var(--ink-2); border-top:1px solid var(--line) }
+.tracks td:first-child{ font:600 17px/22px var(--display); color:var(--ink); width:168px }
+.tracks td:first-child small{ display:block; font:600 12px/16px var(--body); color:var(--muted); margin-top:2px }
+.tracks td:nth-child(2){ width:470px }
+
+/* 11 */
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; width:100% }
+.grid2 .card{ padding:18px 22px }
+.grid2 .card h3{ font-size:21px; display:flex; align-items:center; gap:10px; margin-bottom:6px }
+.grid2 li{ font-size:16.5px; line-height:23px }
+.dot{ width:12px; height:12px; border-radius:50%; flex:none }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide s-title">
+  <div class="left">
+    <div class="eyebrow">Junction 2026 · Aalto University “Beyond the Clinic”</div>
+    <div class="word">Kaiku</div>
+    <div class="promise">A friend on your desk, a voice in your ear, a clearer record for your care team.</div>
+    <div class="sub">Staying well at home after TMS depression treatment, so that a change from someone’s usual is seen while there is still time to check in.</div>
+    <div class="links">
+      <div><span>Demo</span>harrish21raj--kaiku-web.us-east.modal.run/?id=aino</div>
+      <div><span>Source</span>github.com/Harrishayy/kaiku · MIT</div>
+    </div>
+  </div>
+  <div class="right"><div class="halo"></div><img src="assets/mascot.svg" alt="Kaiku mascot"></div>
+  <div class="fine">Research prototype. Not a medical device, not a crisis service. Every record shown is simulated.</div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="eyebrow">The problem</div>
+  <h1>After treatment, the clinic goes quiet.</h1>
+  <p class="lede">For weeks someone saw the person almost every day. Then the course ends, and nobody is looking.</p>
+  <div class="body" style="flex-direction:column; gap:20px">
+    <div class="visits">
+      <div class="vlab">During the course</div>
+      <div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="vlab" style="color:var(--muted)">At home</div>
+      <div class="dots quiet"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="big" style="display:flex; gap:24px">
+    <div class="card grow">
+      <h3>Around twenty visits, then none</h3>
+      <p>A TMS course means around twenty clinic visits. When they end, the daily view of how the person is doing disappears with them.</p>
+    </div>
+    <div class="card grow">
+      <h3>The benefit can fade</h3>
+      <p>“Even if the treatment is successful, there is a risk that depression returns.”</p>
+      <p>A further course can help, if worsening is noticed in time.</p>
+    </div>
+    <div class="card grow">
+      <h3>Staying well is left to the person</h3>
+      <p>Depression takes away the initiative to open an app and report. One questionnaire or one wearable is a thin signal.</p>
+      <p>Help at home is “difficult or expensive”, and clinicians want to follow people “without adding to their workload”.</p>
+    </div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:0">Quotes: Aalto University, “Beyond the Clinic” challenge brief (Junction 2026). Other statements: our submission text, docs/submission.md. We quote no outcome statistics.</p>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">02</div></div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="eyebrow">The idea</div>
+  <h1>Devices people already live with feed one trusted record.</h1>
+  <p class="lede">In a clinic nobody judges a person from one measurement. Kaiku applies that at home.</p>
+  <div class="body" style="flex-direction:column; gap:20px; justify-content:space-between">
+    <div class="flow">
+      <div class="step">
+        <div class="k">1 · At home</div><h3>Devices</h3>
+        <div class="dev">
+          <div>iPhone <small>check-ins, games, talk</small></div>
+          <div>Mac <small>rhythm of the day</small></div>
+          <div>Watch <small>optional, daily summary</small></div>
+          <div>Meta glasses <small>walks</small></div>
+          <div>Desk robot <small>morning ritual</small></div>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="k">2 · Derived numbers only</div><h3>One record</h3>
+        <p>Every reading keeps its real device source. The cloud rejects raw audio and images.</p>
+        <p style="margin-top:8px">Four <b>signal groups</b>: check-ins &amp; robot · walks &amp; outings · apps · watch.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="k">3 · A fixed, readable rule</div><h3>Consensus</h3>
+        <p>Each group is compared with the person’s <b>own usual</b>. One file combines them. No model takes part.</p>
+        <div class="states">
+          <span class="chip c-sage">Stable</span><span class="chip c-honey">Watch</span><span class="chip c-clay">Needs a call</span><span class="chip c-muted">Insufficient</span><span class="chip c-crisis">Safety</span>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="k">4 · Intelligence layer</div><h3>Meaning</h3>
+        <p><b>Gemma</b> words what the record means; code checks every finding and renders every number.</p>
+        <p style="margin-top:8px"><b>Gemini Live</b> is the voice that meets the feeling.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="k">5 · One page</div><h3>Practitioner</h3>
+        <p>Who is worth a check-in, and the evidence one click away.</p>
+        <p style="margin-top:8px">The person gets a companion, never a score.</p>
+      </div>
+    </div>
+    <div style="display:flex; gap:20px">
+      <div class="band grow"><b>Missing data</b> reads “insufficient”, never “stable”.</div>
+      <div class="band grow"><b>Groups that share one phone</b> are not presented as independent devices.</div>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">03</div></div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="eyebrow">What the person experiences</div>
+  <h1>Three minutes a day, and a voice that meets the feeling.</h1>
+  <div class="body" style="gap:32px">
+    <div class="phones">
+      <div class="phone"><img src="assets/phone-choices.jpg" alt="Your choices screen"><div class="cap">First run<span>Every signal has its own switch. Nothing listens until she says so.</span></div></div>
+      <div class="phone"><img src="assets/phone-today.jpg" alt="Today's path screen"><div class="cap">Today’s path<span>Weather check, Kaiku’s suggestion, two short games.</span></div></div>
+      <div class="phone"><img src="assets/phone-lantern.jpg" alt="Lantern game"><div class="cap">Measured games<span>Lantern: reaction time, read only against her own usual.</span></div></div>
+    </div>
+    <div class="col grow">
+      <div class="card col" style="gap:10px">
+        <div class="who">Talk · one exchange from our attunement evals</div>
+        <div class="bubble me">My sister cancelled again. I’d been looking forward to seeing her all week.</div>
+        <div class="bubble k">…that sounds really disappointing. Do you want to talk about it?</div>
+        <p class="small">The rule Kaiku is tested on: meet that feeling first. No advice, no cheering, no change of subject.</p>
+      </div>
+      <div class="card soft">
+        <ul class="clean">
+          <li>Games show what grew, never a time, a count or “slow”.</li>
+          <li>Kaiku remembers only what she asks it to, and forgets on request.</li>
+          <li>The games are short activities inspired by research, not validated clinical tests.</li>
+        </ul>
+      </div>
+      <p class="small">Screens: the real app in the iOS simulator; “Aino” is a simulated person.</p>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">04</div></div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="eyebrow">Meta glasses · the walk</div>
+  <h1>Outside, Kaiku moves to her glasses: head up, hands free.</h1>
+  <div class="body">
+    <div class="col" style="width:290px">
+      <div class="placeholder grow"><div class="ph">[photo: real glasses walk]</div><div class="why">Replace with a photo from the filmed walk in docs/glasses-test.md</div></div>
+      <img class="shot" src="assets/glasses-see-toggle.jpg" alt="Let Kaiku see toggle, off by default">
+      <p class="small">The switch in the app: off by default.</p>
+    </div>
+    <div class="col grow">
+      <div class="card">
+        <h3>A voice in the ear, and seeing only if she opts in</h3>
+        <ul class="clean">
+          <li>The iPhone registers with the glasses through Meta’s Device Access Toolkit; Kaiku’s voice travels over Bluetooth, so the same conversation goes from kitchen to street.</li>
+          <li>Glasses off or out of range: the walk continues on the phone, and the record says so.</li>
+          <li>With “Let Kaiku see” on, she can ask “what am I looking at?”</li>
+        </ul>
+      </div>
+      <div style="display:flex; gap:16px">
+        <div class="card grow" style="background:var(--sky-soft); border-color:transparent; box-shadow:none">
+          <h3 style="font-size:19px">What leaves the phone</h3>
+          <ul class="clean sky">
+            <li>Walk minutes and steps, as numbers</li>
+            <li>Her voice, to Gemini Live, during a conversation she started</li>
+            <li>Seeing on: about one picture a second, to that Live conversation only</li>
+          </ul>
+        </div>
+        <div class="card grow" style="background:var(--sage-soft); border-color:transparent; box-shadow:none">
+          <h3 style="font-size:19px">What never does</h3>
+          <ul class="clean sage">
+            <li>No picture is saved, logged or sent to Kaiku’s cloud or the care team</li>
+            <li>Raw head motion stays on the iPhone</li>
+            <li>Nothing in a picture decides a state; people in view are never described</li>
+          </ul>
+        </div>
+      </div>
+      <p class="small"><b>Where it stands:</b> registration and connection confirmed on real Gen 2 glasses (Developer Mode). Voice and seeing are proven with Meta’s Mock Device Kit and a real Gemini Live call on an injected picture; not yet on the real glasses. <b>Pilot path:</b> one signal group in a clinic pilot, on an invite-only release channel.</p>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">05</div></div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="eyebrow">The robot · morning ritual</div>
+  <h1>An app waits. The robot speaks first.</h1>
+  <div class="body">
+    <div class="col" style="width:360px">
+      <div style="position:relative">
+        <img class="shot" src="assets/robot-render.jpg" alt="CAD render of the robot" style="height:288px; object-fit:cover">
+        <div class="tag" style="left:12px; top:12px">CAD render</div>
+      </div>
+      <div class="placeholder grow"><div class="ph">[photo: robot on the desk]</div><div class="why">Replace the render with the built robot</div></div>
+    </div>
+    <div class="col grow">
+      <div style="display:flex; gap:16px">
+        <div class="card grow"><span class="chip c-sky plain">1 · Dial</span><p style="margin-top:10px">Three turns of an ear: mood, energy, last night’s sleep.</p></div>
+        <div class="card grow"><span class="chip c-honey plain">2 · Breath</span><p style="margin-top:10px">One guided breath while the chest glows.</p></div>
+        <div class="card grow"><span class="chip c-clay plain">3 · Drum</span><p style="margin-top:10px">A short rhythm tapped on its head. No typing anywhere.</p></div>
+      </div>
+      <div class="card">
+        <ul class="clean">
+          <li><b>Raw numbers stay at home.</b> Every session’s raw readings are stored locally; only derived numbers go to the record.</li>
+          <li><b>Pulse is measured or missing.</b> A reading counts only after the finger-cradle quality check passes. Otherwise it is absent, never estimated.</li>
+          <li><b>Gemini supplies the voice;</b> it can move the ritual only through a small set of checked commands.</li>
+          <li>The drum is inspired by research on improvisational music therapy. The chest light is not light therapy.</li>
+        </ul>
+      </div>
+      <p class="small"><b>Where it stands:</b> one Atech 14-port board carries eight modules (screen eyes, encoder ear, button, two LED grids, neck motor, speaker, microphone). The full firmware compiles; microphone and one LED grid have run on the board. The whole ritual runs on software twins that speak the same messages; not yet end to end on the physical robot.</p>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">06</div></div>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="eyebrow">The intelligence layer</div>
+  <h1>Code decides. Gemma interprets. Gemini Live speaks.</h1>
+  <div class="body">
+    <div class="col" style="width:400px">
+      <div class="card grow" style="padding:16px 20px"><span class="chip c-muted plain">Rules</span>
+        <p style="margin-top:8px">Code sets the state, renders every number and owns the crisis path. Versioned by hash; same answer tomorrow.</p></div>
+      <div class="card grow" style="padding:16px 20px"><span class="chip c-sky plain">Gemma 4</span>
+        <p style="margin-top:8px">Chooses the evidence and words what it means. Each finding is validated: cited records must exist, forbidden wording is rejected, and a deterministic summary is the fallback.</p></div>
+      <div class="card grow" style="padding:16px 20px"><span class="chip c-clay plain">Gemini Live</span>
+        <p style="margin-top:8px">Kaiku’s one voice. It speaks from a small prepared card and never sees scores or consensus states.</p></div>
+    </div>
+    <div class="col grow">
+      <div class="card" style="background:var(--sky-soft); border-color:transparent; box-shadow:none; padding:16px 20px">
+        <div class="who" style="color:var(--sky)">Gemma’s reading of the whole record · from the live dashboard, simulated record</div>
+        <p style="color:var(--ink); font-size:18px; line-height:26px; margin-top:6px">“Last night’s sleep, late-night screen time, and middle of the night’s sleep moved away from usual first, followed by mood, energy, and first interaction time.”</p>
+      </div>
+      <img class="shot" src="assets/agent-trace.png" alt="Agent trace panel">
+      <p class="small"><b>Agent trace, real screenshot.</b> Every review shows its ten steps. Five of the first six are rules; Gemma makes one call, “interpretation only, no numbers”. In this prototype Gemma runs through the hosted API (gemma-4-26b-a4b-it).</p>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">07</div></div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="eyebrow">The practitioner dashboard</div>
+  <h1>One page: who is worth a check-in, and why.</h1>
+  <div class="body">
+    <div style="width:800px; position:relative; align-self:flex-start">
+      <img class="shot" src="assets/dashboard-review.png" alt="Practitioner dashboard for the simulated person Aino">
+      <div class="tag" style="right:14px; top:-12px; background:var(--clay)">Simulated record · real public deployment</div>
+    </div>
+    <div class="col grow">
+      <div class="card" style="padding:18px 22px">
+        <div class="who" style="margin-bottom:10px">Aino’s sixteen days (simulated)</div>
+        <ul class="tl">
+          <li class="h"><div class="d">6 Nov</div><div class="t">First signals move: sleep, late-night screen time</div></li>
+          <li class="c"><div class="d">9 Nov</div><div class="t"><b>“Needs a call”</b> raised from the daily signals</div></li>
+          <li class="c"><div class="d">10 Nov</div><div class="t">The care team calls; PHQ-9 is 11 of 27</div></li>
+          <li class="s"><div class="d">12–13 Nov</div><div class="t">Back within her usual; PHQ-9 is 8 of 27</div></li>
+        </ul>
+      </div>
+      <div class="band" style="font:500 21px/28px var(--display)">The flag was on the page a day before the call.</div>
+      <p class="small">Observed in an authored record, not proof of cause. A care action is recorded in Kaiku; it contacts nobody.<br><span class="mono" style="font-size:11.5px; white-space:nowrap">harrish21raj--kaiku-web.us-east.modal.run/?id=aino</span></p>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">08</div></div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="eyebrow">Does it work?</div>
+  <h1>On people: unknown. On synthetic courses, here is what the rule does.</h1>
+  <div class="body" style="flex-direction:column; gap:16px">
+    <div class="card" style="display:flex; gap:28px; padding:20px 28px">
+      <div class="stat"><div class="num">0.08</div><div class="lab">false flags per person-week</div><div class="det">About one unneeded “worth a check-in” per person every three months. False “needs a call”: 0.00–0.01.</div></div>
+      <div class="stat"><div class="num">96<small> %</small></div><div class="lab">of moderate changes flagged</div><div class="det">71 % reach “needs a call”. A sudden drop is flagged in about two days, a slow slide in about a week.</div></div>
+      <div class="stat"><div class="num">21<small> %</small></div><div class="lab">of mild changes reach “needs a call”</div><div class="det">Mild change is mostly missed (68 % get a flag). Skipped check-ins hide a decline.</div></div>
+    </div>
+    <p class="small" style="margin-top:-4px">Our own generator, 40 synthetic people per course, assumptions published in docs/validation.md. Reproduce with <span class="mono">make calibrate</span>. The numbers describe the rule, not people: no clinical validation, no sensitivity or specificity claimed.</p>
+    <div class="tri grow">
+      <div style="background:var(--sage-soft)"><h4 style="color:var(--sage)">Real today</h4>
+        <ul class="clean sage">
+          <li>Public deployment on Modal, with the Gemma-written review</li>
+          <li>Signed app installed on a real iPhone</li>
+          <li>Real Gemma and Gemini Live calls (injected speech and picture)</li>
+          <li>Glasses registration on real Gen 2; microphone and LED grid on the Atech board</li>
+        </ul></div>
+      <div style="background:var(--honey-soft)"><h4 style="color:var(--honey)">Simulated</h4>
+        <ul class="clean honey">
+          <li>Every person’s record, including Aino’s</li>
+          <li>The calibration courses</li>
+          <li>The robot’s parts, as software twins that speak the same messages</li>
+        </ul></div>
+      <div style="background:var(--clay-soft)"><h4 style="color:var(--clay)">Pending physical tests</h4>
+        <ul class="clean">
+          <li>A walk on the real glasses</li>
+          <li>The ritual end to end on the physical robot</li>
+          <li>Real microphones and Apple Health</li>
+          <li>Testers beyond the project lead</li>
+        </ul></div>
+    </div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">09</div></div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="eyebrow">Six challenges, one person’s day</div>
+  <h1>What each jury can click or see.</h1>
+  <div class="body" style="margin-top:18px">
+    <table class="tracks">
+      <tr><th>Challenge</th><th>What we show</th><th>Proof</th></tr>
+      <tr><td>Aalto<small>Beyond the Clinic</small></td><td>Sense, respond, learn: four signal groups against her own usual, a fixed consensus, a practitioner page, a learner that favours what she responded to.</td><td>The public dashboard · calibration in docs/validation.md</td></tr>
+      <tr><td>Gemini API</td><td>Gemini Live is Kaiku’s one voice on phone, Mac, glasses and robot, with tool calls that move a ritual and a walk. Short-lived tokens, TTS, embeddings.</td><td>Real Live call with injected speech and a picture; the Talk tab in the app</td></tr>
+      <tr><td>Gemma</td><td>Gemma 4 chooses evidence and words the review; code validates each finding and renders every number.</td><td>Dashboard → Kaiku’s review → Agent trace (10 steps)</td></tr>
+      <tr><td>Modal</td><td>API, dashboard and database served from one deployed app; scheduled analytics; a parallel simulation of synthetic people; a scale-to-zero GPU class for Gemma.</td><td>The demo URL on slide 1 · one cold Gemma call on a Modal H100 (default stays the hosted API)</td></tr>
+      <tr><td>Meta<small>AI glasses</small></td><td>Audio-first walk companion through the Device Access Toolkit; opt-in seeing; the walk survives the glasses coming off.</td><td>Registration on real Gen 2 · You → Glasses check self-test · real walk pending</td></tr>
+      <tr><td>Atech<small>Real World</small></td><td>The robot’s head on one 14-port board with eight modules, linked to the hub over MQTT.</td><td>firmware/atech-head compiles; microphone and LED grid on the board · live loop pending</td></tr>
+    </table>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">10</div></div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="eyebrow">Safety and privacy</div>
+  <h1>The careful parts are the ones no model touches.</h1>
+  <div class="body" style="flex-direction:column; gap:16px; justify-content:space-between">
+    <div class="grid2">
+      <div class="card"><h3><span class="dot" style="background:var(--crisis)"></span>A crisis path without AI</h3>
+        <ul class="clean">
+          <li>A fixed phrase list, PHQ-9 item 9, or a long press on the robot’s button.</li>
+          <li>Shows a pre-written message with the MIELI Crisis Helpline 09 2525 0111 and 112; sets “Safety” on the dashboard.</li>
+          <li><b>It contacts nobody yet,</b> and it will miss indirect language. Kaiku is not a crisis service.</li>
+        </ul></div>
+      <div class="card"><h3><span class="dot" style="background:var(--sage)"></span>No raw media stored</h3>
+        <ul class="clean sage">
+          <li>Only derived numbers reach the record; the cloud rejects anything else.</li>
+          <li>Camera frames are processed in memory. Audio goes to Gemini Live only during a conversation she started.</li>
+          <li>Honest limit: Google can keep Live session state for up to 24 hours.</li>
+        </ul></div>
+      <div class="card"><h3><span class="dot" style="background:var(--sky)"></span>Consent per signal</h3>
+        <ul class="clean sky">
+          <li>One switch per signal, pausable, and listed in “What Kaiku saw today”.</li>
+          <li>Conversation text is kept only after a separate opt-in.</li>
+          <li>Practitioners never see conversations or the notebook.</li>
+        </ul></div>
+      <div class="card"><h3><span class="dot" style="background:var(--honey)"></span>The glasses-frames rule (D43)</h3>
+        <ul class="clean honey">
+          <li>Off by default. Frames may go to that walk’s Gemini Live conversation, and nowhere else.</li>
+          <li>No state, observation or crisis trigger ever comes from a picture.</li>
+          <li>Not a navigation or hazard aid; never describes or identifies people.</li>
+        </ul></div>
+    </div>
+    <div class="band">Kaiku is a research prototype. It is not a medical device or a crisis service, and it does not replace clinicians. It reports a change from a person’s usual; a practitioner decides what that means.</div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">11</div></div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="eyebrow">What’s next</div>
+  <h1>The pilot is the calibration.</h1>
+  <p class="lede">The thresholds come from simulation and the research literature. The next step is to set them from real days, with a clinical partner.</p>
+  <div class="body" style="flex-direction:column; gap:20px; justify-content:space-between">
+    <div style="display:flex; gap:24px; align-items:stretch">
+    <div class="card grow">
+      <h3>A pilot with a neuromodulation unit</h3>
+      <ul class="clean">
+        <li>Eight to twelve weeks after a TMS course: does the consensus agree with clinician assessment?</li>
+        <li>How often do people complete the ritual?</li>
+        <li>How many check-ins is a practitioner asked to make per person?</li>
+        <li>Then: thresholds set on real data, and the EU medical-device pathway.</li>
+      </ul>
+    </div>
+    <div class="card grow">
+      <h3>Before that, this week’s honest list</h3>
+      <ul class="clean honey">
+        <li>Film one walk on the real glasses.</li>
+        <li>Run the ritual live on the physical robot.</li>
+        <li>Put it in the hands of people outside the team.</li>
+      </ul>
+    </div>
+    <div class="col" style="width:290px">
+      <div class="card soft" style="text-align:center; padding:18px">
+        <img src="assets/mascot.svg" alt="" style="width:108px; height:108px">
+        <div class="who" style="margin-top:4px">Team</div>
+        <div style="font:500 22px/30px var(--display)">Harrish · Edwin · Xavier</div>
+      </div>
+      <div class="card" style="padding:16px 18px">
+        <div class="who">Demo</div><div class="mono" style="font-size:12.5px; line-height:18px">harrish21raj--kaiku-web<wbr>.us-east.modal.run/?id=aino</div>
+        <div class="who" style="margin-top:8px">Source</div><div class="mono" style="font-size:12.5px; line-height:18px">github.com/Harrishayy/kaiku</div>
+      </div>
+    </div>
+    </div>
+    <div class="band" style="font:500 24px/32px var(--display); padding:18px 24px">A friend on your desk, a voice in your ear, a clearer record for your care team.</div>
+  </div>
+  <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype, not a medical device · every record shown is simulated</div><div class="n">12</div></div>
+</section>
+
+</body>
+</html>

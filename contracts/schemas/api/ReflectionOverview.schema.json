@@ -1,5 +1,59 @@
 {
   "$defs": {
+    "ReflectionDay": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "declined": {
+          "default": false,
+          "title": "Declined",
+          "type": "boolean"
+        },
+        "part": {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening"
+          ],
+          "title": "Part",
+          "type": "string"
+        },
+        "themes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Themes",
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valence"
+        }
+      },
+      "required": [
+        "date",
+        "part"
+      ],
+      "title": "ReflectionDay",
+      "type": "object"
+    },
     "SourceCount": {
       "additionalProperties": false,
       "properties": {
@@ -30,6 +84,14 @@
       "title": "Bright",
       "type": "integer"
     },
+    "days": {
+      "description": "the last 14 days, oldest first",
+      "items": {
+        "$ref": "#/$defs/ReflectionDay"
+      },
+      "title": "Days",
+      "type": "array"
+    },
     "declined": {
       "description": "the person asked to stop or did not want to talk",
       "minimum": 0,
@@ -57,7 +119,8 @@
       "type": "boolean"
     },
     "summary": {
-      "maxLength": 300,
+      "description": "the fortnight in one or two sentences; counts are 7 days",
+      "maxLength": 400,
       "title": "Summary",
       "type": "string"
     },

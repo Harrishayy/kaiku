@@ -92,7 +92,8 @@ def test_gemma_findings_are_verified_rendered_and_cached(aino, monkeypatch):
     assert [f.cites for f in by_model] == [["source:robot", "week:mood"], ["source:glasses"]]
     assert any("of 5" in fact for fact in by_model[0].facts)  # numbers come from code, beside the model's words
     check = next(s for s in out.trace if s.step == "validate")
-    assert check.rejected == {"unknown_citation": 1, "numbers_in_prose": 1, "direction_mismatch": 1,
+    # "Mood is back up" about a measure the course has still away is a contradiction with the record
+    assert check.rejected == {"unknown_citation": 1, "numbers_in_prose": 1, "contradiction": 1,
                               "causal_claim": 1, "wording": 1}
     # the model left Apps and Watch out: code adds their recorded change, and says so
     added = [f for f in out.review.findings if f.by == "template"]

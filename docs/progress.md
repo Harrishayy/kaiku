@@ -1037,3 +1037,43 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   tuned on synthetic signals; Modal GPU proven by one smoke call only (default provider stays hosted); challenge
   PDFs with venue credentials were in earlier commits of this public repo (now untracked; history not rewritten).
 - Next: lead runs `docs/glasses-test.md`; redeploy the Modal API; record the video (`docs/demo-narrative.md`).
+
+## 2026-11-14 07:25 — Claude Code — reflections end to end + daily account on the dashboard
+- Did: cloud: `reflections.days[]`, fortnight summary, `course.events` kinds `reflection_low` / `reflection_lighter`,
+  daily account parts with side-of-usual qualifiers and missing routines; the seeded record gains 11 short
+  reflections through the episode route (labels from the rule labeller, sequence pinned in a test). web: Daily
+  account panel (replaces Evidence by day) with a reflections strip; graph tile shows the top learned items.
+  Modal: API redeployed (authenticated mode; admin and patient routes return 401 without a token).
+- Verified: `make check` 794 passed; web typecheck/lint/25 tests/build; Playwright at three sizes; live LAN service
+  restarted on this code and the record reseeded with per-home reset.
+- Contract changes: additive (`reflections.days`, two course event kinds).
+- Broken/blocked: no Gemma-written overview citing reflections has been observed yet (no paid call this round);
+  the deployed API is not seeded (its secret holds tokens this machine does not have).
+
+## 2026-11-14 08:30 — Claude Code — judge-review fixes, recordings, app bugs found by driving it as a user
+- Did: cloud: one `status_line` reconciling rule state and course; `comparison.since_low`; seeded record reshaped
+  so the flag (9 Nov, daily signals) precedes the care call and PHQ-9 (10 Nov); human names for unnamed records;
+  one provenance value. web: status line under the state, since-low comparison first. demo: five paced iPhone
+  simulator clips + a dashboard clip (`demo/recordings/`, git-ignored), `demo/video_shotlist.md` maps shots to clips.
+  apple: Talk hang fixed (a lazy stack with a state-writing sentinel looped while the keyboard was up), honest
+  voice-unavailable states, completed path stops persist, Motion asked only when a walk starts, top safe-area
+  backdrop, readable Glasses check, "Continue without connecting" as the primary setup action.
+- Verified: `make check`; `swift test` 183 (8 skips); the five `DemoTourTests` flows and `TalkComposerTests` on the
+  simulator; install-only on the locked iPhone.
+- Broken/blocked: independent review scored the entry 36–70 per challenge as it stands: no video or deck, nothing
+  run on real glasses, robot or microphone, one tester. Mac screen video needs Screen Recording permission.
+- Next (humans): Atech Discord post + live loop on the board; film `docs/glasses-test.md` and a real voice exchange;
+  five outside testers; video (≤ 2:00) and deck; seed the Modal deployment (needs its tokens).
+
+## 2026-11-14 09:30 — Claude Code — closing pass: public record, deck, draft cut, on-screen fixes
+- Did: Modal public demo seeded (`/?id=aino`; separate secret `kaiku-demo-runtime`, volume `kaiku-demo-data`,
+  spend cap $3, admin routes closed; the seed accepts our own deployed demo only when named in `KAIKU_SEED_REMOTE`
+  with the admin credential). Review rejects self-contradicting overviews and directive "consider" lines;
+  time-of-day measures read later/earlier. Deck `demo/deck/kaiku-deck.pdf` (12 slides, two photo placeholders).
+  Draft cut builder `demo/draft_cut.py` + narration (14 s of placeholder cards for real-device shots). apple: top
+  safe-area strip on every scrolling screen, newest Talk reply above the composer with the keyboard up, sprouts on
+  the Seed shelf end picture, design-system rows in "What Kaiku saw".
+- Verified: `make check`; `swift test` 183; simulator screenshots of each fixed screen; a Gemma-written review
+  citing reflections on the live record; public URL checked from outside (dashboard 200, admin 401).
+- Broken/blocked: nothing run on real glasses, robot, Atech board or a real microphone; no outside testers; the
+  draft cut and deck carry placeholders; credential PDFs remain in older commits (history not rewritten).

@@ -20,6 +20,8 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from kaiku_contracts.config import get
+
 from ..analytics.metrics import parse_ts
 from ..llm import gemma, ledger
 from ..llm.errors import LlmUnavailable
@@ -68,9 +70,12 @@ def rule(turns: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
     low, bright = len(LOW.findall(text)), len(BRIGHT.findall(text))
     valence = "low" if low > bright else "bright" if bright > low else "neutral"
+    declined = bool(STOP.search(text))
+    if declined and not low and not bright and len(text.split()) <= 12:
+        valence = None  # they only said they did not want to talk: nothing to read a mood from
     hits = Counter({theme: len(re.findall(rf"\b(?:{words})", text, re.I)) for theme, words in THEME_WORDS.items()})
     themes = [theme for theme, n in hits.most_common(3) if n]
-    return {"valence": valence, "themes": themes, "declined": bool(STOP.search(text)), "by": "rule"}
+    return {"valence": valence, "themes": themes, "declined": declined, "by": "rule"}
 
 
 def checked(raw: str) -> dict[str, Any]:
@@ -129,8 +134,11 @@ def nightly(store: Store, home_id: str, gen: Any = None) -> dict[str, int]:
     all_rows = rows(store, home_id)
     transcripts = {t["episode_id"]: t["turns"] for t in store.transcripts(home_id)}
     done = failed = 0
-    for episode_id, row in all_rows.items():
-        if row.get("by") != "rule" or episode_id not in transcripts:
+    limit = int(get("insight", "reflection_labels_per_night", 4))  # newest first; the rest keep their rule label
+    for episode_id, row in sorted(all_rows.items(), key=lambda kv: kv[1]["start"], reverse=True):
+        if done >= limit:
+            break
+        if row.get("by") != "rule" or episode_id not in transcripts or not row.get("valence"):
             continue
         try:
             label = checked(gen(_SYSTEM + "\nPERSON:\n" + _person_text(transcripts[episode_id]),

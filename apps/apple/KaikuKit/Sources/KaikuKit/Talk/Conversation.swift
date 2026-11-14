@@ -113,6 +113,8 @@ public final class Conversation {
     }
 
     public var isLive: Bool { live != nil && phase != .unavailable }
+    /// Live setup was acknowledged at least once in this conversation.
+    public private(set) var wasLive = false
 
     /// Tests: open the conversation on an already-made session, without the bootstrap request.
     func adoptForTest(session s: CompanionSessionResponse, app: AppModel) {
@@ -136,7 +138,7 @@ public final class Conversation {
         endedByLimit = false; framesSent = 0; lastPersonAt = nil; lastKaikuAt = nil
         lines = []; personTurnID = nil; kaikuTurnID = nil
         inputFinalObserved = false; outputFinalObserved = false; audioTurnEnded = false
-        toolsUsed = []; everReady = false; failures = 0; muted = false; handle = nil
+        toolsUsed = []; everReady = false; wasLive = false; failures = 0; muted = false; handle = nil
         sessionPairing = app.pairing
         pairingRevision = app.pairingRevision
         seenEvents = []; pendingContext = []
@@ -444,6 +446,7 @@ public final class Conversation {
             failures = 0
             if phase == .connecting || phase == .unavailable { phase = muted ? .muted : .listening }
             audio.setMic(!muted && phase != .paused)
+            wasLive = true
             if !everReady { everReady = true; onReady?(); startContextRefresh() } else { onReconnected?() }
         case .modelOutput:
             if audioTurnEnded {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InsightNode } from '@contracts';
-import { PAD, edgeWords, fitLabel, layoutGraph, learnedView } from '@/lib/graph-layout';
+import { PAD, edgeStrength, edgeWords, fitLabel, layoutGraph, learnedView } from '@/lib/graph-layout';
 import { TONE_WORD } from '@/lib/insight';
 import type { DashData } from '../data';
 import { Chip, EmptyState, toneChip } from '../kit';
@@ -18,7 +18,7 @@ const KIND: Record<InsightNode['kind'], string> = {
 };
 const R: Record<InsightNode['kind'], number> = { person: 9, signal_group: 7, activity: 7, care_action: 7, shared_topic: 6, measure: 5, routine: 5 };
 const SQUARE = new Set<InsightNode['kind']>(['signal_group', 'routine', 'care_action']);
-const ROW_TILE = 36;
+const ROW_TILE = 35;
 const ROW_WIDE = 56;
 
 type Pick = { type: 'node'; id: string } | { type: 'edge'; key: string } | null;
@@ -41,7 +41,7 @@ function useWidth(present: boolean) {
   return { ref, w };
 }
 
-export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: string) => void }) {
+export function GraphPanel({ data, onMetric, maximised, onMaximise }: { data: DashData; onMetric: (m: string) => void; maximised: boolean; onMaximise: () => void }) {
   const graph = data.view.graph;
   const hasGraph = graph.nodes.length > 1;
   const [all, setAll] = useState(false);
@@ -49,7 +49,11 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
   const [hover, setHover] = useState<string | null>(null);
   const { ref, w } = useWidth(hasGraph);
   const size = w >= 760 ? 'wide' : w >= 460 ? 'mid' : 'tile';
-  const learned = useMemo(() => learnedView(graph, size === 'wide' ? { left: 9, right: 10 } : size === 'mid' ? { left: 6, right: 6 } : { left: 4, right: 3 }), [graph, size]);
+  const learned = useMemo(() => learnedView(graph, size === 'wide' ? { left: 9, right: 10 } : size === 'mid' ? { left: 6, right: 6 } : { left: 2, right: 2 }), [graph, size]);
+  const tile = size === 'tile' && !maximised;
+  // the few strongest learned links are labelled without being asked
+  const loud = useMemo(() => new Set([...learned.edges].filter((e) => edgeStrength(e) >= 1.2).sort((a, b) => edgeStrength(b) - edgeStrength(a)).slice(0, 4).map(edgeKey)), [learned]);
+  const strongest = (id: string) => [...learned.edges].filter((e) => (e.src === id || e.dst === id) && e.rel !== 'did' && e.rel !== 'has_signal').sort((a, b) => edgeStrength(b) - edgeStrength(a))[0];
   const hasLearned = learned.nodes.length > 0;
   const showAll = all || !hasLearned;
   useEffect(() => setPicked(null), [showAll, data.patient.id]);
@@ -112,7 +116,7 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
     // a narrow tile has no room for labels on both sides: everything fans out to the right of the person instead
     const single = w < 460;
     const nodes = single ? learned.nodes.map((n, i) => ({ ...n, side: 'right' as const, row: i })) : learned.nodes;
-    const h = Math.max(150, (single ? nodes.length : learned.rows) * ROW_H + 16);
+    const h = Math.max(single ? 96 : 150, (single ? nodes.length : learned.rows) * ROW_H + 8);
     const cx = single ? 28 : w / 2;
     const colGap = single ? 64 : Math.min(150, Math.max(54, w * 0.16));
     const xOf = (side: 'left' | 'right') => (side === 'left' ? cx - colGap : cx + colGap);
@@ -139,8 +143,11 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
           // the label sits a third of the way in from the outer node, clear of the crowded middle
           const outer = a.side === 'centre' ? b : a;
           const inner = outer === a ? b : a;
-          const lx = same ? a.x + bow * 0.75 : outer.x + (inner.x - outer.x) * 0.38;
-          const ly = same ? (a.y + b.y) / 2 : outer.y + (inner.y - outer.y) * 0.12;
+          // the label starts just past the outer node and rides above its line, clear of the crowded middle
+          const towards = inner.x >= outer.x ? 1 : -1;
+          const lx = same ? a.x + bow * 0.75 : outer.x + towards * (outer.r + 10);
+          const ly = same ? (a.y + b.y) / 2 : outer.y - 10;
+          const anchor = same ? 'middle' : towards > 0 ? 'start' : 'end';
           return (
             <g
               key={key}
@@ -158,9 +165,9 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
             >
               <path className="d-edge-hit" d={d} />
               <path className={`d-edge d-edge-${e.rel}${e.rel === 'did' ? '' : ' is-learned'}`} d={d} strokeWidth={e.rel === 'helped' ? 1.5 + e.weight * 2.5 : 1.5} />
-              {on && (
-                <text className="d-edge-label" x={lx} y={ly} textAnchor="middle" dominantBaseline="central">
-                  {fitLabel(edgeWords(e), Math.min(320, w - 40))}
+              {(on || (!single && loud.has(key))) && (
+                <text className="d-edge-label" x={lx} y={ly} textAnchor={anchor} dominantBaseline="central">
+                  {fitLabel(edgeWords(e), 230)}
                 </text>
               )}
             </g>
@@ -177,6 +184,8 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
         {nodes.map((n) => {
           const p = pos.get(n.node.id)!;
           const dir = n.side === 'left' ? -1 : 1;
+          const link = single ? strongest(n.node.id) : undefined;
+          const sub = link && loud.has(edgeKey(link)) ? edgeWords(link) : (n.sub ?? (link ? edgeWords(link) : null));
           return (
             <g
               key={n.node.id}
@@ -186,13 +195,13 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
             >
               <rect className="d-node-hit" x={n.side === 'left' ? -room - 6 : -p.r - 6} y={-ROW_H / 2 + 3} width={room + p.r + 12} height={ROW_H - 6} rx={8} />
               {mark(n.node.kind, p.r)}
-              <text className="d-node-name" x={dir * (p.r + 8)} y={n.sub ? -7 : 0} textAnchor={n.side === 'left' ? 'end' : 'start'} dominantBaseline="central">
+              <text className="d-node-name" x={dir * (p.r + 8)} y={sub ? -7 : 0} textAnchor={n.side === 'left' ? 'end' : 'start'} dominantBaseline="central">
                 {fitLabel(n.node.label, room - p.r - 10)}
                 <title>{n.node.label}</title>
               </text>
-              {n.sub && (
+              {sub && (
                 <text className="d-node-sub" x={dir * (p.r + 8)} y={9} textAnchor={n.side === 'left' ? 'end' : 'start'} dominantBaseline="central">
-                  {fitLabel(n.sub, (room - p.r - 10) * 1.1)}
+                  {fitLabel(sub, (room - p.r - 10) * 1.1)}
                 </text>
               )}
             </g>
@@ -252,17 +261,21 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
     <div className={`d-graph${wide ? ' is-wide' : ''}`}>
       <div className="d-toolbar">
         <span className="d-strong">{showAll ? 'Everything in the record' : 'What Kaiku learned'}</span>
-        {hasLearned && (
+        {tile && !showAll && learned.hidden > 0 ? (
+          <button type="button" className="d-btn" onClick={onMaximise} aria-label={`Show ${learned.hidden} more learned items in the maximised view`}>
+            +{learned.hidden} more
+          </button>
+        ) : hasLearned ? (
           <button type="button" className="d-btn" aria-pressed={all} onClick={() => setAll(!all)}>
             {all ? 'Show learned only' : 'Show all measures'}
           </button>
-        )}
+        ) : null}
       </div>
       <div className="d-graph-main">
         <div className={showAll ? 'd-graph-scroll' : 'd-graph-fit'} ref={ref}>
           {drawing}
         </div>
-        <div className="d-graph-side">
+        <div className="d-graph-side" hidden={tile && !showAll && !selNode && !selEdge}>
           {selNode ? (
             <div className="d-citation" role="status">
               <div className="d-row-head">
@@ -319,7 +332,7 @@ export function GraphPanel({ data, onMetric }: { data: DashData; onMetric: (m: s
           )}
           {!showAll && learned.hidden > 0 && (
             <p className="d-meta">
-              {learned.hidden} more learned {learned.hidden === 1 ? 'item' : 'items'} {wide ? 'are in the full view (Show all measures).' : 'appear when this panel is maximised.'}
+              {learned.hidden} more learned {learned.hidden === 1 ? 'item is' : 'items are'} in the full view (Show all measures).
             </p>
           )}
           <ul className="d-legend" aria-label="Graph key">

@@ -91,7 +91,9 @@ struct MomentsTimeline: View {
 
     static let sources: [String: (String, String)] = [
         "robot": ("circle.hexagongrid.fill", "source.robot"), "glasses": ("eyeglasses", "source.glasses"),
-        "phone": ("iphone", "source.phone"), "laptop": ("laptopcomputer", "source.laptop"),
+        // The cloud's "laptop" here is the apps signal group (games and check-ins from the iPhone OR the Mac),
+        // not a device, so it must not be shown as "Mac".
+        "phone": ("iphone", "source.phone"), "laptop": ("app.badge", "source.apps"),
         "wearable": ("applewatch", "source.wearable"),
     ]
 

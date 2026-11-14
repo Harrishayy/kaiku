@@ -89,6 +89,7 @@ struct OnbPage<Content: View, Actions: View>: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .kTopEdgeBackdrop()
             VStack(spacing: KaikuTokens.Space.s2) { actions }
                 .padding(.horizontal, KaikuPlatform.sidePadding)
                 .padding(.vertical, KaikuTokens.Space.s4)
@@ -193,7 +194,7 @@ struct PairStep: View {
                 Text(T(app.serviceDiscovery.searching ? "service.searching" : "service.none")).kText(.body)
                     .foregroundStyle(KaikuTokens.Colors.ink2).wraps()
                 if step != nil, !app.isPaired {
-                    Text(T("setup.connect.skip.note")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                    Text(T("setup.connect.offline.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
                 }
             }
             if invalid || app.serviceDiscovery.failed {
@@ -218,6 +219,11 @@ struct PairStep: View {
         } actions: {
             if app.isPaired {
                 Button(T("common.continue"), action: next).buttonStyle(.kPrimary)
+            } else if step != nil {
+                // First run: nobody should have to type an address to get in. Going on without a service is the
+                // main path; looking again is secondary; the address field stays under Advanced.
+                Button(T("setup.connect.offline.cta"), action: next).buttonStyle(.kPrimary)
+                Button(T("service.search")) { app.serviceDiscovery.start() }.buttonStyle(.kGhost)
             } else {
                 Button(T("service.search")) { app.serviceDiscovery.start() }.buttonStyle(.kSecondary)
                 Button(T("common.skip"), action: next).buttonStyle(.kGhost)
@@ -398,7 +404,18 @@ struct HelloStep: View {
     @State private var value = 3
     @State private var finished = false
     @State private var heard = false
+    /// nil = still trying; true = audio really started; false = no voice (say so, never claim it).
+    @State private var voicePlayed: Bool?
     @Environment(AppModel.self) private var app
+
+    static func voiceNoteKey(paired: Bool, played: Bool?) -> String {
+        guard paired else { return "setup.hello.silent" }
+        switch played {
+        case nil: return "setup.hello.loading"
+        case true?: return "setup.hello.voice"
+        case false?: return "setup.hello.unavailable"
+        }
+    }
 
     var body: some View {
         OnbPage(back: finished ? nil : back, step: .hello) {
@@ -411,10 +428,10 @@ struct HelloStep: View {
             } else {
                 Bubble(T("setup.hello.title"), big: true)
                 HStack(spacing: KaikuTokens.Space.s3) {
-                    Text(T(app.isPaired ? "setup.hello.voice" : "setup.hello.silent")).kText(.footnote)
+                    Text(T(Self.voiceNoteKey(paired: app.isPaired, played: voicePlayed))).kText(.footnote)
                         .foregroundStyle(KaikuTokens.Colors.muted).wraps()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    if app.isPaired {
+                    if app.isPaired, voicePlayed == true {
                         Button(T("setup.hello.again")) { hello() }.buttonStyle(KButtonStyle(.ghost, fullWidth: false)).fixedSize()
                     }
                 }
@@ -449,6 +466,6 @@ struct HelloStep: View {
 
     private func hello() {
         guard app.isPaired else { return }
-        VoiceLines.shared.play("welcome.hello", lang: app.language, fallback: T("setup.hello.title"))
+        Task { voicePlayed = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("setup.hello.title")) }
     }
 }

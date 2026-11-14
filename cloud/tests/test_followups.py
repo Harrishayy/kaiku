@@ -131,3 +131,68 @@ def test_first_run_voice_lines_are_servable(client, monkeypatch, tmp_path, key):
     path.write_bytes(b"RIFF....WAVE")
     served = client.get(f"/v1/voice/{key}")
     assert served.status_code == 200 and served.headers["content-type"] == "audio/wav"
+
+
+def test_state_and_course_are_one_statement_and_facts_agree_with_themselves(client):
+    """The judge's contradictions: a flag beside 'recovering', a 'still below' that quotes the usual value, and
+    provenance that differs between two fields of the same record."""
+    import re
+
+    from kaiku_cloud.jobs import single_person
+
+    end = service.today_local() - timedelta(days=1)
+    store = client.app.state.store
+    single_person.populate(store, single_person.build(end), end)
+    out = PatientInsight.model_validate(client.get("/v1/patients/aino/insight", params={"generate": "false"}).json())
+    first = end - timedelta(days=15)
+
+    def d(day_no):
+        day = first + timedelta(days=day_no - 1)
+        return f"{day.day} {day:%b}"
+
+    # signals move (day 9) -> Kaiku flags (day 12) -> the care team rings (day 13) -> PHQ-9 that evening -> back
+    assert out.state == "needs_call" and out.course.phase == "recovering"
+    assert out.status_line.startswith(f"Needs a call was raised on {d(12)} from the daily signals and acknowledged "
+                                      f"on {d(13)} by Riitta Salo.")
+    assert f"{out.course.back} of {out.course.moved} measures that moved away are back within their usual" in out.status_line
+    assert "It still shows because" in out.status_line and "day 16 of 21" in out.status_line
+    events = out.course.events
+    onset = min(e.date for e in events if e.kind == "onset")
+    call = next(e.date for e in events if e.kind == "care_action")
+    high = next(e.date for e in events if e.kind == "phq9" and "11 of 27" in e.text)
+    flag = next(s.date for s in out.state_history if s.state == "needs_call")
+    assert onset < flag < call == high and (call - flag).days == 1 and (flag - onset).days == 3
+    assert min(e.date for e in events if e.kind == "back_in_range") >= call  # nothing came back before the call
+    # the comparison says the same thing as the course, and explains the week numbers beside it
+    c = out.comparison
+    assert c.since_low.startswith(f"{out.course.back} of {out.course.moved} measures") and "since the low on" in c.since_low
+    assert c.summary.startswith(c.since_low) and "still include the low days" in c.summary
+    assert len(c.back_in_range) == out.course.back and len(c.back_in_range) + len(c.still_away) == out.course.moved
+    # a "still away" fact quotes a day that was away: never the same printed value as the usual
+    for e in events:
+        if e.kind in ("onset", "still_away"):
+            value, usual = re.search(r": (.+?) \(usual (.+?)\)", e.text).groups()
+            assert value != usual, e.text
+    # one truth about provenance
+    consensus = client.get("/v1/patients/aino/consensus").json()
+    assert out.coverage.simulated is True and consensus["simulated"] is True
+    assert out.evidence and all(r.simulated for r in out.evidence)
+
+
+def test_id_only_homes_get_a_readable_label_and_safety_text_is_honest(client):
+    post(client, [make("obs.self_report", {"item": "mood", "value": 3, "channel": "phone"}, source="phone",
+                       home_id="4e69b76caa5c")])
+    listed = client.get("/v1/patients").json()["patients"][0]
+    today = service.today_local()
+    assert listed["display_name"] == f"New record · started {today.day} {today:%b}" and listed["id"] == "4e69b76caa5c"
+    assert "4e69" not in listed["headline"].lower()
+    out = client.get("/v1/patients/4e69b76caa5c/insight", params={"generate": "false"}).json()
+    assert out["display_name"].startswith("New record") and out["graph"]["nodes"][0]["label"].startswith("New record")
+    assert "too early" in out["status_line"] or "Fewer than two" in out["status_line"]
+    assert service.display_name("demo-aino") == "Aino" and service.display_name("sim-eero") == "Eero"
+    post(client, [make("obs.safety_flag", {"trigger": "phrase", "handled_locally": True}, source="phone",
+                       home_id="4e69b76caa5c")])
+    flagged = client.get("/v1/patients/4e69b76caa5c/insight", params={"generate": "false"}).json()
+    assert flagged["state"] == "safety" and "it contacts nobody" in flagged["status_line"]
+    text = str(flagged) + str(client.get("/v1/patients/4e69b76caa5c/consensus").json())
+    assert not any(w in text.lower() for w in ("has been notified", "was notified", "will be contacted", "alerted"))

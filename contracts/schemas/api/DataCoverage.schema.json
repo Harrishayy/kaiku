@@ -191,7 +191,7 @@
       "type": "integer"
     },
     "simulated": {
-      "description": "every observation in this record carries sim=true",
+      "description": "the record contains simulated observations (envelope sim flag); the same value as Consensus.simulated and RecordCitation.simulated; per-type counts show how many",
       "title": "Simulated",
       "type": "boolean"
     },

@@ -10,10 +10,12 @@ public struct SeedGame: View {
     public init() {}
 
     public var body: some View {
-        GameShell(titleKey: "game.seeds.t", scene: .warm, introText: T("sd.intro"), introState: .idle, endText: T("sd.end"),
+        // Read here, in this view's own body: the end picture must be rebuilt when the result arrives.
+        let grown = sprouts
+        return GameShell(titleKey: "game.seeds.t", scene: .warm, introText: T("sd.intro"), introState: .idle, endText: T("sd.end"),
                   demo: { SeedDemo() },
                   field: { finish in SeedField { session, n in sprouts = n; finish(session) } },
-                  endArt: { SproutRow(count: sprouts, rows: 3).frame(width: 150, height: 110) })
+                  endArt: { SproutRow(count: grown, rows: 3).frame(width: 150, height: 110) })
     }
 }
 
@@ -223,6 +225,7 @@ struct SeedField: View {
                 .id(engine.index)
                 .transition(rm ? .opacity : .opacity.combined(with: .scale(scale: 0.9)))
                 .accessibilityLabel(T("a11y.seedpacket", n: engine.current + 1))
+                .accessibilityIdentifier("seed-pot-\(engine.answer)")   // UI-test hook (demo recording): never spoken or shown
         }
         .frame(maxHeight: .infinity)
         .animation(KaikuTokens.Easing.gentleOut(0.12), value: engine.index)

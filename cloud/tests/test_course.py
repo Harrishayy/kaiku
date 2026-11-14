@@ -200,6 +200,9 @@ def test_reflections_become_summary_evidence_only_when_shared(mira, monkeypatch)
     assert any(e.rel == "talked_about" for e in out.graph.edges)
     day = next(d for d in out.days if d.date == (NOW - timedelta(days=3)).date())
     assert "evening reflection low (sleep" in day.text
+    assert out.reflections.summary.startswith("Reflections with Kaiku sounded low in 2 of 2 between ")
+    assert "lighter since" in out.reflections.summary and len(out.reflections.days) == 4
+    assert {"reflection_low", "reflection_lighter"} <= {e.kind for e in out.course.events}
     # nightly: Gemma may relabel from the opted-in transcript, with the fixed lists only
     monkeypatch.setattr(gemma_hosted, "generate", lambda p, **kw: json.dumps({"valence": "neutral", "themes": ["family"]}))
     assert affect.nightly(mira.app.state.store, "mira")["labelled"] == 3
@@ -214,12 +217,13 @@ def test_daily_account_reads_like_a_day(mira):
     out = get(mira, generate="false")
     assert [d.date for d in out.days] == sorted((d.date for d in out.days), reverse=True) and len(out.days) == 14
     hard = next(d for d in out.days if d.date == (NOW - timedelta(days=6)).date())
-    assert hard.text.startswith(f"{hard.date:%a} {hard.date.day} {hard.date:%b}: morning ritual, walk (30 min)")
-    assert "mood 2 of 5" in hard.text and "away from usual: " in hard.text and "late-night screen time" in hard.text
+    assert hard.text.startswith(f"{hard.date:%a} {hard.date.day} {hard.date:%b}: morning ritual done; out for 30 min")
+    assert "mood 2 of 5" in hard.text and "late-night screen time above usual" in hard.parts
+    assert "mood dial below usual" in hard.parts
     care = next(d for d in out.days if d.date == (NOW - timedelta(days=5)).date())
     assert "care team follow-up" in care.text
     calm = next(d for d in out.days if d.date == (NOW - timedelta(days=1)).date())
-    assert "away from usual" not in calm.text and "mood 4 of 5" in calm.text
+    assert " usual" not in calm.text and "mood 4 of 5" in calm.text
 
 
 def test_a_new_robot_signal_reaches_the_review_without_cloud_code(mira, monkeypatch):
@@ -265,3 +269,77 @@ def test_a_new_robot_signal_reaches_the_review_without_cloud_code(mira, monkeypa
                                                                          insight.service.active_criteria(mira.app.state.store)),
                                             NOW.date(), insight.OBS_LABEL)
     assert any(r.id == "obs:hrv_session" and r.detail.startswith("Not measured") for r in pulse)
+
+
+NAMES = {"mood": "Mood dial", "energy": "Energy dial", "sleep": "Last night's sleep (dial)",
+         "watch_sleep": "Sleep (watch)", "getup": "First interaction time", "late_night": "Late-night screen time (00–05)"}
+
+
+@pytest.mark.parametrize(("text", "back", "away", "issue"), [
+    # the live contradiction: energy named as back and as still away in one paragraph
+    ("Last night's sleep, energy dial and first interaction time have come back within usual, but mood and energy "
+     "remain away from usual.", {"sleep", "energy", "getup", "mood"}, set(), "contradiction"),
+    ("Mood, energy and sleep remain a sustained change.", {"mood", "energy", "sleep", "watch_sleep"}, set(),
+     "contradiction"),
+    ("Mood has returned to usual.", set(), {"mood"}, "contradiction"),
+    ("Mood is back within usual since the care team's call; energy is still below usual.", {"mood"}, {"energy"}, None),
+    ("Mood is back within usual, although the rule still counts the low days and keeps the flag.", {"mood"}, set(), None),
+    ("Sleep is still short.", {"sleep"}, {"watch_sleep"}, None),  # 'sleep' is two measures: not decidable, not rejected
+    ("Late-night screen time moved first and mood followed.", {"mood", "late_night"}, set(), None),
+])
+def test_a_measure_is_back_or_still_away_never_both(text, back, away, issue):
+    assert insight.consistency_issue(text, back, away, NAMES) == issue
+
+
+def test_contradicting_overview_is_replaced_by_the_course_summary_and_traced(mira, monkeypatch):
+    prompts = []
+
+    def reply(prompt, **kw):
+        prompts.append(prompt)
+        return json.dumps({
+            "overview": {"text": "Late-night screen time moved first and mood followed; late-night screen time is "
+                                 "back within usual but mood remains away from usual.",
+                         "cites": ["course:summary", "course:back"]},
+            "findings": [
+                {"theme": "improvement", "cites": ["course:back", "course:back_in_range:mood"],
+                 "meaning": "Mood and late-night screen time are both back within usual since the care team's call.",
+                 "consider": "Check if the frequency of walks can be increased."},
+                {"theme": "improvement", "cites": ["course:back", "course:back_in_range:late_night"],
+                 "meaning": "Late-night screen time came back first, and mood followed it back a day later.",
+                 "consider": "Ask what made the late nights stop."},
+                {"theme": "improvement", "cites": ["course:back_in_range:mood"],
+                 "meaning": "Mood remains a sustained change this week, as before the care team's call.",
+                 "consider": None}]})
+
+    monkeypatch.setattr(gemma_hosted, "generate", reply)
+    out = get(mira)
+    assert '"id": "status:line"' in prompts[0] and '"id": "course:back"' in prompts[0]
+    assert '"now": "back within usual"' in prompts[0] and "Still flagged by the rule" in prompts[0]
+    assert out.review.by == "gemma" and out.review.overview is None  # the UI shows course.summary in its place
+    step = next(s for s in out.trace if s.step == "overview")
+    assert step.status == "rejected" and step.rejected == {"contradiction": 1} and "course summary" in step.detail
+    kept = [f for f in out.review.findings if f.by == "gemma"]
+    assert [f.consider for f in kept] == ["Ask what made the late nights stop."]
+    check = next(s for s in out.trace if s.step == "validate")
+    assert check.rejected == {"directive": 1, "contradiction": 1}
+    assert all(not insight._DIRECTIVE.search(f.consider or "") for f in out.review.findings)
+
+
+def test_time_of_day_measures_read_later_or_earlier_never_higher(client):
+    events = []
+    for d in range(30, 0, -1):
+        ts = (NOW - timedelta(days=d)).replace(hour=9 if d <= 6 else 5, minute=20)  # first seen hours later lately
+        events.append(make("obs.presence", {"distance_cm": 60, "first_of_day": True, "dwell_s": 120}, source="hub", home_id="lark", ts=ts))
+        events.append(make("obs.self_report", {"item": "mood", "value": 4}, source="hub", home_id="lark", ts=ts))
+    post(client, events)
+    c = client.get("/v1/patients/lark/consensus").json()
+    robot = next(s for s in c["sources"] if s["source"] == "robot")
+    getup = next(e for e in robot["evidence"] if e["metric"] == "getup")
+    assert getup["summary"].startswith("First interaction time later than usual on ")
+    week_text = json.dumps(client.get("/v1/patients/lark/week").json())
+    out = get(client, "lark", generate="false")
+    text = c["explanation"]["text"] + json.dumps(c["explanation"]["per_source"]) + week_text + out.model_dump_json()
+    for phrase in ("time higher", "time lower", "(later = up) higher", "sleep (later = up) higher", "change from usual (higher)"):
+        assert phrase not in text
+    assert "First interaction time: change from usual (later)" in week_text
+    assert any("first interaction time later than usual" in p for d in out.days for p in d.parts)

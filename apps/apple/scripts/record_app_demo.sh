@@ -1,28 +1,42 @@
 #!/usr/bin/env bash
 # Record demo videos of the Kaiku Apple apps against a local seeded cloud (no paid calls: template LLM, no Live).
-#   apps/apple/scripts/record_app_demo.sh [ios|mac|post|all]      (default all)
-# Env: KAIKU_TEST_CLOUD (default http://127.0.0.1:18020, must be seeded: python -m sim.seed_demo --reset),
+#   apps/apple/scripts/record_app_demo.sh [ios|mac|mac-snap|post|all]      (default all = ios mac post)
+# Env: KAIKU_TEST_CLOUD (default http://127.0.0.1:18020; must be seeded with the one person:
+#        uv run python -m kaiku_cloud.jobs.single_person --url $KAIKU_TEST_CLOUD), KAIKU_TEST_HOME (default aino),
+#      TESTS (ios: space-separated method:clip pairs; default the five flows a–e; extras: testF_Firefly:iphone-6-firefly
+#        testG_GlassesWalkSimulated:iphone-7-glasses-walk-simulated), SPEED (post: default 1 = real time), SHOTS (dir
+#        for step screenshots, default $OUT/shots),
 #      SIM_UDID (a booted-or-bootable iPhone simulator; default: one named "Kaiku Demo 17 Pro", created if missing),
-#      OUT (default demo/recordings), DERIVED (xcodebuild derived data, default $OUT/.dd).
-# ios : DemoTourTests (iOSUITests/DemoTourTests.swift), one raw simulator recording per test method.
+#      OUT (default demo/recordings), DERIVED (xcodebuild derived data, default ~/Library/Caches/kaiku-record-dd).
+# ios : DemoTourTests (iOSUITests/DemoTourTests.swift), one raw simulator recording per test method. The cloud is
+#       advertised over Bonjour as "$SERVICE_NAME" for the length of the run, so first-run setup finds it nearby.
 # mac : launches Kaiku Mac paired to the cloud and records the real screen (ffmpeg avfoundation, needs Screen
 #       Recording permission for the terminal) while switching tabs/games with -kaikuTab/-kaikuRoute relaunches,
 #       then -kaikuSimulateLate for the notch island peek. No Accessibility permission needed.
-# post: title card + trim + speed-up + ≤1080p h264 (< 25 MB) and a contact sheet PNG + preview GIF per clip.
+# mac-snap: no screen permission needed: in-app PNGs of the Mac panes → $OUT/mac-snapshots/ (stills, not video).
+# post: title card + trim + ≤1080p h264 (< 25 MB), a contact sheet PNG, a preview GIF and <clip>-steps.txt (the
+#       time code of every DEMO-STEP chapter in the final clip) per clip.
 set -eu   # no pipefail: ffmpeg -i / -list_devices exit non-zero by design
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 APPLE="$ROOT/apps/apple"
 CLOUD="${KAIKU_TEST_CLOUD:-http://127.0.0.1:18020}"
+HOME_ID="${KAIKU_TEST_HOME:-aino}"
+SERVICE_NAME="${KAIKU_TEST_SERVICE_NAME:-Kaiku home service}"
+TESTS="${TESTS:-testA_FirstRun:iphone-1-first-run testB_TodayPath:iphone-2-today-path testC_TodaySoFar:iphone-3-today-so-far testD_Talk:iphone-4-talk testE_YouAndGlassesCheck:iphone-5-you-glasses-check}"
 OUT="${OUT:-$ROOT/demo/recordings}"
 RAW="$OUT/raw"
-DERIVED="${DERIVED:-$OUT/.dd}"
+# Build products must live outside ~/Documents, ~/Desktop and ~/Downloads: a simulator app launched by XCUITest loads
+# test dylibs from the build folder, and macOS privacy protection blocks that open() forever (white screen, then
+# "Setting up automation session" times out after 60 s with kAXErrorServerNotFound).
+DERIVED="${DERIVED:-$HOME/Library/Caches/kaiku-record-dd}"
 FFMPEG="${FFMPEG:-$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)}"
 FONT="/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"
 [ -f "$FONT" ] || FONT="/System/Library/Fonts/Helvetica.ttc"
-mkdir -p "$RAW"
+SHOTS="${SHOTS:-$OUT/shots}"
+mkdir -p "$RAW" "$SHOTS"
 what="${1:-all}"
 
-curl -fsS "$CLOUD/healthz" >/dev/null || { echo "cloud not reachable at $CLOUD (start it + seed first)"; exit 1; }
+[ "$what" = post ] || curl -fsS "$CLOUD/healthz" >/dev/null || { echo "cloud not reachable at $CLOUD (start it + seed first)"; exit 1; }
 
 now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 
@@ -43,19 +57,38 @@ record_ios() {
   (cd "$APPLE" && xcodegen -q)
   xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$DERIVED" build-for-testing -quiet
-  xcrun simctl uninstall "$udid" fi.kaiku.app 2>/dev/null || true      # fresh first launch → onboarding
-  for t in test1Tour:iphone-tour test2GlassesWalk:iphone-glasses-walk test3Notification:iphone-notifications test4Health:iphone-health; do
+  # the recording cloud shows up on the "nearby services" step (Bonjour carries no home ID and no credentials)
+  local port="${CLOUD##*:}"; port="${port%%/*}"
+  dns-sd -R "$SERVICE_NAME" _kaiku-api._tcp local. "$port" service=kaiku-api path=/v1/discovery scheme=http v=1 >/dev/null 2>&1 & local adv=$!
+  trap "kill $adv 2>/dev/null || true" EXIT
+  for t in $TESTS; do
     local m="${t%%:*}" name="${t##*:}"
-    xcrun simctl io "$udid" recordVideo --codec h264 --force "$RAW/$name.mp4" & local rec=$!
+    case "$m" in testA_*)                                                  # fresh install → first run
+      xcrun simctl uninstall "$udid" fi.kaiku.app 2>/dev/null || true
+      # a pairing lives in the Keychain and survives an uninstall: clear it, on the dedicated simulator only
+      [ -n "${SIM_UDID:-}" ] || xcrun simctl keychain "$udid" reset 2>/dev/null || true;;
+    esac
+    xcrun simctl io "$udid" recordVideo --codec h264 --force "$RAW/$name.mp4" 2>"$RAW/$name.rec" & local rec=$!
+    # the first frame is written several seconds after the command starts: time zero is "Recording started"
+    for _ in $(seq 1 150); do grep -q "Recording started" "$RAW/$name.rec" 2>/dev/null && break; sleep 0.2; done
+    # The recording only gets going once the screen has changed: without this the first seconds of the app
+    # (the welcome screen) are missing from the video. Flip the appearance and back, on the home screen.
+    xcrun simctl ui "$udid" appearance dark 2>/dev/null || true; sleep 1.5
+    xcrun simctl ui "$udid" appearance light 2>/dev/null || true; sleep 1.5
     local t0; t0=$(now)
-    sleep 2
-    TEST_RUNNER_KAIKU_TEST_CLOUD="$CLOUD" xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" \
+    TEST_RUNNER_KAIKU_TEST_CLOUD="$CLOUD" TEST_RUNNER_KAIKU_TEST_HOME="$HOME_ID" TEST_RUNNER_KAIKU_SHOT_DIR="$SHOTS" \
+      TEST_RUNNER_KAIKU_TEST_SERVICE_NAME="$SERVICE_NAME" xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" \
       -destination "platform=iOS Simulator,id=$udid" -derivedDataPath "$DERIVED" test-without-building \
       -only-testing:"Kaiku iOS UITests/DemoTourTests/$m" 2>&1 | tee "$RAW/$name.log" | grep -E "DEMO-|passed|failed" || true
+    sleep 1
     kill -INT "$rec"; wait "$rec" 2>/dev/null || true
+    awk -v t0="$t0" '/DEMO-STEP/ {printf "%s %.2f\n", $2, $3 - t0}' "$RAW/$name.log" > "$RAW/$name.steps"
+    # the test's last moment in the app (after it, the recording shows the home screen): post cuts there
+    awk -v t0="$t0" '/DEMO-END/ {printf "%.2f\n", $2 - t0 - 0.3}' "$RAW/$name.log" > "$RAW/$name.end"
     # trim the home-screen wait before the app's first step (DEMO-STEP <name> <epoch>)
     awk -v t0="$t0" '/DEMO-STEP/ {printf "%.2f\n", ($3 - t0 > 3 ? $3 - t0 - 3 : 0); exit}' "$RAW/$name.log" > "$RAW/$name.trim"
   done
+  kill "$adv" 2>/dev/null || true
 }
 
 # --- Mac -------------------------------------------------------------------------------------------------------------
@@ -89,7 +122,7 @@ record_mac() {
   defaults write fi.kaiku.mac kaiku.consents -dict mac -bool true checkins -bool true walks -bool true
   defaults write fi.kaiku.mac kaiku.onboarded -bool true
   pkill -x Kaiku 2>/dev/null || true; sleep 1
-  "$app/Contents/MacOS/Kaiku" -kaikuSkipOnboarding YES -kaikuPairLink "$CLOUD/?home=demo-aino" -kaiku.lang en \
+  "$app/Contents/MacOS/Kaiku" -kaikuSkipOnboarding YES -kaikuPairLink "$CLOUD/?home=$HOME_ID" -kaiku.lang en \
     -AppleLanguages "(en)" -kaikuMute YES >/dev/null 2>&1 &
   sleep 3
   open -a "$app" "kaiku://today"           # a relaunch may not restore the window; a link always opens it
@@ -162,6 +195,25 @@ for i in range(n):
   mac_crop
 }
 
+# Stills when the terminal may not record the screen: the Debug build draws each pane itself (-kaikuSnapshot,
+# ImageRenderer: no real window, switches and text fields are placeholders) with an in-memory pairing, then quits.
+snap_mac() {
+  (cd "$APPLE" && xcodegen -q)
+  xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku Mac" -destination "platform=macOS" \
+    -derivedDataPath "$DERIVED" build -quiet
+  local app; app="$(mac_app)"; local dir="$OUT/mac-snapshots"; mkdir -p "$dir"
+  for v in today:today: play:play: lantern:play:lantern seeds:play:seeds talk:talk: days:days: you:you:; do
+    local name tab route; IFS=: read -r name tab route <<<"$v"
+    "$app/Contents/MacOS/Kaiku" -kaikuSnapshot "$dir/mac-$name.png" -kaikuSnapshotSize 980x720 \
+      -kaikuSnapshotPair "$CLOUD/?home=$HOME_ID" -kaikuSkipOnboarding YES -kaiku.lang en -AppleLanguages "(en)" \
+      -kaikuMute YES -kaikuInspectOnly YES -kaikuTab "$tab" ${route:+-kaikuRoute "$route"} >/dev/null 2>&1 &
+    local pid=$!
+    for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    kill "$pid" 2>/dev/null || true
+    [ -f "$dir/mac-$name.png" ] && echo "$dir/mac-$name.png" || echo "no snapshot for $name"
+  done
+}
+
 # Full-screen capture → two clips that show only Kaiku: the window + the notch above it (mac-tour), and the
 # menu bar popover under its status item (mac-menubar). Scale = captured pixels / screen points (2 on Retina).
 mac_crop() {
@@ -200,35 +252,62 @@ post() {
     [ -f "$f" ] || continue
     name=$(basename "${f%.*}")
     case "$name" in
-      iphone-tour) title="Kaiku — iPhone tour";;
-      iphone-glasses-walk) title="Kaiku — walk with Meta glasses (simulated)";;
-      iphone-notifications) title="Kaiku — check-in reminder";;
-      iphone-health) title="Kaiku — Apple Health sample sync";;
+      iphone-1-first-run) title="Kaiku — first run";;
+      iphone-2-today-path) title="Kaiku — today's path";;
+      iphone-3-today-so-far) title="Kaiku — Your days, today so far";;
+      iphone-4-talk) title="Kaiku — Talk";;
+      iphone-5-you-glasses-check) title="Kaiku — You, sharing choices and Glasses check";;
+      iphone-6-firefly) title="Kaiku — Firefly";;
+      iphone-7-glasses-walk-simulated) title="Kaiku — walk with glasses (simulated glasses)";;
       mac-tour) title="Kaiku — Mac app and notch island";;
       mac-menubar) title="Kaiku — Mac menu bar";;
       *) title="Kaiku — $name";;
     esac
     local trim=0; [ -s "$RAW/$name.trim" ] && trim=$(cat "$RAW/$name.trim")
-    local note="Local demo cloud · no Gemini key: Talk uses the typed offline path"
-    # 2.5 s title card, then the clip (speed ${SPEED:-1.25}x), scaled to ≤1080 high, h264 CRF tuned for < 25 MB
-    local vf="scale=-2:'min(1080,ih)',setpts=PTS/${SPEED:-1.25},fps=30,format=yuv420p"
+    # Wall clock → video time. The video runs some seconds ahead of the clock the test prints (about 2 to 10 s,
+    # different for every take, and not steady during the first seconds). The one sure mark is the end: the home screen comes
+    # back when the test ends (DEMO-END), which is the last big scene change in the video. Chapter marks are
+    # printed after a step's tap and pause, so a chapter starts a second or two after its screen appears.
+    local lag=0 cut=""
+    if [ -s "$RAW/$name.end" ] && [ -s "$RAW/$name.steps" ]; then
+      local still; still=$("$FFMPEG" -i "$f" -vf "select='gt(scene,0.2)',showinfo" -an -f null - 2>&1 | sed -n 's/.*pts_time:\([0-9.]*\).*/\1/p' | tail -1)
+      if [ -n "$still" ]; then
+        lag=$(awk -v e="$(cat "$RAW/$name.end")" -v h="$still" 'BEGIN { d = e + 0.4 - h; printf "%.2f", (d > 0 ? d : 0) }')
+        cut=":end=$(awk -v h="$still" 'BEGIN { printf "%.2f", h - 0.2 }')"
+        trim=$(awk -v l="$lag" 'NR == 1 { t = $2 - l - 3; printf "%.2f", (t > 0 ? t : 0) }' "$RAW/$name.steps")
+      fi
+    fi
+    local note="Simulated record · no model calls in this take · Kaiku words are on screen"
+    # 2.5 s title card, then the clip (speed ${SPEED:-1}x), scaled to ≤1080 high, h264 CRF tuned for < 25 MB
+    local vf="scale=-2:'min(1080,ih)',setpts=PTS/${SPEED:-1},fps=30,format=yuv420p"
     local size; size=$("$FFMPEG" -i "$f" 2>&1 | sed -n 's/.*Video:.* \([0-9]\{3,\}\)x\([0-9]\{3,\}\).*/\1 \2/p' | head -1)
     local w h; read -r w h <<<"$size"
-    "$FFMPEG" -y -loglevel error -i "$f" -f lavfi -i "color=c=0xF6EFE4:s=${w}x${h}:d=2.5:r=30" -filter_complex \
-      "[1:v]drawtext=fontfile='$FONT':text='$title':fontcolor=0x3B2F2A:fontsize=h/22:x=(w-text_w)/2:y=(h-text_h)/2,\
+    local card=2.5
+    if "$FFMPEG" -hide_banner -filters 2>/dev/null | grep -q " drawtext "; then
+      "$FFMPEG" -y -loglevel error -i "$f" -f lavfi -i "color=c=0xF6EFE4:s=${w}x${h}:d=2.5:r=30" -filter_complex \
+        "[1:v]drawtext=fontfile='$FONT':text='$title':fontcolor=0x3B2F2A:fontsize=h/22:x=(w-text_w)/2:y=(h-text_h)/2,\
 drawtext=fontfile='$FONT':text='$note':fontcolor=0x7A6A60:fontsize=h/55:x=(w-text_w)/2:y=(h/2)+h/14,$vf[t];\
-[0:v]trim=start=$trim,setpts=PTS-STARTPTS,$vf[c];[t][c]concat=n=2:v=1[v]" \
-      -map "[v]" -c:v libx264 -preset slow -crf "${CRF:-28}" -movflags +faststart "$OUT/$name.mp4"
+[0:v]trim=start=$trim$cut,setpts=PTS-STARTPTS,$vf[c];[t][c]concat=n=2:v=1[v]" \
+        -map "[v]" -c:v libx264 -preset slow -crf "${CRF:-28}" -movflags +faststart "$OUT/$name.mp4"
+    else                                   # this ffmpeg has no drawtext (built without freetype): no title card
+      card=0
+      "$FFMPEG" -y -loglevel error -i "$f" -vf "trim=start=$trim$cut,setpts=PTS-STARTPTS,$vf" \
+        -c:v libx264 -preset slow -crf "${CRF:-28}" -movflags +faststart "$OUT/$name.mp4"
+    fi
     # contact sheet (12 frames) + short GIF preview
     local dur; dur=$("$FFMPEG" -i "$OUT/$name.mp4" 2>&1 | sed -n 's/.*Duration: \([0-9:.]*\).*/\1/p' | awk -F: '{print $1*3600+$2*60+$3}')
     "$FFMPEG" -y -loglevel error -i "$OUT/$name.mp4" -vf "fps=12/$dur,scale=-2:480,tile=6x2:padding=6:color=white" -frames:v 1 "$OUT/$name-sheet.png"
     "$FFMPEG" -y -loglevel error -ss 3 -t 12 -i "$OUT/$name.mp4" -vf "fps=8,scale=-2:400:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer" "$OUT/$name.gif"
+    if [ -s "$RAW/$name.steps" ]; then      # chapter → time code in the final clip (title card, trim, speed)
+      awk -v trim="$trim" -v sp="${SPEED:-1}" -v card="$card" -v lag="$lag" '{t = card + ($2 - lag - trim) / sp; if (t < card) t = card; printf "%d:%04.1f  %s\n", int(t / 60), t - 60 * int(t / 60), $1}' \
+        "$RAW/$name.steps" > "$OUT/$name-steps.txt"
+    fi
     echo "$name: $(du -h "$OUT/$name.mp4" | cut -f1) ${dur}s"
   done
 }
 
 case "$what" in
-  ios) record_ios;; mac) record_mac;; post) post;;
+  ios) record_ios;; mac) record_mac;; mac-snap) snap_mac;; post) post;;
   all) record_ios; record_mac; post;;
-  *) echo "usage: $0 [ios|mac|post|all]"; exit 2;;
+  *) echo "usage: $0 [ios|mac|mac-snap|post|all]"; exit 2;;
 esac

@@ -194,32 +194,17 @@ public struct SawTodayView: View {
         KScreen(T("you.saw"), back: { dismiss() }) {
             EvidenceSection()
             Text(T("saw.head")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-            VStack(alignment: .leading, spacing: 0) {
+            KSection {
                 ForEach(Array(lines.enumerated()), id: \.element.id) { i, l in
-                    if i > 0 { DashedLine() }
-                    HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
-                        VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
-                            Text(l.text).kText(.footnote, mono: true).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                            if let s = l.signal, !app.allowed(s) {
-                                Text(T("saw.paused")).kText(.caption, mono: true).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        if let s = l.signal {
-                            Toggle(isOn: Binding(get: { app.consents[s] ?? false }, set: { app.consents[s] = $0 })) { EmptyView() }
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                                .tint(KaikuTokens.Colors.sage)
-                                .accessibilityLabel(T("sig.\(s.rawValue).t"))
-                        }
+                    if i > 0 { KDivider() }
+                    if let sig = l.signal {
+                        KToggleRow(title: l.text, detail: app.allowed(sig) ? nil : T("saw.paused"),
+                                   isOn: Binding(get: { app.consents[sig] ?? false }, set: { app.consents[sig] = $0 }))
+                    } else {
+                        KRow(title: l.text, accessory: .none)
                     }
-                    .padding(.vertical, KaikuTokens.Space.s3)
                 }
             }
-            .padding(.horizontal, KaikuTokens.Space.s4)
-            .padding(.vertical, KaikuTokens.Space.s2)
-            .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(KaikuTokens.Colors.surface))
-            .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).strokeBorder(KaikuTokens.Colors.line))
             Text(T("saw.never")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
             Text(T("saw.share")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
         }

@@ -9,11 +9,13 @@ public struct FireflyGame: View {
     public init() {}
 
     public var body: some View {
-        GameShell(titleKey: "game.firefly.t", scene: .night, introText: T("ff.intro"), introState: .happy,
+        // Read here, in this view's own body: the end picture must be rebuilt when the result arrives.
+        let grown = caught
+        return GameShell(titleKey: "game.firefly.t", scene: .night, introText: T("ff.intro"), introState: .happy,
                   endText: caught > 0 ? T("ff.end") : T("ff.end.none"),
                   demo: { FireflyDemo() },
                   field: { finish in FireflyField { session, n in caught = n; finish(session) } },
-                  endArt: { FireflyJar(count: caught, live: false).frame(width: 120, height: 150) })
+                  endArt: { FireflyJar(count: grown, live: false).frame(width: 120, height: 150) })
     }
 }
 

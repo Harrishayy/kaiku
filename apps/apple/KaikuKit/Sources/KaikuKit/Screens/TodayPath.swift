@@ -21,21 +21,30 @@ extension AppModel {
     var todayPath: [PathStep] {
         let weather = PathStep(route: .weather, titleKey: "today.card.weather.t", whyKey: "path.why.weather",
                                icon: "sun.max.fill", tone: .sky, minutes: 1, done: weatherDoneToday)
-        let suggested: PathStep
+        let tell = PathStep(route: .tell, titleKey: "game.tell.t", whyKey: "path.why.suggest", icon: "ear.fill",
+                            tone: .clay, minutes: 1, done: playedToday("tell"))
+        let walk = PathStep(route: .walk, titleKey: "game.lighthunt.t", whyKey: "path.why.suggest",
+                            icon: "figure.walk", tone: .sage, minutes: 15, done: walkedToday || playedToday("walk"))
+        let breathe = PathStep(route: .breathe, titleKey: "game.breathe.t", whyKey: "path.why.suggest", icon: "wind",
+                               tone: .sage, minutes: 1, done: playedToday("breathe"))
+        let current: PathStep
         switch nudge?.arm {
-        case .icbt_exercise?:
-            suggested = PathStep(route: .tell, titleKey: "game.tell.t", whyKey: "path.why.suggest", icon: "ear.fill",
-                                 tone: .clay, minutes: 1, done: playedToday("tell"))
-        case .daylight_walk? where KaikuPlatform.isPhone:
-            suggested = PathStep(route: .walk, titleKey: "game.lighthunt.t", whyKey: "path.why.suggest",
-                                 icon: "figure.walk", tone: .sage, minutes: 15, done: walkedToday)
-        default:
-            suggested = PathStep(route: .breathe, titleKey: "game.breathe.t", whyKey: "path.why.suggest", icon: "wind",
-                                 tone: .sage, minutes: 1, done: playedToday("breathe"))
+        case .icbt_exercise?: current = tell
+        case .daylight_walk? where KaikuPlatform.isPhone: current = walk
+        default: current = breathe
         }
+        let suggested = Self.suggestedStep(current: current, candidates: KaikuPlatform.isPhone ? [breathe, tell, walk] : [breathe, tell])
         return [weather, suggested] + GameRotation.today().enumerated().map { i, g in
             gameStep(g, whyKey: i == 0 ? "path.why.game" : "path.why.game2")
         }
+    }
+
+    /// The suggestion stop for today. A stop that was completed stays completed: when the suggestion changes
+    /// later in the day (a new nudge arrives), the one already done keeps its place instead of being replaced by
+    /// a new, undone one (the path used to drop from 4 of 4 to 3 of 4).
+    nonisolated static func suggestedStep(current: PathStep, candidates: [PathStep]) -> PathStep {
+        if current.done { return current }
+        return candidates.first(where: \.done) ?? current
     }
 
     private func gameStep(_ g: PlayGame, whyKey: String) -> PathStep {

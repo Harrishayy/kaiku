@@ -14,7 +14,7 @@ the Modal cloud from the same origin as `/v1`.
 
 | route | for | what |
 |---|---|---|
-| `/` (`?id=` picks a person; a compact switcher appears only when there is more than one) | practitioner | header strip (person, day of record and calibration stage, consensus in plain words, freshness) + panel grid + dock of collapsed panels. Default: Trends, Consensus now and Kaiku's review side by side; Routine and Knowledge graph join from 800 px height |
+| `/` (`?id=` picks a person; a compact switcher appears only when there is more than one) | practitioner | header strip (person, day of record and calibration stage, consensus in plain words, freshness) + panel grid + dock of collapsed panels. Default: Trends, Consensus now and Kaiku's review side by side; Daily account and Routine join from 800 px height |
 | `/health/` `/eval/` `/tune/` | team | node heartbeats, simulation, criteria tuning (admin token), inside `TeamShell` |
 
 ### Panels (`lib/layout.ts` → `PANEL_IDS`)
@@ -24,8 +24,8 @@ the Modal cloud from the same origin as `/v1`.
 | `consensus` | Consensus now | state, one-sentence meaning, calibration stage, each signal group's verdict with its evidence, last data, who actually sent the records (envelope `source`) and a "Simulated" marker; next steps; how to read it |
 | `review` | Kaiku's review | Gemma's overview of the whole record first, then findings: meaning and what to consider up front, the code-rendered facts as a collapsible compact evidence list with this week / week before / usual and the cited records; second tab: the agent trace (step, actor, model, latency, cache, validator rejections, fallback) |
 | `routine` | Routine | usual day by time of day, adherence this week, what helps with tries, interval and caveat |
-| `graph` | Knowledge graph | default: what was learned (`layer: learned`): the person in the middle, activities / routines / care actions on one side, the measures a learned link touches on the other, capped to what fits the panel; select a node or link for its evidence; "Show all measures" opens the full layered tree |
-| `evidence` | Evidence by day | per day: every measure against their usual, then the records (check-in ritual, outings, tasks and games, watch, screen rhythm, suggestions) with sender; conversations are never shown |
+| `graph` | Knowledge graph | default: what was learned (`layer: learned`): the person in the middle, activities / routines / care actions on one side, the measures a learned link touches on the other, capped to what fits the panel ("+N more" opens the maximised view), the strongest links labelled inline; select a node or link for its evidence; "Show all measures" opens the full layered tree |
+| `evidence` | Daily account | newest first: one line per day from `insight.days` (what was done as a line, mood / away from usual / reflection level / care team as chips), flagged-spell days tinted with the state tone; opening a day shows every measure against their usual and the records with sender; a compact reflections strip (level per day, counts, themes) only when the person shares, otherwise one calm line; conversation words never shown |
 | `care` | Care actions & notes | record an action with a note; the record's action log |
 | `ask` | Ask the record | grounded question and answer with citations |
 | `coverage` | Coverage | completeness per signal group per day; what each group sent, by whom |
@@ -69,7 +69,7 @@ components/  Mascot.tsx (brand mark from design/mascot.spec.json) · TeamShell.t
 lib/
   layout.ts         panel order, dock, slots(n) tiling of a 12 × 12 grid, viewport-aware default, saved-layout repair
   insight.ts        meaningOf() (every number against the person's usual), day signals, record stage, fallback derivations
-  evidence.ts       one plain sentence per observation, grouped by day
+  evidence.ts       one plain sentence per observation, grouped by day; dayChips() / dayValence() for the daily account
   graph-layout.ts   learnedView() (learned layer, routines folded into activities) + layered tree (one row per node)
   labels.ts         state / verdict labels from design/copy.json + the one state → tone map
   clinician.ts format.ts chart-domain.ts   units, dates, consensus sentence
@@ -123,7 +123,7 @@ make web                              # http://localhost:3000/
 
 ## Config & env
 `NEXT_PUBLIC_KAIKU_API` (dev only; empty = same origin). Layout is saved per browser under
-`kaiku.dashboard.layout.v4`; the practitioner's initials for actions under `kaiku.dashboard.by`.
+`kaiku.dashboard.layout.v5`; the practitioner's initials for actions under `kaiku.dashboard.by`.
 
 ## Health signal
 None of its own (a static site). The dashboard header shows data freshness and a "connection lost" chip when a

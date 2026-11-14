@@ -168,9 +168,9 @@ export function Dashboard() {
       case 'routine':
         return <RoutinePanel data={d} />;
       case 'graph':
-        return <GraphPanel data={d} onMetric={showMetric} />;
+        return <GraphPanel data={d} onMetric={showMetric} maximised={maximised === 'graph'} onMaximise={() => setMaximised('graph')} />;
       case 'evidence':
-        return <EvidencePanel data={d} day={day} onDay={setDay} onMetric={showMetric} />;
+        return <EvidencePanel data={d} day={day} onDay={(x) => setDay(x || null)} onMetric={showMetric} />;
       case 'care':
         return <CarePanel data={d} />;
       case 'ask':
@@ -341,9 +341,12 @@ function HeaderFacts({
       <div className="d-fact d-fact-wide">
         <span className="d-fact-k">Consensus</span>
         <span className="d-fact-v">
-          <Chip tone={chip.tone}>{chip.label}</Chip>
-          <span className="d-fact-note" title={consensusSentence(consensus)}>
-            {consensusSentence(consensus)}
+          <Chip tone={chip.tone}>
+            {chip.label}
+            {consensus.acknowledged_by ? ' · acknowledged' : ''}
+          </Chip>
+          <span className="d-fact-note" title={data.view.statusLine || consensusSentence(consensus)}>
+            {data.view.statusLine || consensusSentence(consensus)}
           </span>
         </span>
       </div>

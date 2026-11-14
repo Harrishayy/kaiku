@@ -77,7 +77,9 @@ public final class WalkModel {
     @ObservationIgnored private var toldSeeing = false
     @ObservationIgnored private var heardInEar = false
     #if os(iOS)
-    @ObservationIgnored private let pedometer = CMPedometer()
+    /// Created and used only once a walk starts: touching Core Motion (even `stopUpdates`) outside a walk made
+    /// the Motion & Fitness question appear during setup, when the service connected and walk state was cleared.
+    @ObservationIgnored private var pedometer: CMPedometer?
     @ObservationIgnored private var phoneSteps: Int?
     #endif
 
@@ -108,7 +110,9 @@ public final class WalkModel {
         #if os(iOS)
         KaikuLiveActivities.startWalk(at: now, lang: app.language.rawValue, state: contentState)
         if CMPedometer.isStepCountingAvailable() {
-            pedometer.startUpdates(from: now) { [weak self] data, _ in
+            let p = CMPedometer()
+            pedometer = p
+            p.startUpdates(from: now) { [weak self] data, _ in
                 let n = data?.numberOfSteps.intValue
                 Task { @MainActor in self?.phoneSteps = n }
             }
@@ -155,7 +159,7 @@ public final class WalkModel {
         adapter = nil
         Task { await previousAdapter?.stop() }
         #if os(iOS)
-        pedometer.stopUpdates(); phoneSteps = nil
+        pedometer?.stopUpdates(); pedometer = nil; phoneSteps = nil
         KaikuLiveActivities.endAllWalks()
         #endif
         start = nil; finished = nil; found = 0; steps = nil; glasses = .off; scope = nil
@@ -275,7 +279,7 @@ public final class WalkModel {
         latestFrame = nil
         setCamera(.off, note: nil)
         #if os(iOS)
-        pedometer.stopUpdates()
+        pedometer?.stopUpdates(); pedometer = nil
         #endif
         daylight.close()
         let outing = makeOuting(minutes: Date().timeIntervalSince(start) / 60)
@@ -295,6 +299,9 @@ public final class WalkModel {
                                            "saved": String(describing: saved)])
         VoiceLines.shared.play("walk.done", lang: app.language)
         if await Self.emitOuting(outing, id: envelopeID, start: start, simulated: simulated, scope: scope, app: app) {
+            // The path's walk stop is ticked at once and stays ticked today (the garden only shows the outing after
+            // the next full refresh).
+            app.playedDays["walk"] = AppModel.dayKey(Date())
             app.celebrate()
             await app.loadToday()
         }

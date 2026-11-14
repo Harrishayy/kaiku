@@ -48,6 +48,7 @@ public struct KScreen<Content: View>: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollDismissesKeyboard(.interactively)
+                .kTopEdgeBackdrop()
             }
         }
         .background(KBackdrop())
@@ -502,6 +503,16 @@ public struct MascotWithBubble: View {
 }
 
 public extension View {
+    /// Scrolled content must not run under the clock and Dynamic Island: a strip of the page colour fills the top
+    /// safe area above any scrolling screen (iPhone; the Mac window has its own toolbar).
+    @ViewBuilder func kTopEdgeBackdrop() -> some View {
+        #if os(iOS)
+        modifier(TopEdgeBackdrop())
+        #else
+        self
+        #endif
+    }
+
     /// Takes exactly the size it is offered and reports no minimum of its own. Non-scrolling panes (games, Talk)
     /// need this on macOS: NavigationSplitView measures its detail at a tiny width, where vertically fixed wrapping
     /// text reports a huge minimum height — the split view then outgrew the window and clipped the sidebar list,
@@ -510,3 +521,25 @@ public extension View {
         GeometryReader { g in self.frame(width: g.size.width, height: g.size.height) }
     }
 }
+
+#if os(iOS)
+/// An opaque strip of the page colour over the top safe area (status bar, Dynamic Island), with a soft fade
+/// below it, so scrolled content never shows under the clock.
+struct TopEdgeBackdrop: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            GeometryReader { g in
+                let inset = g.safeAreaInsets.top
+                VStack(spacing: 0) {
+                    KaikuTokens.Colors.bg.frame(height: inset)
+                    LinearGradient(colors: [KaikuTokens.Colors.bg, KaikuTokens.Colors.bg.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: KaikuTokens.Space.s2)
+                }
+                .offset(y: -inset)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+}
+#endif

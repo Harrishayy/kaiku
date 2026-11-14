@@ -136,7 +136,7 @@ switches the provisional baseline off.
 
 ### How to talk about calibration in the demo
 "Kaiku compares each person with their own usual, signal by signal, and only speaks up when a change holds for
-three of five days; two independent groups must agree before it says 'needs a call'. We have not tested it on
+three of five days; two signal groups must agree before it says 'needs a call'. We have not tested it on
 patients, so we do not quote an accuracy. In our own simulation, with assumptions we publish, it raises about one
 unneeded check-in per person every three months, finds a clear change in about two days and a slow slide in about
 a week, and misses most mild changes. In the first eight days it says 'not enough data'; from day 11 it can flag a

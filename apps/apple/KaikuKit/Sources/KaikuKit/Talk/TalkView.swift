@@ -28,6 +28,8 @@ final class TalkModel {
     private var denied = false
 
     var hasLive: Bool { conversation.isLive }
+    /// This conversation was really connected at some point (so "dropped" is a true word for it).
+    var everLive: Bool { conversation.wasLive }
     var lastSpokenDial: Int? { conversation.lastSpokenDial }
 
     var lines: [Line] {
@@ -206,6 +208,8 @@ public struct TalkView: View {
     @Environment(\.openURL) private var openURL
     @State private var showPairing = false
     @State private var followLatest = true
+    @State private var viewport: CGFloat = 0
+    @State private var keyboardUp = false
     @Environment(\.dynamicTypeSize) private var dts
     @Environment(\.kaikuStaticLayout) private var staticLayout
 
@@ -225,9 +229,13 @@ public struct TalkView: View {
     }
 
     public var body: some View {
-        KScreen(T("tab.talk"), scrolls: false, maxWidth: KaikuTokens.Size.contentMax, spacing: KaikuTokens.Space.s3) {
-            header
-            voiceButton
+        // With the keyboard up the conversation needs the room: the big title, the status header and the voice
+        // button step aside (the microphone button stays beside the field), so the newest message is in view.
+        KScreen(keyboardUp ? nil : T("tab.talk"), scrolls: false, maxWidth: KaikuTokens.Size.contentMax, spacing: KaikuTokens.Space.s3) {
+            if !keyboardUp {
+                header
+                voiceButton
+            }
             transcript
             Composer(text: $text, placeholder: T("talk.type"), mic: voiceAction,
                      micOn: model.micOn, micLabel: voiceControlTitle, micDisabled: model.mode == .connecting) {
@@ -306,15 +314,6 @@ public struct TalkView: View {
         } else { model.toggleListening() }
     }
 
-    /// Voice stopped for a reason that trying again can fix (not pairing, permission or the privacy pause).
-    private var canRetry: Bool {
-        guard model.mode == .scripted, app.isPaired else { return false }
-        switch model.conversation.unavailableReason {
-        case .connection, .voice, .audio: return true
-        default: return false
-        }
-    }
-
     private var voiceControlTitle: String {
         if !app.isPaired || model.conversation.unavailableReason == .pairing { return T("talk.voice.connect") }
         if model.mode == .denied { return T("talk.voice.settings") }
@@ -362,13 +361,18 @@ public struct TalkView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: KaikuTokens.Space.s2) {
+                // A plain VStack on purpose (a conversation is a few dozen short lines). The earlier LazyVStack
+                // with an onAppear/onDisappear sentinel made the app hang: with the keyboard up the viewport is
+                // shorter than the welcome content, the 1 pt sentinel sat on the edge, and each appear/disappear
+                // wrote view state, which rebuilt the lazy stack, which toggled the sentinel again: an endless
+                // update cycle on the main thread. Following is now derived from geometry with a dead band.
+                VStack(spacing: KaikuTokens.Space.s2) {
                     if model.mode == .denied { MicPermissionCard {} }
-                    if canRetry {
-                        // A dropped or unavailable voice is never a dead end: say what happened, offer one action.
+                    if let note = Self.stateNote(reason: model.conversation.unavailableReason, scripted: model.mode == .scripted,
+                                                 paired: app.isPaired, hasLines: !model.lines.isEmpty, everLive: model.everLive) {
+                        // Voice is not there: one calm line that is true for this state. The button above retries.
                         KCard(tone: .sky) {
-                            Text(model.lines.isEmpty ? unavailableText : T("talk.unavailable.dropped")).kText(.body)
-                                .foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                            Text(T(note)).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                         }
                     }
                     if model.lines.isEmpty { TalkWelcome { model.send($0) } }
@@ -379,11 +383,15 @@ public struct TalkView: View {
                     }
                     if model.mode == .thinking { TypingDots().frame(maxWidth: .infinity, alignment: .leading) }
                     Color.clear.frame(height: 1).id(Self.bottom)
-                        .onAppear { followLatest = true }
-                        .onDisappear { followLatest = false }
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.scrollSpace)).minY } action: { y in
+                            let next = TalkFollow.next(current: followLatest, sentinelY: y, viewport: viewport,
+                                                       hasLines: !model.lines.isEmpty)
+                            if next != followLatest { followLatest = next }
+                        }
                 }
                 .padding(.vertical, KaikuTokens.Space.s2)
             }
+            .coordinateSpace(.named(Self.scrollSpace))
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .frame(maxHeight: .infinity)
@@ -395,14 +403,41 @@ public struct TalkView: View {
                     }.buttonStyle(KButtonStyle(.secondary, fullWidth: false)).padding(KaikuTokens.Space.s2)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                if abs(size.width - columnWidth) > 0.5 { columnWidth = size.width }
+                if abs(size.height - viewport) > 0.5 { viewport = size.height }
+            }
             .onChange(of: model.lines) { _, _ in toBottom(proxy) }
             .onChange(of: model.mode) { _, _ in toBottom(proxy) }
             #if os(iOS)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                if !keyboardUp { keyboardUp = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                if keyboardUp { keyboardUp = false }
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                followLatest = true
                 toBottom(proxy, animated: false)
             }
+            .onChange(of: viewport) { _, _ in toBottom(proxy, animated: false) }
             #endif
+        }
+    }
+
+    private static let scrollSpace = "talk.scroll"
+
+    /// The one message for "voice is not available", by actual state (pure; tested). nil = nothing to add.
+    /// "The connection dropped" is only said after a conversation really was live.
+    static func stateNote(reason: Conversation.UnavailableReason?, scripted: Bool, paired: Bool, hasLines: Bool,
+                          everLive: Bool) -> String? {
+        guard scripted, paired else { return nil }
+        switch reason {
+        case .connection?, .voice?, .audio?:
+            // The header already says why voice is not there, once. A card is added only for the one thing the
+            // header cannot say: a conversation that really was live has stopped, and its words are kept.
+            return hasLines && everLive ? "talk.unavailable.dropped" : nil
+        default: return nil
         }
     }
 
@@ -420,6 +455,21 @@ public struct TalkView: View {
         } else {
             proxy.scrollTo(Self.bottom, anchor: .bottom)
         }
+    }
+}
+
+/// Whether the transcript should keep following the newest line (pure; tested). The welcome state (no lines)
+/// always follows. A dead band between `near` and `far` keeps a sentinel that sits on the viewport's edge (keyboard
+/// animating, content a little taller than the view) from flipping the answer back and forth.
+enum TalkFollow {
+    static let near: CGFloat = 48
+    static let far: CGFloat = 120
+    static func next(current: Bool, sentinelY: CGFloat, viewport: CGFloat, hasLines: Bool) -> Bool {
+        guard hasLines, viewport > 0 else { return true }
+        let below = sentinelY - viewport          // how far the end of the conversation is below the visible area
+        if below <= near { return true }
+        if below >= far { return false }
+        return current
     }
 }
 

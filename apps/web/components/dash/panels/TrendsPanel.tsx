@@ -103,14 +103,20 @@ export function TrendsPanel({
   // the cloud's course of change carries the dated points; without it, the action log and questionnaires do
   const marks: ChartMark[] = course?.events.length
     ? course.events
-        // the points that belong on this chart: care actions, questionnaires, and this measure's own turning points
-        .filter((e) => e.kind === 'care_action' || e.kind === 'phq9' || e.metric_id === current.metric)
+        // the points that belong on this chart: everything not tied to one measure (care actions, questionnaires,
+        // reflection levels, any kind added later) and this measure's own turning points
+        .filter((e) => !e.metric_id || e.metric_id === current.metric)
         .map((e) => ({ date: e.date, label: e.metric_id ? (COURSE_KIND[e.kind] ?? e.label) : e.kind === 'phq9' ? e.text.replace(/\s+on \d+ \w+\.?$/, '') : e.label, detail: e.text }))
     : [
         ...data.view.actions.map((act) => ({ date: localDate(act.ts), label: actionLabel(act.action, act.note), detail: [act.by, act.note].filter(Boolean).join(': ') })),
         ...(data.phq9?.entries ?? []).map((e) => ({ date: localDate(e.ts), label: `PHQ-9: ${e.total} of 27` })),
       ];
   const stage = data.view.stage;
+  const comparison = data.view.comparison;
+  const sinceLow = comparison?.since_low ?? '';
+  const labelOf = (m: string) => data.series.find((x) => x.metric === m)?.label ?? m.replace(/_/g, ' ');
+  const stillAway = (comparison?.still_away ?? []).map(labelOf);
+  const isBack = (comparison?.back_in_range ?? []).includes(current.metric);
   const shown = range ? { ...current, points: current.points.slice(-range) } : current;
   const last = lastValue(current.points);
   const m = last ? pointMeaning(current, last) : null;
@@ -145,7 +151,10 @@ export function TrendsPanel({
       {course && (
         <div className={`d-course${courseOpen ? ' is-open' : ''}`}>
           <Chip tone={PHASE[course.phase]?.tone ?? 'neutral'}>{PHASE[course.phase]?.label ?? course.phase}</Chip>
-          <p>{course.summary}</p>
+          <p>
+            {data.view.statusLine || course.summary}
+            {courseOpen && data.view.statusLine ? ` ${course.summary}` : ''}
+          </p>
           <button type="button" className="d-link" aria-expanded={courseOpen} onClick={() => setCourseOpen(!courseOpen)}>
             {courseOpen ? 'Less' : 'More'}
           </button>
@@ -165,14 +174,30 @@ export function TrendsPanel({
       <ChartLegend early={stage.early} />
 
       <div className="d-compare" aria-label="Period comparison">
+        {sinceLow && (
+          <p className="d-since">
+            <ToneMark tone={stillAway.length ? 'worse' : 'better'}>{sinceLow}</ToneMark>
+            {stillAway.length > 0 && <span> Still away: {stillAway.join(', ')}.</span>}
+            {isBack && <span className="d-meta"> {current.label} is one of those back.</span>}
+          </p>
+        )}
         {cmp ? (
           <>
             <Cell k="This week" v={cmp.this_week_text ?? valueText(cmp.this_week, current.unit)} note={`${cmp.days_this_week} of 7 days recorded`} />
             <Cell k="Week before" v={cmp.previous_week_text ?? valueText(cmp.previous_week, current.unit)} note={`${cmp.days_previous_week} of 7 days recorded`} />
             <Cell k="Their usual" v={cmp.usual_text ?? valueText(cmp.usual, current.unit)} note={cmp.early_baseline ? 'Early baseline, lower confidence' : 'Median of their own earlier days'} />
             <div className="d-compare-tones">
-              <ToneMark tone={cmp.vs_previous}>{VS_PREVIOUS[cmp.vs_previous]}</ToneMark>
-              <ToneMark tone={cmp.vs_usual}>{VS_USUAL[cmp.vs_usual]}</ToneMark>
+              {sinceLow ? (
+                // the week medians still include the low days, so they are context, never the headline
+                <span className="d-meta d-week" title={`Week medians still include the low days: ${VS_PREVIOUS[cmp.vs_previous].toLowerCase()}; ${VS_USUAL[cmp.vs_usual].toLowerCase()}.`}>
+                  Week medians (they still include the low days): {VS_PREVIOUS[cmp.vs_previous].toLowerCase()}; {VS_USUAL[cmp.vs_usual].toLowerCase()}.
+                </span>
+              ) : (
+                <>
+                  <ToneMark tone={cmp.vs_previous}>{VS_PREVIOUS[cmp.vs_previous]}</ToneMark>
+                  <ToneMark tone={cmp.vs_usual}>{VS_USUAL[cmp.vs_usual]}</ToneMark>
+                </>
+              )}
               <span className="d-meta">{SUSTAINED[cmp.sustained]}</span>
             </div>
             <p className="d-compare-meaning">{cmp.meaning}</p>

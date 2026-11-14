@@ -21,5 +21,14 @@ free ports with a temp DB, so they run beside other dev servers.
   ×3 → breathe → knock drum → suggestion → goodbye → leave; then glasses walk, laptop session, Mac hour, phone
   morning) + hub. Writes `bus.jsonl` (`tools/record.py`), `hub.log` (epoch-stamped), `markers.jsonl`, `cloud/*.json`
   (`/v1/me`, consensus, patients, constellation, memories, intelligence, companion session, one `ask_mind`).
-- `scripts/record_web_demo.sh [OUT] [--only web-me,...]` (~1 min; needs `apps/web/out`, else runs `make web-build`):
-  Playwright (pinned 1.58.0) → `web-me.mp4`, `web-clinician.mp4`, `web-patient.mp4`, `web-firefly.mp4` via ffmpeg.
+- `scripts/record_web_demo.py --url <dashboard URL>` (Playwright video, ~100 s → `web-dashboard.mp4`, `-sheet.png`,
+  `-steps.txt`): the one-viewport practitioner dashboard for one person (`--person`, default `aino`): default view,
+  the Trends chart read day by day, Kaiku's review and agent trace, the knowledge graph maximised with a node
+  picked, a day opened in the Daily account, a panel collapsed and one moved. Read-only unless `--allow-model`:
+  writes are blocked and the insight is requested with `generate=false`, so it is safe against a service someone
+  else is using. Controls are found by role or accessible name; a missing one prints `SKIP` and the take goes on.
+  `scripts/record_web_demo.sh [OUT]` runs it against its own throwaway cloud seeded with the one person.
+- `apps/apple/scripts/record_app_demo.sh ios|mac|mac-snap|post` (`apps/apple/AGENTS.md` → Recording a demo): the
+  five iPhone flows as clips with chapter time codes; Mac video needs screen permission, `mac-snap` gives stills.
+- Which clip covers which shot of the narrative, what still needs a person with the devices and how to record it:
+  `video_shotlist.md`.

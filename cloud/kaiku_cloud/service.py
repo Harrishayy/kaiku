@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
@@ -51,8 +52,16 @@ def today_local() -> date:
     return datetime.now(TZ).date()
 
 
-def display_name(home_id: str) -> str:
-    return home_id.rsplit("-", 1)[-1].replace("_", " ").title()
+_OPAQUE = re.compile(r"[0-9a-f]{8,}|.*\d.*", re.I)
+
+
+def display_name(home_id: str, started: date | None = None) -> str:
+    """A label a person can read. A home whose id is a device/installation id (hex, digits) has no name yet:
+    it is shown as a new record with its start date, never as an id fragment."""
+    tail = home_id.rsplit("-", 1)[-1]
+    if len(tail) >= 8 and _OPAQUE.fullmatch(tail):
+        return "New record" + (f" · started {started.day} {started:%b}" if started else "")
+    return tail.replace("_", " ").title()
 
 
 # ------------------------------------------------------------------ criteria (ground truth: config/criteria.toml)
@@ -120,10 +129,10 @@ def nudge_arms(store: Store, home_id: str) -> tuple[str, ...]:
     return tuple(a for a in arms if a not in ROBOT_ARMS) or ("breathe",)
 
 
-def explain_ctx(home_id: str, c: Consensus, notes: list[str], sim: bool, families: list[str] | None = None
-                ) -> dict[str, Any]:
+def explain_ctx(home_id: str, c: Consensus, notes: list[str], sim: bool, families: list[str] | None = None,
+                name: str | None = None) -> dict[str, Any]:
     return {
-        "display_name": display_name(home_id), "simulated": sim,
+        "display_name": name or display_name(home_id), "simulated": sim,
         "state": c.state, "agreement": c.agreement, "rule_version": c.rule_version,
         "acknowledged": c.acknowledged_by is not None, "notes": notes, "correlated_families": families or [],
         "sources": [{**v.model_dump(mode="json", exclude={"computed_at", "home_id"}),
@@ -137,10 +146,11 @@ def evaluate_home(store: Store, home_id: str, crit: Criteria, today: date | None
     data = patient_data(store, home_id, crit, end)
     c, last = compute(data, crit, end)
     c.simulated = data.sim
-    ctx = explain_ctx(home_id, c, last.notes, data.sim, last.correlated_families)
+    name = display_name(home_id, data.first_day)
+    ctx = explain_ctx(home_id, c, last.notes, data.sim, last.correlated_families, name)
     c.explanation = template_explanation(ctx)
     summary = PatientSummary(
-        id=home_id, display_name=display_name(home_id), state=c.state, agreement=c.agreement,
+        id=home_id, display_name=name, state=c.state, agreement=c.agreement,
         headline=c.explanation.headline,
         sources=[SourceBadge(source=v.source, verdict=v.verdict, confidence=v.confidence, last_data_at=v.last_data_at)
                  for v in c.sources],
@@ -207,7 +217,7 @@ def get_consensus(store: Store, settings: Settings, row: dict[str, Any], log: An
     if settings.llm == "template":
         return c
     ctx = explain_ctx(c.home_id, c, row.get("notes", []), bool(row["summary"].get("sim")),
-                      row.get("correlated_families"))
+                      row.get("correlated_families"), row["summary"].get("display_name"))
     # Arrival timestamps are presentation metadata, not new explanation evidence.
     semantic = {**ctx, "sources": [{k: v for k, v in source.items() if k != "last_data_at"}
                                     for source in ctx["sources"]]}

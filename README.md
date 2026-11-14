@@ -132,7 +132,7 @@ Kept honest on purpose. The full audit, with evidence, is [`docs/track-readiness
 | Part | State |
 |---|---|
 | Contracts, message bus, software twins of every device | Working, tested |
-| API: ingest, baselines, verdicts, consensus, learner, notebook, practitioner insight | Working locally (`make demo`); **not deployed**, there is no public URL yet |
+| API: ingest, baselines, verdicts, consensus, learner, notebook, practitioner insight | Working locally (`make demo`) and deployed on Modal (https://harrish21raj--kaiku-web.us-east.modal.run, public read-only demo with one seeded, simulated 16-day record: add `/?id=aino`; admin routes need a token) |
 | Practitioner dashboard | Working, served by the API |
 | iPhone and Mac apps: check-in, games, talk, walks, Apple Health | Built and run on real devices; some physical acceptance still open |
 | Gemini Live voice, Gemini TTS | Verified with real provider calls; English only |

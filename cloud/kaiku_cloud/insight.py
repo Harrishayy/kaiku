@@ -69,7 +69,7 @@ from .mind import graph as mind_graph
 from .settings import TZ, Settings
 from .store.db import Store
 
-REVIEW_VERSION = "insight-review-v9"
+REVIEW_VERSION = "insight-review-v11"
 _LOCKS: dict[str, threading.Lock] = defaultdict(threading.Lock)
 THEMES = ("change", "improvement", "steady", "routine", "what_helps", "coverage")
 THEME_TITLE = {"change": "Change from usual", "improvement": "Improved signs", "steady": "Holding steady",
@@ -128,6 +128,13 @@ _SYSTEM = (
     "item that is still worse; steady needs none worse; routine cites a routine: item; what_helps cites a helps: "
     "item whose direction is better (skip it otherwise); coverage is only for a source: item with direction unknown "
     "or a personal baseline that is still forming (skip it otherwise).\n"
+    "- status:line, course:back and course:still_away are the reconciled truth. A measure with now = back within "
+    "usual is back: never write that it remains, lags or is still away. A measure with now = still away has not "
+    "returned. Never say both about one measure. 'Still flagged by the rule' is different from 'still away': "
+    "sustained true on a measure that is back means the rule still counts the last several scored days, so say "
+    "'the rule still counts those days', not that the measure remains changed.\n"
+    "- consider is a question to explore or something to check with the person. Never tell anyone to increase, "
+    "reduce or do more of an activity.\n"
     "- Say 'change from their usual', 'worth a check-in'. Never diagnose, never predict, never name a condition, "
     "never say relapse, never state or change the consensus state, never recommend medicine or treatment.\n"
     "- Responses to activities are what the person reported: never write that an activity works, is effective or "
@@ -268,7 +275,7 @@ def comparison(crit: Any, data: Any, c: Consensus, end: date) -> tuple[PeriodCom
         summary = "Not enough recorded days in both weeks to compare yet."
     else:
         summary = (f"Of {len(comparable)} comparable measures, {len(improved)} improved on the week before, "
-                   f"{len(changed)} moved further from their usual direction and "
+                   f"{len(changed)} were further from their usual and "
                    f"{len(comparable) - len(improved) - len(changed)} stayed about the same.")
     early = any(m.early_baseline for m in flat)
     day_n = (end - data.first_day).days + 1 if data.first_day else 0
@@ -384,7 +391,7 @@ def coverage(events: list[dict[str, Any]], c: Consensus, data: Any, drifts: dict
         first_day=min(days_all, default=None), last_day=max(days_all, default=None), span_days=span,
         recorded_days=len(days_all), observations=len(events), baseline_ready=ready, day_of_record=span,
         early_baseline=any(d.baseline is not None and d.baseline.early for d in drifts.values()),
-        simulated=bool(events) and all(e.get("sim") for e in events), summary=summary[:300], groups=groups,
+        simulated=bool(data.sim), summary=summary[:300], groups=groups,
         other=rows([t for t in by_type if SOURCE_OF.get(t) not in CONSENSUS_SOURCES]))
 
 
@@ -395,7 +402,7 @@ def graph(patient_id: str, c: Consensus, comp: PeriodComparison, cov: DataCovera
           topics: dict[str, int] | None = None, end: date | None = None) -> InsightGraph:
     nodes: dict[str, InsightNode] = {}
     edges: list[InsightEdge] = []
-    nodes["person"] = InsightNode(id="person", kind="person", label=service.display_name(patient_id),
+    nodes["person"] = InsightNode(id="person", kind="person", label=service.display_name(patient_id, cov.first_day),
                                   detail=cov.summary[:240], evidence=cov.observations)
     group_cov = {g.source: g for g in cov.groups}
     for g in comp.groups:
@@ -536,7 +543,8 @@ def review_evidence(refs: list[RecordCitation], c: Consensus, comp: PeriodCompar
             rid = f"course:{e.kind}:{e.metric_id or n}"
             out.append(RecordCitation(id=rid, label=e.label, detail=e.text, metric=e.metric_id, source=e.group,
                                       observed_at=e.date))
-            tone[rid] = {"onset": "worse", "still_away": "worse", "back_in_range": "better"}.get(e.kind, "unknown")
+            tone[rid] = {"onset": "worse", "still_away": "worse", "back_in_range": "better", "reflection_low": "worse",
+                         "reflection_lighter": "better"}.get(e.kind, "unknown")
     return out, tone
 
 
@@ -602,6 +610,54 @@ def prose_issue(prose: str) -> str | None:
     return None
 
 
+_BACK = re.compile(r"\b(back|return\w*|recover\w*|restor\w*|normali[sz]\w*|within (?:their |her |his )?usual|"
+                   r"in range|came back|come back)\b", re.I)
+_AWAY = re.compile(r"\b(still (?:away|below|above|low|lower|short|shorter|later|reduced|a change)|remain\w*|"
+                   r"lag\w*|not (?:yet )?(?:back|returned|recovered)|has(?: not|n't) (?:come back|returned)|"
+                   r"have(?: not|n't) (?:come back|returned)|yet to return|sustained change|persist\w*)\b", re.I)
+_RULE_TALK = re.compile(r"\b(flag\w*|rule|consensus|counts?|scored days)\b", re.I)
+_CLAUSE = re.compile(r"[.;:]|,? but |,? while |,? although |,? whereas |,? yet |,? though ", re.I)
+_DIRECTIVE = re.compile(r"\b(increas\w*|decreas\w*|reduc\w*|should|must|needs? to|ought|more often|less often|"
+                        r"more frequently|encourag\w*|make sure|get (?:her|him|them) to|try to|cut down|step up)\b", re.I)
+
+
+def measure_terms(names: dict[str, str]) -> dict[str, set[str]]:
+    """term -> metrics it can mean: the label without brackets, and its head word ('energy' for 'Energy dial')."""
+    out: dict[str, set[str]] = defaultdict(set)
+    skip = {"last", "first", "time", "middle", "daily", "steps", "late", "night", "drum", "the", "on", "in"}
+    for metric, label in names.items():
+        low = course_mod.short(label).lower()
+        out[low].add(metric)
+        for word in re.findall(r"[a-z]{4,}", low):
+            if word not in skip and word != "dial":
+                out[word].add(metric)
+    return out
+
+
+def consistency_issue(text: str, back: set[str], away: set[str], names: dict[str, str]) -> str | None:
+    """A measure is either back within usual or still away, per the course. Reject prose that says a measure is
+    away when the course has it back (or the reverse), or that says both about the same measure. A clause about
+    the rule still flagging something is not a claim that the measure is away."""
+    if not back and not away:
+        return None
+    terms = measure_terms(names)
+    said: dict[str, set[str]] = defaultdict(set)
+    for clause in _CLAUSE.split(text):
+        low = clause.lower()
+        is_back, is_away = bool(_BACK.search(low)), bool(_AWAY.search(low)) and not _RULE_TALK.search(low)
+        if is_back == is_away:
+            continue  # no claim, or a mixed clause we cannot split safely
+        for term, metrics in terms.items():
+            if re.search(rf"\b{re.escape(term)}\b", low):
+                side = "back" if is_back else "away"
+                said[term].add(side)
+                if side == "away" and metrics <= back:
+                    return "contradiction"
+                if side == "back" and metrics <= away:
+                    return "contradiction"
+    return "contradiction" if any(len(sides) == 2 for sides in said.values()) else None
+
+
 def specific(prose: str, cites: list[RecordCitation]) -> bool:
     """The words must be about these records: name a cited measure, or say something about order or timing."""
     low = prose.lower()
@@ -609,7 +665,8 @@ def specific(prose: str, cites: list[RecordCitation]) -> bool:
     return any(stem in low for stem in stems) or bool(_SEQUENCE.search(prose))
 
 
-def check_overview(item: Any, allowed: dict[str, RecordCitation], needs_course: bool) -> tuple[str, list[str]] | str:
+def check_overview(item: Any, allowed: dict[str, RecordCitation], needs_course: bool,
+                   truth: tuple[set[str], set[str], dict[str, str]] | None = None) -> tuple[str, list[str]] | str:
     if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not isinstance(item.get("cites"), list):
         return "invalid_shape"
     text = " ".join(item["text"].split())
@@ -618,7 +675,7 @@ def check_overview(item: Any, allowed: dict[str, RecordCitation], needs_course: 
         return "invalid_shape"
     if any(i not in allowed for i in ids):
         return "unknown_citation"
-    issue = prose_issue(text)
+    issue = prose_issue(text) or (consistency_issue(text, *truth) if truth else None)
     if issue:
         return issue
     if needs_course and not (any(i.startswith("course:") for i in ids) and _SEQUENCE.search(text)):
@@ -629,7 +686,8 @@ def check_overview(item: Any, allowed: dict[str, RecordCitation], needs_course: 
 
 
 def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str, str],
-                  sustained: set[str] | None = None) -> ReviewFinding | str:
+                  sustained: set[str] | None = None,
+                  truth: tuple[set[str], set[str], dict[str, str]] | None = None) -> ReviewFinding | str:
     """One model finding → a rendered finding, or the content-free category it was rejected for."""
     if not isinstance(item, dict):
         return "invalid_shape"
@@ -642,9 +700,11 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
     if any(i not in allowed for i in ids):
         return "unknown_citation"
     prose = f"{meaning} {consider or ''}"
-    issue = prose_issue(prose)
+    issue = prose_issue(prose) or (consistency_issue(meaning, *truth) if truth else None)
     if issue:
         return issue
+    if consider and _DIRECTIVE.search(consider):
+        return "directive"  # a consider line is a question to explore with the person, never an instruction
     if not specific(meaning, [allowed[i] for i in ids]):
         return "generic"
     if len(meaning.split()) < 8 or (len(meaning.split()) < 12 and not _SEQUENCE.search(meaning)):
@@ -652,7 +712,8 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
     # Where a measure started is history: it does not make a finding about what has come back a "worse" one.
     history = {i for i in ids if i.startswith("course:onset:")} if any(tone.get(i) == "better" for i in ids) else set()
     # Reflections and other recorded signals are supporting detail: they never decide a finding's theme.
-    tones = [tone.get(i, "unknown") for i in ids if i not in history and not i.startswith(("reflect:", "obs:"))]
+    tones = [tone.get(i, "unknown") for i in ids if i not in history
+             and not i.startswith(("reflect:", "obs:", "course:reflection_"))]
     if sustained is None:
         sustained = {i for i in ids if tone.get(i) == "worse" and i.split(":", 1)[0] in ("source", "metric", "routine")}
     ok = {"change": any(i in sustained for i in ids),
@@ -673,7 +734,8 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
 
 
 def validate(raw: str, allowed: dict[str, RecordCitation], tone: dict[str, str], sustained: set[str] | None = None,
-             needs_course: bool = False, parsed: dict[str, Any] | None = None
+             needs_course: bool = False, parsed: dict[str, Any] | None = None,
+             truth: tuple[set[str], set[str], dict[str, str]] | None = None
              ) -> tuple[list[ReviewFinding], dict[str, int]]:
     """Findings that pass, and rejection counts. `parsed` receives the checked overview under "overview"
     (a (text, cites) pair, or the category it was rejected for)."""
@@ -685,12 +747,12 @@ def validate(raw: str, allowed: dict[str, RecordCitation], tone: dict[str, str],
     if not isinstance(items, list):
         raise ValueError("invalid_object")
     if parsed is not None:
-        parsed["overview"] = check_overview(data.get("overview"), allowed, needs_course)
+        parsed["overview"] = check_overview(data.get("overview"), allowed, needs_course, truth)
     kept: list[ReviewFinding] = []
     rejected: Counter[str] = Counter()
     seen: set[tuple[str, ...]] = set()
     for item in items[:8]:
-        result = check_finding(item, allowed, tone, sustained)
+        result = check_finding(item, allowed, tone, sustained, truth)
         if isinstance(result, str):
             rejected[result] += 1
         elif tuple(sorted(result.cites)) in seen:
@@ -751,7 +813,7 @@ def template_findings(refs: list[RecordCitation], tone: dict[str, str], c: Conse
             "what_helps", pick(f"helps:{best.activity}"),
             f"{best.label}: the best reported response so far. This is what the person reported around the "
             "activity, not proof that it helped.",
-            f"{best.label} could be encouraged if the person agrees.", "template"))
+            f"Ask whether {best.label.lower()} still feel worth doing.", "template"))
     missing = [v for v in c.sources if v.verdict == "insufficient"]
     if missing or not cov.baseline_ready:
         out.append(_finding(
@@ -782,13 +844,17 @@ def headline(c: Consensus) -> str:
 # ------------------------------------------------------------------ review with cache, cooldown and trace
 def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs: list[RecordCitation],
            tone: dict[str, str], template: list[ReviewFinding], now: datetime, *, generate: bool, gen: Any = None,
-           sustained: set[str] | None = None, day_n: int = 0, early: bool = False, needs_course: bool = False
+           sustained: set[str] | None = None, day_n: int = 0, early: bool = False, needs_course: bool = False,
+           truth: tuple[set[str], set[str], dict[str, str]] | None = None
            ) -> tuple[PatientReview, list[AgentStep]]:
     model = gemma.model_name()
     sent = shortlist(refs, tone, int(cfg("max_evidence", 60)))
     sustained = sustained or set()
+    back_now, away_now, _names = truth or (set(), set(), {})
     context = [{"id": r.id, "label": r.label, "detail": r.detail, "direction": tone.get(r.id, "unknown"),
-                "sustained": r.id in sustained} for r in sent]
+                "sustained": r.id in sustained,
+                **({"now": "back within usual" if r.metric in back_now else "still away from usual"}
+                   if r.metric in back_now | away_now else {})} for r in sent]
     record = {"day_of_record": day_n, "baseline": "early, lower confidence" if early else "established"}
     digest = hashlib.sha256(json.dumps([REVIEW_VERSION, context, early, model], sort_keys=True).encode()).hexdigest()
     head = headline(c)
@@ -836,7 +902,7 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
             attempts = attempt
             try:
                 raw = gen(prompt, timeout_s=float(cfg("timeout_s", 30)), task="insight_review", home_id=patient_id)
-                findings, bad = validate(raw, allowed, tone, sustained, needs_course, parsed)
+                findings, bad = validate(raw, allowed, tone, sustained, needs_course, parsed, truth)
                 rejected.update(bad)
                 if findings:
                     reason = None
@@ -862,7 +928,8 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
             step="validate", label="Check every finding", actor="code",
             status="ok" if findings else "rejected", items=len(findings), rejected=dict(rejected),
             detail="Known citation ids, no digits, permitted wording, no causal claim, no filler, names a cited "
-                   "measure or its timing, theme consistent with the recorded direction.")
+                   "measure or its timing, agrees with which measures are back or still away, consider is a "
+                   "question not an instruction, theme consistent with the recorded direction.")
         seen = parsed.get("overview")
         overview = seen if isinstance(seen, tuple) and findings else None
         about = AgentStep(
@@ -870,8 +937,10 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
             status="ok" if overview else "rejected" if isinstance(seen, str) and findings else "skipped",
             model=(model or None) if overview else None, items=len(overview[1]) if overview else 0,
             rejected={seen: 1} if isinstance(seen, str) and findings else {},
-            detail=("Whole-record paragraph accepted: cites the course of change and passed the same checks."
-                    if overview else "No model paragraph is shown; the code-written course summary stands."))
+            detail=("Whole-record paragraph accepted: cites the course of change, agrees with which measures are "
+                    "back or still away, and passed the same checks."
+                    if overview else "No model paragraph is shown; the code-written course summary stands in its "
+                                     "place."))
         added = 0
         if findings:
             # The model interprets; it cannot leave a recorded change out. Any signal group with a change from
@@ -900,6 +969,59 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
         store.kv_set(key, {"digest": digest, "review": result.model_dump(mode="json"),
                            "steps": [step.model_dump(mode="json") for step in steps]})
         return result, [select, *steps]
+
+
+STATE_NAME = {"needs_call": "Needs a call", "watch": "Worth a look", "stable": "As usual", "safety": "Safety flag"}
+
+
+def status_line(c: Consensus, replayed: list[Any], actions: list[dict[str, Any]], arc: Course, crit: Any,
+                day_n: int, min_stable: int) -> str:
+    """Why the record shows the state it shows, and how that sits with the course: when it was raised, what has come
+    back since, and what keeps the state there. Every clause is read off the rule's own replay."""
+    name = STATE_NAME[c.state]
+    since = None
+    for day in reversed(replayed):
+        if day.state != c.state:
+            break
+        since = day.day
+    on = f" on {course_mod.human_date(since)}" if since else ""
+    last = replayed[-1] if replayed else None
+    worse = [SOURCE_LABELS[v.source] for v in c.sources if v.verdict == "worse"]
+    young = bool(min_stable) and day_n < min_stable
+    back = (f" Since the low on {course_mod.human_date(arc.low_date)}, {arc.back} of {arc.moved} measures that moved "
+            "away are back within their usual.") if arc.moved and arc.low_date else ""
+    if c.state == "safety":
+        return (f"{name} raised{on}. Kaiku showed the person the crisis numbers on their own device; it contacts "
+                "nobody. It stays until the care team acknowledges it: call today.")
+    if c.state == "needs_call":
+        ack = next((a for a in actions if a["action"] == "acknowledge" and since
+                    and parse_ts(a["ts"]).astimezone(TZ).date() >= since), None)
+        out = f"{name} was raised{on} from the daily signals"
+        out += (f" and acknowledged on {course_mod.human_date(parse_ts(ack['ts']).astimezone(TZ).date())}"
+                + (f" by {ack['by']}" if ack.get("by") else "")) if ack else " and is not yet acknowledged"
+        out += "." + back
+        if last is not None and last.raw == "needs_call":
+            out += (f" It still shows because {len(worse)} signal groups ({', '.join(worse)}) read as changed over "
+                    "the last several scored days, not only the latest one.")
+        else:
+            out += (f" The groups are back; the flag is held until {crit.state.hysteresis_stable_days} as-usual days "
+                    "in a row or an acknowledgement.")
+        if young:
+            out += f" On a young record (day {day_n} of {min_stable}) it cannot return to as usual before day {min_stable}."
+        return out[:600]
+    if c.state == "watch":
+        if c.agreement == "low_coverage" and young and not worse:
+            why = (f"Day {day_n} of {min_stable}: too early to call this as usual, whatever the measures show."
+                   if sum(v.verdict != "insufficient" for v in c.sources) >= 2 else
+                   "Fewer than two signal groups have enough recent data, and missing data is never read as being well.")
+        elif c.agreement == "low_coverage":
+            why = "Fewer than two signal groups have enough recent data, and missing data is never read as being well."
+        else:
+            why = (f"{', '.join(worse) or 'One group'} read{'s' if len(worse) == 1 else ''} as changed from usual; "
+                   "one group alone does not raise a call.")
+        return (f"{name} since{on.replace(' on', '')}. {why}{back}" if since else f"{name}. {why}{back}")[:600]
+    return (f"{name}{' since' + on.replace(' on', '') if since else ''}: every signal group with enough data is "
+            f"within or better than their usual.{back}")[:600]
 
 
 # ------------------------------------------------------------------ the payload
@@ -937,21 +1059,42 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                            detail="Medians of recorded days: this week, the week before and the personal usual."))
     t_course = time.perf_counter()
     actions_raw = store.actions(patient_id)
-    arc, found = course_mod.build(crit, data, c, actions_raw, end, human_value, cov.day_of_record, early)
+    overview, talk_rows, talk_record, talk_tone = account.reflections(store, patient_id, now, shared)
+    arc, found = course_mod.build(crit, data, c, actions_raw, end, human_value, cov.day_of_record, early,
+                                  account.low_spell(talk_rows) if talk_rows else None)
     steps.append(AgentStep(
         step="course", label="Work out the course of change", actor="code", status="ok", latency_ms=_ms(t_course),
         items=len(arc.events),
         detail=f"Phase {arc.phase}: {len(found)} measure{'s' if len(found) != 1 else ''} moved away from usual; "
                "first day away, furthest day and return to range per measure, with care actions and PHQ-9 in order."))
-    overview, talk_rows, talk_record, talk_tone = account.reflections(store, patient_id, now, shared)
     extra = [(r, "unknown") for r in account.generic_records(events, crit, data, end, OBS_LABEL)]
     if talk_record:
         extra.append((talk_record, talk_tone))
+    min_stable = int(getattr(crit.state, "min_history_days_for_stable", 0) or 0)
+    replayed = []
+    if data.first_day and data.first_day <= service.today_local():
+        # The same replay the consensus uses (hysteresis, acknowledgements, never stable while young).
+        replayed = consensus_rule.replay(data, crit, service.today_local(), now)
+    status = status_line(c, replayed, actions_raw, arc, crit, cov.day_of_record, min_stable)
+    names = {name: mc.metric.label for name, mc in found.items()}
+    back_now = {name for name, mc in found.items() if mc.back}
+    away_now = set(found) - back_now
+    extra.append((RecordCitation(id="status:line", label="Why the state shows", detail=status, observed_at=end),
+                  "unknown"))
+    if found:
+        listed = lambda keys: ", ".join(sorted(course_mod.short(names[k]).lower() for k in keys)) or "none"  # noqa: E731
+        extra.append((RecordCitation(id="course:back", label="Back within usual", observed_at=end,
+                                     detail=f"Back within their usual on the latest scored days: {listed(back_now)}."),
+                      "better" if back_now else "unknown"))
+        extra.append((RecordCitation(id="course:still_away", label="Still away from usual", observed_at=end,
+                                     detail=f"Still away from their usual: {listed(away_now)}."),
+                      "worse" if away_now else "unknown"))
     all_refs, tone = review_evidence(refs, c, comp, drifts, r_list, helps, end, arc, extra)
     template = template_findings(all_refs, tone, c, comp, routine, cov, arc)
     result, review_steps = review(store, settings, patient_id, c, all_refs, tone, template, now, generate=generate,
                                   gen=gen, sustained=sustained_ids(all_refs, tone, drifts),
-                                  day_n=cov.day_of_record, early=early, needs_course=bool(found))
+                                  day_n=cov.day_of_record, early=early, needs_course=bool(found),
+                                  truth=(back_now, away_now, names))
     steps += review_steps
     t2 = time.perf_counter()
     topics = dict(Counter(m["category"] for m in store.memories(patient_id))) if shared else {}
@@ -979,23 +1122,33 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                                   + f"; {sum(e.layer == 'learned' for e in g.edges)} links are learned from this "
                                     "record (order in time, co-change, routines, responses), the rest is structure."))
     cited = {i for f in result.findings for i in f.cites} | set(result.overview_cites)
-    min_stable = int(getattr(crit.state, "min_history_days_for_stable", 0) or 0)
     history = []
-    if data.first_day and data.first_day <= service.today_local():
-        # The same replay the consensus uses (hysteresis, acknowledgements, never stable while young).
-        for day in consensus_rule.replay(data, crit, service.today_local(), now):
+    if replayed:
+        for day in replayed:
             history.append(StateDay(date=day.day, state=day.state, agreement=day.agreement,  # type: ignore[arg-type]
                                     early=bool(min_stable) and (day.day - data.first_day).days + 1 < min_stable))
+    # One truth about provenance: the envelopes' sim flag, on every record a practitioner can open.
+    all_refs = [r.model_copy(update={"simulated": bool(data.sim)}) for r in all_refs]
+    if found:
+        moved = {name: mc for name, mc in found.items()}
+        since = (f"{arc.back} of {arc.moved} measures that moved away are back within their usual"
+                 + (f" since the low on {course_mod.human_date(arc.low_date)}." if arc.low_date else "."))
+        comp = comp.model_copy(update={
+            "since_low": since, "back_in_range": [n for n, mc in moved.items() if mc.back],
+            "still_away": [n for n, mc in moved.items() if not mc.back],
+            "summary": (since + " Week against week the medians still include the low days: " + comp.summary[0].lower()
+                        + comp.summary[1:])[:400]})
     actions = [CareAction(ts=a["ts"], action=a["action"], note=a.get("note"), by=a.get("by")) for a in actions_raw]
     steps.append(AgentStep(step="render", label="Render verified facts", actor="code", status="ok",
                            items=sum(len(f.facts) for f in result.findings),
                            detail="Every number, date, unit and direction is printed by code from the cited records."))
     return PatientInsight(
-        patient_id=patient_id, display_name=service.display_name(patient_id), state=c.state, agreement=c.agreement,
-        rule_version=c.rule_version, review=result, evidence=[r for r in all_refs if r.id in cited], trace=steps,
+        patient_id=patient_id, display_name=service.display_name(patient_id, cov.first_day), state=c.state,
+        agreement=c.agreement, rule_version=c.rule_version,
+        status_line=status, review=result, evidence=[r for r in all_refs if r.id in cited], trace=steps,
         comparison=comp, routine=routine, graph=g, coverage=cov, day_of_record=cov.day_of_record,
         min_history_days_for_stable=min_stable, early_record=early, course=arc,
-        days=account.days(events, found, actions_raw, talk_rows, end, human_value), reflections=overview,
+        days=account.days(events, found, actions_raw, talk_rows, end, human_value, r_list), reflections=overview,
         state_history=history,
         actions=actions,
         computed_at=now)

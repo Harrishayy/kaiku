@@ -109,6 +109,28 @@ public final class VoiceLines {
         }
     }
 
+    /// Same as `play`, and reports whether audio actually started: the caller must not claim a voice was heard
+    /// when the service has none (muted, offline, no TTS).
+    public func playReporting(_ key: String, lang: KaikuLanguage, fallback: String? = nil) async -> Bool {
+        guard !muted else { return false }
+        request += 1
+        let id = request
+        let url = Self.audioURL(key, lang.rawValue)
+        if playFile(url) { return true }
+        if let api, let wav = await api.voice(key, lang: lang.rawValue) {
+            try? wav.write(to: url, options: .atomic)
+            return id == request ? playData(wav) : false
+        }
+        guard id == request, let fallback, !fallback.isEmpty else { return false }
+        let sayURL = Self.sayURL(fallback, lang.rawValue)
+        if playFile(sayURL) { return true }
+        if let api, let wav = await api.sayAudio(Self.normalise(fallback), lang: lang.rawValue) {
+            try? wav.write(to: sayURL, options: .atomic)
+            return id == request ? playData(wav) : false
+        }
+        return false
+    }
+
     /// Says any short line in Kaiku's Gemini voice (`POST /v1/voice/say`, cached); silent when that fails.
     public func say(_ text: String, lang: KaikuLanguage) {
         guard !muted, !text.isEmpty else { return }

@@ -158,3 +158,49 @@ export function byDay(events: ObsEvent[]): DayEvidence[] {
       };
     });
 }
+
+export type PartKind = 'did' | 'mood' | 'away' | 'reflection' | 'care' | 'questionnaire' | 'other';
+export type Valence = 'low' | 'neutral' | 'bright' | 'declined';
+
+export interface DayChip {
+  kind: PartKind;
+  label: string;
+  valence?: Valence;
+}
+
+const AWAY = /\b(below|above|later than|earlier than|away from|outside)\b.*\busual\b|\bmeasures? away\b/i;
+
+const VALENCE: [RegExp, Valence][] = [
+  [/\b(declined|stopped|did not want)\b/i, 'declined'],
+  [/\b(low|heavy|hard)\b/i, 'low'],
+  [/\b(bright|lighter|light|good)\b/i, 'bright'],
+  [/\b(ordinary|neutral|steady|mixed)\b/i, 'neutral'],
+];
+
+/**
+ * The parts of a day's account as small chips. Parts are short phrases written by the cloud; this only sorts them
+ * by what they are about (what was done, mood, away from usual, reflection level, care team, questionnaire) and
+ * splits a list of activities into one chip each. A phrase it does not recognise stays as a neutral chip.
+ */
+export function dayChips(parts: string[]): DayChip[] {
+  const out: DayChip[] = [];
+  for (const raw of parts) {
+    const part = raw.trim().replace(/\.$/, '');
+    if (!part) continue;
+    if (/reflection/i.test(part)) {
+      const valence = VALENCE.find(([rx]) => rx.test(part))?.[1];
+      out.push({ kind: 'reflection', label: part.replace(/^evening\s+/i, '').replace(/^\w/, (c) => c.toUpperCase()), valence });
+    } else if (/^away from (their )?usual/i.test(part) || (AWAY.test(part) && !part.includes(','))) out.push({ kind: 'away', label: part.replace(/^\w/, (c) => c.toUpperCase()) });
+    else if (/care team/i.test(part)) out.push({ kind: 'care', label: part.replace(/^\w/, (c) => c.toUpperCase()) });
+    else if (/^mood\b/i.test(part)) out.push({ kind: 'mood', label: part.replace(/^\w/, (c) => c.toUpperCase()) });
+    else if (/phq-?9|questionnaire/i.test(part)) out.push({ kind: 'questionnaire', label: part.replace(/^\w/, (c) => c.toUpperCase()) });
+    else if (/^[^:;]+$/.test(part))
+      // a list: what was done, with any "… below usual" items sorted out as away-from-usual
+      for (const item of part.split(/,\s+(?![^(]*\))/)) out.push({ kind: AWAY.test(item) ? 'away' : 'did', label: item.replace(/^\w/, (c) => c.toUpperCase()) });
+    else out.push({ kind: 'other', label: part.replace(/^\w/, (c) => c.toUpperCase()) });
+  }
+  return out;
+}
+
+/** The reflection level of a day, if its account names one (level only, never words). */
+export const dayValence = (parts: string[]): Valence | null => dayChips(parts).find((c) => c.kind === 'reflection')?.valence ?? null;

@@ -100,7 +100,7 @@ final class SetupFlowTests: XCTestCase {
         tap("Say hello"); tap("I understand")
         see("Nearby Kaiku services")
         // No service: Skip is allowed and the app still works; already connected: Continue.
-        if app.buttons["Skip for now"].waitForExistence(timeout: 3) { app.buttons["Skip for now"].tap() }
+        if app.buttons["Continue without connecting"].waitForExistence(timeout: 3) { app.buttons["Continue without connecting"].tap() }
         else if app.buttons["Skip"].exists { app.buttons["Skip"].tap() } else { tap("Continue") }
         see("Your choices")
         app.terminate()

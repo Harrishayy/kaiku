@@ -156,3 +156,64 @@ final class DayEvidenceTests: XCTestCase {
         XCTAssertGreaterThan(en.keys.filter { $0.hasPrefix("setup.") }.count, 30)
     }
 }
+
+/// Regressions found by driving the app as a user on the simulator (2026-11-14).
+@MainActor final class RecordingBugTests: XCTestCase {
+    /// The Talk hang: a sentinel on the viewport's edge must not flip "follow latest" back and forth.
+    func testTalkFollowHasADeadBandAndNeverFlipsInTheWelcomeState() {
+        // Welcome state (no lines) and an unmeasured viewport always follow: nothing can oscillate there.
+        for y in stride(from: CGFloat(-500), through: 2000, by: 37) {
+            XCTAssertTrue(TalkFollow.next(current: false, sentinelY: y, viewport: 300, hasLines: false))
+            XCTAssertTrue(TalkFollow.next(current: false, sentinelY: y, viewport: 0, hasLines: true))
+        }
+        // With lines: near the end follows, far away stops following, and in between the answer does not change.
+        XCTAssertTrue(TalkFollow.next(current: false, sentinelY: 300 + TalkFollow.near, viewport: 300, hasLines: true))
+        XCTAssertFalse(TalkFollow.next(current: true, sentinelY: 300 + TalkFollow.far, viewport: 300, hasLines: true))
+        for current in [true, false] {
+            var state = current, flips = 0
+            // The keyboard animating: the sentinel jitters around the edge by a few points on every frame.
+            for i in 0..<200 {
+                let y = 300 + (TalkFollow.near + TalkFollow.far) / 2 + CGFloat(i % 2 == 0 ? 6 : -6)
+                let next = TalkFollow.next(current: state, sentinelY: y, viewport: 300, hasLines: true)
+                if next != state { flips += 1; state = next }
+            }
+            XCTAssertEqual(flips, 0, "jitter inside the dead band must not change the answer")
+        }
+    }
+
+    func testTalkSaysOneMessageThatIsTrueForTheState() {
+        typealias R = Conversation.UnavailableReason
+        // Voice never connected: the header carries the reason once; no card, and never "dropped".
+        XCTAssertNil(TalkView.stateNote(reason: R.voice, scripted: true, paired: true, hasLines: false, everLive: false))
+        XCTAssertNil(TalkView.stateNote(reason: R.voice, scripted: true, paired: true, hasLines: true, everLive: false))
+        XCTAssertNil(TalkView.stateNote(reason: R.connection, scripted: true, paired: true, hasLines: true, everLive: false))
+        // A conversation that really was live and stopped: the words are kept, and that is said.
+        XCTAssertEqual(TalkView.stateNote(reason: R.connection, scripted: true, paired: true, hasLines: true, everLive: true),
+                       "talk.unavailable.dropped")
+        XCTAssertNil(TalkView.stateNote(reason: R.pairing, scripted: true, paired: false, hasLines: true, everLive: true))
+        XCTAssertNil(TalkView.stateNote(reason: nil, scripted: false, paired: true, hasLines: true, everLive: true))
+    }
+
+    func testCompletedSuggestionStopStaysCompletedWhenTheNudgeChanges() {
+        func step(_ r: KaikuRoute, done: Bool) -> PathStep {
+            PathStep(route: r, titleKey: "t", whyKey: "w", icon: "i", tone: .sage, minutes: 1, done: done)
+        }
+        let breatheDone = step(.breathe, done: true), walk = step(.walk, done: false), tell = step(.tell, done: false)
+        // Morning: Breathe was suggested and finished. Later the nudge becomes the walk: Breathe keeps its tick.
+        XCTAssertEqual(AppModel.suggestedStep(current: walk, candidates: [breatheDone, tell, walk]).route, .breathe)
+        XCTAssertTrue(AppModel.suggestedStep(current: walk, candidates: [breatheDone, tell, walk]).done)
+        // Nothing done yet: the current suggestion shows. The current one done: it shows.
+        XCTAssertEqual(AppModel.suggestedStep(current: walk, candidates: [step(.breathe, done: false), tell, walk]).route, .walk)
+        XCTAssertEqual(AppModel.suggestedStep(current: step(.walk, done: true), candidates: [breatheDone, tell]).route, .walk)
+    }
+
+    func testAppsGroupIsNotLabelledAsAMacAndSetupNeverClaimsAVoiceThatDidNotPlay() {
+        XCTAssertEqual(MomentsTimeline.sources["laptop"]?.1, "source.apps")
+        XCTAssertEqual(L10n.shared.string("source.apps", lang: .en), "Kaiku app")
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: true), "setup.hello.voice")
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: false), "setup.hello.unavailable")
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: nil), "setup.hello.loading")
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: false, played: nil), "setup.hello.silent")
+        XCTAssertFalse(L10n.shared.string("setup.hello.unavailable", lang: .en).lowercased().contains("that was my voice"))
+    }
+}
