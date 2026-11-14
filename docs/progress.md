@@ -1123,3 +1123,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   resets the board. MQTT firmware still builds; `make check` passes.
 - Broken/blocked: standalone expects an LED grid on port 7 (the button sits there now) and the motor on 11 (only
   reverse turns there); the orientation sensor on 13 is unconfirmed (asked Atech's agent).
+
+## 2026-11-14 11:30 — Claude Code — firmware (A): standalone head runs untethered
+- Did: `standalone/build.sh` mutes the Atech drivers' debug prints in the generated build (`VERBOSE=1` keeps them);
+  drumming's 20 s now starts at the first tap (60 s without any tap ends it).
+- Verified on the board from the external power supply, no laptop: the full ritual by knob (greet, three dials,
+  breathing, drum from the first tap, done). Over USB: `pan` runs and reports done (value commands are JSON lines).
+- Broken/blocked: none for the standalone head. The MQTT firmware stays the next stage (D44).
+

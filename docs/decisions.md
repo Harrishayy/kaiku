@@ -364,7 +364,8 @@ flowchart LR
   ritual itself (greet, mood/energy/sleep dial, breathing, drumming) and talks JSON lines over USB serial. No Wi-Fi,
   MQTT, contracts or hub watchdog, so the hub, UNO Q and cloud don't see the head while it runs. Its layout: speaker
   1-2, display 3-4, knob 5-6, LED grid 7, mic 9-10, motor 11, orientation sensor (ICM-40608/LSM6DSOX) 13; no button.
-  Its `src/` stays verbatim, so a new version from the website agent drops straight in. `make atech-standalone FLASH=1`.
+  Its `src/` stays as the website agent wrote it (one edit: the drum clock starts at the first tap), so a new
+  version drops straight in (re-apply that edit). `make atech-standalone FLASH=1`.
 - **Next stage:** the MQTT/contract firmware (`firmware/atech-head/`, `kaiku_link/`) is kept intact and still builds;
   going back is `make atech-mqtt FLASH=1`. Porting the standalone's good parts (ritual feel, eye shapes, purr nudge,
   orientation-sensor taps) into `kaiku_link` happens then, behind the contracts (the hub keeps the ritual, D32).

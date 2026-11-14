@@ -40,7 +40,7 @@ kaiku_link/
   library.json          PlatformIO manifest (linked from project.yaml `libraries:`) + deps (PubSubClient, ArduinoJson 7)
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
-standalone/             ACTIVE (D44): website-agent firmware, src/ verbatim (main.cpp, pins.h, transport.*);
+standalone/             ACTIVE (D44): website-agent firmware in src/ (main.cpp, pins.h, transport.*; our edit: drum clock from the first tap);
                         project.yaml only lists modules so `atech build` fetches drivers; build.sh overlays src/ +
                         include shims for its modules/<group>/x.h paths. `make atech-standalone [FLASH=1]`
 bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over USB; record_wav.py saves a .wav
@@ -113,5 +113,6 @@ Fixed in `kaiku_link`: `tick()` read `now` before `mqtt.loop()`, so stamps set w
 unsigned differences (hub "silent" after each heartbeat, every motor segment skipped); with no USB host reading,
 `println` stalled the loop (`Serial.setTxTimeoutMs(0)`); softer motor start (ramp 400 ms, gesture speed 110).
 No LED grids in this build (ports 11/14 free).
-Standalone (D44), on hardware: works while a USB host reads its serial output; with nobody reading, the drivers'
-debug prints stall the loop and knob presses are missed. Opening the port resets the board.
+Standalone (D44), on hardware: runs untethered on its own USB-C power. `build.sh` mutes the Atech drivers' debug prints
+(with nobody reading USB they stalled the loop and knob presses were missed; `VERBOSE=1` keeps them). Opening the
+serial port resets the board. Commands with a value must be JSON lines (`{"action":"pan","value":"100"}`).

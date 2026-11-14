@@ -220,7 +220,9 @@ static void drawFrame() {
       break;
     }
     case DRUM: {
-      unsigned long left = (millis() - modeStart) >= drumMs ? 0 : (drumMs - (millis() - modeStart)) / 1000;
+      // the clock starts at the first tap; until then the full time is shown
+      unsigned long ran = taps ? millis() - firstTap : 0;
+      unsigned long left = ran >= drumMs ? 0 : (drumMs - ran) / 1000;
       st7735_tft.displayText("DRUM!", 14, 86, 2, ST7735_TFT::COLOR_MAGENTA);
       snprintf(buf, sizeof buf, "taps %d", taps);
       st7735_tft.displayText(buf, 8, 112, 1, ST7735_TFT::COLOR_WHITE);
@@ -359,7 +361,11 @@ void loop() {
     char b[48]; snprintf(b, sizeof b, "{\"completed\":true,\"cycles\":%d}", breathCycles);
     emit("breathe", b); setMode(DRUM); speaker.playNote(NOTE_E5, 80);
   }
-  if (mode == DRUM && millis() - modeStart >= drumMs) { finishDrum(); finishRitual(); }
+  // drumming time counts from the first tap; with no tap at all, give up after DRUM_WAIT_MS
+  static const unsigned long DRUM_WAIT_MS = 60000;
+  if (mode == DRUM && (taps ? millis() - firstTap >= drumMs : millis() - modeStart >= DRUM_WAIT_MS)) {
+    finishDrum(); finishRitual();
+  }
   if (mode == GREET && millis() - modeStart > 60000) setMode(IDLE);
   if (mode == DONE && millis() - modeStart > 8000) setMode(IDLE);
 
