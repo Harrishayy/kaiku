@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .companion_tools import (
     Activity,
+    AgreeWhen,
     CheckinItem,
     Energy,
     Intent,
@@ -24,7 +25,7 @@ from .companion_tools import (
 )
 from .criteria import Criteria
 from .envelope import Envelope
-from .payloads import Health, NudgeArm, PlaySession
+from .payloads import FaceSigns, Health, NudgeArm, PlaySession
 from .sources import ConsensusSource
 
 State = Literal["stable", "watch", "needs_call", "safety"]
@@ -99,6 +100,9 @@ class ClinicianAskResponse(ApiModel):
 class TaskObservationsResponse(ApiModel):
     patient_id: str
     observations: list[Envelope[PlaySession]] = Field(default_factory=list, max_length=100)
+    face_signs: list[Envelope[FaceSigns]] = Field(
+        default_factory=list, max_length=100, description="obs.face_signs of the same window, newest first (D52): "
+        "`payload.ref` names the task session each belongs to. Movements counted on the device; never an emotion")
     computed_at: datetime
 
 
@@ -196,6 +200,8 @@ class MetricSeries(ApiModel):
     unit: str = ""
     source: ConsensusSource
     worse_when: Literal["up", "down"]
+    scored: bool = Field(default=True, description="false = shown and citable against the person's usual, never part "
+                         "of the group's verdict (criteria `role = \"shown\"`, or weight 0)")
     points: list[TimelinePoint]
 
 
@@ -322,6 +328,9 @@ class InvitationResponse(ApiModel):
 
     home_id: str
     invitation: Invitation | None = None
+    agreed: list[AgreedActivity] = Field(
+        default_factory=list, description="what the person said yes to today, on any device (D50), oldest first. "
+        "While one is open or started the invitation waits (`invitation` is null)")
 
 
 class InvitationAnswer(ApiModel):
@@ -329,6 +338,428 @@ class InvitationAnswer(ApiModel):
 
     id: str
     answer: Literal["yes", "not_now"]
+
+
+# ------------------------------------------------------------------ an activity agreed in one place (D50)
+AgreedState = Literal["open", "started", "done", "put_aside"]
+
+
+class AgreedActivity(ApiModel):
+    """One activity the person said yes to in a conversation, held by the cloud for that local day so every
+    screen shows the same thing (tool `agree_activity`). `text` is a template from config/voice_lines.toml
+    (`voice_key`) around the activity's name and where it was agreed: never the person's words. It becomes
+    `done` by itself when an observation for that activity arrives the same day; a device reports `started`
+    (opened) or `put_aside` with POST /v1/me/agreed/answer. Gone after local midnight."""
+
+    id: str = Field(description="send it back in the answer; also the id in the stream's `agreed` events")
+    kind: Activity
+    name: str = Field(max_length=40, description='how the activity is called on a screen ("Lantern", "a walk")')
+    text: str = Field(max_length=200, description="the sentence for the card and the notification")
+    voice_key: str = Field(description="the template used; speak `text` with POST /v1/voice/say")
+    line: str | None = Field(default=None, max_length=80, description="Kaiku's own short line from the "
+                             "conversation, when it gave one and it passed the wording rules")
+    surface: Surface = Field(description="where it was agreed")
+    at: datetime = Field(description="when it was agreed")
+    day: date = Field(description="the local day it belongs to; it is not shown on any other day")
+    when: AgreeWhen = Field(default="now", description="now: they want to do it now, on another device. later: "
+                            "some time today")
+    state: AgreedState
+    state_at: datetime | None = Field(default=None, description="when it was opened, done or put aside")
+    on: list[Surface] = Field(default_factory=list, description="the person's screens that can open it")
+    opens_here: bool = Field(default=False, description="the asking device (`surface` in the query) has a "
+                             "screen for it; false: show it without an open button")
+
+
+class AgreedAnswer(ApiModel):
+    """POST /v1/me/agreed/answer — opened: this device opened the activity's screen (state started). put_aside:
+    the person put it aside (final for today). Done needs no answer: the activity's own observation does it."""
+
+    id: str
+    answer: Literal["opened", "put_aside"]
+
+
+class AgreedResult(ApiModel):
+    """Result of the `agree_activity` tool when the yes was kept. A refusal is `ok=false` with `error` (a reason
+    the model can say) and `result {agreed: false, reason}`; nothing is stored then."""
+
+    agreed: Literal[True] = True
+    id: str
+    kind: Activity
+    name: str = Field(max_length=40)
+    when: AgreeWhen = "now"
+    on: list[Surface] = Field(description="the person's screens that now show it and can open it")
+    where: str = Field(max_length=60, description='say it this way: "your phone and your Mac"')
+    already: bool = Field(default=False, description="this activity was already agreed and open today: nothing "
+                          "new was added")
+    listening: list[Surface] = Field(default_factory=list, description="screens whose app is open right now "
+                                     "(the stream is connected): it appeared there this second. The others show "
+                                     "it when the app is next opened")
+
+
+class StreamHello(ApiModel):
+    """GET /v1/me/stream, first frame of every connection (SSE `event: hello`, no id). `resync: true`: the
+    `Last-Event-ID` the client sent could not be continued (another process, or too long ago), so events may
+    have been missed: read `/v1/me`, `/v1/me/invitation` and whatever else the screen shows again."""
+
+    home_id: str
+    heartbeat_s: float = Field(gt=0, description="a `ping` at least this often; no frame for well over twice "
+                               "this long means the connection is dead: reconnect with Last-Event-ID")
+    last_id: str | None = Field(default=None, description="id of the newest event for this home, if any")
+    resync: bool = False
+    replayed: int = Field(default=0, ge=0, description="events sent again right after this frame")
+
+
+class StreamAgreed(ApiModel):
+    """SSE `event: agreed` — an agreed activity appeared or changed. Ids and kinds only: read the sentence with
+    GET /v1/me/invitation. `open`: just agreed (show it, post the notification). `removed`: it is gone (take the
+    card and any pending notification away)."""
+
+    id: str
+    kind: Activity
+    state: AgreedState | Literal["removed"]
+    surface: Surface = Field(description="where it was agreed")
+    when: AgreeWhen = "now"
+    on: list[Surface] = Field(default_factory=list, description="screens that can open it")
+    day: date
+
+
+class StreamDay(ApiModel):
+    """SSE `event: day` — new observations were stored for this home: what a screen shows about today may have
+    changed (a check-in on the robot, a walk, a game). Types and senders only, never a value."""
+
+    day: date = Field(description="the local day the newest of them belongs to")
+    types: list[str] = Field(default_factory=list, description='observation types, e.g. "obs.self_report"')
+    sources: list[str] = Field(default_factory=list, description='who sent them, e.g. "hub", "phone"')
+
+
+class StreamInvitation(ApiModel):
+    """SSE `event: invitation` — today's invitation was answered on some device: take its card away."""
+
+    id: str
+    state: Literal["answered"] = "answered"
+
+
+# ------------------------------------------------------------------ the person's own history (D48)
+HistoryGroupKey = Literal["robot", "games", "walks", "checkins", "sleep_body", "mac", "camera"]
+HISTORY_GROUPS: tuple[str, ...] = ("robot", "games", "walks", "checkins", "sleep_body", "mac", "camera")
+HistoryDevice = Literal["robot", "phone", "mac", "glasses", "watch", "web"]
+# How a History value is to be read (the practitioner side prints its own numbers and does not use this):
+# number = as it is, with its unit · clock = minutes after local midnight · percent = a share from 0 to 1, shown
+# times 100 with "%" (`unit` says what it is a share of, or is empty; `decimals` are the percent number's) ·
+# duration = minutes, shown as hours and minutes from 60 on (`unit` empty). A client that does not know a format
+# shows a plain number.
+HistoryFormat = Literal["number", "clock", "percent", "duration"]
+HistoryPerDay = Literal["average", "total", "highest", "lowest", "latest", "first", "count"]
+
+
+class HistoryDay(ApiModel):
+    """One local day of one measure."""
+
+    date: date
+    value: float
+    sessions: int = Field(ge=1, description="readings that day that the value is made from")
+    sim: bool = Field(default=False, description="some of that day's readings are simulated")
+
+
+class HistoryUsual(ApiModel):
+    """The person's own usual range for a measure, from their own earlier days. A range and nothing else."""
+
+    low: float
+    high: float
+
+
+class HistoryValue(ApiModel):
+    """One number of one session, ready to show."""
+
+    key: str = Field(description="payload field, e.g. tempo_bpm")
+    title: str
+    value: float
+    unit: str = ""
+    format: HistoryFormat = "number"
+
+
+class HistorySession(ApiModel):
+    """One recorded session (a drum session, one game, a breathing round, a walk, one dial answer, one morning's
+    watch summary) with its own numbers."""
+
+    id: str = Field(description="the observation's id")
+    ts: datetime
+    device: HistoryDevice
+    sim: bool = False
+    warmup: bool | None = Field(default=None, description="games: a practice session, left out of the day's value")
+    label: str | None = Field(default=None, description="which kind of session, where one measure lists several "
+                                                        "(a ritual step: Breathing, Drumming)")
+    values: list[HistoryValue] = Field(default_factory=list, max_length=16)
+
+
+class HistoryMeasure(ApiModel):
+    """One measure over the window: its days, the person's usual range when there is one, and its latest sessions."""
+
+    key: str = Field(description="stable key; for a measure the practitioner side also computes, the same name")
+    title: str
+    unit: str = ""
+    format: HistoryFormat = Field(default="number", description="clock: minutes after local midnight; percent: a "
+                                  "share 0..1 shown as a percentage; duration: minutes shown as hours and minutes. "
+                                  "`usual` is in the same format")
+    decimals: int = Field(default=0, ge=0, le=2, description="how many decimals the value is worth showing with")
+    per_day: HistoryPerDay = Field(description="how one day's value is made from that day's sessions")
+    devices: list[HistoryDevice] = Field(description="where its readings came from in this window, most first "
+                                                     "(head, sensors and hub are all the robot)")
+    days: list[HistoryDay] = Field(description="days with a value, oldest first; a day without data is absent")
+    usual: HistoryUsual | None = None
+    sessions: list[HistorySession] = Field(default_factory=list, max_length=30, description="newest first")
+    sim: bool = False
+
+
+class HistoryGroup(ApiModel):
+    key: HistoryGroupKey
+    title: str
+    measures: list[HistoryMeasure]
+
+
+class PersonHistory(ApiModel):
+    """GET /v1/me/history?home_id=&days= — the person's own numbers, as a health app shows them: every measure
+    the home has produced, from every device, by local day, with the latest sessions one tap away. Groups come in
+    a fixed order (robot, games, walks, checkins, sleep_body, mac, camera); a group or measure with no data in the
+    window is left out. `camera` holds the face signs counted with "Camera during activities" on (D52): her own
+    numbers like every other group, never a word for what they might mean. It is the one person-facing place where numbers are shown (D48), and it carries numbers only:
+    never a state, a verdict, a score against the usual, a flag, a weight, a direction word, anything from the
+    practitioner's review, a safety flag or a questionnaire answer."""
+
+    home_id: str
+    days: int = Field(ge=1, le=90, description="the window asked for")
+    first_day: date
+    last_day: date
+    timezone: str
+    groups: list[HistoryGroup]
+    sim: bool = Field(default=False, description="the window contains simulated readings")
+    generated_at: datetime
+
+
+# ------------------------------------------------------------------ one day, for developers (GET /v1/debug/day)
+class DebugEvent(ApiModel):
+    """One stored envelope of the day."""
+
+    id: str
+    ts: datetime
+    local_time: str = Field(description="HH:MM:SS in the home's timezone")
+    source: str = Field(description="the envelope's own source (head, sensors, hub, phone, laptop, glasses, ...)")
+    type: str
+    sim: bool
+    quality: float | None = None
+    payload: dict[str, Any] = Field(description="compact: long lists are cut to their first items plus a count")
+    metrics: list[str] = Field(default_factory=list, description="metrics this envelope counted toward")
+    day: date | None = Field(default=None, description="the local day this envelope counts toward (a daily summary "
+                                                       "can be stamped on the day after the one it measures)")
+
+
+class DebugBaseline(ApiModel):
+    median: float
+    spread: float = Field(description="max(1.4826 x MAD, min_mad): what one z unit is")
+    days: int = Field(ge=0, description="days the baseline is made from")
+    early: bool = Field(default=False, description="provisional baseline of a young record")
+
+
+class DebugMetric(ApiModel):
+    """One criteria metric on that day, beside its baseline."""
+
+    id: str = Field(description="citable id: metric:<name>")
+    metric: str
+    label: str
+    unit: str = ""
+    source: ConsensusSource
+    obs: str
+    value: float | None = Field(default=None, description="the day's value; null = no data that day")
+    partial: bool = Field(default=False, description="today's running total of a summed or counted measure: shown, "
+                                                     "but not compared or scored until the day is over (no z)")
+    readings: int = Field(default=0, ge=0, description="envelopes that day that counted toward it")
+    baseline: DebugBaseline | None = None
+    z: float | None = Field(default=None, description="(value - median) / spread, as measured")
+    worse_z: float | None = Field(default=None, description="the same, signed so that positive is the worse direction")
+    direction: Literal["up", "down"] = Field(description="criteria worse_when")
+    z_threshold: float
+    beyond_today: bool = Field(default=False, description="this day alone is beyond the threshold in the worse direction")
+    status: Literal["drifting", "improved", "normal", "insufficient"]
+    worse_days: int = Field(default=0, ge=0)
+    better_days: int = Field(default=0, ge=0)
+    scored_days: int = Field(default=0, ge=0, description="days in the drift window that had a baseline")
+    drift_days_needed: int = Field(ge=1)
+    weight: float = Field(ge=0)
+    enabled: bool
+    scored: bool = Field(description="false = observe-only (disabled, weight 0, or criteria role shown): charted, "
+                                     "never a vote")
+    flagged: bool = Field(default=False, description="counted toward its group's worse weight that day")
+    event_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class DebugVerdict(ApiModel):
+    """One signal group's verdict that day with what made it."""
+
+    id: str = Field(description="citable id: source:<name>")
+    source: ConsensusSource
+    label: str
+    verdict: Verdict
+    confidence: float = Field(ge=0, le=1)
+    min_confidence: float
+    worse_weight: float = Field(ge=0, description="sum of the weights of its drifting metrics")
+    worse_min_weight: float
+    better_weight: float = Field(ge=0)
+    better_min_weight: float
+    rules_fired: list[str] = Field(default_factory=list)
+    evidence: list[VerdictEvidence] = Field(default_factory=list)
+    days_with_data: int = Field(default=0, ge=0, description="in the baseline window up to that day")
+    last_data_at: datetime | None = None
+    previous: Verdict | None = Field(default=None, description="its verdict the day before")
+    insufficient_reason: Literal["stale", "low_confidence", "no_usable_metric"] | None = Field(
+        default=None, description="only when the verdict is insufficient, in the rule's own order: stale = nothing "
+        "newer than the group's max_age_days; low_confidence = confidence below min_confidence; no_usable_metric = "
+        "no scored measure has a usable baseline and no rule fired")
+
+
+class DebugConsensus(ApiModel):
+    id: Literal["consensus:state"] = "consensus:state"
+    state: State
+    raw_state: State = Field(description="what the rule gives for that day alone, before hysteresis")
+    held: bool = Field(default=False, description="needs_call kept by hysteresis")
+    agreement: Agreement
+    rule_version: str
+    reasons: list[str] = Field(default_factory=list, description="by code: why the rule gives this state")
+    previous_state: State | None = None
+    changed: list[str] = Field(default_factory=list, description="by code: what differs from the day before")
+    acknowledged_by: str | None = None
+    safety_since: datetime | None = None
+    state_since: date | None = None
+
+
+class DebugFeel(ApiModel):
+    """One `feel` call: enums only, never what was said."""
+
+    ts: datetime
+    kind: str
+    valence: str
+    energy: str | None = None
+    tone: list[str] = Field(default_factory=list)
+    via: str | None = None
+    stance: str | None = Field(default=None, description="the plan's stance; null for calls stored before it was kept")
+    depth: str | None = None
+    offered: bool | None = Field(default=None, description="the plan carried an offer")
+
+
+class DebugConversation(ApiModel):
+    """One companion conversation that started that day. Never transcripts, topics or words."""
+
+    session_id: str
+    surface: Surface
+    intent: Intent
+    start: datetime
+    end: datetime | None = None
+    minutes: float | None = None
+    outcome: EpisodeOutcome | None = Field(default=None, description="how it ended; null = never closed")
+    tools: list[str] = Field(default_factory=list, description="tool names: in call order while the conversation "
+                                                               "is open, one of each once the device has uploaded it")
+    tools_in_order: bool | None = Field(default=None, description="true = `tools` is the call order (repeats kept); "
+                                        "false = the device's upload replaced it with one of each, sorted by name; "
+                                        "null = cannot be told (a conversation uploaded before this was recorded)")
+    feel: list[DebugFeel] = Field(default_factory=list)
+    billed_minutes: float | None = Field(default=None, description="Live minutes the budget ledger counts for it")
+    transcript_kept: bool = False
+
+
+class DebugModelCall(ApiModel):
+    ts: datetime
+    provider: str = Field(description="gemini | gemma-hosted | modal | none (a deterministic or template answer)")
+    model: str
+    task: str
+    route: str | None = None
+    ok: bool
+    fallback: bool = False
+    latency_ms: float | None = None
+    tokens_in: int | None = Field(default=None, description="not recorded by the ledger today: null")
+    tokens_out: int | None = None
+    est_usd: float | None = Field(default=None, description="the spend ledger's estimate for this call, when one "
+                                                            "row matches it by model, task and time")
+    cache_hit: bool | None = Field(default=None, description="null: the ledger does not record cache hits")
+
+
+class DebugFact(ApiModel):
+    """One verified line the day read may cite. Ids: metric:<name>, source:<name>, consensus:state,
+    missing:<source or metric>, tomorrow:<name>, event:<envelope id>."""
+
+    id: str
+    kind: Literal["metric", "source", "consensus", "missing", "tomorrow", "event"]
+    label: str
+    detail: str = Field(description="written by code from the day's data; every number in it is the data's")
+    numbers: list[float] = Field(default_factory=list, description="the numbers a claim citing this may use")
+    flags: dict[str, bool] = Field(default_factory=dict, description="the yes/no facts a claim citing this may state, "
+                                   "checked like the numbers: held, acknowledged, safety (consensus), enough_data "
+                                   "(a signal group), scored (a measure)")
+
+
+class DebugClaim(ApiModel):
+    text: str = Field(max_length=500)
+    cites: list[str] = Field(min_length=1, max_length=8, description="DebugFact ids (the model is asked for six at most)")
+    by_code: bool = Field(default=False, description="inside a Gemma read: this line is code's own, put there because "
+                                                     "the model left the measure out or its sentence failed a check")
+
+
+DebugReading = Literal["as_usual", "slight_shift", "clear_shift", "not_enough_data"]
+
+
+class DebugRead(ApiModel):
+    """A developer-facing reading of the day, written from the structured data above. Gemma's when `by` is gemma
+    (every claim cites facts, every number is one of theirs); otherwise the same shape written by code. It never
+    changes the consensus."""
+
+    by: Literal["gemma", "deterministic"]
+    model: str | None = None
+    cached: bool = False
+    fallback_reason: str | None = Field(default=None, description="why the deterministic read is shown: "
+                                        "not_requested | provider_unavailable | over_budget | invalid_json | "
+                                        "no_valid_claims | cooldown")
+    failed: bool = Field(default=False, description="the model was asked about exactly this day's data and nothing "
+                         "valid came back; kept with its reason and rejections until the day's data, the rule or the "
+                         "instruction changes, and not asked (or paid for) again before that")
+    attempts: int = Field(default=0, ge=0, description="model calls this ask made (0 = the model was not asked)")
+    latency_ms: float | None = Field(default=None, description="how long the ask took, all attempts together")
+    est_usd: float | None = Field(default=None, description="the spend ledger's estimate for the ask: its rows for "
+                                                            "this task and model while the ask ran")
+    reading: DebugReading = Field(description="by code, from the day's metrics: never the model's call")
+    summary: DebugClaim
+    moved: list[DebugClaim] = Field(default_factory=list, description="which measures moved, and by how much")
+    missing: list[DebugClaim] = Field(default_factory=list, description="what the day lacks")
+    tomorrow: list[DebugClaim] = Field(default_factory=list, description="what would change the state tomorrow")
+    rule_check: DebugClaim | None = Field(default=None, description="whether the rule's answer looks right")
+    rejected: dict[str, int] = Field(default_factory=dict, description="validator category -> claims dropped, over "
+                                                                        "all attempts of the ask")
+    digest: str = Field(description="hash of the read version, the instruction, rule version, model and the day's data")
+    generated_at: datetime
+
+
+class DebugDay(ApiModel):
+    """GET /v1/debug/day?home_id=&date=&generate= — everything about one local day of one home, for developers.
+    Not for a practitioner and never for the person. Closed like /v1/admin on a deployed service. `generate`
+    defaults to false: a plain GET never calls a model; `generate=true` asks for Gemma's read of the day."""
+
+    home_id: str
+    date: date
+    timezone: str
+    day_start: datetime = Field(description="local midnight that starts the day, in UTC")
+    day_end: datetime = Field(description="local midnight that ends it, in UTC")
+    is_today: bool = False
+    first_day: date | None = Field(default=None, description="the first local day of the home's record (a day picker "
+                                                             "has nothing before it); null = no record yet")
+    sim: bool = False
+    events: list[DebugEvent] = Field(description="every stored envelope stamped inside the day, plus a daily summary "
+                                                  "that measures this day but arrived later; oldest first")
+    events_total: int = Field(ge=0)
+    metrics: list[DebugMetric]
+    verdicts: list[DebugVerdict]
+    consensus: DebugConsensus
+    conversations: list[DebugConversation] = Field(default_factory=list)
+    model_calls: list[DebugModelCall] = Field(default_factory=list)
+    facts: list[DebugFact] = Field(default_factory=list, description="everything the read may cite")
+    read: DebugRead
+    computed_at: datetime
 
 
 class VoiceLinesResponse(ApiModel):
@@ -480,7 +911,13 @@ class FeelPlan(ApiModel):
     may_offer: str | None = Field(default=None, max_length=120, description="one small thing to offer once, or null")
     offer_note: str | None = Field(default=None, max_length=240, description="why that one, and how to offer it")
     offer_activity: Activity | None = Field(default=None, description="start_activity kind, only after a clear yes")
+    offer_elsewhere: Activity | None = Field(default=None, description="the offer has no screen on this device but "
+                                             "one on their phone or Mac: after a clear yes call agree_activity "
+                                             "with this kind (D50)")
     follow_up_saved: bool = Field(default=False, description="a thread to ask about next time was kept")
+    manner: str | None = Field(default=None, max_length=240, description="a words-only cue for how to carry "
+                               "yourself in this conversation (go more gently), never something to say, and never "
+                               "a number, a state or where the cue came from (D52)")
     scheduling: Literal["INTERRUPT", "WHEN_IDLE", "SILENT"] = Field(
         default="WHEN_IDLE", description="Live FunctionResponse scheduling for this non-blocking tool: send it as "
         "`response.scheduling` so the model answers with the plan as soon as it is idle")
@@ -570,6 +1007,14 @@ class ContextCard(ApiModel):
     walk_style: WalkStyle | None = Field(default=None, description="walk sessions: how Kaiku walks with them")
     outdoor_likes: list[str] = Field(default_factory=list, max_length=4, description="walk sessions: outdoor things "
                                      "and places the person told Kaiku they like, in their words (notebook)")
+    agreed: list[str] = Field(default_factory=list, max_length=3, description="activities they said yes to today "
+                              "on any device and whether each is done (D50); each is carried once per state, so "
+                              "Kaiku is glad or asks gently once")
+    quieter_in: list[Literal["games", "check_in"]] = Field(
+        default_factory=list, max_length=2, description="today's tasks in which the face signs counted with their "
+        "opt-in were clearly below their own usual (D52, rule in mind/face_cue.py). An enum and nothing else: the "
+        "instruction turns it into a cue to go gently and never to mention their face or a camera; no number, no "
+        "state and no word about how they looked ever crosses")
     others_present: bool = False
     dont_remember: bool = False
 
@@ -1109,6 +1554,48 @@ class LearnedRoutine(ApiModel):
     caveat: str = Field(default="", max_length=300, description="how far the reported responses can be trusted")
 
 
+class InsightNodeDay(ApiModel):
+    """What one graph node has on one day of the record, by the same code as the course, the trends band and the
+    daily account. A day with nothing for the node has no entry."""
+
+    date: date
+    tone: Trend = Field(default="unknown", description="measure: that day's reading against that day's own usual "
+                        "(worse = away from usual, better = beyond usual on the favourable side, similar = within "
+                        "usual, unknown = no personal usual yet); routine: similar = kept, worse = missed on a "
+                        "recorded day; every other kind: unknown (recorded, not judged)")
+    value: str = Field(default="", max_length=32, description="short printed form: '2 of 5', '07:22', 'missed'")
+    text: str = Field(max_length=200, description="one plain clause by code: '2 of 5, below their usual 4 of 5'")
+
+
+class InsightDomain(ApiModel):
+    """A neighbourhood of the graph: what a group of nodes is about, and where it sits around the person. Declared
+    once in config/kaiku.toml [graph]; the same for every person."""
+
+    id: str
+    label: str = Field(max_length=60)
+    short: str = Field(max_length=24)
+    place: Literal["n", "ne", "e", "se", "s", "sw", "w", "nw"]
+
+
+class InsightChange(ApiModel):
+    """One thing that is different on a day, pointing at its node. Text and order are written by code."""
+
+    node: str
+    kind: Literal["care", "moved_away", "came_back", "better", "missed", "first", "kept"]
+    text: str = Field(max_length=240)
+    tag: str = Field(default="", max_length=80, description="where it sits in the order of the change, when the "
+                     "course has one: 'first to move', '1 day after the first change' (order in time, never cause)")
+
+
+class InsightGraphDay(ApiModel):
+    """One day of the graph's record: what changed that day and how many measures were away from usual."""
+
+    date: date
+    recorded: bool = Field(description="at least one observation or care action that day")
+    away: int = Field(ge=0, description="measures away from their usual that day")
+    changes: list[InsightChange] = Field(default_factory=list)
+
+
 class InsightNode(ApiModel):
     id: str
     kind: Literal["person", "signal_group", "measure", "activity", "routine", "care_action", "shared_topic"]
@@ -1118,17 +1605,23 @@ class InsightNode(ApiModel):
     detail: str | None = Field(default=None, max_length=240)
     evidence: int = Field(ge=0, description="recorded days / observations / attempts behind this node")
     tone: Trend = "unknown"
+    domain: str = Field(default="", description="id of the `InsightGraph.domains` entry this node is about; empty "
+                        "for the person and the signal groups (who sent it is not what it is about)")
+    days: list[InsightNodeDay] = Field(default_factory=list, description="oldest first, within `InsightGraph.days`")
 
 
 class InsightEdge(ApiModel):
     src: str
     dst: str
     rel: Literal["has_signal", "measures", "did", "keeps", "of", "helped", "moved_first", "followed",
-                 "moved_together", "kept_through", "slipped_during", "after", "talked_about"]
+                 "moved_together", "kept_through", "slipped_during", "after", "talked_about", "produces", "about"]
     layer: Literal["learned", "structure"] = "structure"
     label: str = Field(max_length=80)
     weight: float = Field(ge=0, le=1)
     evidence: int = Field(ge=0)
+    on: list[date] = Field(default_factory=list, description="the days this link is about, oldest first: the day "
+                           "a measure followed, the days two measures were away together, the day it came back")
+    tag: str = Field(default="", max_length=24, description="a few words for a badge: '+1 day', 'first'")
 
 
 class InsightGraph(ApiModel):
@@ -1142,6 +1635,9 @@ class InsightGraph(ApiModel):
     shared: bool = Field(description="the person shares conversation-derived activity counts with the care team")
     basis: list[Literal["observations", "shared_conversations"]] = Field(default_factory=list)
     note: str = Field(default="", max_length=240)
+    domains: list[InsightDomain] = Field(default_factory=list, description="the neighbourhoods, in declared order")
+    days: list[InsightGraphDay] = Field(default_factory=list, description="every calendar day from the first to "
+                                        "the last day with data inside the graph's window, oldest first")
 
 
 class ObsTypeCoverage(ApiModel):
@@ -1200,7 +1696,7 @@ class Course(ApiModel):
     low_date: date | None = Field(default=None, description="the day most measures were away from usual")
     moved: int = Field(default=0, ge=0, description="measures that moved away from usual in this spell")
     back: int = Field(default=0, ge=0, description="of those, how many are back within usual")
-    summary: str = Field(max_length=700)
+    summary: str = Field(max_length=900)
     events: list[CourseEvent] = Field(default_factory=list)
 
 

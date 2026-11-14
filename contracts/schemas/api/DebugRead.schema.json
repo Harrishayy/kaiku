@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "DebugClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "by_code": {
+          "default": false,
+          "description": "inside a Gemma read: this line is code's own, put there because the model left the measure out or its sentence failed a check",
+          "title": "By Code",
+          "type": "boolean"
+        },
+        "cites": {
+          "description": "DebugFact ids (the model is asked for six at most)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Cites",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 500,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "cites"
+      ],
+      "title": "DebugClaim",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A developer-facing reading of the day, written from the structured data above. Gemma's when `by` is gemma\n(every claim cites facts, every number is one of theirs); otherwise the same shape written by code. It never\nchanges the consensus.",
+  "properties": {
+    "attempts": {
+      "default": 0,
+      "description": "model calls this ask made (0 = the model was not asked)",
+      "minimum": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
+    "by": {
+      "enum": [
+        "gemma",
+        "deterministic"
+      ],
+      "title": "By",
+      "type": "string"
+    },
+    "cached": {
+      "default": false,
+      "title": "Cached",
+      "type": "boolean"
+    },
+    "digest": {
+      "description": "hash of the read version, the instruction, rule version, model and the day's data",
+      "title": "Digest",
+      "type": "string"
+    },
+    "est_usd": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the spend ledger's estimate for the ask: its rows for this task and model while the ask ran",
+      "title": "Est Usd"
+    },
+    "failed": {
+      "default": false,
+      "description": "the model was asked about exactly this day's data and nothing valid came back; kept with its reason and rejections until the day's data, the rule or the instruction changes, and not asked (or paid for) again before that",
+      "title": "Failed",
+      "type": "boolean"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "why the deterministic read is shown: not_requested | provider_unavailable | over_budget | invalid_json | no_valid_claims | cooldown",
+      "title": "Fallback Reason"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "how long the ask took, all attempts together",
+      "title": "Latency Ms"
+    },
+    "missing": {
+      "description": "what the day lacks",
+      "items": {
+        "$ref": "#/$defs/DebugClaim"
+      },
+      "title": "Missing",
+      "type": "array"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "moved": {
+      "description": "which measures moved, and by how much",
+      "items": {
+        "$ref": "#/$defs/DebugClaim"
+      },
+      "title": "Moved",
+      "type": "array"
+    },
+    "reading": {
+      "description": "by code, from the day's metrics: never the model's call",
+      "enum": [
+        "as_usual",
+        "slight_shift",
+        "clear_shift",
+        "not_enough_data"
+      ],
+      "title": "Reading",
+      "type": "string"
+    },
+    "rejected": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "validator category -> claims dropped, over all attempts of the ask",
+      "title": "Rejected",
+      "type": "object"
+    },
+    "rule_check": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DebugClaim"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "whether the rule's answer looks right"
+    },
+    "summary": {
+      "$ref": "#/$defs/DebugClaim"
+    },
+    "tomorrow": {
+      "description": "what would change the state tomorrow",
+      "items": {
+        "$ref": "#/$defs/DebugClaim"
+      },
+      "title": "Tomorrow",
+      "type": "array"
+    }
+  },
+  "required": [
+    "by",
+    "reading",
+    "summary",
+    "digest",
+    "generated_at"
+  ],
+  "title": "DebugRead",
+  "type": "object"
+}

@@ -27,6 +27,10 @@ style = "warm, gentle, unhurried, softly smiling; a small friendly companion"
 cache_dir = "logs/voice_cache"           # rendered audio (wav), keyed by model+voice+lang+text hash
 timeout_s = 20
 lang_codes = { en = "en-US", fi = "fi-FI", sv = "sv-SE" }
+audio = "auto"      # auto | head | local. Where Kaiku's Live voice on the robot speaks and listens. head = the robot
+                    # head's own speaker and microphone, as PCM over the bus (no sound device on the hub machine);
+                    # local = the hub machine's sound card; auto = the head when a real head (not a sim twin) is alive
+                    # on the bus as the conversation opens, else the sound card if there is one. Env: KAIKU_VOICE_AUDIO
 
 [live]
 # Gemini Live session setup the cloud locks into the apps' ephemeral token (cloud/kaiku_cloud/mind/live_token.py).
@@ -38,7 +42,7 @@ prefix_padding_ms = 120
 silence_ms = 900                              # quiet this long = the person's turn is over
 affective_dialog = false                      # the Live guide lists it as supported on gemini-3.8-live (v1beta, enable_affective_dialog), but true closes the session with 1007 "invalid argument" on the first turn (real calls 2026-11-14: SDK, raw key and token endpoint). Leave off until a real call passes.
 feel_scheduling = "WHEN_IDLE"                 # FunctionResponse scheduling for the non-blocking `feel` tool (INTERRUPT | WHEN_IDLE | SILENT). Real Live sessions 2026-11-14: the model calls `feel` before it speaks; with WHEN_IDLE it then answers using the plan, with SILENT it said nothing that turn.
-proactive_audio = true                        # setup.proactivity.proactiveAudio: "the model can reject responding to the last prompt" (Live API reference, ProactivityConfig): talk not meant for Kaiku can go unanswered. A declined walk nudge then has no words; the device drops its audio (see [walk]).
+proactive_audio_purposes = ["walk"]           # setup.proactivity.proactiveAudio only for these purposes, on every surface; off for all others (D49). "The model can reject responding to the last prompt" (Live API reference, ProactivityConfig): right for a walk's own look and quiet nudges (a declined nudge has no words; the device drops its audio, see [walk]); wrong for a talk, a check-in and the ritual, where a plain statement like "it has been a hard day" went unanswered in a real check-in. The robot's own Live session (hub live_config) never sets it.
 context_compression = true                    # sliding window. Without it Gemini ends an audio-only session at 15 minutes and one with camera frames at 2 (Live session-management guide, 2026-11-14)
 session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
 talk_max_minutes = 30                        # a Talk on the phone or Mac is like a call: the person sets the length (purpose/intent talk)
@@ -52,6 +56,7 @@ reconnect_attempts = 2                       # bounded recovery during an explic
 mind_timeout_s = 120                       # bounded shared reasoning wait; audio receive remains responsive
 context_refresh_seconds = 15                 # active sessions receive bounded source-labelled activity updates
 hub_transcripts = false                     # explicit household opt-in before robot transcripts may be persisted
+mic_gap_end_s = 1.0                         # robot: microphone frames missing this long (the head sends none while its own speaker plays) = tell Live the stream paused; a gap is never filled with silence. 0 = never tell
 
 [walk]
 # Walking together (cloud/kaiku_cloud/mind/walk.py; persona: "Walking together"). A Live session only answers input,
@@ -82,6 +87,107 @@ look_prompt = "A look around, not said by them. Say one friendly thing about wha
 quiet_after_s = 40
 quiet_prompt = "It has been quiet for a while, not said by them. You may speak first: ask about their day, pick up what was left open, or bring up one thing they told you. One short turn."
 
+[agree]
+# An activity the person said yes to in a conversation, held by the cloud for that local day so every screen shows
+# the same thing (D50; cloud/kaiku_cloud/mind/agree.py). The voice calls `agree_activity`; code decides.
+max_open = 3                 # open or started items a home may have at once (one per kind); more is refused
+keep = 40                    # items kept in a home's list; past days are never shown, this only bounds the row
+clock_slack_s = 120          # an observation stamped up to this long before the yes still completes it (device clocks)
+screen_days = 30             # a phone or Mac is one of the person's screens when its app asked for this home, or sent observations, within this many days
+# The person's own words (`said`, checked and never stored) must carry a yes or their own ask, and no hedge or no.
+# Regular expressions on the lower-cased words; each is matched as whole words (the code adds the word edges).
+# A hedge or a no anywhere wins over a yes ("okay, maybe later").
+yes = [
+  "yes|yeah|yep|yup|ok|okay|sure|alright|all right|definitely|absolutely|of course|please|gladly|deal",
+  "let['’]?s", "why not", "good idea", "go on", "count me in", "can do",
+  "(?:sounds|that['’]?s|that is|that would be|that['’]?d be) (?:good|nice|great|lovely|fine|perfect)",
+  "i(?:['’]d| would) (?:like|love) (?:that|to)", "i['’]?ll (?:do|try|go|play|take|give)", "i will",
+  "i['’]?m (?:in|up for)", "joo|kyllä|okei|mennään|gärna|javisst",
+]
+# Their own initiative: on an extra-gentle day only this is kept (Kaiku makes no offers then).
+ask = [
+  "(?:can|could|shall|may) (?:we|i|you)", "i (?:want|need|fancy|feel like)",
+  "i(?:['’]d| would) (?:like|love) to", "remind me", "i(?:['’]m| am) going to",
+  "put (?:it|that|this|a|the) .*on my", "save (?:it|that|this)",
+]
+hedge = [
+  "maybe", "perhaps", "possibly", "might", "not sure", "i (?:don['’]?t|do not) know", "dunno",
+  "(?:we|i)['’]?ll see", "depends", "i guess", "i suppose", "think about it",
+  "if i (?:feel|can|have|get|manage)", "(?:some|an)other (?:time|day)",
+  "not (?:now|today|really|yet|right now|this time)", "ehkä", "kanske",
+]
+no = [
+  "^no", "no[, ]+thanks?", "nope", "nah", "i(?:['’]d| would) rather not",
+  "(?:don['’]?t|do not) (?:want|feel like|fancy)", "not for me", "too tired", "leave it",
+]
+
+[agree.names]                # how each activity is called in the sentence on a screen ("... you said yes to Lantern.")
+breathe = "breathing together"
+tell = "Tell Kaiku"
+walk = "a walk"
+lantern = "Lantern"
+seeds = "Seed shelf"
+watering = "Watering"
+pebbles = "Pebbles"
+firefly = "Firefly"
+drum = "a drum jam"
+light_hunt = "a spotting game"
+
+[agree.where]                # how the voice says where it put it ("It's on your phone and your Mac.")
+iphone = "your phone"
+mac = "your Mac"
+
+# Which observation, arriving for that home the same local day and not before the yes, completes an agreed
+# activity without anyone tapping anything: its type and, where given, payload fields that must match.
+[[agree.done_by]]
+kind = "walk"
+type = "obs.outing"
+[[agree.done_by]]
+kind = "breathe"
+type = "obs.play_session"
+game = "breathe"
+[[agree.done_by]]
+kind = "breathe"
+type = "obs.hrv_session"
+[[agree.done_by]]
+kind = "breathe"
+type = "obs.ritual"
+step = "breathe"
+status = "completed"
+[[agree.done_by]]
+kind = "tell"
+type = "obs.play_session"
+game = "tell"
+[[agree.done_by]]
+kind = "lantern"
+type = "obs.play_session"
+game = "lantern"
+[[agree.done_by]]
+kind = "seeds"
+type = "obs.play_session"
+game = "seeds"
+[[agree.done_by]]
+kind = "watering"
+type = "obs.play_session"
+game = "watering"
+[[agree.done_by]]
+kind = "pebbles"
+type = "obs.play_session"
+game = "pebbles"
+[[agree.done_by]]
+kind = "firefly"
+type = "obs.play_session"
+game = "firefly"
+
+[stream]
+# GET /v1/me/stream (cloud/kaiku_cloud/stream.py, D50): Server-Sent Events the apps keep open while they run.
+heartbeat_s = 15             # a `ping` whenever nothing else was sent for this long; a client that sees no frame for well over twice this reconnects
+retry_ms = 2000              # the reconnect delay the stream suggests (SSE `retry:`)
+replay = 200                 # events kept per home for a reconnect with Last-Event-ID; further back = `hello.resync`
+queue = 64                   # events that may wait for one listener; a listener that falls further behind is closed, never waited for
+max_listeners = 12           # open streams per home; one more closes the oldest
+hide_types = ["obs.safety_flag", "obs.phq9"]   # never named in a `day` event (the event is still sent, so screens refresh)
+
 [attention]
 # Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
 face_source = "laptop"   # laptop (hub camera, OpenCV) | unoq_yolo (UNO Q App Lab boxes on raw/hub/face) | off
@@ -105,11 +211,11 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, pan motor; no LED grids) + UNO Q (Modulino Buzzer, USB camera; no KY-053, D48; no KY-031 knock, D49).
+# button, speaker, mic, pan motor; no LED grids) + UNO Q (Modulino Buzzer, USB camera; no KY-053, D54; no KY-031 knock, D55).
 # No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
-drum_input = "imu"       # imu (the head's orientation sensor: force in g; this build, D49) | knock (KY-031: timing only) — what the sims send
+drum_input = "imu"       # imu (the head's orientation sensor: force in g; this build, D55) | knock (KY-031: timing only) — what the sims send
 drum_sway = false        # no head sway while drumming: taps are ignored while the pan motor moves (it shakes the sensor)
 # Head-firmware numbers (motor pulses, homing, hub-silence stop, debounce): firmware/atech-head/kaiku_link/config.h
 
@@ -128,7 +234,7 @@ light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
 exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
 lux_per_unit = 2.0       # camera light backup: lux_est = mean Y * this
-ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D48) | auto (KY-039 first) | ky039
+ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D54) | auto (KY-039 first) | ky039
 ppg_fallback_s = 4       # auto: switch to the camera after this long without a clean KY-039 batch
 ppg_min_range = 30       # KY-039 batch peak-to-peak (ADC counts) below this = flat / unwired (unused without the KY-053)
 ppg_max_value = 26000    # ... above this = pinned at the rail (3.3 V on the +-4.096 V range ~ 26400)
@@ -143,6 +249,7 @@ heartbeat_s = 5
 host = "0.0.0.0"
 port = 8000
 service_name = "Kaiku companion service"
+graceful_shutdown_s = 3      # `make cloud-local`: on stop or --reload, open streams (GET /v1/me/stream) are cut after this long instead of being waited for; the apps reconnect
 
 [uplink]
 batch_s = 2
@@ -166,6 +273,11 @@ head_mode = "auto"          # auto | follow | drive. auto: FOLLOW a head whose h
 robot_home_id = ""          # home id the robot boards publish on (firmware secrets.h / UNO Q .env), if it differs from
                             # the person's record (KAIKU_HOME_ID). Empty = the same. Env: KAIKU_HUB_ROBOT_HOME_ID
 head_stale_s = 15           # follow mode: no health/head this long (3 heartbeats) = the head is gone
+follow_offer_every_s = 300  # follow mode: Kaiku's spoken invitation at the head's greeting ("press my ear to turn on
+                            # our conversation"), at most this often; the head greets a face about once a minute
+trace = true                # raw.hub.trace on the home broker, for the apps' "Kaiku bot" tab: Kaiku's own lines, the
+                            # names of the tools the voice called, game cues, music and session open/close. Never
+                            # the person's words; never stored or uplinked (raw.* stays at home). false = nothing
 
 [ritual]
 enabled_nudges = ["breathe", "drum", "daylight_walk"] # No Friendlink or iCBT task is implemented in this build.
@@ -202,6 +314,43 @@ quality_min = 0.5
 [music]
 bpm_min = 60     # VERIFY Lyria RealTime allowed BPM range
 bpm_max = 200
+out = "head"        # head | speaker | file. Where the drum music and its cues are heard. head = the robot head's own
+                    # speaker, as PCM frames over the bus (kaiku/v1/<home>/audio/head/speaker): the hub needs no
+                    # sound device. speaker = the hub machine's sound card. file = a WAV (KAIKU_MUSIC_FILE=<path>
+                    # names it and wins over this setting). Env: KAIKU_MUSIC_OUT
+head_lead_ms = 80   # head: the hub sends one 20 ms frame every 20 ms, this far ahead of real time (120 at most):
+                    # the head keeps a short buffer and plays silence when it runs dry
+head_gain = 0.8     # head: headroom for its small speaker (1.0 = the level as generated)
+
+[tap_back]
+# "Tap it back" (D51): the robot's drum step as a rhythm game. Kaiku plays a short song at a tempo, the song goes
+# quiet, she taps its beat back from memory; three levels a day. hub/kaiku_hub/rituals/tap_back.py (the flow),
+# hub/kaiku_hub/perception/tap_back.py (the numbers). Recorded as obs.tap_back, read by no criteria metric.
+mode = "auto"                 # auto: the game when a generated song can play (KAIKU_MUSIC=lyria and it started),
+                              # otherwise free drumming as before | free: never | tap_back: always (with the hub's
+                              # own plain beat, or the head's light alone, when no song can play). Env: KAIKU_TAP_BACK_MODE
+level_bpm = [100, 126, 76]    # the tempo of each level's song: comfortable, clearly faster, slow (the hardest to hold)
+level_vary_bpm = [6, 8, 4]    # each day the tempo is the level's plus or minus up to this (by the date: the same on
+                              # a rerun, three other tempos the next day)
+level_taps = [8, 8, 12]       # taps asked for; the band comes as soon as she has made them
+listen_s = 8                  # seconds of the song she hears before it goes quiet
+replay_listen_s = 6           # the same level a second time
+song_wait_s = 6               # no sound of the song this long after asking for it: it is not coming (auto -> free drumming)
+first_tap_s = 8               # her turn ends when no tap comes this long after the cue ...
+idle_end_s = 2.5              # ... or this long after her last tap ...
+turn_s = 25                   # ... or after this long whatever happens
+cue_clear_s = 0.4             # taps count only this long after the cue has sounded: the head sends no tap while its speaker plays or about 0.3 s after, and her time starts only once the hub's speaker stream is quiet
+min_taps = 4                  # fewer taps than this give no tempo (the level is offered once more)
+perfect_pct = 4               # bands by tempo error, percent of the song's tempo: perfect up to this,
+great_pct = 8                 # great up to this,
+nice_pct = 15                 # nice up to this, beyond it "again"
+steady_min = 0.85             # steadiness (1 - spread of the gaps) below this: perfect counts as great, great as nice
+half_double = true            # tapping every other beat, or two to a beat, is compared with that (it is in time)
+retries = 1                   # replays of a level after "again"; after that Kaiku moves on kindly
+word_s = 0.3                  # seconds allowed per spoken word before the song or her turn starts (only when the voice is audible)
+result_s = 0.8                # a breath after the band's chime and words, before the next thing
+hold_every_s = 3              # follow mode: cmd.head {drum: hold} at least this often (the head lets go after 10 s without)
+max_s = 170                   # the whole game ends kindly after this long
 
 [safety]
 helpline_name = "MIELI Crisis Helpline"
@@ -261,6 +410,20 @@ postcard_dir = "logs/postcards"            # cached images (env KAIKU_MIND_POSTC
 recall_k = 3
 timeout_s = 20
 
+[face_cue]
+# When Kaiku goes a little gentler after a quiet face during a task (cloud/kaiku_cloud/mind/face_cue.py, D52).
+# With her switch "Camera during activities" on, the phone or Mac counts face movement in games and the check-in
+# chat (obs.face_signs). The voice model is never given a number or told what was counted: only "go gently, and
+# never mention their face or a camera", on the context card and on a `feel` plan. It changes no state.
+enabled = true
+z = 2.0                  # "clearly below": at least this many spreads below her own usual today (the charts mark 2.0 too)
+min_baseline_days = 7    # only against an established usual: this many of her own days, never the provisional early baseline
+# kind of task -> the config/criteria.toml metrics read for it. The cue holds for a kind when at least one of its
+# metrics with a reading today is `z` or more below her usual and none is above it. Blink rate is not a cue.
+[face_cue.metrics]
+games = ["face_range", "face_smiles", "face_range_landmarks"]
+check_in = ["face_range_chat", "face_smiles_chat", "face_range_chat_landmarks"]
+
 [care_passages]
 # Approved, non-clinical passages ask_mind may cite as [doc:<key>] for care questions. The care team owns these.
 care_team = "Questions about treatment, medicines or appointments are best answered by your care team. Kaiku can help you write the question down so you remember to ask."
@@ -295,6 +458,7 @@ max_output_tokens = 1200 # allow a complete structured explanation; validated be
 cooldown_s = 60            # at most one Gemma review per person per minute; new evidence shows the template meanwhile
 timeout_s = 30             # one hosted Gemma call; the dashboard can load with generate=false first
 max_evidence = 60          # citable records sent to the model (course and changes first)
+max_shown_evidence = 12    # on top of those: records of measures that are shown and not scored (camera face signs D52, more of the day from Apple Health D53); they never take one of the 60 places
 course_days = 28           # how far back the course of change looks for a first day away from usual
 min_days_per_week = 2      # recorded days needed in a week before its median is compared
 similar_scale = 0.5        # week medians within this many baseline scales = "about the same"
@@ -303,3 +467,567 @@ help_early_tries = 3       # fewer attempts than this = too early to rely on
 help_consistent_tries = 8  # at least this many attempts and a narrow interval = consistent
 reflection_labels_per_night = 4  # reflections Gemma relabels per home in one nightly run (newest first)
 reflection_label_at_episode_end = true  # one Gemma call right after an opted-in conversation: level, themes, tone, energy (rules stand if it fails)
+
+[debug_day]
+# One local day of one home, for developers (GET /v1/debug/day, cloud/kaiku_cloud/debug_day.py). Never for a
+# practitioner or the person; closed like /v1/admin on a deployed service.
+payload_list_items = 8     # a longer list in an envelope payload is cut to this many items plus a count
+event_ids_per_metric = 20  # envelope ids listed per metric
+slight_z = 1.0             # reading: a scored measure at least this many spreads from its usual = slight_shift
+clear_beyond = 2           # reading: this many scored measures beyond their own threshold on the day = clear_shift
+min_scored = 3             # reading: fewer scored measures with a value and a baseline than this = not_enough_data
+moved_max = 8              # measures the deterministic read lists as moved (largest first)
+missing_max = 8            # measures listed as missing (a silent signal group is always listed)
+max_event_facts = 12       # envelopes of the day the read may cite (those behind the measures that moved first)
+face_event_facts = 4       # of those, the day's camera face-sign records are always listed first, up to this many (D52)
+timeout_s = 60             # one hosted Gemma call for the read
+max_output_tokens = 2400   # the read is longer than [gemma_hosted].max_output_tokens allows: a first real call stopped unfinished at 1200
+cooldown_s = 60            # at most one generated read per home and date in this time (a day's data can change)
+changed_max = 12           # "changed since the day before" items the consensus fact lists (the state's own first), then a count
+# What the model is told, after what was wrong, when its first answer did not pass every check (one retry).
+retry_note = "Cite only the given ids, at most six per item, put each item in the section its facts belong to, keep each text under 400 characters, and take every number, every status word and every yes or no (held, acknowledged, safety flag, enough data, scored, beyond or within its threshold on this day) from the fact the item cites, name measures and groups by their labels (no ids or keys in the text), each in its own role: the value, the usual, the distance above or below, the spreads, the days, the weight."
+# The read's instruction. The reading itself (as_usual | slight_shift | clear_shift | not_enough_data) is decided
+# by code and given to the model; every claim is checked by code afterwards (ids exist, every number is in a
+# cited fact and in its own role, every yes or no is the cited fact's, wording, section). The consensus is never
+# the model's. Editing this text retires the cached reads (it is part of their digest).
+prompt = """You are reading ONE day of one home's record for the developers of Kaiku, a system that compares a person's daily signals with that person's own usual. FACTS are verified lines written by code: each has an id, a label and a detail. The consensus state is decided by a deterministic rule; you explain the day to the developers, you never decide, change or second-guess the state as if you were the rule.
+Return ONLY JSON: {"summary": {"text": "...", "cites": [ids]}, "moved": [{"text": "...", "cites": [ids]}], "missing": [{"text": "...", "cites": [ids]}], "tomorrow": [{"text": "...", "cites": [ids]}], "rule_check": {"text": "...", "cites": [ids]}}.
+summary: two or three sentences. DAY.reading says whether the day is as usual, a slight shift, a clear shift or has not enough data: say that in those words (the consensus fact gives the counts behind it: how many scored measures are beyond their threshold on this day and how many are at least one spread from their usual). Then name what carries it, by label: the groups that are worse and the measures furthest from their usual. Cite consensus:state and the facts you name.
+moved: one item for each id in DAY.moved, in that order (code has already chosen them: the measures furthest from their usual on this day). Each item cites its own metric: fact (and an event: fact when it shows where the value came from) and repeats that fact's detail part by part, in this order: the value on this day, the usual, the distance above or below the usual, the spreads, whether that is within or beyond its threshold on this day, on how many of the last scored days it was beyond, its status word exactly as the fact gives it (drifting, normal, improved or insufficient: a measure can be beyond on some days and still be normal), and whether it is scored (with its weight) or observe-only. Two examples of the form, with made-up numbers: "Sleep is 322 against a usual of 428: 106 below, 4.3 spreads below, beyond its threshold on this day; beyond on 3 of the last 5 scored days (drifting); scored, weight 1." and "Steps is 5100 against a usual of 4800: 300 above, 1.1 spreads above, within its threshold on this day; beyond on 1 of the last 5 scored days (normal); scored, weight 0.5." Empty list when DAY.moved is empty.
+missing: what the day lacks: a signal group that sent nothing, a measure that usually reports. At most four items; each cites a missing: fact (one item may cite several). Empty list when FACTS has none.
+tomorrow: what would change a group's verdict or the state tomorrow. First one item for the tomorrow:state fact when FACTS has it: only that fact says what the state itself does next, so an item that speaks of the state cites it and says it as the fact does. Then one item for each tomorrow:group_ fact: a group could turn worse or could leave worse, which is about that group's verdict, not about the state. Then, if any are left, the measures that are each one day short of starting or ending a drift, those of one group together in one item citing their tomorrow: facts. At most five items. Empty list when FACTS has none.
+rule_check: two or three sentences for a developer checking the rule: how many groups are worse and how many needs_call takes and watch takes (the consensus fact gives all three numbers); then whether the state is held by hysteresis, whether it is acknowledged and whether a safety flag is open, each as that fact states it (it states all three, yes or no); then what is borderline (a measure just past or just short of its threshold, a verdict that rests on one measure, an early baseline, the day itself reading differently from the last scored days). Cite consensus:state and the source: facts you rely on.
+Rules:
+- Every number you write must be written in the detail of a fact that the same item cites, as it is written there. Do not calculate, do not combine numbers, write no dates and no times that are not in a cited fact.
+- A yes or a no (the state held, acknowledged, a safety flag open, a group having enough data, a measure scored, a measure beyond or within its threshold on this day) is said only as a fact the same item cites says it. A measure is beyond its threshold on this day only when its fact says "on this day"; being beyond on some of its last scored days is its drift, not this day.
+- Cite only ids from FACTS, never more than six in one item (split the item instead), and only facts the sentence is about. Ids go in cites, never in the text: no brackets, no id, no key such as outing_min; name a measure or a group by its label.
+- Each text stays under 400 characters.
+- Say what the record shows. Never diagnose, never predict, never name a condition, never say relapse, never suggest treatment.
+- Order in time is not cause: never say that one measure caused another.
+- Plain, specific sentences. No filler such as overall, various, in general, well-being.
+"""
+
+[graph]
+# The knowledge graph as a map (cloud/kaiku_cloud/graph_map.py -> PatientInsight.graph, the dashboard's Knowledge
+# graph panel). What every node is ABOUT is declared here once, so the picture never guesses it. Each neighbourhood
+# ([[graph.domain]]) lists what belongs to it and where it sits around the person (place: n ne e se s sw w nw; the
+# same for every person, so a practitioner finds sleep in the same spot in every record).
+# A measure is placed by its name under `measures` first, otherwise by its observation type under `obs`
+# (config/criteria.toml says which observation type feeds which metric). Anything not listed has no neighbourhood.
+days = 28          # days of per-day data the graph carries (the day scrubber); the course looks back [insight].course_days
+follow_days = 3    # a measure "followed" when it moved away within this many days of the first change (as the course summary)
+back_days = 7      # "came back after the care action" is said for measures back within this many days of it
+together = 6       # at most this many "away on the same days" links, the closest overlaps first
+
+[graph.produces]
+# activity (cloud week.ACTIVITIES key) -> the observation types a session of it yields readings in. Its measures
+# follow from config/criteria.toml (every enabled metric with that `obs`); a metric name instead of an observation
+# type links that one measure. A person's graph has the link only for the days both were recorded.
+ritual = ["obs.presence", "obs.self_report", "obs.speech_features"]   # greeting, the three dials, the talk
+drum = ["obs.drum_session"]
+breathe = ["obs.hrv_session"]
+walk = ["obs.outing"]
+checkin = ["obs.self_report", "face_range_chat", "face_smiles_chat", "face_range_chat_landmarks"]   # + what the camera counted in the chat (D52)
+laptop = ["obs.laptop_session"]
+play = ["obs.play_session", "face_range", "face_smiles", "face_blinks", "face_range_landmarks"]   # + camera face signs in games (D52)
+sleep = ["watch_sleep", "sleep_midpoint", "deep_sleep", "rem_sleep", "awake_night"]   # the sleep-onset time is worked out from the first two; the stages and the time awake are the same night (D53)
+
+[graph.about]
+# reflection theme (cloud mind/affect.py THEMES) -> the nodes it sits beside, when the person's graph has them.
+# A declared "is about the same part of life", never something learned and never the person's words.
+outdoors = ["activity:walk"]
+sleep = ["routine:sleep"]
+routine = ["activity:ritual"]
+
+[[graph.domain]]
+id = "morning"
+label = "Mornings and the ritual"
+short = "Mornings"
+place = "nw"
+activities = ["ritual", "drum", "breathe"]
+obs = ["obs.presence", "obs.ritual", "obs.drum_session", "obs.tap_back", "obs.hrv_session", "obs.light_level", "obs.engagement"]
+themes = ["routine"]
+[[graph.domain]]
+id = "mood"
+label = "Mood and energy"
+short = "Mood"
+place = "n"
+activities = ["checkin"]
+obs = ["obs.self_report", "obs.speech_features"]
+measures = ["voice_rate", "voice_pauses", "pitch_var", "expressivity"]
+themes = ["worry"]
+[[graph.domain]]
+id = "movement"
+label = "Movement and the outdoors"
+short = "Movement"
+place = "ne"
+activities = ["walk"]
+obs = ["obs.outing"]
+measures = ["daily_steps", "day_distance", "day_daylight", "walking_hr"]   # the day's movement from Apple Health (D53)
+themes = ["outdoors"]
+[[graph.domain]]
+id = "people"
+label = "People and contact"
+short = "People"
+place = "e"
+obs = ["obs.friend_link"]
+measures = ["communication_min"]
+themes = ["being alone", "family", "friends"]
+topics = ["people"]
+[[graph.domain]]
+id = "notebook"
+label = "What they tell Kaiku"
+short = "Notebook"
+place = "se"
+themes = ["work", "plans"]
+topics = ["places", "likes", "helpers", "plans"]
+[[graph.domain]]
+id = "care"
+label = "Care"
+short = "Care"
+place = "sw"
+kinds = ["care_action"]
+obs = ["obs.phq9"]
+[[graph.domain]]
+id = "screens"
+label = "Screens and games"
+short = "Screens"
+place = "s"
+activities = ["laptop", "play"]
+obs = ["obs.screen_activity", "obs.play_session", "obs.laptop_session", "obs.face_signs"]   # face signs sit where they were captured: beside the task, not under mood (D52)
+[[graph.domain]]
+id = "sleep"
+label = "Sleep and body"
+short = "Sleep"
+place = "w"
+activities = ["sleep"]
+obs = ["obs.wearable_daily"]
+measures = ["sleep"]
+themes = ["sleep", "body"]
+
+[history]
+# The person's own numbers (GET /v1/me/history, cloud/kaiku_cloud/history.py, D48): which measures the History tab
+# shows, in which group, under which plain title. Groups come out in the order of [history.groups]; measures in
+# the order below. A measure whose `key` is a config/criteria.toml metric takes that metric's obs, field, filter
+# and daily aggregation, so its days are the practitioner side's numbers. A measure with its own `obs` is a
+# reading that is stored but that no metric scores. A metric that is not listed here is not shown to the person.
+# Titles and units are for the person: plain words, no clinical terms, no direction words.
+default_days = 30
+max_days = 90
+sessions_per_measure = 30
+session_values = 16   # the most numbers one session row may list: the contract's own limit (HistorySession.values),
+                      # so a row is never cut short of it. A Health summary has thirteen numbers since D53 and its
+                      # rows list seven (the day before's) or six (the night's); a test keeps every list within this
+usual_scale = 1.0   # usual range = their own baseline median +/- this many spreads (as [insight].usual_scale)
+
+[history.groups]
+robot = "Robot"
+games = "Games"
+walks = "Walks and outings"
+checkins = "Check-ins"
+sleep_body = "Sleep and body"
+mac = "Mac"
+camera = "Camera during activities"   # D52: what the camera counted of her face in games and check-ins; her own numbers
+
+# ---- robot
+[[history.measure]]
+key = "hr"
+group = "robot"
+title = "Heart rate at the robot"
+unit = "bpm"
+[[history.measure]]
+key = "rmssd"
+group = "robot"
+title = "Heart rhythm before breathing (HRV)"
+unit = "ms"
+[[history.measure]]
+key = "hrv_after"
+group = "robot"
+title = "Heart rhythm after breathing (HRV)"
+unit = "ms"
+obs = "obs.hrv_session"
+field = "rmssd_post_ms"
+agg = "mean"
+[[history.measure]]
+key = "breath_pace"
+group = "robot"
+title = "Breathing pace"
+unit = "breaths/min"
+decimals = 1
+obs = "obs.hrv_session"
+field = "breath_bpm"
+agg = "mean"
+[[history.measure]]
+key = "drum_tempo"
+group = "robot"
+title = "Drum tempo"
+unit = "bpm"
+[[history.measure]]
+key = "drum_taps"
+group = "robot"
+title = "Drum taps"
+unit = "taps"
+obs = "obs.drum_session"
+field = "taps"
+agg = "sum"
+[[history.measure]]
+key = "drum_regularity"
+group = "robot"
+title = "Drum steadiness"
+unit = "0 to 1"
+decimals = 2
+[[history.measure]]
+key = "drum_force"
+group = "robot"
+title = "Drum strength"
+unit = "0 to 1"
+decimals = 2
+[[history.measure]]
+key = "drum_duration"
+group = "robot"
+title = "Drumming time"
+unit = "s"
+[[history.measure]]
+key = "tap_back_songs"
+group = "robot"
+title = "Tap it back: songs on the beat"
+unit = "songs"
+obs = "obs.tap_back"
+field = "levels_passed"
+agg = "max"
+[[history.measure]]
+key = "tap_back_timing"
+group = "robot"
+title = "Tap it back: timing"
+unit = "% from the song's tempo"
+decimals = 1
+obs = "obs.tap_back"
+field = "error_pct"
+agg = "mean"
+[[history.measure]]
+key = "ritual_steps"
+group = "robot"
+title = "Ritual steps completed"
+unit = "steps"
+obs = "obs.ritual"
+field = "@count"
+agg = "count"
+where = { status = "completed" }
+[[history.measure]]
+key = "getup"
+group = "robot"
+title = "First hello of the day"
+format = "clock"
+[[history.measure]]
+key = "light"
+group = "robot"
+title = "Room light"
+unit = "lux"
+[[history.measure]]
+key = "speech_rate"
+group = "robot"
+title = "Speaking pace with the robot"
+unit = "syllables/s"
+decimals = 1
+[[history.measure]]
+key = "speech_pauses"
+group = "robot"
+title = "Pauses while speaking"
+unit = "of the time"
+format = "percent"   # a share of the speaking time: stays 0..1 in the API, read as a percentage
+[[history.measure]]
+key = "friend_contact"
+group = "robot"
+title = "Friend lamp"
+unit = "times"
+
+# ---- games (practice sessions are listed and marked, and left out of the day's value)
+[[history.measure]]
+key = "lantern_speed"
+group = "games"
+title = "Lantern: response speed"
+unit = "per second"
+decimals = 2
+[[history.measure]]
+key = "lantern_variability"
+group = "games"
+title = "Lantern: evenness of responses"
+unit = "0 to 1"
+decimals = 2
+[[history.measure]]
+key = "seeds_throughput"
+group = "games"
+title = "Seed shelf: pace"
+unit = "right per minute"
+decimals = 1
+[[history.measure]]
+key = "pebble_span"
+group = "games"
+title = "Pebble path: longest path"
+unit = "pebbles"
+[[history.measure]]
+key = "watering_effort"
+group = "games"
+title = "Watering: bigger plant chosen"
+unit = "0 to 1"
+decimals = 2
+[[history.measure]]
+key = "firefly_reaction"
+group = "games"
+title = "Firefly: reaction time"
+unit = "ms"
+[[history.measure]]
+key = "tell_pace"
+group = "games"
+title = "Telling Kaiku about the day: speaking pace"
+unit = "syllables/s"
+decimals = 1
+obs = "obs.play_session"
+field = "speech_rate"
+agg = "mean"
+where = { game = "tell" }
+[[history.measure]]
+key = "breathe_time"
+group = "games"
+title = "Breathing with Kaiku: time"
+unit = "s"
+obs = "obs.play_session"
+field = "duration_s"
+agg = "sum"
+where = { game = "breathe" }
+
+# ---- walks and outings
+[[history.measure]]
+key = "outing_min"
+group = "walks"
+title = "Time out"
+unit = "min"
+[[history.measure]]
+key = "steps"
+group = "walks"
+title = "Steps on walks"
+unit = "steps"
+[[history.measure]]
+key = "cadence"
+group = "walks"
+title = "Walking pace"
+unit = "steps/min"
+[[history.measure]]
+key = "daylight_min"
+group = "walks"
+title = "Daylight on walks"
+unit = "min"
+
+# ---- check-ins (each answer in `sessions` says where it was given)
+[[history.measure]]
+key = "mood"
+group = "checkins"
+title = "Mood"
+unit = "1 to 5"
+decimals = 1
+[[history.measure]]
+key = "energy"
+group = "checkins"
+title = "Energy"
+unit = "1 to 5"
+decimals = 1
+[[history.measure]]
+key = "sleep"
+group = "checkins"
+title = "Last night's sleep"
+unit = "1 to 5"
+decimals = 1
+
+# ---- sleep and body (the watch's daily summary). Sleep first, with its stages and the time awake beside it (D53);
+# then the heart; then the whole day's movement: steps, distance walked, time in daylight, exercise. The day's
+# distance and daylight live here and not under "Walks and outings": that group holds walks recorded one by one
+# (it has its own "Daylight on walks"), these are totals of the whole day from Apple Health, like the steps.
+# Which day a number stands under: the summary is dated the morning it was made. Its sleep is the night that ended
+# that morning and stays on that date. Its heart numbers, steps, distance, daylight and exercise are the day
+# before's (midnight to midnight): `day_offset = -1` puts each on the day it is of, so yesterday's walking is never
+# shown as today's. The practitioner side and the rule keep the summary's date (cloud/AGENTS.md says so); the
+# session row of such a measure lists only that day's numbers and is stamped at the end of that day.
+[[history.measure]]
+key = "watch_sleep"
+group = "sleep_body"
+title = "Sleep"
+format = "duration"
+[[history.measure]]
+key = "deep_sleep"
+group = "sleep_body"
+title = "Deep sleep"
+format = "duration"
+[[history.measure]]
+key = "rem_sleep"
+group = "sleep_body"
+title = "REM sleep"
+format = "duration"
+[[history.measure]]
+key = "core_sleep"
+group = "sleep_body"
+title = "Core sleep"
+format = "duration"
+obs = "obs.wearable_daily"
+field = "sleep_core_min"
+agg = "last"
+min_mad = 10.0   # her usual range is never drawn narrower than this many minutes each way (as for deep sleep)
+[[history.measure]]
+key = "awake_night"
+group = "sleep_body"
+title = "Awake in the night"
+format = "duration"
+[[history.measure]]
+key = "sleep_midpoint"
+group = "sleep_body"
+title = "Middle of the night's sleep"
+format = "clock"
+[[history.measure]]
+key = "resting_hr"
+group = "sleep_body"
+title = "Resting heart rate"
+unit = "bpm"
+day_offset = -1
+[[history.measure]]
+key = "walking_hr"
+group = "sleep_body"
+title = "Walking heart rate"
+unit = "bpm"
+day_offset = -1
+[[history.measure]]
+key = "hrv_sdnn"
+group = "sleep_body"
+title = "Heart rate variability"
+unit = "ms"
+day_offset = -1
+[[history.measure]]
+key = "daily_steps"
+group = "sleep_body"
+title = "Steps"
+unit = "steps"
+day_offset = -1
+[[history.measure]]
+key = "day_distance"
+group = "sleep_body"
+title = "Distance walked"
+unit = "km"
+decimals = 1
+day_offset = -1
+[[history.measure]]
+key = "day_daylight"
+group = "sleep_body"
+title = "Time in daylight"
+format = "duration"
+day_offset = -1
+[[history.measure]]
+key = "exercise_min"
+group = "sleep_body"
+title = "Exercise"
+unit = "min"
+obs = "obs.wearable_daily"
+field = "exercise_min"
+agg = "last"
+day_offset = -1
+
+# ---- Mac
+[[history.measure]]
+key = "active_min"
+group = "mac"
+title = "Active time"
+format = "duration"
+[[history.measure]]
+key = "late_night"
+group = "mac"
+title = "Late-night minutes"
+unit = "min"
+[[history.measure]]
+key = "mac_breaks"
+group = "mac"
+title = "Breaks"
+unit = "breaks"
+obs = "obs.screen_activity"
+field = "breaks"
+agg = "sum"
+where = { paused = false }
+[[history.measure]]
+key = "communication_min"
+group = "mac"
+title = "Time in messages and calls"
+unit = "min"
+
+# ---- camera during activities (D52; only with her own switch on). Every key is a config/criteria.toml metric that
+# is shown and not scored, so these days are the practitioner side's numbers too. Plain names for movements: never
+# a word for a feeling, never a word for whether a number is good.
+[[history.measure]]
+key = "face_smiles"
+group = "camera"
+title = "Smiling during games"
+unit = "of the time"
+format = "percent"
+[[history.measure]]
+key = "face_range"
+group = "camera"
+title = "How much your face moved during games"
+unit = "out of 1"
+decimals = 2
+[[history.measure]]
+key = "face_blinks"
+group = "camera"
+title = "Blinks during games"
+unit = "a minute"
+decimals = 1
+[[history.measure]]
+key = "face_smiles_chat"
+group = "camera"
+title = "Smiling during check-ins"
+unit = "of the time"
+format = "percent"
+[[history.measure]]
+key = "face_range_chat"
+group = "camera"
+title = "How much your face moved during check-ins"
+unit = "out of 1"
+decimals = 2
+[[history.measure]]
+key = "face_range_landmarks"
+group = "camera"
+title = "How much your face moved during games (Mac or standard camera)"
+unit = "out of 1"
+decimals = 2
+[[history.measure]]
+key = "face_range_chat_landmarks"
+group = "camera"
+title = "How much your face moved during check-ins (Mac or standard camera)"
+unit = "out of 1"
+decimals = 2
+
+# The numbers of one session, by observation type: [payload field, title, unit, decimals, format]. Only the ones a
+# session really has are shown. A camera or face number appears only under "obs.face_signs" (the camera group,
+# D52), never on another observation type.
+# FORMATS (a measure's `format`, and the fifth item of a session number; left out = a plain number with its unit):
+#   "clock"     the value is minutes after local midnight
+#   "percent"   the value stays a share 0..1 in the API; the app shows value x 100 with "%". `unit` says what it is
+#               a share of ("of the time") or is empty; `decimals` are those of the percent number (0 = "14 %")
+#   "duration"  the value is minutes; the app shows "7 h 20 min" from 60 on, else "45 min". `unit` stays empty
+# A measure's usual range is in the same format as its values. Only shares of TIME are percent; an index that
+# merely runs from 0 to 1 (steadiness, how much the face moved) stays a number with a unit that says what it is.
+# Which kind of session one is, where a measure lists several kinds: [payload field, { value = plain name }].
+[history.session_label]
+"obs.ritual" = ["step", { greet = "Hello", dial = "Check-in dials", breathe = "Breathing", drum = "Drumming", phq9 = "Questionnaire", nudge = "Suggestion", close = "Goodbye" }]
+"obs.face_signs" = ["task", { firefly = "Firefly", pebbles = "Pebble path", lantern = "Lantern", seeds = "Seed shelf", watering = "Watering", tell = "Telling Kaiku about the day", breathe = "Breathing", check_in = "Check-in" }]
+
+[history.session]
+"obs.hrv_session" = [["hr_bpm", "Heart rate", "bpm", 0], ["rmssd_pre_ms", "Heart rhythm before", "ms", 0], ["rmssd_post_ms", "Heart rhythm after", "ms", 0], ["breath_bpm", "Breathing pace", "breaths/min", 1], ["duration_s", "Time", "s", 0], ["beats", "Heartbeats found", "beats", 0]]
+"obs.drum_session" = [["tempo_bpm", "Tempo", "bpm", 0], ["taps", "Taps", "taps", 0], ["regularity", "Steadiness", "0 to 1", 2], ["force_mean", "Strength", "0 to 1", 2], ["duration_s", "Time", "s", 0], ["tempo_start_bpm", "Tempo at the start", "bpm", 0], ["tempo_end_bpm", "Tempo at the end", "bpm", 0], ["pauses", "Pauses", "pauses", 0]]
+"obs.tap_back" = [["levels_passed", "Songs on the beat", "songs", 0], ["levels_played", "Songs played", "songs", 0], ["error_pct", "Timing", "% from the song's tempo", 1], ["steadiness", "Steadiness", "0 to 1", 2], ["taps", "Taps", "taps", 0], ["duration_s", "Time", "s", 0]]
+"obs.ritual" = [["duration_s", "Time", "s", 0]]
+"obs.presence" = [["@local_minutes", "First hello", "", 0, "clock"], ["dwell_s", "Time nearby", "s", 0]]
+"obs.light_level" = [["lux_est", "Room light", "lux", 0]]
+"obs.speech_features" = [["syllables_per_s", "Speaking pace", "syllables/s", 1], ["pause_ratio", "Pauses", "of the time", 0, "percent"], ["duration_s", "Time", "s", 0]]
+"obs.friend_link" = []
+"obs.play_session" = [["reaction_ms_median", "Reaction time", "ms", 0], ["response_speed", "Response speed", "per second", 2], ["reaction_ms_cv", "Evenness of responses", "0 to 1", 2], ["throughput_per_min", "Pace", "right per minute", 1], ["span_max", "Longest path", "pebbles", 0], ["hard_choice_ratio", "Bigger plant chosen", "0 to 1", 2], ["accuracy", "Right answers", "0 to 1", 2], ["lapses", "Slow or missed", "times", 0], ["false_taps", "Taps on a moth", "taps", 0], ["false_starts", "Early taps", "taps", 0], ["speech_rate", "Speaking pace", "syllables/s", 1], ["pause_ratio", "Pauses", "0 to 1", 2], ["hr_before_bpm", "Heart rate before", "bpm", 0], ["hr_after_bpm", "Heart rate after", "bpm", 0], ["trials_n", "Rounds", "rounds", 0], ["duration_s", "Time", "s", 0]]
+"obs.outing" = [["minutes", "Time out", "min", 0], ["steps", "Steps", "steps", 0], ["cadence_spm", "Walking pace", "steps/min", 0], ["daylight_min", "Daylight", "min", 0]]
+"obs.self_report" = [["value", "Answer", "1 to 5", 0], ["scale_10", "As dialled", "1 to 10", 0]]
+"obs.wearable_daily" = [["sleep_min", "Sleep", "", 0, "duration"], ["sleep_deep_min", "Deep sleep", "", 0, "duration"], ["sleep_rem_min", "REM sleep", "", 0, "duration"], ["sleep_core_min", "Core sleep", "", 0, "duration"], ["sleep_awake_min", "Awake in the night", "", 0, "duration"], ["sleep_midpoint_min", "Middle of the night's sleep", "", 0, "clock"], ["resting_hr_bpm", "Resting heart rate", "bpm", 0], ["walking_hr_bpm", "Walking heart rate", "bpm", 0], ["hrv_sdnn_ms", "Heart rate variability", "ms", 0], ["steps", "Steps", "steps", 0], ["distance_km", "Distance walked", "km", 1], ["daylight_min", "Time in daylight", "", 0, "duration"], ["exercise_min", "Exercise", "min", 0]]
+"obs.screen_activity" = [["active_min", "Active time", "min", 0], ["late_night_min", "Late-night minutes", "min", 0], ["breaks", "Breaks", "breaks", 0], ["longest_stretch_min", "Longest stretch", "min", 0]]
+"obs.face_signs" = [["smile_share", "Smiling", "of the time", 0, "percent"], ["smiles", "Smiles", "smiles", 0], ["expression_range", "How much your face moved", "out of 1", 2], ["blinks_per_min", "Blinks", "a minute", 1], ["gaze_on_share", "Looking toward the screen", "of the time", 0, "percent"], ["brow_raise_share", "Eyebrows raised", "of the time", 0, "percent"], ["brow_furrow_share", "Eyebrows drawn together", "of the time", 0, "percent"], ["mouth_open_share", "Mouth open", "of the time", 0, "percent"], ["head_movement", "Head movement", "", 2], ["coverage", "Your face was in view", "of the time", 0, "percent"], ["samples", "Pictures looked at, none kept", "pictures", 0], ["duration_s", "Camera time", "s", 0]]
+

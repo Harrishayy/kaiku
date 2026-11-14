@@ -31,10 +31,10 @@ removable = false
 consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
             "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "cmd.hub", "cmd.sensors",
             "obs.friend_link", "health"]
-emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
+emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.tap_back", "obs.speech_features",
          "obs.light_level", "obs.engagement", "obs.ritual", "obs.intervention_response", "obs.nudge_offered",
          "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors",
-         "cmd.friendlink", "raw.hub.face", "health"]
+         "cmd.friendlink", "raw.hub.face", "raw.hub.trace", "health"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}", "GET /v1/voice/{line_key}",
         "POST /v1/voice/say", "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode",
         "POST /v1/commands/{command_id}/ack"]
@@ -46,10 +46,11 @@ owner = "C"
 kind = "service"
 summary = "Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma reasoning and graph organisation, simulation, web hosting"
 removable = false
-consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
+consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.tap_back", "obs.speech_features",
             "obs.light_level", "obs.ritual", "obs.outing", "obs.laptop_session", "obs.phq9",
             "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link",
-            "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily", "obs.engagement"]
+            "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily", "obs.engagement",
+            "obs.face_signs"]
 emits = ["cmd.hub", "obs.safety_flag"]
 http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/commands", "POST /v1/commands/{command_id}/ack", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
         "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "POST /v1/patients/{id}/ask", "GET /v1/patients/{id}/tasks",
@@ -62,21 +63,23 @@ http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/commands", "POST /v1/co
         "GET /v1/me/constellation", "POST /v1/companion/postcard", "GET /v1/me/postcards/{id}",
         "GET /v1/health/intelligence", "GET /v1/patients/{id}/brief", "POST /v1/admin/reflect",
         "POST /v1/admin/nightly-mind", "POST /v1/admin/weekly", "GET /v1/me/week", "GET /v1/me/graph",
-        "GET /v1/me/sharing", "PUT /v1/me/sharing", "GET /v1/patients/{id}/week", "GET /v1/patients/{id}/graph"]
+        "GET /v1/me/sharing", "PUT /v1/me/sharing", "GET /v1/patients/{id}/week", "GET /v1/patients/{id}/graph",
+        "GET /v1/me/history", "GET /v1/debug/day", "POST /v1/companion/close",
+        "GET /v1/me/invitation", "POST /v1/me/invitation/answer", "POST /v1/me/agreed/answer", "GET /v1/me/stream"]
 
 [[module]]
 name = "web"
 path = "apps/web"
 owner = "D"
 kind = "app"
-summary = "Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune"
+summary = "Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune/debug day"
 removable = true
 emits = []
 http = ["GET /v1/patients", "GET /v1/patients/{id}/consensus", "GET /v1/patients/{id}/timeline",
         "GET /v1/patients/{id}/insight", "GET /v1/patients/{id}/week", "GET /v1/patients/{id}/graph",
         "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "POST /v1/patients/{id}/ask", "GET /v1/events",
         "GET /v1/health", "GET /v1/eval", "GET /healthz", "GET /v1/admin/criteria", "PUT /v1/admin/criteria",
-        "POST /v1/admin/criteria/preview"]
+        "POST /v1/admin/criteria/preview", "GET /v1/debug/day"]
 
 [[module]]
 name = "glasses-webapp"
@@ -103,15 +106,23 @@ name = "apple"
 path = "apps/apple"
 owner = "A"
 kind = "app"
-summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
+summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live, read-only), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
 removable = true
 emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
-         "obs.wearable_daily", "obs.nudge_outcome"]
+         "obs.wearable_daily", "obs.nudge_outcome", "obs.face_signs"]
+# Kaiku bot: read-only on the home broker while the page is on screen (raw/#, cmd/#, obs/#, health/#; never audio/#).
+consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
+            "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "raw.hub.trace",
+            "cmd.head", "cmd.sensors", "cmd.hub", "cmd.friendlink", "health",
+            "obs.ritual", "obs.self_report", "obs.drum_session", "obs.tap_back", "obs.hrv_session", "obs.presence",
+            "obs.engagement", "obs.intervention_response", "obs.speech_features", "obs.light_level",
+            "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag"]
 http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
         "GET /v1/me/transcripts", "DELETE /v1/me/transcripts", "GET /v1/me/invitation",
-        "POST /v1/me/invitation/answer", "POST /v1/companion/close"]
+        "POST /v1/me/invitation/answer", "POST /v1/companion/close", "GET /v1/me/history",
+        "GET /v1/me/stream", "POST /v1/me/agreed/answer"]
 
 [[module]]
 name = "atech-head"
@@ -128,7 +139,7 @@ name = "unoq-sensors"
 path = "firmware/unoq-sensors"
 owner = "A"
 kind = "firmware"
-summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D48, D49)"
+summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D54, D55)"
 removable = true
 consumes = ["cmd.sensors"]
 emits = ["raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
@@ -149,11 +160,12 @@ owner = "C"
 kind = "harness"
 summary = "Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder"
 removable = true
-consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session", "raw.head.tap", "raw.hub.face"]
+consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session", "obs.tap_back", "raw.head.tap", "raw.hub.face"]
 emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
          "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "obs.friend_link", "obs.outing",
          "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
-         "obs.play_session", "obs.wearable_daily", "obs.self_report", "cmd.hub", "cmd.sensors", "health"]
+         "obs.play_session", "obs.face_signs", "obs.wearable_daily", "obs.self_report", "cmd.hub", "cmd.sensors",
+         "health"]
 http = ["POST /v1/events", "POST /v1/admin/recompute", "POST /v1/admin/reset", "POST /v1/companion/tool",
         "POST /v1/companion/episode"]
 

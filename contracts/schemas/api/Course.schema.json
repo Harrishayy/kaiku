@@ -124,7 +124,7 @@
       "type": "string"
     },
     "summary": {
-      "maxLength": 700,
+      "maxLength": 900,
       "title": "Summary",
       "type": "string"
     }

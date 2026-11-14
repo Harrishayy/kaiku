@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "description": "GET /v1/me/stream, first frame of every connection (SSE `event: hello`, no id). `resync: true`: the\n`Last-Event-ID` the client sent could not be continued (another process, or too long ago), so events may\nhave been missed: read `/v1/me`, `/v1/me/invitation` and whatever else the screen shows again.",
+  "properties": {
+    "heartbeat_s": {
+      "description": "a `ping` at least this often; no frame for well over twice this long means the connection is dead: reconnect with Last-Event-ID",
+      "exclusiveMinimum": 0,
+      "title": "Heartbeat S",
+      "type": "number"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "last_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "id of the newest event for this home, if any",
+      "title": "Last Id"
+    },
+    "replayed": {
+      "default": 0,
+      "description": "events sent again right after this frame",
+      "minimum": 0,
+      "title": "Replayed",
+      "type": "integer"
+    },
+    "resync": {
+      "default": false,
+      "title": "Resync",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "home_id",
+    "heartbeat_s"
+  ],
+  "title": "StreamHello",
+  "type": "object"
+}

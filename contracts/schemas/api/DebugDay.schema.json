@@ -1,0 +1,1370 @@
+{
+  "$defs": {
+    "DebugBaseline": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "days the baseline is made from",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "early": {
+          "default": false,
+          "description": "provisional baseline of a young record",
+          "title": "Early",
+          "type": "boolean"
+        },
+        "median": {
+          "title": "Median",
+          "type": "number"
+        },
+        "spread": {
+          "description": "max(1.4826 x MAD, min_mad): what one z unit is",
+          "title": "Spread",
+          "type": "number"
+        }
+      },
+      "required": [
+        "median",
+        "spread",
+        "days"
+      ],
+      "title": "DebugBaseline",
+      "type": "object"
+    },
+    "DebugClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "by_code": {
+          "default": false,
+          "description": "inside a Gemma read: this line is code's own, put there because the model left the measure out or its sentence failed a check",
+          "title": "By Code",
+          "type": "boolean"
+        },
+        "cites": {
+          "description": "DebugFact ids (the model is asked for six at most)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Cites",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 500,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "cites"
+      ],
+      "title": "DebugClaim",
+      "type": "object"
+    },
+    "DebugConsensus": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Acknowledged By"
+        },
+        "agreement": {
+          "enum": [
+            "agree",
+            "disagree",
+            "low_coverage"
+          ],
+          "title": "Agreement",
+          "type": "string"
+        },
+        "changed": {
+          "description": "by code: what differs from the day before",
+          "items": {
+            "type": "string"
+          },
+          "title": "Changed",
+          "type": "array"
+        },
+        "held": {
+          "default": false,
+          "description": "needs_call kept by hysteresis",
+          "title": "Held",
+          "type": "boolean"
+        },
+        "id": {
+          "const": "consensus:state",
+          "default": "consensus:state",
+          "title": "Id",
+          "type": "string"
+        },
+        "previous_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "stable",
+                "watch",
+                "needs_call",
+                "safety"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous State"
+        },
+        "raw_state": {
+          "description": "what the rule gives for that day alone, before hysteresis",
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "title": "Raw State",
+          "type": "string"
+        },
+        "reasons": {
+          "description": "by code: why the rule gives this state",
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "rule_version": {
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "safety_since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safety Since"
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_since": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State Since"
+        }
+      },
+      "required": [
+        "state",
+        "raw_state",
+        "agreement",
+        "rule_version"
+      ],
+      "title": "DebugConsensus",
+      "type": "object"
+    },
+    "DebugConversation": {
+      "additionalProperties": false,
+      "description": "One companion conversation that started that day. Never transcripts, topics or words.",
+      "properties": {
+        "billed_minutes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Live minutes the budget ledger counts for it",
+          "title": "Billed Minutes"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "feel": {
+          "items": {
+            "$ref": "#/$defs/DebugFeel"
+          },
+          "title": "Feel",
+          "type": "array"
+        },
+        "intent": {
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "minutes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minutes"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "completed",
+                "skipped",
+                "ended_early",
+                "crisis",
+                "offline"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how it ended; null = never closed",
+          "title": "Outcome"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "title": "Surface",
+          "type": "string"
+        },
+        "tools": {
+          "description": "tool names: in call order while the conversation is open, one of each once the device has uploaded it",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "tools_in_order": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "true = `tools` is the call order (repeats kept); false = the device's upload replaced it with one of each, sorted by name; null = cannot be told (a conversation uploaded before this was recorded)",
+          "title": "Tools In Order"
+        },
+        "transcript_kept": {
+          "default": false,
+          "title": "Transcript Kept",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "session_id",
+        "surface",
+        "intent",
+        "start"
+      ],
+      "title": "DebugConversation",
+      "type": "object"
+    },
+    "DebugEvent": {
+      "additionalProperties": false,
+      "description": "One stored envelope of the day.",
+      "properties": {
+        "day": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the local day this envelope counts toward (a daily summary can be stamped on the day after the one it measures)",
+          "title": "Day"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "local_time": {
+          "description": "HH:MM:SS in the home's timezone",
+          "title": "Local Time",
+          "type": "string"
+        },
+        "metrics": {
+          "description": "metrics this envelope counted toward",
+          "items": {
+            "type": "string"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "description": "compact: long lists are cut to their first items plus a count",
+          "title": "Payload",
+          "type": "object"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        },
+        "sim": {
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "the envelope's own source (head, sensors, hub, phone, laptop, glasses, ...)",
+          "title": "Source",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "local_time",
+        "source",
+        "type",
+        "sim",
+        "payload"
+      ],
+      "title": "DebugEvent",
+      "type": "object"
+    },
+    "DebugFact": {
+      "additionalProperties": false,
+      "description": "One verified line the day read may cite. Ids: metric:<name>, source:<name>, consensus:state,\nmissing:<source or metric>, tomorrow:<name>, event:<envelope id>.",
+      "properties": {
+        "detail": {
+          "description": "written by code from the day's data; every number in it is the data's",
+          "title": "Detail",
+          "type": "string"
+        },
+        "flags": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "the yes/no facts a claim citing this may state, checked like the numbers: held, acknowledged, safety (consensus), enough_data (a signal group), scored (a measure)",
+          "title": "Flags",
+          "type": "object"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "metric",
+            "source",
+            "consensus",
+            "missing",
+            "tomorrow",
+            "event"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "numbers": {
+          "description": "the numbers a claim citing this may use",
+          "items": {
+            "type": "number"
+          },
+          "title": "Numbers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "detail"
+      ],
+      "title": "DebugFact",
+      "type": "object"
+    },
+    "DebugFeel": {
+      "additionalProperties": false,
+      "description": "One `feel` call: enums only, never what was said.",
+      "properties": {
+        "depth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth"
+        },
+        "energy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "offered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan carried an offer",
+          "title": "Offered"
+        },
+        "stance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan's stance; null for calls stored before it was kept",
+          "title": "Stance"
+        },
+        "tone": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tone",
+          "type": "array"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "valence": {
+          "title": "Valence",
+          "type": "string"
+        },
+        "via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Via"
+        }
+      },
+      "required": [
+        "ts",
+        "kind",
+        "valence"
+      ],
+      "title": "DebugFeel",
+      "type": "object"
+    },
+    "DebugMetric": {
+      "additionalProperties": false,
+      "description": "One criteria metric on that day, beside its baseline.",
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DebugBaseline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "better_days": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Better Days",
+          "type": "integer"
+        },
+        "beyond_today": {
+          "default": false,
+          "description": "this day alone is beyond the threshold in the worse direction",
+          "title": "Beyond Today",
+          "type": "boolean"
+        },
+        "direction": {
+          "description": "criteria worse_when",
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "drift_days_needed": {
+          "minimum": 1,
+          "title": "Drift Days Needed",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "flagged": {
+          "default": false,
+          "description": "counted toward its group's worse weight that day",
+          "title": "Flagged",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "citable id: metric:<name>",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "obs": {
+          "title": "Obs",
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "description": "today's running total of a summed or counted measure: shown, but not compared or scored until the day is over (no z)",
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "readings": {
+          "default": 0,
+          "description": "envelopes that day that counted toward it",
+          "minimum": 0,
+          "title": "Readings",
+          "type": "integer"
+        },
+        "scored": {
+          "description": "false = observe-only (disabled, weight 0, or criteria role shown): charted, never a vote",
+          "title": "Scored",
+          "type": "boolean"
+        },
+        "scored_days": {
+          "default": 0,
+          "description": "days in the drift window that had a baseline",
+          "minimum": 0,
+          "title": "Scored Days",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "drifting",
+            "improved",
+            "normal",
+            "insufficient"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the day's value; null = no data that day",
+          "title": "Value"
+        },
+        "weight": {
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "worse_days": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Worse Days",
+          "type": "integer"
+        },
+        "worse_z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the same, signed so that positive is the worse direction",
+          "title": "Worse Z"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "(value - median) / spread, as measured",
+          "title": "Z"
+        },
+        "z_threshold": {
+          "title": "Z Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "metric",
+        "label",
+        "source",
+        "obs",
+        "direction",
+        "z_threshold",
+        "status",
+        "drift_days_needed",
+        "weight",
+        "enabled",
+        "scored"
+      ],
+      "title": "DebugMetric",
+      "type": "object"
+    },
+    "DebugModelCall": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_hit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null: the ledger does not record cache hits",
+          "title": "Cache Hit"
+        },
+        "est_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the spend ledger's estimate for this call, when one row matches it by model, task and time",
+          "title": "Est Usd"
+        },
+        "fallback": {
+          "default": false,
+          "title": "Fallback",
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "gemini | gemma-hosted | modal | none (a deterministic or template answer)",
+          "title": "Provider",
+          "type": "string"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        },
+        "tokens_in": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "not recorded by the ledger today: null",
+          "title": "Tokens In"
+        },
+        "tokens_out": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokens Out"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ts",
+        "provider",
+        "model",
+        "task",
+        "ok"
+      ],
+      "title": "DebugModelCall",
+      "type": "object"
+    },
+    "DebugRead": {
+      "additionalProperties": false,
+      "description": "A developer-facing reading of the day, written from the structured data above. Gemma's when `by` is gemma\n(every claim cites facts, every number is one of theirs); otherwise the same shape written by code. It never\nchanges the consensus.",
+      "properties": {
+        "attempts": {
+          "default": 0,
+          "description": "model calls this ask made (0 = the model was not asked)",
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "by": {
+          "enum": [
+            "gemma",
+            "deterministic"
+          ],
+          "title": "By",
+          "type": "string"
+        },
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "digest": {
+          "description": "hash of the read version, the instruction, rule version, model and the day's data",
+          "title": "Digest",
+          "type": "string"
+        },
+        "est_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the spend ledger's estimate for the ask: its rows for this task and model while the ask ran",
+          "title": "Est Usd"
+        },
+        "failed": {
+          "default": false,
+          "description": "the model was asked about exactly this day's data and nothing valid came back; kept with its reason and rejections until the day's data, the rule or the instruction changes, and not asked (or paid for) again before that",
+          "title": "Failed",
+          "type": "boolean"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "why the deterministic read is shown: not_requested | provider_unavailable | over_budget | invalid_json | no_valid_claims | cooldown",
+          "title": "Fallback Reason"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how long the ask took, all attempts together",
+          "title": "Latency Ms"
+        },
+        "missing": {
+          "description": "what the day lacks",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "moved": {
+          "description": "which measures moved, and by how much",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "title": "Moved",
+          "type": "array"
+        },
+        "reading": {
+          "description": "by code, from the day's metrics: never the model's call",
+          "enum": [
+            "as_usual",
+            "slight_shift",
+            "clear_shift",
+            "not_enough_data"
+          ],
+          "title": "Reading",
+          "type": "string"
+        },
+        "rejected": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "validator category -> claims dropped, over all attempts of the ask",
+          "title": "Rejected",
+          "type": "object"
+        },
+        "rule_check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DebugClaim"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "whether the rule's answer looks right"
+        },
+        "summary": {
+          "$ref": "#/$defs/DebugClaim"
+        },
+        "tomorrow": {
+          "description": "what would change the state tomorrow",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "title": "Tomorrow",
+          "type": "array"
+        }
+      },
+      "required": [
+        "by",
+        "reading",
+        "summary",
+        "digest",
+        "generated_at"
+      ],
+      "title": "DebugRead",
+      "type": "object"
+    },
+    "DebugVerdict": {
+      "additionalProperties": false,
+      "description": "One signal group's verdict that day with what made it.",
+      "properties": {
+        "better_min_weight": {
+          "title": "Better Min Weight",
+          "type": "number"
+        },
+        "better_weight": {
+          "minimum": 0,
+          "title": "Better Weight",
+          "type": "number"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "days_with_data": {
+          "default": 0,
+          "description": "in the baseline window up to that day",
+          "minimum": 0,
+          "title": "Days With Data",
+          "type": "integer"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/VerdictEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "description": "citable id: source:<name>",
+          "title": "Id",
+          "type": "string"
+        },
+        "insufficient_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "stale",
+                "low_confidence",
+                "no_usable_metric"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only when the verdict is insufficient, in the rule's own order: stale = nothing newer than the group's max_age_days; low_confidence = confidence below min_confidence; no_usable_metric = no scored measure has a usable baseline and no rule fired",
+          "title": "Insufficient Reason"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Data At"
+        },
+        "min_confidence": {
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "enum": [
+                "better",
+                "as_usual",
+                "worse",
+                "insufficient"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "its verdict the day before",
+          "title": "Previous"
+        },
+        "rules_fired": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rules Fired",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "worse_min_weight": {
+          "title": "Worse Min Weight",
+          "type": "number"
+        },
+        "worse_weight": {
+          "description": "sum of the weights of its drifting metrics",
+          "minimum": 0,
+          "title": "Worse Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "label",
+        "verdict",
+        "confidence",
+        "min_confidence",
+        "worse_weight",
+        "worse_min_weight",
+        "better_weight",
+        "better_min_weight"
+      ],
+      "title": "DebugVerdict",
+      "type": "object"
+    },
+    "VerdictEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "drifting days in the window",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z"
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "days"
+      ],
+      "title": "VerdictEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/debug/day?home_id=&date=&generate= — everything about one local day of one home, for developers.\nNot for a practitioner and never for the person. Closed like /v1/admin on a deployed service. `generate`\ndefaults to false: a plain GET never calls a model; `generate=true` asks for Gemma's read of the day.",
+  "properties": {
+    "computed_at": {
+      "format": "date-time",
+      "title": "Computed At",
+      "type": "string"
+    },
+    "consensus": {
+      "$ref": "#/$defs/DebugConsensus"
+    },
+    "conversations": {
+      "items": {
+        "$ref": "#/$defs/DebugConversation"
+      },
+      "title": "Conversations",
+      "type": "array"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "day_end": {
+      "description": "local midnight that ends it, in UTC",
+      "format": "date-time",
+      "title": "Day End",
+      "type": "string"
+    },
+    "day_start": {
+      "description": "local midnight that starts the day, in UTC",
+      "format": "date-time",
+      "title": "Day Start",
+      "type": "string"
+    },
+    "events": {
+      "description": "every stored envelope stamped inside the day, plus a daily summary that measures this day but arrived later; oldest first",
+      "items": {
+        "$ref": "#/$defs/DebugEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "events_total": {
+      "minimum": 0,
+      "title": "Events Total",
+      "type": "integer"
+    },
+    "facts": {
+      "description": "everything the read may cite",
+      "items": {
+        "$ref": "#/$defs/DebugFact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "first_day": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the first local day of the home's record (a day picker has nothing before it); null = no record yet",
+      "title": "First Day"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "is_today": {
+      "default": false,
+      "title": "Is Today",
+      "type": "boolean"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/DebugMetric"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "model_calls": {
+      "items": {
+        "$ref": "#/$defs/DebugModelCall"
+      },
+      "title": "Model Calls",
+      "type": "array"
+    },
+    "read": {
+      "$ref": "#/$defs/DebugRead"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "timezone": {
+      "title": "Timezone",
+      "type": "string"
+    },
+    "verdicts": {
+      "items": {
+        "$ref": "#/$defs/DebugVerdict"
+      },
+      "title": "Verdicts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "date",
+    "timezone",
+    "day_start",
+    "day_end",
+    "events",
+    "events_total",
+    "metrics",
+    "verdicts",
+    "consensus",
+    "read",
+    "computed_at"
+  ],
+  "title": "DebugDay",
+  "type": "object"
+}

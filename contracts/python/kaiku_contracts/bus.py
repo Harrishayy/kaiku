@@ -24,9 +24,19 @@ from pydantic import BaseModel
 from .envelope import Envelope, Source, default_home_id, make
 from .jlog import get_logger
 from .registry import ContractError, to_json, validate
-from .topics import ParsedTopic, parse_topic, qos_for, retain_for, topic, topic_for
+from .topics import (
+    ParsedTopic,
+    audio_topic,
+    is_audio_topic,
+    parse_topic,
+    qos_for,
+    retain_for,
+    topic,
+    topic_for,
+)
 
 Handler = Callable[[ParsedTopic, Envelope[Any]], Awaitable[None]]
+AudioHandler = Callable[[bytes], Awaitable[None] | None]
 HEARTBEAT_S = 5.0
 
 
@@ -60,6 +70,8 @@ class Bus:
         self.connected = asyncio.Event()
         self.log = get_logger(node)
         self._handlers: list[tuple[str, Handler]] = []
+        self._audio_handlers: list[tuple[str, AudioHandler]] = []
+        self.audio_dropped = 0
         self._client: Any = None
         self._task: asyncio.Task | None = None
         self._started = time.monotonic()
@@ -70,6 +82,25 @@ class Bus:
         """Subscribe to `pattern` relative to this home, e.g. "cmd/head" or "raw/sensors/#".
         Pass home_id="+" to listen to all homes."""
         self._handlers.append((topic(home_id or self.home_id, *pattern.split("/", 1)), handler))  # type: ignore[arg-type]
+
+    def on_audio(self, stream: str, handler: AudioHandler, *, node: str = "head") -> None:
+        """Receive the raw PCM frames of one audio topic (`stream`: "speaker" | "mic"). The handler gets the bytes
+        of one message (an empty one = "drop the buffer"). Audio is never validated, logged or kept by the bus."""
+        self._audio_handlers.append((audio_topic(self.home_id, stream, node), handler))
+
+    async def publish_audio(self, data: bytes, *, stream: str = "speaker", node: str = "head") -> bool:
+        """One PCM frame (or an empty "drop the buffer" message) on an audio topic: QoS 0, not retained, no
+        envelope. Dropped silently while offline (50 frames a second must not flood the log)."""
+        client = self._client
+        if client is None:
+            self.audio_dropped += 1
+            return False
+        try:
+            await client.publish(audio_topic(self.home_id, stream, node), data, qos=0, retain=False)
+            return True
+        except Exception:
+            self.audio_dropped += 1
+            return False
 
     def set_status(self, status: str, error: str | None = None) -> None:
         self.status = status
@@ -167,6 +198,8 @@ class Bus:
                     backoff = 1.0
                     for pattern, _ in self._handlers:
                         await client.subscribe(pattern, qos=1)
+                    for pattern, _ in self._audio_handlers:
+                        await client.subscribe(pattern, qos=0)
                     self.connected.set()
                     self.log.info("bus_connected", f"{self.host}:{self.port}", subscriptions=[p for p, _ in self._handlers])
                     if self.heartbeat:
@@ -188,6 +221,17 @@ class Bus:
     async def _dispatch(self, t: str, raw: Any) -> None:
         import aiomqtt
 
+        if is_audio_topic(t):  # PCM, not a message: never parsed, never logged, only handed to its listener
+            for pattern, audio_handler in self._audio_handlers:
+                if pattern == t:
+                    try:
+                        res = audio_handler(bytes(raw) if raw else b"")
+                        if res is not None:
+                            await res
+                    except Exception as e:
+                        self.last_error = f"{type(e).__name__}: {e}"
+                        self.log.error("audio_handler_failed", self.last_error, topic=t)
+            return
         try:
             env = validate(raw)
             parsed = parse_topic(t)

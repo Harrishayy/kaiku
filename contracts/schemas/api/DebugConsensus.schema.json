@@ -1,0 +1,131 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "acknowledged_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Acknowledged By"
+    },
+    "agreement": {
+      "enum": [
+        "agree",
+        "disagree",
+        "low_coverage"
+      ],
+      "title": "Agreement",
+      "type": "string"
+    },
+    "changed": {
+      "description": "by code: what differs from the day before",
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+    },
+    "held": {
+      "default": false,
+      "description": "needs_call kept by hysteresis",
+      "title": "Held",
+      "type": "boolean"
+    },
+    "id": {
+      "const": "consensus:state",
+      "default": "consensus:state",
+      "title": "Id",
+      "type": "string"
+    },
+    "previous_state": {
+      "anyOf": [
+        {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous State"
+    },
+    "raw_state": {
+      "description": "what the rule gives for that day alone, before hysteresis",
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "Raw State",
+      "type": "string"
+    },
+    "reasons": {
+      "description": "by code: why the rule gives this state",
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "rule_version": {
+      "title": "Rule Version",
+      "type": "string"
+    },
+    "safety_since": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Since"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "state_since": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "State Since"
+    }
+  },
+  "required": [
+    "state",
+    "raw_state",
+    "agreement",
+    "rule_version"
+  ],
+  "title": "DebugConsensus",
+  "type": "object"
+}

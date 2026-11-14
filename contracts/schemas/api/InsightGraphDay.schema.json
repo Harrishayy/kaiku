@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "InsightChange": {
+      "additionalProperties": false,
+      "description": "One thing that is different on a day, pointing at its node. Text and order are written by code.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "care",
+            "moved_away",
+            "came_back",
+            "better",
+            "missed",
+            "first",
+            "kept"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "node": {
+          "title": "Node",
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "where it sits in the order of the change, when the course has one: 'first to move', '1 day after the first change' (order in time, never cause)",
+          "maxLength": 80,
+          "title": "Tag",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 240,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "kind",
+        "text"
+      ],
+      "title": "InsightChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One day of the graph's record: what changed that day and how many measures were away from usual.",
+  "properties": {
+    "away": {
+      "description": "measures away from their usual that day",
+      "minimum": 0,
+      "title": "Away",
+      "type": "integer"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/InsightChange"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "recorded": {
+      "description": "at least one observation or care action that day",
+      "title": "Recorded",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "date",
+    "recorded",
+    "away"
+  ],
+  "title": "InsightGraphDay",
+  "type": "object"
+}

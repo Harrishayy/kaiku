@@ -87,6 +87,109 @@ export interface AgentStep {
     | "render";
 }
 /**
+ * One activity the person said yes to in a conversation, held by the cloud for that local day so every
+ * screen shows the same thing (tool `agree_activity`). `text` is a template from config/voice_lines.toml
+ * (`voice_key`) around the activity's name and where it was agreed: never the person's words. It becomes
+ * `done` by itself when an observation for that activity arrives the same day; a device reports `started`
+ * (opened) or `put_aside` with POST /v1/me/agreed/answer. Gone after local midnight.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "AgreedActivity".
+ */
+export interface AgreedActivity {
+  /**
+   * when it was agreed
+   */
+  at: string;
+  /**
+   * the local day it belongs to; it is not shown on any other day
+   */
+  day: string;
+  /**
+   * send it back in the answer; also the id in the stream's `agreed` events
+   */
+  id: string;
+  kind: "breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt";
+  /**
+   * Kaiku's own short line from the conversation, when it gave one and it passed the wording rules
+   */
+  line?: string | null;
+  /**
+   * how the activity is called on a screen ("Lantern", "a walk")
+   */
+  name: string;
+  /**
+   * the person's screens that can open it
+   */
+  on?: ("robot" | "glasses" | "iphone" | "mac" | "web")[];
+  /**
+   * the asking device (`surface` in the query) has a screen for it; false: show it without an open button
+   */
+  opens_here?: boolean;
+  state: "open" | "started" | "done" | "put_aside";
+  /**
+   * when it was opened, done or put aside
+   */
+  state_at?: string | null;
+  /**
+   * where it was agreed
+   */
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  /**
+   * the sentence for the card and the notification
+   */
+  text: string;
+  /**
+   * the template used; speak `text` with POST /v1/voice/say
+   */
+  voice_key: string;
+  /**
+   * now: they want to do it now, on another device. later: some time today
+   */
+  when?: "now" | "later";
+}
+/**
+ * POST /v1/me/agreed/answer — opened: this device opened the activity's screen (state started). put_aside:
+ * the person put it aside (final for today). Done needs no answer: the activity's own observation does it.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "AgreedAnswer".
+ */
+export interface AgreedAnswer {
+  answer: "opened" | "put_aside";
+  id: string;
+}
+/**
+ * Result of the `agree_activity` tool when the yes was kept. A refusal is `ok=false` with `error` (a reason
+ * the model can say) and `result {agreed: false, reason}`; nothing is stored then.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "AgreedResult".
+ */
+export interface AgreedResult {
+  agreed?: true;
+  /**
+   * this activity was already agreed and open today: nothing new was added
+   */
+  already?: boolean;
+  id: string;
+  kind: "breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt";
+  /**
+   * screens whose app is open right now (the stream is connected): it appeared there this second. The others show it when the app is next opened
+   */
+  listening?: ("robot" | "glasses" | "iphone" | "mac" | "web")[];
+  name: string;
+  /**
+   * the person's screens that now show it and can open it
+   */
+  on: ("robot" | "glasses" | "iphone" | "mac" | "web")[];
+  when?: "now" | "later";
+  /**
+   * say it this way: "your phone and your Mac"
+   */
+  where: string;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "BriefSection".
  */
@@ -309,6 +412,12 @@ export interface CompanionSessionResponse {
  * via the `definition` "ContextCard".
  */
 export interface ContextCard {
+  /**
+   * activities they said yes to today on any device and whether each is done (D50); each is carried once per state, so Kaiku is glad or asks gently once
+   *
+   * @maxItems 3
+   */
+  agreed?: [] | [string] | [string, string] | [string, string, string];
   care_info?: string | null;
   /**
    * check-in sessions: how the chat should open
@@ -362,6 +471,12 @@ export interface ContextCard {
    * set when the device said why it opened the session
    */
   purpose?: ("talk" | "check_in" | "walk" | "ritual") | null;
+  /**
+   * today's tasks in which the face signs counted with their opt-in were clearly below their own usual (D52, rule in mind/face_cue.py). An enum and nothing else: the instruction turns it into a cue to go gently and never to mention their face or a camera; no number, no state and no word about how they looked ever crosses
+   *
+   * @maxItems 2
+   */
+  quieter_in?: [] | ["games" | "check_in"] | ["games" | "check_in", "games" | "check_in"];
   /**
    * how the latest reflection with Kaiku went, as a level and themes only (never the words), so Kaiku can be gentle about it
    */
@@ -758,6 +873,12 @@ export interface Defaults {
  */
 export interface MetricSpec {
   agg?: "mean" | "median" | "min" | "max" | "sum" | "first" | "last" | "count";
+  /**
+   * payload minimums: a reading counts only when each named numeric payload field is at least this (e.g. coverage, samples). The record is still stored and listed with its provenance
+   */
+  at_least?: {
+    [k: string]: number;
+  };
   baseline_days?: number | null;
   baseline_min_days?: number | null;
   counts_for_better?: boolean;
@@ -793,6 +914,10 @@ export interface MetricSpec {
    */
   person_hard?: string;
   quality_min?: number | null;
+  /**
+   * shown = compared with the person's usual, charted and citable, never part of a verdict (no vote, no sufficiency, no coverage) and not in the rule version. Delete the line to let the metric vote with its weight
+   */
+  role?: "scored" | "shown";
   unit?: string;
   /**
    * counts toward the source's worse/better weight
@@ -1062,6 +1187,575 @@ export interface DayAccount {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugBaseline".
+ */
+export interface DebugBaseline {
+  /**
+   * days the baseline is made from
+   */
+  days: number;
+  /**
+   * provisional baseline of a young record
+   */
+  early?: boolean;
+  median: number;
+  /**
+   * max(1.4826 x MAD, min_mad): what one z unit is
+   */
+  spread: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugClaim".
+ */
+export interface DebugClaim {
+  /**
+   * inside a Gemma read: this line is code's own, put there because the model left the measure out or its sentence failed a check
+   */
+  by_code?: boolean;
+  /**
+   * DebugFact ids (the model is asked for six at most)
+   *
+   * @minItems 1
+   * @maxItems 8
+   */
+  cites:
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string];
+  text: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugConsensus".
+ */
+export interface DebugConsensus {
+  acknowledged_by?: string | null;
+  agreement: "agree" | "disagree" | "low_coverage";
+  /**
+   * by code: what differs from the day before
+   */
+  changed?: string[];
+  /**
+   * needs_call kept by hysteresis
+   */
+  held?: boolean;
+  id?: "consensus:state";
+  previous_state?: ("stable" | "watch" | "needs_call" | "safety") | null;
+  /**
+   * what the rule gives for that day alone, before hysteresis
+   */
+  raw_state: "stable" | "watch" | "needs_call" | "safety";
+  /**
+   * by code: why the rule gives this state
+   */
+  reasons?: string[];
+  rule_version: string;
+  safety_since?: string | null;
+  state: "stable" | "watch" | "needs_call" | "safety";
+  state_since?: string | null;
+}
+/**
+ * One companion conversation that started that day. Never transcripts, topics or words.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugConversation".
+ */
+export interface DebugConversation {
+  /**
+   * Live minutes the budget ledger counts for it
+   */
+  billed_minutes?: number | null;
+  end?: string | null;
+  feel?: DebugFeel[];
+  intent: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
+  minutes?: number | null;
+  /**
+   * how it ended; null = never closed
+   */
+  outcome?: ("completed" | "skipped" | "ended_early" | "crisis" | "offline") | null;
+  session_id: string;
+  start: string;
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  /**
+   * tool names: in call order while the conversation is open, one of each once the device has uploaded it
+   */
+  tools?: string[];
+  /**
+   * true = `tools` is the call order (repeats kept); false = the device's upload replaced it with one of each, sorted by name; null = cannot be told (a conversation uploaded before this was recorded)
+   */
+  tools_in_order?: boolean | null;
+  transcript_kept?: boolean;
+}
+/**
+ * One `feel` call: enums only, never what was said.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugFeel".
+ */
+export interface DebugFeel {
+  depth?: string | null;
+  energy?: string | null;
+  kind: string;
+  /**
+   * the plan carried an offer
+   */
+  offered?: boolean | null;
+  /**
+   * the plan's stance; null for calls stored before it was kept
+   */
+  stance?: string | null;
+  tone?: string[];
+  ts: string;
+  valence: string;
+  via?: string | null;
+}
+/**
+ * GET /v1/debug/day?home_id=&date=&generate= — everything about one local day of one home, for developers.
+ * Not for a practitioner and never for the person. Closed like /v1/admin on a deployed service. `generate`
+ * defaults to false: a plain GET never calls a model; `generate=true` asks for Gemma's read of the day.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugDay".
+ */
+export interface DebugDay {
+  computed_at: string;
+  consensus: DebugConsensus;
+  conversations?: DebugConversation[];
+  date: string;
+  /**
+   * local midnight that ends it, in UTC
+   */
+  day_end: string;
+  /**
+   * local midnight that starts the day, in UTC
+   */
+  day_start: string;
+  /**
+   * every stored envelope stamped inside the day, plus a daily summary that measures this day but arrived later; oldest first
+   */
+  events: DebugEvent[];
+  events_total: number;
+  /**
+   * everything the read may cite
+   */
+  facts?: DebugFact[];
+  /**
+   * the first local day of the home's record (a day picker has nothing before it); null = no record yet
+   */
+  first_day?: string | null;
+  home_id: string;
+  is_today?: boolean;
+  metrics: DebugMetric[];
+  model_calls?: DebugModelCall[];
+  read: DebugRead;
+  sim?: boolean;
+  timezone: string;
+  verdicts: DebugVerdict[];
+}
+/**
+ * One stored envelope of the day.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugEvent".
+ */
+export interface DebugEvent {
+  /**
+   * the local day this envelope counts toward (a daily summary can be stamped on the day after the one it measures)
+   */
+  day?: string | null;
+  id: string;
+  /**
+   * HH:MM:SS in the home's timezone
+   */
+  local_time: string;
+  /**
+   * metrics this envelope counted toward
+   */
+  metrics?: string[];
+  /**
+   * compact: long lists are cut to their first items plus a count
+   */
+  payload: {
+    [k: string]: unknown;
+  };
+  quality?: number | null;
+  sim: boolean;
+  /**
+   * the envelope's own source (head, sensors, hub, phone, laptop, glasses, ...)
+   */
+  source: string;
+  ts: string;
+  type: string;
+}
+/**
+ * One verified line the day read may cite. Ids: metric:<name>, source:<name>, consensus:state,
+ * missing:<source or metric>, tomorrow:<name>, event:<envelope id>.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugFact".
+ */
+export interface DebugFact {
+  /**
+   * written by code from the day's data; every number in it is the data's
+   */
+  detail: string;
+  /**
+   * the yes/no facts a claim citing this may state, checked like the numbers: held, acknowledged, safety (consensus), enough_data (a signal group), scored (a measure)
+   */
+  flags?: {
+    [k: string]: boolean;
+  };
+  id: string;
+  kind: "metric" | "source" | "consensus" | "missing" | "tomorrow" | "event";
+  label: string;
+  /**
+   * the numbers a claim citing this may use
+   */
+  numbers?: number[];
+}
+/**
+ * One criteria metric on that day, beside its baseline.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugMetric".
+ */
+export interface DebugMetric {
+  baseline?: DebugBaseline | null;
+  better_days?: number;
+  /**
+   * this day alone is beyond the threshold in the worse direction
+   */
+  beyond_today?: boolean;
+  /**
+   * criteria worse_when
+   */
+  direction: "up" | "down";
+  drift_days_needed: number;
+  enabled: boolean;
+  /**
+   * @maxItems 20
+   */
+  event_ids?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ];
+  /**
+   * counted toward its group's worse weight that day
+   */
+  flagged?: boolean;
+  /**
+   * citable id: metric:<name>
+   */
+  id: string;
+  label: string;
+  metric: string;
+  obs: string;
+  /**
+   * today's running total of a summed or counted measure: shown, but not compared or scored until the day is over (no z)
+   */
+  partial?: boolean;
+  /**
+   * envelopes that day that counted toward it
+   */
+  readings?: number;
+  /**
+   * false = observe-only (disabled, weight 0, or criteria role shown): charted, never a vote
+   */
+  scored: boolean;
+  /**
+   * days in the drift window that had a baseline
+   */
+  scored_days?: number;
+  source: "robot" | "glasses" | "laptop" | "wearable";
+  status: "drifting" | "improved" | "normal" | "insufficient";
+  unit?: string;
+  /**
+   * the day's value; null = no data that day
+   */
+  value?: number | null;
+  weight: number;
+  worse_days?: number;
+  /**
+   * the same, signed so that positive is the worse direction
+   */
+  worse_z?: number | null;
+  /**
+   * (value - median) / spread, as measured
+   */
+  z?: number | null;
+  z_threshold: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugModelCall".
+ */
+export interface DebugModelCall {
+  /**
+   * null: the ledger does not record cache hits
+   */
+  cache_hit?: boolean | null;
+  /**
+   * the spend ledger's estimate for this call, when one row matches it by model, task and time
+   */
+  est_usd?: number | null;
+  fallback?: boolean;
+  latency_ms?: number | null;
+  model: string;
+  ok: boolean;
+  /**
+   * gemini | gemma-hosted | modal | none (a deterministic or template answer)
+   */
+  provider: string;
+  route?: string | null;
+  task: string;
+  /**
+   * not recorded by the ledger today: null
+   */
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  ts: string;
+}
+/**
+ * A developer-facing reading of the day, written from the structured data above. Gemma's when `by` is gemma
+ * (every claim cites facts, every number is one of theirs); otherwise the same shape written by code. It never
+ * changes the consensus.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugRead".
+ */
+export interface DebugRead {
+  /**
+   * model calls this ask made (0 = the model was not asked)
+   */
+  attempts?: number;
+  by: "gemma" | "deterministic";
+  cached?: boolean;
+  /**
+   * hash of the read version, the instruction, rule version, model and the day's data
+   */
+  digest: string;
+  /**
+   * the spend ledger's estimate for the ask: its rows for this task and model while the ask ran
+   */
+  est_usd?: number | null;
+  /**
+   * the model was asked about exactly this day's data and nothing valid came back; kept with its reason and rejections until the day's data, the rule or the instruction changes, and not asked (or paid for) again before that
+   */
+  failed?: boolean;
+  /**
+   * why the deterministic read is shown: not_requested | provider_unavailable | over_budget | invalid_json | no_valid_claims | cooldown
+   */
+  fallback_reason?: string | null;
+  generated_at: string;
+  /**
+   * how long the ask took, all attempts together
+   */
+  latency_ms?: number | null;
+  /**
+   * what the day lacks
+   */
+  missing?: DebugClaim[];
+  model?: string | null;
+  /**
+   * which measures moved, and by how much
+   */
+  moved?: DebugClaim[];
+  /**
+   * by code, from the day's metrics: never the model's call
+   */
+  reading: "as_usual" | "slight_shift" | "clear_shift" | "not_enough_data";
+  /**
+   * validator category -> claims dropped, over all attempts of the ask
+   */
+  rejected?: {
+    [k: string]: number;
+  };
+  /**
+   * whether the rule's answer looks right
+   */
+  rule_check?: DebugClaim | null;
+  summary: DebugClaim;
+  /**
+   * what would change the state tomorrow
+   */
+  tomorrow?: DebugClaim[];
+}
+/**
+ * One signal group's verdict that day with what made it.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "DebugVerdict".
+ */
+export interface DebugVerdict {
+  better_min_weight: number;
+  better_weight: number;
+  confidence: number;
+  /**
+   * in the baseline window up to that day
+   */
+  days_with_data?: number;
+  evidence?: VerdictEvidence[];
+  /**
+   * citable id: source:<name>
+   */
+  id: string;
+  /**
+   * only when the verdict is insufficient, in the rule's own order: stale = nothing newer than the group's max_age_days; low_confidence = confidence below min_confidence; no_usable_metric = no scored measure has a usable baseline and no rule fired
+   */
+  insufficient_reason?: ("stale" | "low_confidence" | "no_usable_metric") | null;
+  label: string;
+  last_data_at?: string | null;
+  min_confidence: number;
+  /**
+   * its verdict the day before
+   */
+  previous?: ("better" | "as_usual" | "worse" | "insufficient") | null;
+  rules_fired?: string[];
+  source: "robot" | "glasses" | "laptop" | "wearable";
+  verdict: "better" | "as_usual" | "worse" | "insufficient";
+  worse_min_weight: number;
+  /**
+   * sum of the weights of its drifting metrics
+   */
+  worse_weight: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "DeletedResponse".
  */
 export interface DeletedResponse {
@@ -1154,6 +1848,101 @@ export interface EngagementCue {
    * 0-1 on a fixed reference range, not a baseline
    */
   level?: number | null;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Envelope_FaceSigns_".
+ */
+export interface EnvelopeFaceSigns {
+  home_id: string;
+  id?: string;
+  payload: FaceSigns;
+  quality?: number | null;
+  sim?: boolean;
+  source: "head" | "sensors" | "hub" | "friendlink" | "glasses" | "laptop" | "phone" | "cloud" | "sim";
+  ts?: string;
+  type: string;
+  v?: 1;
+}
+/**
+ * Face signs during one task (D52), with the person's opt-in "Camera during activities": movements of the face
+ * that the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in
+ * which the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these
+ * numbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),
+ * not emotions: nothing here says what the person felt, and no field may. Values are comparable only within one
+ * `method` (and best within one task): never pool the two methods into one usual. A sign the method cannot
+ * measure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement
+ * and expression range come from both methods on different scales. The apps also leave out blinks under 20 s of
+ * face time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when
+ * coverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.
+ * Counts toward the "laptop" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not
+ * scored.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "FaceSigns".
+ */
+export interface FaceSigns {
+  /**
+   * blinks per minute of face time
+   */
+  blinks_per_min?: number | null;
+  /**
+   * share of face frames with lowered, drawn brows
+   */
+  brow_furrow_share?: number | null;
+  /**
+   * share of face frames with raised brows
+   */
+  brow_raise_share?: number | null;
+  /**
+   * share of sampled frames with exactly one usable face
+   */
+  coverage: number;
+  device: "phone" | "mac" | "web";
+  /**
+   * seconds the camera sampled
+   */
+  duration_s: number;
+  /**
+   * overall variability of expression over the session
+   */
+  expression_range?: number | null;
+  /**
+   * share of face frames looking toward the screen
+   */
+  gaze_on_share?: number | null;
+  /**
+   * how much the head moved; the scale belongs to the method
+   */
+  head_movement?: number | null;
+  /**
+   * arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)
+   */
+  method: "arkit_blendshapes" | "vision_landmarks";
+  /**
+   * share of face frames with the mouth open
+   */
+  mouth_open_share?: number | null;
+  /**
+   * id of the obs.play_session (or other record) of the same task
+   */
+  ref?: string | null;
+  /**
+   * frames looked at; none is kept
+   */
+  samples: number;
+  /**
+   * share of face frames with a smile above the method's threshold
+   */
+  smile_share?: number | null;
+  /**
+   * distinct smiles
+   */
+  smiles?: number | null;
+  /**
+   * the task it belongs to: a game (PlayGame) or the check-in chat
+   */
+  task: "firefly" | "breathe" | "tell" | "pebbles" | "lantern" | "seeds" | "watering" | "check_in";
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -1424,6 +2213,10 @@ export interface FeelPlan {
    */
   follow_up_saved?: boolean;
   /**
+   * a words-only cue for how to carry yourself in this conversation (go more gently), never something to say, and never a number, a state or where the cue came from (D52)
+   */
+  manner?: string | null;
+  /**
    * one small thing to offer once, or null
    */
   may_offer?: string | null;
@@ -1431,6 +2224,12 @@ export interface FeelPlan {
    * start_activity kind, only after a clear yes
    */
   offer_activity?:
+    | ("breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt")
+    | null;
+  /**
+   * the offer has no screen on this device but one on their phone or Mac: after a clear yes call agree_activity with this kind (D50)
+   */
+  offer_elsewhere?:
     | ("breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt")
     | null;
   /**
@@ -1593,6 +2392,10 @@ export interface HeadCmd {
   bpm?: number | null;
   chest?: ("off" | "breathe" | "glow" | "pulse") | null;
   color?: string | null;
+  /**
+   * only for a head that runs its own ritual (standalone firmware): hold = the hub runs the drum phase now (stay in the drum step, keep reporting taps, no own timer, obey eyes / pan_mode sway / bpm); end = it is over, go on. Re-sent at least every 5 s; 10 s without one = back to the head's own timer. Ignored by a hub-driven head
+   */
+  drum?: ("hold" | "end") | null;
   eyes?: ("neutral" | "happy" | "sleepy" | "wide" | "listening" | "thinking" | "soft") | null;
   /**
    * timed motor pulse, then home (no position feedback)
@@ -1600,9 +2403,17 @@ export interface HeadCmd {
   gesture?: ("look_left" | "look_right" | "shake") | null;
   home?: boolean | null;
   look?: LookAt | null;
+  /**
+   * open = send the head's microphone as PCM frames on audio/head/mic (only while a conversation the person started is open); close = stop. Re-sent at least every 3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while its speaker plays and about 250 ms after
+   */
+  mic?: ("open" | "close") | null;
   pan?: PanTarget | null;
   pan_mode?: ("track" | "still" | "sway") | null;
   purr?: Purr | null;
+  /**
+   * help = the head shows the helpline's name and number and the emergency number on its own screen, from constants compiled into the firmware, until `none`, a new ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only
+   */
+  show?: ("help" | "none") | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -1725,6 +2536,254 @@ export interface Highlight {
   text: string;
 }
 /**
+ * One local day of one measure.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistoryDay".
+ */
+export interface HistoryDay {
+  date: string;
+  /**
+   * readings that day that the value is made from
+   */
+  sessions: number;
+  /**
+   * some of that day's readings are simulated
+   */
+  sim?: boolean;
+  value: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistoryGroup".
+ */
+export interface HistoryGroup {
+  key: "robot" | "games" | "walks" | "checkins" | "sleep_body" | "mac" | "camera";
+  measures: HistoryMeasure[];
+  title: string;
+}
+/**
+ * One measure over the window: its days, the person's usual range when there is one, and its latest sessions.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistoryMeasure".
+ */
+export interface HistoryMeasure {
+  /**
+   * days with a value, oldest first; a day without data is absent
+   */
+  days: HistoryDay[];
+  /**
+   * how many decimals the value is worth showing with
+   */
+  decimals?: number;
+  /**
+   * where its readings came from in this window, most first (head, sensors and hub are all the robot)
+   */
+  devices: ("robot" | "phone" | "mac" | "glasses" | "watch" | "web")[];
+  /**
+   * clock: minutes after local midnight; percent: a share 0..1 shown as a percentage; duration: minutes shown as hours and minutes. `usual` is in the same format
+   */
+  format?: "number" | "clock" | "percent" | "duration";
+  /**
+   * stable key; for a measure the practitioner side also computes, the same name
+   */
+  key: string;
+  /**
+   * how one day's value is made from that day's sessions
+   */
+  per_day: "average" | "total" | "highest" | "lowest" | "latest" | "first" | "count";
+  /**
+   * newest first
+   *
+   * @maxItems 30
+   */
+  sessions?: HistorySession[];
+  sim?: boolean;
+  title: string;
+  unit?: string;
+  usual?: HistoryUsual | null;
+}
+/**
+ * One recorded session (a drum session, one game, a breathing round, a walk, one dial answer, one morning's
+ * watch summary) with its own numbers.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistorySession".
+ */
+export interface HistorySession {
+  device: "robot" | "phone" | "mac" | "glasses" | "watch" | "web";
+  /**
+   * the observation's id
+   */
+  id: string;
+  /**
+   * which kind of session, where one measure lists several (a ritual step: Breathing, Drumming)
+   */
+  label?: string | null;
+  sim?: boolean;
+  ts: string;
+  /**
+   * @maxItems 16
+   */
+  values?:
+    | []
+    | [HistoryValue]
+    | [HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue]
+    | [HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue, HistoryValue]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ]
+    | [
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue,
+        HistoryValue
+      ];
+  /**
+   * games: a practice session, left out of the day's value
+   */
+  warmup?: boolean | null;
+}
+/**
+ * One number of one session, ready to show.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistoryValue".
+ */
+export interface HistoryValue {
+  format?: "number" | "clock" | "percent" | "duration";
+  /**
+   * payload field, e.g. tempo_bpm
+   */
+  key: string;
+  title: string;
+  unit?: string;
+  value: number;
+}
+/**
+ * The person's own usual range for a measure, from their own earlier days. A range and nothing else.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HistoryUsual".
+ */
+export interface HistoryUsual {
+  high: number;
+  low: number;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "HrvSession".
  */
@@ -1769,6 +2828,71 @@ export interface SuggestNudge {
   arm: "breathe" | "drum" | "daylight_walk" | "friend_ping" | "icbt_exercise";
 }
 /**
+ * `raw.hub.trace`: what Kaiku just did, live, for the "Kaiku bot" tab of the person's own apps on the home
+ * network. Local only (raw.* never leaves the home; QoS 0, not retained, not stored). It carries Kaiku's OWN
+ * lines and the names of the tools the voice called. Never the person's words, a system instruction, or a tool's
+ * arguments or result: `text` exists for `said` alone and `heard` carries nothing but its kind (validated).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HubTrace".
+ */
+export interface HubTrace {
+  /**
+   * music song / game level: its tempo
+   */
+  bpm?: number | null;
+  /**
+   * said: how it was spoken (script | live | cached_voice). tool: who answered, only when the cloud's result says so
+   */
+  by?: ("script" | "live" | "cached_voice" | "notebook" | "gemma" | "flash" | "argon" | "rule") | null;
+  /**
+   * a short machine word. session: open | close. music: start | song | hush | stop. game: level:<n> | your_turn | band:<perfect|great|nice|again>
+   */
+  detail?: string | null;
+  kind: "said" | "heard" | "tool" | "session" | "game" | "music";
+  /**
+   * tool: how long the call took
+   */
+  ms?: number | null;
+  ok?: boolean | null;
+  /**
+   * said only: Kaiku's own words (a scripted line, or the Live voice's reply as its output transcription gives it), cut at 300 characters
+   */
+  text?: string | null;
+  /**
+   * tool only: the name of the tool the voice called
+   */
+  tool?: string | null;
+}
+/**
+ * One thing that is different on a day, pointing at its node. Text and order are written by code.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InsightChange".
+ */
+export interface InsightChange {
+  kind: "care" | "moved_away" | "came_back" | "better" | "missed" | "first" | "kept";
+  node: string;
+  /**
+   * where it sits in the order of the change, when the course has one: 'first to move', '1 day after the first change' (order in time, never cause)
+   */
+  tag?: string;
+  text: string;
+}
+/**
+ * A neighbourhood of the graph: what a group of nodes is about, and where it sits around the person. Declared
+ * once in config/kaiku.toml [graph]; the same for every person.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InsightDomain".
+ */
+export interface InsightDomain {
+  id: string;
+  label: string;
+  place: "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
+  short: string;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "InsightEdge".
  */
@@ -1777,6 +2901,10 @@ export interface InsightEdge {
   evidence: number;
   label: string;
   layer?: "learned" | "structure";
+  /**
+   * the days this link is about, oldest first: the day a measure followed, the days two measures were away together, the day it came back
+   */
+  on?: string[];
   rel:
     | "has_signal"
     | "measures"
@@ -1790,8 +2918,14 @@ export interface InsightEdge {
     | "kept_through"
     | "slipped_during"
     | "after"
-    | "talked_about";
+    | "talked_about"
+    | "produces"
+    | "about";
   src: string;
+  /**
+   * a few words for a badge: '+1 day', 'first'
+   */
+  tag?: string;
   weight: number;
 }
 /**
@@ -1804,6 +2938,14 @@ export interface InsightEdge {
  */
 export interface InsightGraph {
   basis?: ("observations" | "shared_conversations")[];
+  /**
+   * every calendar day from the first to the last day with data inside the graph's window, oldest first
+   */
+  days?: InsightGraphDay[];
+  /**
+   * the neighbourhoods, in declared order
+   */
+  domains?: InsightDomain[];
   edges?: InsightEdge[];
   /**
    * layers present
@@ -1817,11 +2959,37 @@ export interface InsightGraph {
   shared: boolean;
 }
 /**
+ * One day of the graph's record: what changed that day and how many measures were away from usual.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InsightGraphDay".
+ */
+export interface InsightGraphDay {
+  /**
+   * measures away from their usual that day
+   */
+  away: number;
+  changes?: InsightChange[];
+  date: string;
+  /**
+   * at least one observation or care action that day
+   */
+  recorded: boolean;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "InsightNode".
  */
 export interface InsightNode {
+  /**
+   * oldest first, within `InsightGraph.days`
+   */
+  days?: InsightNodeDay[];
   detail?: string | null;
+  /**
+   * id of the `InsightGraph.domains` entry this node is about; empty for the person and the signal groups (who sent it is not what it is about)
+   */
+  domain?: string;
   /**
    * recorded days / observations / attempts behind this node
    */
@@ -1834,6 +3002,28 @@ export interface InsightNode {
    */
   layer?: "learned" | "structure";
   tone?: "better" | "worse" | "similar" | "unknown";
+}
+/**
+ * What one graph node has on one day of the record, by the same code as the course, the trends band and the
+ * daily account. A day with nothing for the node has no entry.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InsightNodeDay".
+ */
+export interface InsightNodeDay {
+  date: string;
+  /**
+   * one plain clause by code: '2 of 5, below their usual 4 of 5'
+   */
+  text: string;
+  /**
+   * measure: that day's reading against that day's own usual (worse = away from usual, better = beyond usual on the favourable side, similar = within usual, unknown = no personal usual yet); routine: similar = kept, worse = missed on a recorded day; every other kind: unknown (recorded, not judged)
+   */
+  tone?: "better" | "worse" | "similar" | "unknown";
+  /**
+   * short printed form: '2 of 5', '07:22', 'missed'
+   */
+  value?: string;
 }
 /**
  * GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,
@@ -1951,6 +3141,10 @@ export interface InvitationAnswer {
  * via the `definition` "InvitationResponse".
  */
 export interface InvitationResponse {
+  /**
+   * what the person said yes to today, on any device (D50), oldest first. While one is open or started the invitation waits (`invitation` is null)
+   */
+  agreed?: AgreedActivity[];
   home_id: string;
   invitation?: Invitation | null;
 }
@@ -2166,6 +3360,10 @@ export interface MetricSeries {
   label: string;
   metric: string;
   points: TimelinePoint[];
+  /**
+   * false = shown and citable against the person's usual, never part of the group's verdict (criteria `role = "shown"`, or weight 0)
+   */
+  scored?: boolean;
   source: "robot" | "glasses" | "laptop" | "wearable";
   unit?: string;
   worse_when: "up" | "down";
@@ -2581,6 +3779,34 @@ export interface PatientsResponse {
   rule_version: string;
 }
 /**
+ * GET /v1/me/history?home_id=&days= — the person's own numbers, as a health app shows them: every measure
+ * the home has produced, from every device, by local day, with the latest sessions one tap away. Groups come in
+ * a fixed order (robot, games, walks, checkins, sleep_body, mac, camera); a group or measure with no data in the
+ * window is left out. `camera` holds the face signs counted with "Camera during activities" on (D52): her own
+ * numbers like every other group, never a word for what they might mean. It is the one person-facing place where numbers are shown (D48), and it carries numbers only:
+ * never a state, a verdict, a score against the usual, a flag, a weight, a direction word, anything from the
+ * practitioner's review, a safety flag or a questionnaire answer.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PersonHistory".
+ */
+export interface PersonHistory {
+  /**
+   * the window asked for
+   */
+  days: number;
+  first_day: string;
+  generated_at: string;
+  groups: HistoryGroup[];
+  home_id: string;
+  last_day: string;
+  /**
+   * the window contains simulated readings
+   */
+  sim?: boolean;
+  timezone: string;
+}
+/**
  * PHQ-9 (every 14 days). items[8] is item 9; > 0 triggers the safety path.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -2847,6 +4073,42 @@ export interface SensorsCmd {
   ppg?: ("start" | "stop") | null;
 }
 /**
+ * POST /v1/companion/close — the device says a conversation stopped and how long it ran. The cloud never
+ * sees the audio socket, so this is what brings the Live budget reservation down to the time really used
+ * (whole started minutes, at least one, never more than was reserved). Send it once when the conversation
+ * ends, whatever ended it; sending it again is harmless. It changes nothing else about the session.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "SessionClose".
+ */
+export interface SessionClose {
+  /**
+   * seconds from the conversation's start to its end, across every token it used
+   */
+  elapsed_s: number;
+  home_id: string;
+  /**
+   * CompanionSessionResponse.session_id
+   */
+  session_id: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "SessionCloseResult".
+ */
+export interface SessionCloseResult {
+  /**
+   * started minutes now counted for this conversation
+   */
+  billed_minutes: number;
+  ok: boolean;
+  session_id: string;
+  /**
+   * Live reservations this call settled or corrected (0: nothing to change)
+   */
+  settled: number;
+}
+/**
  * What one source added to the record in the last 7 days (counts only, no content).
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -2881,11 +4143,193 @@ export interface SpeechFeatures {
   wpm?: number | null;
 }
 /**
+ * SSE `event: agreed` — an agreed activity appeared or changed. Ids and kinds only: read the sentence with
+ * GET /v1/me/invitation. `open`: just agreed (show it, post the notification). `removed`: it is gone (take the
+ * card and any pending notification away).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "StreamAgreed".
+ */
+export interface StreamAgreed {
+  day: string;
+  id: string;
+  kind: "breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt";
+  /**
+   * screens that can open it
+   */
+  on?: ("robot" | "glasses" | "iphone" | "mac" | "web")[];
+  state: ("open" | "started" | "done" | "put_aside") | "removed";
+  /**
+   * where it was agreed
+   */
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  when?: "now" | "later";
+}
+/**
+ * SSE `event: day` — new observations were stored for this home: what a screen shows about today may have
+ * changed (a check-in on the robot, a walk, a game). Types and senders only, never a value.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "StreamDay".
+ */
+export interface StreamDay {
+  /**
+   * the local day the newest of them belongs to
+   */
+  day: string;
+  /**
+   * who sent them, e.g. "hub", "phone"
+   */
+  sources?: string[];
+  /**
+   * observation types, e.g. "obs.self_report"
+   */
+  types?: string[];
+}
+/**
+ * GET /v1/me/stream, first frame of every connection (SSE `event: hello`, no id). `resync: true`: the
+ * `Last-Event-ID` the client sent could not be continued (another process, or too long ago), so events may
+ * have been missed: read `/v1/me`, `/v1/me/invitation` and whatever else the screen shows again.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "StreamHello".
+ */
+export interface StreamHello {
+  /**
+   * a `ping` at least this often; no frame for well over twice this long means the connection is dead: reconnect with Last-Event-ID
+   */
+  heartbeat_s: number;
+  home_id: string;
+  /**
+   * id of the newest event for this home, if any
+   */
+  last_id?: string | null;
+  /**
+   * events sent again right after this frame
+   */
+  replayed?: number;
+  resync?: boolean;
+}
+/**
+ * SSE `event: invitation` — today's invitation was answered on some device: take its card away.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "StreamInvitation".
+ */
+export interface StreamInvitation {
+  id: string;
+  state?: "answered";
+}
+/**
+ * Robot rhythm game "Tap it back" (D51): Kaiku plays a short song, it goes quiet, she taps its beat from memory.
+ * The tempo is given to her, so this is NOT her own spontaneous tempo (that is obs.drum_session) and no metric in
+ * config/criteria.toml reads it: it is stored for her own History and feeds no verdict.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "TapBack".
+ */
+export interface TapBack {
+  /**
+   * from the first song to the last band
+   */
+  duration_s: number;
+  /**
+   * mean over the levels that have a tapped tempo
+   */
+  error_pct?: number | null;
+  /**
+   * @minItems 1
+   * @maxItems 9
+   */
+  levels:
+    | [TapBackLevel]
+    | [TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel]
+    | [TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel, TapBackLevel]
+    | [
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel,
+        TapBackLevel
+      ];
+  /**
+   * levels whose band is nice, great or perfect
+   */
+  levels_passed: number;
+  levels_played: number;
+  /**
+   * double-triggers dropped by the refractory window
+   */
+  rejected_taps?: number | null;
+  /**
+   * how the tempo was given: generated music, the hub's own plain beat, or the head's light only
+   */
+  song?: "music" | "beat" | "light";
+  /**
+   * mean over the levels that have one
+   */
+  steadiness?: number | null;
+  /**
+   * taps counted over every try
+   */
+  taps: number;
+}
+/**
+ * One level of Tap it back: the song's tempo and the try that counted (the closer one when a level was replayed).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "TapBackLevel".
+ */
+export interface TapBackLevel {
+  band: "perfect" | "great" | "nice" | "again";
+  /**
+   * half / double = she tapped every other beat, or two to a beat, and was compared with that
+   */
+  beat?: "beat" | "half" | "double";
+  /**
+   * |tapped - target| / target x 100, against the beat level named in `beat`; None with no tempo
+   */
+  error_pct?: number | null;
+  level: number;
+  /**
+   * 1 - spread of the gaps between taps
+   */
+  steadiness?: number | null;
+  /**
+   * median gap between her taps as a tempo; None = too few taps to call one
+   */
+  tapped_bpm?: number | null;
+  taps: number;
+  /**
+   * the tempo of the song Kaiku played
+   */
+  target_bpm: number;
+  /**
+   * times the level was played (1 = no replay)
+   */
+  tries: number;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "TaskObservationsResponse".
  */
 export interface TaskObservationsResponse {
   computed_at: string;
+  /**
+   * obs.face_signs of the same window, newest first (D52): `payload.ref` names the task session each belongs to. Movements counted on the device; never an emotion
+   *
+   * @maxItems 100
+   */
+  face_signs?: EnvelopeFaceSigns[];
   /**
    * @maxItems 100
    */
@@ -2966,7 +4410,8 @@ export interface WalkGoalResult {
   thing: string;
 }
 /**
- * What the device returns for `log_walk_moment` (one find). Without a goal: ok=true and the rest null.
+ * What the device returns for `log_walk_moment` (one find). Without a goal: ok=true, the counts null, and
+ * `note` tells the model that nothing was counted and to call `set_walk_goal` first, then log the find again.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "WalkMomentResult".
@@ -2974,6 +4419,10 @@ export interface WalkGoalResult {
 export interface WalkMomentResult {
   found?: number | null;
   left?: number | null;
+  /**
+   * for the model, when there was no goal to count against
+   */
+  note?: string | null;
   ok: boolean;
   target?: number | null;
   thing?: string | null;
@@ -2989,10 +4438,30 @@ export interface WalkMomentResult {
  */
 export interface WearableDaily {
   date: string;
+  /**
+   * time in daylight over the previous day, minutes (Apple Watch only; absent otherwise)
+   */
+  daylight_min?: number | null;
   device: "apple_watch" | "other_watch" | "phone_only";
+  /**
+   * walking + running distance over the previous day (00:00 to 00:00 local, the window of steps), km
+   */
+  distance_km?: number | null;
   exercise_min?: number | null;
   hrv_sdnn_ms?: number | null;
   resting_hr_bpm?: number | null;
+  /**
+   * minutes awake between first falling asleep and the last waking; absent when the source wrote none
+   */
+  sleep_awake_min?: number | null;
+  /**
+   * minutes of core sleep last night
+   */
+  sleep_core_min?: number | null;
+  /**
+   * minutes of deep sleep last night; the three stages are sent together or not at all (0 allowed)
+   */
+  sleep_deep_min?: number | null;
   /**
    * midpoint of last night's sleep, minutes from local midnight (-30 = 23:30, 210 = 03:30)
    */
@@ -3005,7 +4474,15 @@ export interface WearableDaily {
    * 1 = same sleep times every night
    */
   sleep_regularity?: number | null;
+  /**
+   * minutes of REM sleep last night
+   */
+  sleep_rem_min?: number | null;
   steps?: number | null;
+  /**
+   * average walking heart rate over the previous day
+   */
+  walking_hr_bpm?: number | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema

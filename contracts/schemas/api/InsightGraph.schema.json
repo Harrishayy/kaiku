@@ -1,5 +1,89 @@
 {
   "$defs": {
+    "InsightChange": {
+      "additionalProperties": false,
+      "description": "One thing that is different on a day, pointing at its node. Text and order are written by code.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "care",
+            "moved_away",
+            "came_back",
+            "better",
+            "missed",
+            "first",
+            "kept"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "node": {
+          "title": "Node",
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "where it sits in the order of the change, when the course has one: 'first to move', '1 day after the first change' (order in time, never cause)",
+          "maxLength": 80,
+          "title": "Tag",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 240,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "kind",
+        "text"
+      ],
+      "title": "InsightChange",
+      "type": "object"
+    },
+    "InsightDomain": {
+      "additionalProperties": false,
+      "description": "A neighbourhood of the graph: what a group of nodes is about, and where it sits around the person. Declared\nonce in config/kaiku.toml [graph]; the same for every person.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 60,
+          "title": "Label",
+          "type": "string"
+        },
+        "place": {
+          "enum": [
+            "n",
+            "ne",
+            "e",
+            "se",
+            "s",
+            "sw",
+            "w",
+            "nw"
+          ],
+          "title": "Place",
+          "type": "string"
+        },
+        "short": {
+          "maxLength": 24,
+          "title": "Short",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "short",
+        "place"
+      ],
+      "title": "InsightDomain",
+      "type": "object"
+    },
     "InsightEdge": {
       "additionalProperties": false,
       "properties": {
@@ -26,6 +110,15 @@
           "title": "Layer",
           "type": "string"
         },
+        "on": {
+          "description": "the days this link is about, oldest first: the day a measure followed, the days two measures were away together, the day it came back",
+          "items": {
+            "format": "date",
+            "type": "string"
+          },
+          "title": "On",
+          "type": "array"
+        },
         "rel": {
           "enum": [
             "has_signal",
@@ -40,13 +133,22 @@
             "kept_through",
             "slipped_during",
             "after",
-            "talked_about"
+            "talked_about",
+            "produces",
+            "about"
           ],
           "title": "Rel",
           "type": "string"
         },
         "src": {
           "title": "Src",
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "a few words for a badge: '+1 day', 'first'",
+          "maxLength": 24,
+          "title": "Tag",
           "type": "string"
         },
         "weight": {
@@ -67,9 +169,53 @@
       "title": "InsightEdge",
       "type": "object"
     },
+    "InsightGraphDay": {
+      "additionalProperties": false,
+      "description": "One day of the graph's record: what changed that day and how many measures were away from usual.",
+      "properties": {
+        "away": {
+          "description": "measures away from their usual that day",
+          "minimum": 0,
+          "title": "Away",
+          "type": "integer"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/InsightChange"
+          },
+          "title": "Changes",
+          "type": "array"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "recorded": {
+          "description": "at least one observation or care action that day",
+          "title": "Recorded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "date",
+        "recorded",
+        "away"
+      ],
+      "title": "InsightGraphDay",
+      "type": "object"
+    },
     "InsightNode": {
       "additionalProperties": false,
       "properties": {
+        "days": {
+          "description": "oldest first, within `InsightGraph.days`",
+          "items": {
+            "$ref": "#/$defs/InsightNodeDay"
+          },
+          "title": "Days",
+          "type": "array"
+        },
         "detail": {
           "anyOf": [
             {
@@ -82,6 +228,12 @@
           ],
           "default": null,
           "title": "Detail"
+        },
+        "domain": {
+          "default": "",
+          "description": "id of the `InsightGraph.domains` entry this node is about; empty for the person and the signal groups (who sent it is not what it is about)",
+          "title": "Domain",
+          "type": "string"
         },
         "evidence": {
           "description": "recorded days / observations / attempts behind this node",
@@ -141,6 +293,48 @@
       ],
       "title": "InsightNode",
       "type": "object"
+    },
+    "InsightNodeDay": {
+      "additionalProperties": false,
+      "description": "What one graph node has on one day of the record, by the same code as the course, the trends band and the\ndaily account. A day with nothing for the node has no entry.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "text": {
+          "description": "one plain clause by code: '2 of 5, below their usual 4 of 5'",
+          "maxLength": 200,
+          "title": "Text",
+          "type": "string"
+        },
+        "tone": {
+          "default": "unknown",
+          "description": "measure: that day's reading against that day's own usual (worse = away from usual, better = beyond usual on the favourable side, similar = within usual, unknown = no personal usual yet); routine: similar = kept, worse = missed on a recorded day; every other kind: unknown (recorded, not judged)",
+          "enum": [
+            "better",
+            "worse",
+            "similar",
+            "unknown"
+          ],
+          "title": "Tone",
+          "type": "string"
+        },
+        "value": {
+          "default": "",
+          "description": "short printed form: '2 of 5', '07:22', 'missed'",
+          "maxLength": 32,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "text"
+      ],
+      "title": "InsightNodeDay",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -155,6 +349,22 @@
         "type": "string"
       },
       "title": "Basis",
+      "type": "array"
+    },
+    "days": {
+      "description": "every calendar day from the first to the last day with data inside the graph's window, oldest first",
+      "items": {
+        "$ref": "#/$defs/InsightGraphDay"
+      },
+      "title": "Days",
+      "type": "array"
+    },
+    "domains": {
+      "description": "the neighbourhoods, in declared order",
+      "items": {
+        "$ref": "#/$defs/InsightDomain"
+      },
+      "title": "Domains",
       "type": "array"
     },
     "edges": {

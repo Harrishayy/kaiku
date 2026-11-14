@@ -8,6 +8,16 @@ Everything that changes the outcome lives in that one file and is validated here
                          direction is "worse", weight, enabled, and any per-metric thresholds
   - [[rule]]             direct triggers that make a source "worse" (e.g. PHQ-9 rise >= 5, PHQ-9 >= 10)
 
+A metric is in one of three states, and code asks `MetricSpec.votes` / `.role`, never the raw knobs:
+  - scored      `role = "scored"` (default), enabled, weight > 0: it can change its group's verdict
+  - shown       `role = "shown"`: computed, compared with the person's own usual, charted and citable, and NEVER part
+                of a verdict: no vote for worse or better, never what makes a group "sufficient", and an
+                observation type that only shown metrics read adds no coverage, freshness or first day to its group.
+                The rule cannot see it, so it is left out of `rule_version`. Deleting the `role` line lets the
+                metric vote with the weight its block already declares (the rule version then changes, as it must).
+  - off         `enabled = false`: not computed for the rule or the charts
+(`weight = 0` on a scored metric is the older observe-only form: charted, no vote, but still part of the hash.)
+
 The consensus source of a metric is NOT configured here: it comes from the obs type via `sources.py`, so there is
 exactly one place that says "outing counts toward glasses".
 
@@ -140,6 +150,14 @@ class MetricSpec(_M):
     person_hard: str = Field("", max_length=160, description="plain, gentle sentence shown to the PERSON on /me "
                              "('Your days') for a day this metric was beyond the usual in its worse direction; "
                              "empty = never shown. Wording rules: root AGENTS.md (no clinical words)")
+    role: Literal["scored", "shown"] = Field(
+        "scored", description="shown = compared with the person's usual, charted and citable, never part of a "
+                              "verdict (no vote, no sufficiency, no coverage) and not in the rule version. Delete "
+                              "the line to let the metric vote with its weight")
+    at_least: dict[str, float] = Field(
+        default_factory=dict, description="payload minimums: a reading counts only when each named numeric payload "
+                                          "field is at least this (e.g. coverage, samples). The record is still "
+                                          "stored and listed with its provenance")
 
     @model_validator(mode="after")
     def _check_against_contracts(self):
@@ -151,7 +169,7 @@ class MetricSpec(_M):
         if not field_exists(OBS[self.obs], self.field) and self.field not in DERIVED_FIELDS:
             raise ValueError(f"metric {self.name}: {self.obs} has no field {self.field!r} "
                              f"(fields: {', '.join(fields)}; derived: {', '.join(sorted(DERIVED_FIELDS))})")
-        bad = [k for k in self.where if k not in fields]
+        bad = [k for k in [*self.where, *self.at_least] if k not in fields]
         if bad:
             raise ValueError(f"metric {self.name}: filter on unknown field(s) {bad}")
         if SOURCE_OF.get(self.obs) not in CONSENSUS_SOURCES:
@@ -164,6 +182,16 @@ class MetricSpec(_M):
     @property
     def source(self) -> str:
         return SOURCE_OF[self.obs]
+
+    @property
+    def votes(self) -> bool:
+        """Can this metric change its group's verdict? The one question analytics code asks."""
+        return self.enabled and self.role == "scored" and self.weight > 0
+
+
+# Knobs added after consensus-v1 was first hashed. At these defaults they are left out of the fingerprint, so a
+# criteria file that does not use them keeps the rule version it had.
+_LATER_DEFAULTS: dict[str, Any] = {"role": "scored", "at_least": {}}
 
 
 class RuleSpec(_M):
@@ -221,6 +249,14 @@ class Criteria(_M):
         dupes = {n for n in names if names.count(n) > 1}
         if dupes:
             raise ValueError(f"duplicate metric/rule names: {sorted(dupes)}")
+        # the local day of an observation type is one thing: a metric (a shown one least of all) cannot move the
+        # day its type's other metrics are counted on
+        by_obs: dict[str, set[str | None]] = {}
+        for m in self.metrics:
+            by_obs.setdefault(m.obs, set()).add(m.day_field)
+        mixed = sorted(o for o, fields in by_obs.items() if len(fields) > 1)
+        if mixed:
+            raise ValueError(f"metrics of one obs type must share one day_field: {mixed}")
         return self
 
     # ------------------------------------------------------------------ helpers
@@ -230,7 +266,19 @@ class Criteria(_M):
         return v if v is not None else getattr(self.defaults, key)
 
     def metrics_for(self, source: str, *, enabled_only: bool = True) -> list[MetricSpec]:
-        return [m for m in self.metrics if m.source == source and (m.enabled or not enabled_only)]
+        """The metrics the rule reads for a group. Shown metrics are not among them: the verdict never sees one."""
+        return [m for m in self.metrics if m.source == source and m.role == "scored" and (m.enabled or not enabled_only)]
+
+    def shown_for(self, source: str) -> list[MetricSpec]:
+        """Enabled metrics of a group that are shown and citable and never part of its verdict."""
+        return [m for m in self.metrics if m.source == source and m.role == "shown" and m.enabled]
+
+    @property
+    def shown_types(self) -> frozenset[str]:
+        """Observation types that only shown metrics read (and no rule): they belong to their group for display
+        and add nothing to its vote, its coverage, its freshness or the record's first day."""
+        scored = {m.obs for m in self.metrics if m.role == "scored"} | {r.obs for r in self.rules}
+        return frozenset(m.obs for m in self.metrics if m.role == "shown") - scored
 
     def rules_for(self, source: str, *, enabled_only: bool = True) -> list[RuleSpec]:
         return [r for r in self.rules if r.source == source and (r.enabled or not enabled_only)]
@@ -243,7 +291,12 @@ class Criteria(_M):
 
     @property
     def fingerprint(self) -> str:
-        canon = json.dumps(self.model_dump(mode="json", by_alias=True), sort_keys=True, separators=(",", ":"))
+        """Hash of everything that can decide a state. A shown metric cannot (see `MetricSpec.role`), so adding,
+        retuning or removing one leaves the rule version alone; letting it vote changes it."""
+        d = self.model_dump(mode="json", by_alias=True)
+        d["metric"] = [{k: v for k, v in m.items() if k not in _LATER_DEFAULTS or v != _LATER_DEFAULTS[k]}
+                       for m in d["metric"] if m["role"] != "shown"]
+        canon = json.dumps(d, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canon.encode()).hexdigest()[:8]
 
     @property

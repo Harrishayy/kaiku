@@ -11,6 +11,10 @@
     "drum",
     "light_hunt"
   ],
+  "agree_when": [
+    "now",
+    "later"
+  ],
   "intents": [
     "ritual",
     "checkin",
@@ -50,6 +54,55 @@
     "web"
   ],
   "tools": {
+    "agree_activity": {
+      "description": "The person has just clearly said yes to doing an activity that is not starting right here and now on this device: a game or the journal entry (tell) agreed while talking with the robot or on a walk, a walk agreed for later. Call it once, with the kind and, in `said`, their own words of that yes. It puts the activity on their phone and Mac straight away. Then say where it is in a few words, the way the result's `where` gives it (\"It's on your phone and your Mac.\"). Not for a maybe, a hesitation or a silence; not when `start_activity` starts it here or a card already shows it on this screen; never the questionnaire. If the result says nothing was kept, do not say it is anywhere. when: now (they want it now, on another device) or later (default now). line: optional, the few words you would put on the reminder. Returns {agreed, name, where, on, already}.",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "breathe",
+              "tell",
+              "walk",
+              "lantern",
+              "seeds",
+              "watering",
+              "pebbles",
+              "firefly",
+              "drum",
+              "light_hunt"
+            ],
+            "type": "string"
+          },
+          "line": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "said": {
+            "maxLength": 300,
+            "type": "string"
+          },
+          "when": {
+            "enum": [
+              "now",
+              "later"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
     "ask_mind": {
       "description": "Ask Kaiku's shared Gemma mind for missing or conflicting personal knowledge, planning, care or deeper emotional reasoning. Use prepared context directly when sufficient. Returns an answer to say in your own words (may say to ask the person or the care team). kind: fact | care | memory | plan | emotional.",
       "executor": "cloud",

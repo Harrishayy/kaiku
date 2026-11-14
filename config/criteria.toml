@@ -27,6 +27,15 @@
 #                   detection delay, day 3/7/16 of a new record) — numbers and limits in docs/validation.md
 # NEW SIGNAL:       add its [[metric]] with weight = 0 first (charted, never a vote, never makes a source
 #                   "sufficient"); raise the weight only after `make calibrate` shows false flags did not rise.
+# SHOWN, NOT SCORED (role = "shown"): the metric is computed, compared with the person's own usual, charted and
+#                   citable in the practitioner's review, and the rule cannot see it at all: no vote for worse or
+#                   better, never what makes a group "sufficient", and an observation type that only shown metrics
+#                   read adds no coverage, freshness or first day to its group. A shown metric is not part of the
+#                   rule version, so adding or retuning one changes no hash and no verdict (tested on the seeded
+#                   record). Its block already declares the weight it would vote with: delete the `role` line and
+#                   it votes (the rule version then changes). Used for the camera face signs (D52).
+# at_least          optional payload minimums on a metric ({ coverage = 0.6, samples = 60 }): a reading counts only
+#                   when each named payload number is at least that; the record is still stored and listed.
 # ============================================================================================================
 
 name = "consensus-v1"
@@ -362,7 +371,9 @@ baseline_min_days = 4       # ~3 sessions/week: a 14-day window holds ~6
 
 [[metric]]
 name = "expressivity"
-enabled = false # Current demo: unavailable, retired task, or awaiting hardware validation.
+enabled = false # RETIRED with the browser task that sent it (obs.laptop_session). Nothing produces or reads it.
+                # Face signs now arrive as obs.face_signs and are read by the face_* metrics below (D52). The block
+                # stays, untouched, only because removing it would change the rule version for no change in the rule.
 label = "Facial expressivity"
 unit = "0–1"
 family = "voice"
@@ -542,6 +553,157 @@ z_threshold = 2.0
 min_mad = 0.12              # one choice in eight
 baseline_min_days = 5
 
+# ----- camera face signs during tasks (obs.face_signs, D52; docs/validation.md -> Face signs). With the person's
+# opt-in "Camera during activities", the phone or Mac counts movements of the face while a game or the check-in chat
+# runs: on the device, in memory, numbers only. They are movements, never emotions.
+# ALL OF THEM: role = "shown" (see the header): against the person's OWN usual only, charted, citable, never a vote.
+#   * one method per metric: ARKit blendshape coefficients and Vision landmarks are different instruments and are
+#     never pooled into one usual. The full set reads the ARKit method (TrueDepth iPhone). The landmark method (Mac,
+#     other iPhones) sends no smile, brow or gaze sign, and its blink rate, head movement and range are on other
+#     scales: it gets a usual for the one sign it measures best, the range of expression, in games and in chats.
+#   * one kind of task per metric: silent screen games (firefly, pebbles, lantern, seeds, watering) are one family;
+#     the check-in chat is another (a face that is talking moves for that reason). "tell" and "breathe" are stored
+#     and listed per session but read by no metric: speaking and slow breathing change the face by design.
+#   * at_least: a session counts only with one usable face in 60 % of the frames, 20 s of sampling, and at least
+#     half the frames its method takes in that time (the phone's face tracking looks 30 times a second: 300; the
+#     landmark method 15 times: 150). A thinner capture keeps its provenance and feeds no usual.
+#   * z_threshold 2.0 and baseline_min_days 5, as for the games: new, unvalidated, one or two sessions a day.
+#   * counts_for_better = false: a livelier face than usual is not read as "better". The face is not a wellbeing meter.
+#   * min_mad: there are no recordings of real day-to-day spread yet, so each floor is argued from what one session
+#     can resolve and must be re-set from recordings before any of these is allowed to vote.
+#   * weights are what each WOULD vote with once its `role` line is deleted. Together they stay below the Apps
+#     group's worse_min_weight (0.95 < 1.0, tested): the camera alone can never turn the group worse.
+# Stored and listed per session but with no usual: head_movement (its scale belongs to the method and is not fixed),
+# gaze_on_share (near its ceiling in a game), brow shares (no direction we can argue), mouth_open_share (mostly
+# speech in "tell" and the check-in), and the landmark method's blink rate (another scale, the least certain sign).
+[[metric]]
+name = "face_range"
+label = "Expressiveness in games (camera, 0–1)"
+family = "expression"
+obs = "obs.face_signs"
+field = "expression_range"
+where = { task = ["firefly", "pebbles", "lantern", "seeds", "watering"], method = "arkit_blendshapes" }
+at_least = { coverage = 0.6, samples = 300, duration_s = 20 }
+agg = "mean"
+worse_when = "down"         # less movement of the face than her usual: what interviews showed at higher severity (Girard 2014)
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.2
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.05              # a twentieth of the scale; the retired expressivity index used the same floor
+baseline_min_days = 5
+note = "overall variability of expression over the session (0-1), ARKit blendshapes"
+
+[[metric]]
+name = "face_smiles"
+label = "Smiling in games (camera)"
+unit = "ratio"
+family = "expression"
+obs = "obs.face_signs"
+field = "smile_share"
+where = { task = ["firefly", "pebbles", "lantern", "seeds", "watering"], method = "arkit_blendshapes" }
+at_least = { coverage = 0.6, samples = 300, duration_s = 20 }
+agg = "mean"
+worse_when = "down"         # less smiling than her usual (Girard 2014: fewer AU 12 smiles at higher severity, in interviews)
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.2
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.04              # ~3.5 s of a 90 s game: below that a difference is one smile more or fewer
+baseline_min_days = 5
+note = "share of face frames with a smile above the method's threshold, ARKit blendshapes"
+
+[[metric]]
+name = "face_blinks"
+label = "Blink rate in games (camera)"
+unit = "per min"
+family = "expression"
+obs = "obs.face_signs"
+field = "blinks_per_min"
+where = { task = ["firefly", "pebbles", "lantern", "seeds", "watering"], method = "arkit_blendshapes" }
+at_least = { coverage = 0.6, samples = 300, duration_s = 20 }
+agg = "mean"
+worse_when = "up"           # more blinking at the same screen task goes with time on task and tiredness (Stern 1994);
+                            # the least certain direction here: concentration lowers it, dry eyes raise it
+role = "shown"              # D52
+weight = 0.0                # and no vote even without the role line, until its direction is shown in recordings
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 3.0               # a 90 s game holds ~20 blinks: counting error alone is about sqrt(20) / 1.5 min = 3 a minute
+baseline_min_days = 5
+
+[[metric]]
+name = "face_range_chat"
+label = "Expressiveness in chats (camera, 0–1)"
+family = "expression"
+obs = "obs.face_signs"
+field = "expression_range"
+where = { task = "check_in", method = "arkit_blendshapes" }
+at_least = { coverage = 0.6, samples = 300, duration_s = 20 }
+agg = "mean"
+worse_when = "down"
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.2
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.06              # a talking face varies more from chat to chat than a playing one
+baseline_min_days = 5
+note = "the check-in chat: range of expression while talking with Kaiku"
+
+[[metric]]
+name = "face_smiles_chat"
+label = "Smiling in chats (camera)"
+unit = "ratio"
+family = "expression"
+obs = "obs.face_signs"
+field = "smile_share"
+where = { task = "check_in", method = "arkit_blendshapes" }
+at_least = { coverage = 0.6, samples = 300, duration_s = 20 }
+agg = "mean"
+worse_when = "down"
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.2
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.05
+baseline_min_days = 5
+
+[[metric]]
+name = "face_range_landmarks"
+label = "Expressiveness in games (camera, landmark method, 0–1)"
+family = "expression"
+obs = "obs.face_signs"
+field = "expression_range"
+where = { task = ["firefly", "pebbles", "lantern", "seeds", "watering"], method = "vision_landmarks" }
+at_least = { coverage = 0.6, samples = 150, duration_s = 20 }
+agg = "mean"
+worse_when = "down"
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.1                # 2-D landmarks, 15 looks a second: the coarser instrument
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.05
+baseline_min_days = 5
+note = "Mac and iPhones without TrueDepth: variability of mouth and eye geometry (Vision landmarks)"
+
+[[metric]]
+name = "face_range_chat_landmarks"
+label = "Expressiveness in chats (camera, landmark method, 0–1)"
+family = "expression"
+obs = "obs.face_signs"
+field = "expression_range"
+where = { task = "check_in", method = "vision_landmarks" }
+at_least = { coverage = 0.6, samples = 150, duration_s = 20 }
+agg = "mean"
+worse_when = "down"
+role = "shown"              # D52: delete this line to let it vote with the weight below
+weight = 0.05               # the coarser instrument, on a face that is talking
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.06
+baseline_min_days = 5
+note = "a check-in done on the Mac (or an iPhone without TrueDepth): the one sign this method gets a usual for"
+
 # ===== wearable (source 4, optional) =====
 [[metric]]
 name = "watch_sleep"
@@ -609,6 +771,123 @@ agg = "last"
 worse_when = "down"
 weight = 0.5                # D29: new, conservative
 min_mad = 800.0
+
+# ----- more of the day from Apple Health (obs.wearable_daily, D53; docs/validation.md -> More of the day from Apple
+# Health). Distance walked, time in daylight, walking heart rate, the night's sleep stages and the time awake in it:
+# daily totals the phone reads from Apple Health, optional, absent when Health holds nothing (never a zero).
+# ALL OF THEM: role = "shown" (see the header): against the person's OWN usual only, charted, citable, never a vote.
+# The five measures above keep voting exactly as before, and the rule version does not change (tested).
+# NOT VALIDATED HERE: no recording of a real person stands behind any direction or floor below. Each is argued.
+#   * there is no sleep score: Apple gives apps none, so none is read and none is invented. Stages are what the
+#     watch estimates from its own sensors; they are not a sleep-laboratory measurement.
+#   * directions: less distance, less daylight, less deep sleep and more time awake than her usual are marked.
+#     Walking heart rate (it follows the pace walked as much as anything else) and REM sleep (sleep-laboratory
+#     studies of low mood describe more REM pressure, not fewer REM minutes) get a direction only so a chart can
+#     mark a change: their weight is 0 even without the role line.
+#   * the distance is the same walking the steps already count: it would vote twice, so its weight is 0 too. It is
+#     here because a person and a practitioner read kilometres more easily than steps.
+#   * weights are what each WOULD vote with once its `role` line is deleted: 0.75 together, below the Watch
+#     group's worse_min_weight (1.0, tested), so these alone could never turn the group worse.
+#   * z_threshold 2.0 (new and unvalidated, as for the games) and counts_for_better = false (more daylight or
+#     more deep sleep than usual is not read as "better").
+#   * min_mad: argued from what one day's figure can resolve; re-set from recordings before any of these may vote.
+# Stored and listed for the person, read by no metric: sleep_core_min (what is left of the night once deep and
+# REM are taken out: it says nothing the three numbers beside it do not).
+[[metric]]
+name = "day_distance"
+label = "Distance walked (day)"
+unit = "km"
+family = "behaviour"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "distance_km"
+agg = "last"
+worse_when = "down"
+role = "shown"              # D53
+weight = 0.0                # the same walking as daily_steps: it would vote twice
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 0.4               # a few hundred metres: one short errand more or less
+
+[[metric]]
+name = "day_daylight"
+label = "Time in daylight (watch)"
+unit = "min"
+family = "behaviour"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "daylight_min"
+agg = "last"
+worse_when = "down"         # less time outdoors in daylight than her usual
+role = "shown"              # D53: delete this line to let it vote with the weight below
+weight = 0.25
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 10.0              # one short walk more or less
+
+[[metric]]
+name = "walking_hr"
+label = "Walking heart rate (watch)"
+unit = "bpm"
+family = "physiology"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "walking_hr_bpm"
+agg = "last"
+worse_when = "up"           # as for the resting heart rate; but a brisker walk raises it too
+role = "shown"              # D53
+weight = 0.0                # and no vote even without the role line, until its direction is shown in recordings
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 3.0               # a guess: the pace of the day's walking alone moves it
+
+[[metric]]
+name = "deep_sleep"
+label = "Deep sleep (watch)"
+unit = "min"
+family = "physiology"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "sleep_deep_min"
+agg = "last"
+worse_when = "down"
+role = "shown"              # D53: delete this line to let it vote with the weight below
+weight = 0.25
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 10.0              # a wrist estimates stages; ten minutes is a guess at what one night's figure resolves
+
+[[metric]]
+name = "rem_sleep"
+label = "REM sleep (watch)"
+unit = "min"
+family = "physiology"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "sleep_rem_min"
+agg = "last"
+worse_when = "down"         # a charting convention only (see above)
+role = "shown"              # D53
+weight = 0.0                # and no vote even without the role line
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 12.0
+
+[[metric]]
+name = "awake_night"
+label = "Awake in the night (watch)"
+unit = "min"
+family = "physiology"
+obs = "obs.wearable_daily"
+day_field = "date" # target day; latest capture timestamp wins when a summary is corrected
+field = "sleep_awake_min"
+agg = "last"
+worse_when = "up"           # more time awake between falling asleep and the last waking than her usual
+role = "shown"              # D53: delete this line to let it vote with the weight below
+weight = 0.25
+counts_for_better = false
+z_threshold = 2.0
+min_mad = 8.0               # a couple of brief wakings
 
 # PHQ-9 is too sparse (every 14 days) to baseline; it acts through the rules below and is charted separately.
 

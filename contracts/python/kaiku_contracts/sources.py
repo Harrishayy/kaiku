@@ -23,6 +23,7 @@ SOURCE_OF: dict[str, str] = {
     "obs.self_report": "robot",  # whatever the channel (ear, phone, Mac, web, glasses voice): the daily dial
     "obs.hrv_session": "robot",
     "obs.drum_session": "robot",
+    "obs.tap_back": "robot",  # the robot's rhythm game (D51): in the robot's group, read by no metric
     "obs.speech_features": "robot",
     "obs.light_level": "robot",
     "obs.friend_link": "robot",
@@ -30,6 +31,8 @@ SOURCE_OF: dict[str, str] = {
     "obs.laptop_session": "laptop",
     "obs.screen_activity": "laptop",
     "obs.play_session": "laptop",  # games on phone, Mac or web all count toward "Apps"
+    "obs.face_signs": "laptop",  # camera face signs during a task (D52): in the Apps group beside the task. Every
+    # metric that reads it is `role = "shown"` in config/criteria.toml, so it adds no vote, coverage or freshness
     "obs.wearable_daily": "wearable",
     "obs.phq9": "laptop",  # counts toward laptop wherever it was completed; also the clinical anchor
     "obs.ritual": "adherence",

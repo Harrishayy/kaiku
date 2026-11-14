@@ -85,6 +85,15 @@
     "ContextCard": {
       "additionalProperties": false,
       "properties": {
+        "agreed": {
+          "description": "activities they said yes to today on any device and whether each is done (D50); each is carried once per state, so Kaiku is glad or asks gently once",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Agreed",
+          "type": "array"
+        },
         "care_info": {
           "anyOf": [
             {
@@ -260,6 +269,19 @@
           "default": null,
           "description": "set when the device said why it opened the session",
           "title": "Purpose"
+        },
+        "quieter_in": {
+          "description": "today's tasks in which the face signs counted with their opt-in were clearly below their own usual (D52, rule in mind/face_cue.py). An enum and nothing else: the instruction turns it into a cue to go gently and never to mention their face or a camera; no number, no state and no word about how they looked ever crosses",
+          "items": {
+            "enum": [
+              "games",
+              "check_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Quieter In",
+          "type": "array"
         },
         "recent_reflection": {
           "anyOf": [

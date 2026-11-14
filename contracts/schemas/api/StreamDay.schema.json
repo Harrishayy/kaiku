@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "description": "SSE `event: day` — new observations were stored for this home: what a screen shows about today may have\nchanged (a check-in on the robot, a walk, a game). Types and senders only, never a value.",
+  "properties": {
+    "day": {
+      "description": "the local day the newest of them belongs to",
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "sources": {
+      "description": "who sent them, e.g. \"hub\", \"phone\"",
+      "items": {
+        "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "types": {
+      "description": "observation types, e.g. \"obs.self_report\"",
+      "items": {
+        "type": "string"
+      },
+      "title": "Types",
+      "type": "array"
+    }
+  },
+  "required": [
+    "day"
+  ],
+  "title": "StreamDay",
+  "type": "object"
+}

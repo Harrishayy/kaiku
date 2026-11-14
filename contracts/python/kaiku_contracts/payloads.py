@@ -87,6 +87,59 @@ class DrumSession(Strict):
     rejected_taps: int | None = Field(default=None, ge=0, description="double-triggers dropped by the refractory window")
 
 
+TapBackBand = Literal["perfect", "great", "nice", "again"]
+
+
+class TapBackLevel(Strict):
+    """One level of Tap it back: the song's tempo and the try that counted (the closer one when a level was replayed)."""
+
+    level: int = Field(ge=1, le=9)
+    target_bpm: float = Field(gt=0, le=400, description="the tempo of the song Kaiku played")
+    tapped_bpm: float | None = Field(default=None, ge=0, le=400,
+                                     description="median gap between her taps as a tempo; None = too few taps to call one")
+    error_pct: float | None = Field(default=None, ge=0, description="|tapped - target| / target x 100, against the beat "
+                                                                    "level named in `beat`; None with no tempo")
+    steadiness: float | None = Field(default=None, ge=0, le=1, description="1 - spread of the gaps between taps")
+    taps: int = Field(ge=0)
+    band: TapBackBand
+    tries: int = Field(ge=1, le=5, description="times the level was played (1 = no replay)")
+    beat: Literal["beat", "half", "double"] = Field(
+        "beat", description="half / double = she tapped every other beat, or two to a beat, and was compared with that")
+
+    @model_validator(mode="after")
+    def _tempo_and_error_go_together(self):
+        if (self.tapped_bpm is None) != (self.error_pct is None):
+            raise ValueError("tapped_bpm and error_pct are both measured or both missing")
+        if self.tapped_bpm is None and self.band != "again":
+            raise ValueError("a level with no tapped tempo has no band but `again`")
+        return self
+
+
+class TapBack(Strict):
+    """Robot rhythm game "Tap it back" (D51): Kaiku plays a short song, it goes quiet, she taps its beat from memory.
+    The tempo is given to her, so this is NOT her own spontaneous tempo (that is obs.drum_session) and no metric in
+    config/criteria.toml reads it: it is stored for her own History and feeds no verdict."""
+
+    levels: list[TapBackLevel] = Field(min_length=1, max_length=9)
+    levels_played: int = Field(ge=1, le=9)
+    levels_passed: int = Field(ge=0, le=9, description="levels whose band is nice, great or perfect")
+    error_pct: float | None = Field(default=None, ge=0, description="mean over the levels that have a tapped tempo")
+    steadiness: float | None = Field(default=None, ge=0, le=1, description="mean over the levels that have one")
+    taps: int = Field(ge=0, description="taps counted over every try")
+    rejected_taps: int | None = Field(default=None, ge=0, description="double-triggers dropped by the refractory window")
+    duration_s: float = Field(ge=0, description="from the first song to the last band")
+    song: Literal["music", "beat", "light"] = Field(
+        "music", description="how the tempo was given: generated music, the hub's own plain beat, or the head's light only")
+
+    @model_validator(mode="after")
+    def _counts_match_the_levels(self):
+        if self.levels_played != len(self.levels):
+            raise ValueError("levels_played must count the levels")
+        if self.levels_passed != sum(lv.band != "again" for lv in self.levels):
+            raise ValueError("levels_passed must count the levels whose band is not `again`")
+        return self
+
+
 class LightLevel(Strict):
     lux_est: float = Field(ge=0)
     window_min: float = Field(gt=0)
@@ -308,6 +361,55 @@ class PlaySession(Strict):
         return self
 
 
+FaceTask = Literal["firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in"]
+FACE_TASKS: tuple[str, ...] = ("firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in")
+FaceMethod = Literal["arkit_blendshapes", "vision_landmarks"]
+FACE_SIGNS: tuple[str, ...] = ("smile_share", "smiles", "brow_raise_share", "brow_furrow_share", "mouth_open_share",
+                               "blinks_per_min", "gaze_on_share", "head_movement", "expression_range")
+
+
+class FaceSigns(Strict):
+    """Face signs during one task (D52), with the person's opt-in "Camera during activities": movements of the face
+    that the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in
+    which the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these
+    numbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),
+    not emotions: nothing here says what the person felt, and no field may. Values are comparable only within one
+    `method` (and best within one task): never pool the two methods into one usual. A sign the method cannot
+    measure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement
+    and expression range come from both methods on different scales. The apps also leave out blinks under 20 s of
+    face time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when
+    coverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.
+    Counts toward the "laptop" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not
+    scored."""
+
+    task: FaceTask = Field(description="the task it belongs to: a game (PlayGame) or the check-in chat")
+    device: PlayDevice
+    method: FaceMethod = Field(description="arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); "
+                                           "vision_landmarks: 2-D face landmarks (Mac, other iPhones)")
+    duration_s: float = Field(ge=0, le=86_400, description="seconds the camera sampled")
+    samples: int = Field(ge=1, description="frames looked at; none is kept")
+    coverage: float = Field(ge=0, le=1, description="share of sampled frames with exactly one usable face")
+    smile_share: float | None = Field(default=None, ge=0, le=1,
+                                      description="share of face frames with a smile above the method's threshold")
+    smiles: int | None = Field(default=None, ge=0, description="distinct smiles")
+    brow_raise_share: float | None = Field(default=None, ge=0, le=1, description="share of face frames with raised brows")
+    brow_furrow_share: float | None = Field(default=None, ge=0, le=1, description="share of face frames with lowered, drawn brows")
+    mouth_open_share: float | None = Field(default=None, ge=0, le=1, description="share of face frames with the mouth open")
+    blinks_per_min: float | None = Field(default=None, ge=0, description="blinks per minute of face time")
+    gaze_on_share: float | None = Field(default=None, ge=0, le=1, description="share of face frames looking toward the screen")
+    head_movement: float | None = Field(default=None, ge=0, description="how much the head moved; the scale belongs to the method")
+    expression_range: float | None = Field(default=None, ge=0, le=1,
+                                           description="overall variability of expression over the session")
+    ref: str | None = Field(default=None, min_length=1, max_length=64,
+                            description="id of the obs.play_session (or other record) of the same task")
+
+    @model_validator(mode="after")
+    def _no_face_no_signs(self):
+        if self.coverage == 0 and any(getattr(self, name) is not None for name in FACE_SIGNS):
+            raise ValueError("a session with no usable face (coverage 0) carries no face sign")
+        return self
+
+
 class WearableDaily(Strict):
     """Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.
     Posted once per morning; `date` = that local morning: sleep = the night that ended this morning, steps /
@@ -324,6 +426,20 @@ class WearableDaily(Strict):
     hrv_sdnn_ms: float | None = Field(default=None, ge=0, le=500)
     steps: int | None = Field(default=None, ge=0, le=200_000)
     exercise_min: float | None = Field(default=None, ge=0, le=1440)
+    # More of the day from Apple Health (D53): every one optional and absent when Health holds nothing for it, never
+    # a zero in its place. Daily totals only. There is no sleep score: Apple gives apps none, and none is invented.
+    distance_km: float | None = Field(default=None, ge=0, le=300, description="walking + running distance over the "
+                                      "previous day (00:00 to 00:00 local, the window of steps), km")
+    daylight_min: float | None = Field(default=None, ge=0, le=1440, description="time in daylight over the previous "
+                                       "day, minutes (Apple Watch only; absent otherwise)")
+    walking_hr_bpm: float | None = Field(default=None, gt=20, lt=250,
+                                         description="average walking heart rate over the previous day")
+    sleep_deep_min: float | None = Field(default=None, ge=0, le=1440, description="minutes of deep sleep last night; "
+                                         "the three stages are sent together or not at all (0 allowed)")
+    sleep_rem_min: float | None = Field(default=None, ge=0, le=1440, description="minutes of REM sleep last night")
+    sleep_core_min: float | None = Field(default=None, ge=0, le=1440, description="minutes of core sleep last night")
+    sleep_awake_min: float | None = Field(default=None, ge=0, le=1440, description="minutes awake between first "
+                                          "falling asleep and the last waking; absent when the source wrote none")
     device: Literal["apple_watch", "other_watch", "phone_only"]
 
 
@@ -427,6 +543,40 @@ class RawFace(Strict):
     confidence: float = Field(ge=0, le=1)
 
 
+class HubTrace(Strict):
+    """`raw.hub.trace`: what Kaiku just did, live, for the "Kaiku bot" tab of the person's own apps on the home
+    network. Local only (raw.* never leaves the home; QoS 0, not retained, not stored). It carries Kaiku's OWN
+    lines and the names of the tools the voice called. Never the person's words, a system instruction, or a tool's
+    arguments or result: `text` exists for `said` alone and `heard` carries nothing but its kind (validated)."""
+
+    kind: Literal["said", "heard", "tool", "session", "game", "music"]
+    text: str | None = Field(default=None, max_length=300,
+                             description="said only: Kaiku's own words (a scripted line, or the Live voice's reply "
+                                         "as its output transcription gives it), cut at 300 characters")
+    tool: str | None = Field(default=None, max_length=40, description="tool only: the name of the tool the voice called")
+    by: Literal["script", "live", "cached_voice", "notebook", "gemma", "flash", "argon", "rule"] | None = Field(
+        default=None, description="said: how it was spoken (script | live | cached_voice). tool: who answered, only "
+                                  "when the cloud's result says so")
+    ms: int | None = Field(default=None, ge=0, description="tool: how long the call took")
+    ok: bool | None = None
+    detail: str | None = Field(default=None, max_length=80,
+                               description="a short machine word. session: open | close. music: start | song | hush | "
+                                           "stop. game: level:<n> | your_turn | band:<perfect|great|nice|again>")
+    bpm: float | None = Field(default=None, gt=0, description="music song / game level: its tempo")
+
+    @model_validator(mode="after")
+    def _only_what_its_kind_may_carry(self) -> HubTrace:
+        if self.text is not None and self.kind != "said":
+            raise ValueError("text is only for kind 'said' (Kaiku's own words)")
+        if self.tool is not None and self.kind != "tool":
+            raise ValueError("tool is only for kind 'tool'")
+        if self.kind == "heard" and self.model_dump(exclude_none=True) != {"kind": "heard"}:
+            raise ValueError("'heard' carries nothing but its kind: the person's words never travel on the bus")
+        if self.kind == "said" and self.by not in (None, "script", "live", "cached_voice"):
+            raise ValueError("said: by is script | live | cached_voice")
+        return self
+
+
 # --------------------------------------------------------------------------- cmd/*
 class LookAt(Strict):
     x: float = Field(ge=-1, le=1)
@@ -468,6 +618,20 @@ class HeadCmd(_AtLeastOne):
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     purr: Purr | None = None
     gesture: Gesture | None = Field(default=None, description="timed motor pulse, then home (no position feedback)")
+    drum: Literal["hold", "end"] | None = Field(
+        default=None, description="only for a head that runs its own ritual (standalone firmware): hold = the hub runs "
+                                  "the drum phase now (stay in the drum step, keep reporting taps, no own timer, obey "
+                                  "eyes / pan_mode sway / bpm); end = it is over, go on. Re-sent at least every 5 s; "
+                                  "10 s without one = back to the head's own timer. Ignored by a hub-driven head")
+    mic: Literal["open", "close"] | None = Field(
+        default=None, description="open = send the head's microphone as PCM frames on audio/head/mic (only while a "
+                                  "conversation the person started is open); close = stop. Re-sent at least every "
+                                  "3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while "
+                                  "its speaker plays and about 250 ms after")
+    show: Literal["help", "none"] | None = Field(
+        default=None, description="help = the head shows the helpline's name and number and the emergency number on "
+                                  "its own screen, from constants compiled into the firmware, until `none`, a new "
+                                  "ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only")
 
 
 class SensorsCmd(_AtLeastOne):

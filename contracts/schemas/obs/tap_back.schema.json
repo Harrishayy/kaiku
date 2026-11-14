@@ -1,0 +1,288 @@
+{
+  "$defs": {
+    "TapBack": {
+      "additionalProperties": false,
+      "description": "Robot rhythm game \"Tap it back\" (D51): Kaiku plays a short song, it goes quiet, she taps its beat from memory.\nThe tempo is given to her, so this is NOT her own spontaneous tempo (that is obs.drum_session) and no metric in\nconfig/criteria.toml reads it: it is stored for her own History and feeds no verdict.",
+      "properties": {
+        "duration_s": {
+          "description": "from the first song to the last band",
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "error_pct": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean over the levels that have a tapped tempo",
+          "title": "Error Pct"
+        },
+        "levels": {
+          "items": {
+            "$ref": "#/$defs/TapBackLevel"
+          },
+          "maxItems": 9,
+          "minItems": 1,
+          "title": "Levels",
+          "type": "array"
+        },
+        "levels_passed": {
+          "description": "levels whose band is nice, great or perfect",
+          "maximum": 9,
+          "minimum": 0,
+          "title": "Levels Passed",
+          "type": "integer"
+        },
+        "levels_played": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Levels Played",
+          "type": "integer"
+        },
+        "rejected_taps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "double-triggers dropped by the refractory window",
+          "title": "Rejected Taps"
+        },
+        "song": {
+          "default": "music",
+          "description": "how the tempo was given: generated music, the hub's own plain beat, or the head's light only",
+          "enum": [
+            "music",
+            "beat",
+            "light"
+          ],
+          "title": "Song",
+          "type": "string"
+        },
+        "steadiness": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean over the levels that have one",
+          "title": "Steadiness"
+        },
+        "taps": {
+          "description": "taps counted over every try",
+          "minimum": 0,
+          "title": "Taps",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "levels",
+        "levels_played",
+        "levels_passed",
+        "taps",
+        "duration_s"
+      ],
+      "title": "TapBack",
+      "type": "object"
+    },
+    "TapBackLevel": {
+      "additionalProperties": false,
+      "description": "One level of Tap it back: the song's tempo and the try that counted (the closer one when a level was replayed).",
+      "properties": {
+        "band": {
+          "enum": [
+            "perfect",
+            "great",
+            "nice",
+            "again"
+          ],
+          "title": "Band",
+          "type": "string"
+        },
+        "beat": {
+          "default": "beat",
+          "description": "half / double = she tapped every other beat, or two to a beat, and was compared with that",
+          "enum": [
+            "beat",
+            "half",
+            "double"
+          ],
+          "title": "Beat",
+          "type": "string"
+        },
+        "error_pct": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "|tapped - target| / target x 100, against the beat level named in `beat`; None with no tempo",
+          "title": "Error Pct"
+        },
+        "level": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Level",
+          "type": "integer"
+        },
+        "steadiness": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1 - spread of the gaps between taps",
+          "title": "Steadiness"
+        },
+        "tapped_bpm": {
+          "anyOf": [
+            {
+              "maximum": 400,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "median gap between her taps as a tempo; None = too few taps to call one",
+          "title": "Tapped Bpm"
+        },
+        "taps": {
+          "minimum": 0,
+          "title": "Taps",
+          "type": "integer"
+        },
+        "target_bpm": {
+          "description": "the tempo of the song Kaiku played",
+          "exclusiveMinimum": 0,
+          "maximum": 400,
+          "title": "Target Bpm",
+          "type": "number"
+        },
+        "tries": {
+          "description": "times the level was played (1 = no replay)",
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Tries",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "level",
+        "target_bpm",
+        "taps",
+        "band",
+        "tries"
+      ],
+      "title": "TapBackLevel",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/TapBack"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.tap_back>",
+  "type": "object"
+}

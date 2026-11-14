@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "description": "SSE `event: invitation` — today's invitation was answered on some device: take its card away.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "state": {
+      "const": "answered",
+      "default": "answered",
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "StreamInvitation",
+  "type": "object"
+}

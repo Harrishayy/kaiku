@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "description": "One local day of one measure.",
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "sessions": {
+      "description": "readings that day that the value is made from",
+      "minimum": 1,
+      "title": "Sessions",
+      "type": "integer"
+    },
+    "sim": {
+      "default": false,
+      "description": "some of that day's readings are simulated",
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "value": {
+      "title": "Value",
+      "type": "number"
+    }
+  },
+  "required": [
+    "date",
+    "value",
+    "sessions"
+  ],
+  "title": "HistoryDay",
+  "type": "object"
+}

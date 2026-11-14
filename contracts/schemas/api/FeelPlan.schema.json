@@ -17,6 +17,20 @@
       "title": "Follow Up Saved",
       "type": "boolean"
     },
+    "manner": {
+      "anyOf": [
+        {
+          "maxLength": 240,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "a words-only cue for how to carry yourself in this conversation (go more gently), never something to say, and never a number, a state or where the cue came from (D52)",
+      "title": "Manner"
+    },
     "may_offer": {
       "anyOf": [
         {
@@ -55,6 +69,31 @@
       "default": null,
       "description": "start_activity kind, only after a clear yes",
       "title": "Offer Activity"
+    },
+    "offer_elsewhere": {
+      "anyOf": [
+        {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the offer has no screen on this device but one on their phone or Mac: after a clear yes call agree_activity with this kind (D50)",
+      "title": "Offer Elsewhere"
     },
     "offer_note": {
       "anyOf": [

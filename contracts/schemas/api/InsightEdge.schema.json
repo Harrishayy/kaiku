@@ -24,6 +24,15 @@
       "title": "Layer",
       "type": "string"
     },
+    "on": {
+      "description": "the days this link is about, oldest first: the day a measure followed, the days two measures were away together, the day it came back",
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": "On",
+      "type": "array"
+    },
     "rel": {
       "enum": [
         "has_signal",
@@ -38,13 +47,22 @@
         "kept_through",
         "slipped_during",
         "after",
-        "talked_about"
+        "talked_about",
+        "produces",
+        "about"
       ],
       "title": "Rel",
       "type": "string"
     },
     "src": {
       "title": "Src",
+      "type": "string"
+    },
+    "tag": {
+      "default": "",
+      "description": "a few words for a badge: '+1 day', 'first'",
+      "maxLength": 24,
+      "title": "Tag",
       "type": "string"
     },
     "weight": {

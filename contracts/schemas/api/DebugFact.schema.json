@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "description": "One verified line the day read may cite. Ids: metric:<name>, source:<name>, consensus:state,\nmissing:<source or metric>, tomorrow:<name>, event:<envelope id>.",
+  "properties": {
+    "detail": {
+      "description": "written by code from the day's data; every number in it is the data's",
+      "title": "Detail",
+      "type": "string"
+    },
+    "flags": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "description": "the yes/no facts a claim citing this may state, checked like the numbers: held, acknowledged, safety (consensus), enough_data (a signal group), scored (a measure)",
+      "title": "Flags",
+      "type": "object"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "metric",
+        "source",
+        "consensus",
+        "missing",
+        "tomorrow",
+        "event"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "numbers": {
+      "description": "the numbers a claim citing this may use",
+      "items": {
+        "type": "number"
+      },
+      "title": "Numbers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "label",
+    "detail"
+  ],
+  "title": "DebugFact",
+  "type": "object"
+}

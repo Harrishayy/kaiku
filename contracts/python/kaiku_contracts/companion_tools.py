@@ -5,7 +5,7 @@ function-declaration shape) and the surfaces it may be used on. `make contracts`
 `contracts/schemas/companion_tools.json` (+ `COMPANION_TOOLS` in `contracts/ts/index.ts`) for Swift/TS clients.
 
 Who executes what (`executor`):
-    cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind, feel — devices forward the call to
+    cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind, feel, agree_activity — devices forward the call to
             `POST /v1/companion/tool` and hand the result back to the model
     device  record_dial, start_activity, suggest_activity, set_walk_goal, log_walk_moment, send_friend_ping,
             start_phq9, express, look_at_this — the device runs the deterministic effect (it may still forward
@@ -38,6 +38,10 @@ ACTIVITIES: tuple[str, ...] = get_args(Activity)
 # "Walking together"; limits and nudge timings per style: config/surfaces.toml and config/kaiku.toml [walk]).
 WalkStyle = Literal["quiet", "playful", "chatty"]
 WALK_STYLES: tuple[str, ...] = get_args(WalkStyle)
+# An activity the person said yes to somewhere else than where it is done (`agree_activity`): do they want it
+# now, on another device, or later today? What an agreed activity is: docs/decisions.md D50.
+AgreeWhen = Literal["now", "later"]
+AGREE_WHEN: tuple[str, ...] = get_args(AgreeWhen)
 Feeling = Literal["happy", "curious", "sleepy", "cozy", "proud"]
 MindKind = Literal["fact", "care", "memory", "plan", "emotional"]
 # How a moment sounded, as a model in the conversation reports it (an observation, never a measurement or a state).
@@ -82,6 +86,23 @@ TOOLS: dict[str, dict[str, Any]] = {
         "parameters": {"type": "object", "required": ["kind"], "properties": {
             "kind": {"type": "string", "enum": list(ACTIVITIES)},
             "line": {"type": "string", "maxLength": 80}}}},
+    "agree_activity": {
+        "description": "The person has just clearly said yes to doing an activity that is not starting right here "
+                       "and now on this device: a game or the journal entry (tell) agreed while talking with the "
+                       "robot or on a walk, a walk agreed for later. Call it once, with the kind and, in `said`, "
+                       "their own words of that yes. It puts the activity on their phone and Mac straight away. "
+                       "Then say where it is in a few words, the way the result's `where` gives it (\"It's on your "
+                       "phone and your Mac.\"). Not for a maybe, a hesitation or a silence; not when "
+                       "`start_activity` starts it here or a card already shows it on this screen; never the "
+                       "questionnaire. If the result says nothing was kept, do not say it is anywhere. when: now "
+                       "(they want it now, on another device) or later (default now). line: optional, the few "
+                       "words you would put on the reminder. Returns {agreed, name, where, on, already}.",
+        "executor": "cloud", "surfaces": _ALL,
+        "parameters": {"type": "object", "required": ["kind"], "properties": {
+            "kind": {"type": "string", "enum": list(ACTIVITIES)},
+            "said": {"type": "string", "maxLength": 300},
+            "line": {"type": "string", "maxLength": 80},
+            "when": {"type": "string", "enum": list(AGREE_WHEN)}}}},
     "set_walk_goal": {
         "description": "Start one small spotting game on the walk: `target` of `thing` to find, something that is "
                        "really around (from what they said or what is in view). Call it FIRST, the moment a game "
@@ -241,4 +262,5 @@ def export() -> dict[str, Any]:
     """JSON for non-Python clients (contracts/schemas/companion_tools.json)."""
     return {"surfaces": list(SURFACES), "intents": list(INTENTS), "skills": list(SKILLS),
             "skill_of_intent": SKILL_OF_INTENT, "memory_categories": list(MEMORY_CATEGORIES),
-            "activities": list(ACTIVITIES), "walk_styles": list(WALK_STYLES), "tools": TOOLS}
+            "activities": list(ACTIVITIES), "walk_styles": list(WALK_STYLES),
+            "agree_when": list(AGREE_WHEN), "tools": TOOLS}

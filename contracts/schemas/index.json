@@ -41,6 +41,11 @@
       "schema": "obs/engagement.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/engagement"
     },
+    "obs.face_signs": {
+      "payload_model": "FaceSigns",
+      "schema": "obs/face_signs.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/face_signs"
+    },
     "obs.friend_link": {
       "payload_model": "FriendLink",
       "schema": "obs/friend_link.schema.json",
@@ -121,6 +126,11 @@
       "schema": "obs/speech_features.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/speech_features"
     },
+    "obs.tap_back": {
+      "payload_model": "TapBack",
+      "schema": "obs/tap_back.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/tap_back"
+    },
     "obs.wearable_daily": {
       "payload_model": "WearableDaily",
       "schema": "obs/wearable_daily.schema.json",
@@ -150,6 +160,11 @@
       "payload_model": "RawFace",
       "schema": "raw/hub.face.schema.json",
       "topic": "kaiku/v1/<home_id>/raw/hub/face"
+    },
+    "raw.hub.trace": {
+      "payload_model": "HubTrace",
+      "schema": "raw/hub.trace.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/hub/trace"
     },
     "raw.sensors.button": {
       "payload_model": "RawButton",

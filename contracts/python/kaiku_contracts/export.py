@@ -36,7 +36,10 @@ API_MODELS = [
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
     api.HeardTone, api.LastReflection, api.FeelPlan, api.WalkGuide, api.ActivityCardResult, api.WalkGoalResult,
-    api.WalkMomentResult, api.ChatShape, api.Invitation, api.InvitationResponse, api.InvitationAnswer, api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
+    api.WalkMomentResult, api.ChatShape, api.Invitation, api.InvitationResponse, api.InvitationAnswer,
+    api.AgreedActivity, api.AgreedAnswer, api.AgreedResult, api.StreamHello, api.StreamAgreed, api.StreamDay,
+    api.StreamInvitation,
+    api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
     api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
     api.DeletedResponse, api.ThreadIn, api.TranscriptTurn, api.EpisodeIn, api.EpisodeResult, api.SessionClose, api.SessionCloseResult,
     api.Transcript, api.TranscriptsResponse,
@@ -44,8 +47,13 @@ API_MODELS = [
     api.ConstellationResponse, api.PostcardRequest, api.PostcardResponse, api.BriefSection, api.ClinicianBrief,
     api.CareSharing, api.SourceCount, api.SourceWeek, api.NextStep, api.Routine, api.WeekItem, api.WeekSummary, api.GraphNode, api.GraphEdge, api.KnowledgeGraph,
     api.ReviewFinding, api.PatientReview, api.AgentStep, api.MetricComparison, api.GroupComparison,
-    api.PeriodComparison, api.HelpEffect, api.LearnedRoutine, api.InsightNode, api.InsightEdge, api.InsightGraph,
+    api.PeriodComparison, api.HelpEffect, api.LearnedRoutine, api.InsightNodeDay, api.InsightDomain,
+    api.InsightChange, api.InsightGraphDay, api.InsightNode, api.InsightEdge, api.InsightGraph,
     api.ObsTypeCoverage, api.GroupCoverage, api.DataCoverage, api.CourseEvent, api.Course, api.DayAccount, api.ReflectionDay, api.ReflectionOverview, api.StateDay, api.CareAction, api.PatientInsight,
+    api.HistoryDay, api.HistoryUsual, api.HistoryValue, api.HistorySession, api.HistoryMeasure, api.HistoryGroup,
+    api.PersonHistory, api.DebugEvent, api.DebugBaseline, api.DebugMetric, api.DebugVerdict, api.DebugConsensus,
+    api.DebugFeel, api.DebugConversation, api.DebugModelCall, api.DebugFact, api.DebugClaim, api.DebugRead,
+    api.DebugDay,
 ]
 
 

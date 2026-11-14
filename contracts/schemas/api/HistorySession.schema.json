@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "HistoryValue": {
+      "additionalProperties": false,
+      "description": "One number of one session, ready to show.",
+      "properties": {
+        "format": {
+          "default": "number",
+          "enum": [
+            "number",
+            "clock",
+            "percent",
+            "duration"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "key": {
+          "description": "payload field, e.g. tempo_bpm",
+          "title": "Key",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "value"
+      ],
+      "title": "HistoryValue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One recorded session (a drum session, one game, a breathing round, a walk, one dial answer, one morning's\nwatch summary) with its own numbers.",
+  "properties": {
+    "device": {
+      "enum": [
+        "robot",
+        "phone",
+        "mac",
+        "glasses",
+        "watch",
+        "web"
+      ],
+      "title": "Device",
+      "type": "string"
+    },
+    "id": {
+      "description": "the observation's id",
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "which kind of session, where one measure lists several (a ritual step: Breathing, Drumming)",
+      "title": "Label"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "values": {
+      "items": {
+        "$ref": "#/$defs/HistoryValue"
+      },
+      "maxItems": 16,
+      "title": "Values",
+      "type": "array"
+    },
+    "warmup": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "games: a practice session, left out of the day's value",
+      "title": "Warmup"
+    }
+  },
+  "required": [
+    "id",
+    "ts",
+    "device"
+  ],
+  "title": "HistorySession",
+  "type": "object"
+}

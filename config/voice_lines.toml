@@ -282,3 +282,33 @@ en = "Fancy a round of {game} now?"
 fi = "Pelataanko nyt: {game}?"
 sv = "Sugen på en omgång: {game}?"
 
+# ---------------------------------------------------------------- an activity they said yes to (D50)
+# Templates like the invitation's: GET /v1/me/invitation fills {activity} with the activity's name
+# (config/kaiku.toml [agree.names]) and returns the sentence as `agreed[].text`, for the Today card and the
+# notification. One per place it was agreed in; `agreed.plain` when the place has no sentence of its own.
+# Never the person's words, never rendered as a line of its own.
+[agreed.robot]
+en = "With the robot you said yes to {activity}. Ready when you are."
+fi = "Sanoit robotin kanssa kyllä: {activity}. Valmiina, kun sinä olet."
+sv = "Med roboten sa du ja till: {activity}. Redo när du är det."
+
+[agreed.glasses]
+en = "On your walk you said yes to {activity}. Ready when you are."
+fi = "Sanoit kävelyllä kyllä: {activity}. Valmiina, kun sinä olet."
+sv = "På promenaden sa du ja till: {activity}. Redo när du är det."
+
+[agreed.iphone]
+en = "On your phone you said yes to {activity}. Ready when you are."
+fi = "Sanoit puhelimella kyllä: {activity}. Valmiina, kun sinä olet."
+sv = "På telefonen sa du ja till: {activity}. Redo när du är det."
+
+[agreed.mac]
+en = "On your Mac you said yes to {activity}. Ready when you are."
+fi = "Sanoit Macilla kyllä: {activity}. Valmiina, kun sinä olet."
+sv = "På din Mac sa du ja till: {activity}. Redo när du är det."
+
+[agreed.plain]
+en = "You said yes to {activity}. Ready when you are."
+fi = "Sanoit kyllä: {activity}. Valmiina, kun sinä olet."
+sv = "Du sa ja till: {activity}. Redo när du är det."
+

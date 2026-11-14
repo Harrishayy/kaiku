@@ -9,6 +9,21 @@
           "title": "Date",
           "type": "string"
         },
+        "daylight_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "time in daylight over the previous day, minutes (Apple Watch only; absent otherwise)",
+          "title": "Daylight Min"
+        },
         "device": {
           "enum": [
             "apple_watch",
@@ -17,6 +32,21 @@
           ],
           "title": "Device",
           "type": "string"
+        },
+        "distance_km": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walking + running distance over the previous day (00:00 to 00:00 local, the window of steps), km",
+          "title": "Distance Km"
         },
         "exercise_min": {
           "anyOf": [
@@ -59,6 +89,51 @@
           ],
           "default": null,
           "title": "Resting Hr Bpm"
+        },
+        "sleep_awake_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes awake between first falling asleep and the last waking; absent when the source wrote none",
+          "title": "Sleep Awake Min"
+        },
+        "sleep_core_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of core sleep last night",
+          "title": "Sleep Core Min"
+        },
+        "sleep_deep_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of deep sleep last night; the three stages are sent together or not at all (0 allowed)",
+          "title": "Sleep Deep Min"
         },
         "sleep_midpoint_min": {
           "anyOf": [
@@ -105,6 +180,21 @@
           "description": "1 = same sleep times every night",
           "title": "Sleep Regularity"
         },
+        "sleep_rem_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of REM sleep last night",
+          "title": "Sleep Rem Min"
+        },
         "steps": {
           "anyOf": [
             {
@@ -118,6 +208,21 @@
           ],
           "default": null,
           "title": "Steps"
+        },
+        "walking_hr_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 20,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "average walking heart rate over the previous day",
+          "title": "Walking Hr Bpm"
         }
       },
       "required": [

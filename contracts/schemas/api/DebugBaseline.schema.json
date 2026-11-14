@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "days": {
+      "description": "days the baseline is made from",
+      "minimum": 0,
+      "title": "Days",
+      "type": "integer"
+    },
+    "early": {
+      "default": false,
+      "description": "provisional baseline of a young record",
+      "title": "Early",
+      "type": "boolean"
+    },
+    "median": {
+      "title": "Median",
+      "type": "number"
+    },
+    "spread": {
+      "description": "max(1.4826 x MAD, min_mad): what one z unit is",
+      "title": "Spread",
+      "type": "number"
+    }
+  },
+  "required": [
+    "median",
+    "spread",
+    "days"
+  ],
+  "title": "DebugBaseline",
+  "type": "object"
+}

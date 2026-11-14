@@ -1,0 +1,84 @@
+{
+  "additionalProperties": false,
+  "description": "One stored envelope of the day.",
+  "properties": {
+    "day": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the local day this envelope counts toward (a daily summary can be stamped on the day after the one it measures)",
+      "title": "Day"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "local_time": {
+      "description": "HH:MM:SS in the home's timezone",
+      "title": "Local Time",
+      "type": "string"
+    },
+    "metrics": {
+      "description": "metrics this envelope counted toward",
+      "items": {
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "description": "compact: long lists are cut to their first items plus a count",
+      "title": "Payload",
+      "type": "object"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "description": "the envelope's own source (head, sensors, hub, phone, laptop, glasses, ...)",
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "ts",
+    "local_time",
+    "source",
+    "type",
+    "sim",
+    "payload"
+  ],
+  "title": "DebugEvent",
+  "type": "object"
+}

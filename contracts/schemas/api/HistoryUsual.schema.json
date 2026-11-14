@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "description": "The person's own usual range for a measure, from their own earlier days. A range and nothing else.",
+  "properties": {
+    "high": {
+      "title": "High",
+      "type": "number"
+    },
+    "low": {
+      "title": "Low",
+      "type": "number"
+    }
+  },
+  "required": [
+    "low",
+    "high"
+  ],
+  "title": "HistoryUsual",
+  "type": "object"
+}

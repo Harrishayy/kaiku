@@ -1,5 +1,155 @@
 {
   "$defs": {
+    "AgreedActivity": {
+      "additionalProperties": false,
+      "description": "One activity the person said yes to in a conversation, held by the cloud for that local day so every\nscreen shows the same thing (tool `agree_activity`). `text` is a template from config/voice_lines.toml\n(`voice_key`) around the activity's name and where it was agreed: never the person's words. It becomes\n`done` by itself when an observation for that activity arrives the same day; a device reports `started`\n(opened) or `put_aside` with POST /v1/me/agreed/answer. Gone after local midnight.",
+      "properties": {
+        "at": {
+          "description": "when it was agreed",
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "day": {
+          "description": "the local day it belongs to; it is not shown on any other day",
+          "format": "date",
+          "title": "Day",
+          "type": "string"
+        },
+        "id": {
+          "description": "send it back in the answer; also the id in the stream's `agreed` events",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Kaiku's own short line from the conversation, when it gave one and it passed the wording rules",
+          "title": "Line"
+        },
+        "name": {
+          "description": "how the activity is called on a screen (\"Lantern\", \"a walk\")",
+          "maxLength": 40,
+          "title": "Name",
+          "type": "string"
+        },
+        "on": {
+          "description": "the person's screens that can open it",
+          "items": {
+            "enum": [
+              "robot",
+              "glasses",
+              "iphone",
+              "mac",
+              "web"
+            ],
+            "type": "string"
+          },
+          "title": "On",
+          "type": "array"
+        },
+        "opens_here": {
+          "default": false,
+          "description": "the asking device (`surface` in the query) has a screen for it; false: show it without an open button",
+          "title": "Opens Here",
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "started",
+            "done",
+            "put_aside"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "when it was opened, done or put aside",
+          "title": "State At"
+        },
+        "surface": {
+          "description": "where it was agreed",
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "title": "Surface",
+          "type": "string"
+        },
+        "text": {
+          "description": "the sentence for the card and the notification",
+          "maxLength": 200,
+          "title": "Text",
+          "type": "string"
+        },
+        "voice_key": {
+          "description": "the template used; speak `text` with POST /v1/voice/say",
+          "title": "Voice Key",
+          "type": "string"
+        },
+        "when": {
+          "default": "now",
+          "description": "now: they want to do it now, on another device. later: some time today",
+          "enum": [
+            "now",
+            "later"
+          ],
+          "title": "When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "text",
+        "voice_key",
+        "surface",
+        "at",
+        "day",
+        "state"
+      ],
+      "title": "AgreedActivity",
+      "type": "object"
+    },
     "Invitation": {
       "additionalProperties": false,
       "description": "One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from\nconfig/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk\n(kind talk_about: the session card already carries the thread) or the screen for `activity`.",
@@ -79,6 +229,14 @@
   "additionalProperties": false,
   "description": "GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when\ntoday's was answered, or on an extra-gentle day with nothing to talk about.",
   "properties": {
+    "agreed": {
+      "description": "what the person said yes to today, on any device (D50), oldest first. While one is open or started the invitation waits (`invitation` is null)",
+      "items": {
+        "$ref": "#/$defs/AgreedActivity"
+      },
+      "title": "Agreed",
+      "type": "array"
+    },
     "home_id": {
       "title": "Home Id",
       "type": "string"

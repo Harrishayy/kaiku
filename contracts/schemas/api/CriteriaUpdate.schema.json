@@ -151,6 +151,14 @@
           "title": "Agg",
           "type": "string"
         },
+        "at_least": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "payload minimums: a reading counts only when each named numeric payload field is at least this (e.g. coverage, samples). The record is still stored and listed with its provenance",
+          "title": "At Least",
+          "type": "object"
+        },
         "baseline_days": {
           "anyOf": [
             {
@@ -299,6 +307,16 @@
           ],
           "default": null,
           "title": "Quality Min"
+        },
+        "role": {
+          "default": "scored",
+          "description": "shown = compared with the person's usual, charted and citable, never part of a verdict (no vote, no sufficiency, no coverage) and not in the rule version. Delete the line to let the metric vote with its weight",
+          "enum": [
+            "scored",
+            "shown"
+          ],
+          "title": "Role",
+          "type": "string"
         },
         "unit": {
           "default": "",

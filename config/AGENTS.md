@@ -105,11 +105,120 @@ sets the default style, how many outdoor favourites the card carries, and per st
 (`look_every_s`, `look_prompt`, `quiet_after_s`, `quiet_prompt`). `[live]`: `talk_max_minutes` and
 `walk_max_minutes` (a call and a walk may run long), `token_minutes` (what one token and its reservation cover),
 `idle_end_s` / `walk_idle_end_s` (when the device closes a conversation nobody is speaking in),
-`proactive_audio` (lets the model leave a nudge unanswered). `voice_lines.toml` `invite.*` are templates for the
+`proactive_audio_purposes` (the purposes whose Live setup lets the model leave an input unanswered: `["walk"]`,
+for its own nudges; every other conversation always answers, D49; `persona.md` "How Kaiku speaks" and "Passing
+chat" carry the matching line, eval `scenarios/answers.yaml`). `voice_lines.toml` `invite.*` are templates for the
 daily invitation (`{topic}`, `{when}`, `{game}` are filled by the cloud; they are spoken with `POST /v1/voice/say`,
 never fetched by key). Evals: `tools/companion_evals/scenarios/walk.yaml`, `cards.yaml` (D45).
+
+`kaiku.toml [history]` is the catalogue of the person's History (`GET /v1/me/history`, D48): `default_days`,
+`max_days`, `sessions_per_measure`, `session_values`, `usual_scale`, the seven group titles, one
+`[[history.measure]]` per measure shown (`key`, `group`, plain `title`, `unit`, optional `format` = `"clock"`,
+`"percent"` or `"duration"` (D53, below) and `decimals`; a `key` that is a criteria metric takes that metric's reading rules, otherwise `obs`, `field`, `agg`
+and an optional `where` name a stored reading no metric scores), `[history.session]` (the numbers of one session
+per observation type: `[payload field, title, unit, decimals, format?]`) and `[history.session_label]`. Titles
+are for the person: plain words, no clinical terms, no direction words, and never a questionnaire, a flag or an
+engagement level (tested). The camera's counts of face movement (D52) have a group of their own, `camera`
+("Camera during activities"): numbers with plain titles, never a feeling word, never in another group (tested).
+`kaiku.toml [debug_day]` belongs to the developers' day view
+(`GET /v1/debug/day`): list and id caps (`changed_max`: items of "changed since the day before" in the consensus
+fact), the three numbers behind the code's own `reading`, `timeout_s`, `max_output_tokens`, `cooldown_s`, the
+read's `prompt` (part of the cache digest: editing it retires kept reads and kept failed asks) and `retry_note`
+(what the model is told on the one corrective retry).
+
+`kaiku.toml [graph]` declares the practitioner's knowledge graph as a map (`cloud/kaiku_cloud/graph_map.py`): the
+per-day window (`days`), the windows of the order links (`follow_days`, `back_days`, `together`),
+`[graph.produces]` (activity → the observation types or metric names a session of it yields), `[graph.about]`
+(reflection theme → the node it sits beside) and one `[[graph.domain]]` per part of life (`id`, `label`, `short`,
+a compass `place`, and what belongs to it: `activities`, `obs`, `measures`, `themes`, `topics`, `kinds`). It
+decides where a node is drawn, never a state. A new metric, activity or theme needs a neighbourhood here (tested
+in `cloud/tests/test_graph_map.py`).
 
 `kaiku.toml [live]` `settle_min_minutes` (a Live reservation never settles below this many started minutes) and
 `settle_grace_s` (seconds added when the cloud itself sees a conversation end, while the goodbye is still being
 spoken) belong to the settlement of Live budget reservations (D46).
 
+An activity agreed in one place (D50; `cloud/kaiku_cloud/mind/agree.py`, `stream.py`). `kaiku.toml [agree]`:
+`max_open`, `keep`, `clock_slack_s`, `screen_days`, and the word lists the person's own words are read with
+(`yes`, `ask`, `hedge`, `no`: regular expressions matched as whole words; a hedge or a no wins over a yes; `ask`
+is what counts as their own initiative on an extra-gentle day). `[agree.names]` is how each activity is called in
+the sentence, `[agree.where]` how the voice says where it put it, `[[agree.done_by]]` which observation (type
+and payload fields) completes which kind. `kaiku.toml [stream]`: `heartbeat_s`, `retry_ms`, `replay`, `queue`,
+`max_listeners`, `hide_types` (observation types a `day` event never names). `[local_api] graceful_shutdown_s`:
+how long `make cloud-local` waits for open streams when it stops or reloads. `voice_lines.toml` `agreed.robot |
+glasses | iphone | mac | plain` are templates like `invite.*` (`{activity}` is filled by the cloud; never fetched
+by key). `surfaces.toml` lists `agree_activity` on every surface; `persona.md` has its line under "Tools" and one
+sentence in "How Kaiku makes someone comfortable". Evals: `tools/companion_evals/scenarios/agree.yaml`.
+`kaiku.toml` is read once per process: a running service needs a restart to see a changed word list.
+
+**Face signs (D52).** `criteria.toml` has a third state for a metric beside scored and switched off:
+`role = "shown"` (computed, compared with the person's own usual, charted and citable; never a vote, never what
+makes a group sufficient, and not part of the rule version hash) and `at_least = { field = minimum }` (a reading
+counts only when the observation's own fields reach the minimums). The seven `face_*` metrics read
+`obs.face_signs`, each tied to ONE method and one kind of task (the table is in `cloud/AGENTS.md` → "Face signs"),
+all shown; the comment above them argues every direction, floor and
+weight. To let one vote: delete its `role = "shown"` line (the rule version changes; re-set its `min_mad` from
+recordings first). The old `expressivity` metric (retired browser task) stays switched off and is not reused.
+`kaiku.toml`: `[history]` group `camera` with its measures and the per-session numbers of `obs.face_signs`;
+`[graph.produces]` lists the face metrics under games and check-ins; `[insight].max_shown_evidence` (records of
+shown measures the review may read on top of `max_evidence`); `[debug_day].face_event_facts`; `[face_cue]`
+(`enabled`, `z`, `min_baseline_days`, and which metrics stand for `games` and `check_in`): when the companion
+goes a little gentler after a face that was clearly quieter than the person's own usual. `persona.md` → "Hard
+limits": Kaiku never sees the person, never comments on a face or looks, never brings up a camera, and has one
+plain answer when asked. Evals: `tools/companion_evals/scenarios/face.yaml`. A criteria file that names a type a
+running API does not know breaks that API until it is restarted (`cloud/AGENTS.md` → "Known trap").
+A face reading needs `coverage` 0.6, 20 s and half the frames its method takes in 20 s (`at_least.samples` 300
+for `arkit_blendshapes` at 30 looks a second, 150 for `vision_landmarks` at 15).
+
+**More of the day from Apple Health (D53).** `criteria.toml` has six more `role = "shown"` metrics on
+`obs.wearable_daily`: `day_distance`, `day_daylight`, `walking_hr`, `deep_sleep`, `rem_sleep`, `awake_night`.
+The comment above them argues each direction, floor and weight and says plainly that none is validated here;
+`sleep_core_min` is stored and read by no metric. The five watch metrics that vote and `[sources.wearable]` are
+untouched, and the rule version stays the same (shown metrics are not in the hash). `kaiku.toml`: the
+`sleep_body` measures of `[history]` in the order a person reads a night and a day (sleep, its stages, time
+awake, heart, steps, distance, daylight, exercise); `format = "duration"` on measures in minutes that regularly
+pass an hour (the app shows "7 h 20 min", `unit` empty) and `format = "percent"` on shares of time (the value
+stays 0..1, `unit = "of the time"`, `decimals` counts the percent's); a measure on an index from 0 to 1 that
+is not a share of time stays a number with `unit = "out of 1"`; `[history] session_values` = 16, the contract's
+own limit, so no row is cut short (tested); `day_offset = -1` on the seven measures of a Health summary that are
+the day before's (heart numbers, steps, distance, daylight, exercise), which puts each on the day it is of in
+History and nowhere else (the night's measures and the rule keep the summary's date; a session row lists the
+numbers that share its measure's `day_offset`); `[graph.produces] sleep` and the `movement` domain list the new
+measures;
+`[insight].max_shown_evidence` = 12, shared by every shown measure.
+
+
+## Tap it back and the robot's own audio (2026-11-14, additive, D51)
+`kaiku.toml [tap_back]` is the whole game (hub `perception/tap_back.py`, `rituals/tap_back.py`): `mode`
+(`auto` = the game when generated music is really open, else free drumming exactly as before · `free` = always free
+drumming · `tap_back` = always the game, with the hub's own beat or the chest light alone when there is no generated
+song), the three levels (`level_bpm`, `level_vary_bpm` = how far a level's tempo moves from day to day,
+`level_taps`), how long the song plays (`listen_s`, `replay_listen_s`, `song_wait_s`), when her turn ends
+(`first_tap_s`, `idle_end_s`, `turn_s`), `cue_clear_s` (the margin after the cue before a tap counts: the head sends
+no tap while its speaker plays or about 0.3 s after), `min_taps`, the bands (`perfect_pct`, `great_pct`, `nice_pct`,
+percent of the song's tempo; `steady_min`: below it perfect and great drop one band; `half_double`: tapping every
+second beat or twice per beat counts as the beat), `retries` (how often "again" replays a level), `word_s` and
+`result_s` (room for spoken words and a breath after the band), `hold_every_s` (follow mode: how often the head is
+re-told `drum: hold`), `max_s`. Changing a number changes the game; no code. The lines are in the hub
+(`rituals/tap_back.py`), checked by `kaiku_contracts.wording` with the robot's caps.
+`[music]`: `out = "head" | "speaker" | "file"` (default `head`: the drum music and its chimes are sent to the robot
+head's own speaker as PCM frames on the bus, and the hub needs no sound device; `speaker` = this machine's sound
+card; `file` or `KAIKU_MUSIC_FILE=<path.wav>` = a WAV on the wall clock), `head_lead_ms` (how far ahead of real time
+frames are sent, at most 120), `head_gain` (headroom after the down-mix). `[voice] audio = "auto" | "head" | "local"`
+(default `auto`): where Kaiku's Live voice and the scripted lines are heard and where the person is listened to:
+`head` = the head's speaker and microphone over the bus, `local` = this machine's sound card, `auto` = the head when
+a real head (not a sim twin) is alive on the bus as a conversation opens, and always when this machine has no sound
+card. `[live]
+mic_gap_end_s` (default 1.0): the head sends no microphone frames while it speaks; after this long without one the
+Live server is told the stream paused (never filled with silence). Env: `KAIKU_MUSIC_OUT`, `KAIKU_VOICE_AUDIO`,
+`KAIKU_TAP_BACK_MODE`, ...
+`[hub] follow_offer_every_s` (default 300): on a head that runs its own ritual, Kaiku's spoken invitation at the
+head's greeting is said at most this often (that head greets a face about once a minute). `[hub] trace` (default
+true): the hub publishes `raw.hub.trace` on the home broker for the apps' "Kaiku bot" tab (Kaiku's own lines, tool
+names, game cues, music, conversation open/close; never the person's words; never stored or uplinked); `false` =
+nothing is published.
+`[history]`: two measures in group `robot`, `tap_back_songs` ("Tap it back: songs on the beat", the day's highest)
+and `tap_back_timing` ("Tap it back: timing", percent from the song's tempo, the day's average), and the per-session
+numbers of `obs.tap_back`. `[graph]`: `obs.tap_back` is listed under the morning ritual. **No `[[metric]]` in
+`criteria.toml` reads `obs.tap_back`** (tested in `contracts/tests/test_tap_back_audio.py`): it is a game, and a
+tempo she was given is not her own tempo (D51).

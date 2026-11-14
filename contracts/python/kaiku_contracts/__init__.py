@@ -26,11 +26,21 @@ from .registry import (
     validate,
 )
 from .sources import CONSENSUS_SOURCES, SOURCE_OF, consensus_source
-from .topics import PREFIX, ParsedTopic, parse_topic, qos_for, retain_for, topic, topic_for
+from .topics import (
+    PREFIX,
+    ParsedTopic,
+    audio_topic,
+    is_audio_topic,
+    parse_topic,
+    qos_for,
+    retain_for,
+    topic,
+    topic_for,
+)
 
 __all__ = [
     "api", "companion_tools", "criteria", "wording", "payloads", "sources", "CONSENSUS_SOURCES", "SOURCE_OF", "consensus_source", "SCHEMA_VERSION", "SOURCES", "Envelope", "default_home_id", "make", "utcnow",
     "uuid7", "CMD", "EXAMPLES", "OBS", "RAW", "REGISTRY", "UPLINKABLE", "ContractError", "example",
     "payload_model", "to_json", "validate", "PREFIX", "ParsedTopic", "parse_topic", "qos_for",
-    "retain_for", "topic", "topic_for",
+    "retain_for", "topic", "topic_for", "audio_topic", "is_audio_topic",
 ]

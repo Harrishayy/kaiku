@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "VerdictEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "drifting days in the window",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z"
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "days"
+      ],
+      "title": "VerdictEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One signal group's verdict that day with what made it.",
+  "properties": {
+    "better_min_weight": {
+      "title": "Better Min Weight",
+      "type": "number"
+    },
+    "better_weight": {
+      "minimum": 0,
+      "title": "Better Weight",
+      "type": "number"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "days_with_data": {
+      "default": 0,
+      "description": "in the baseline window up to that day",
+      "minimum": 0,
+      "title": "Days With Data",
+      "type": "integer"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/VerdictEvidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "id": {
+      "description": "citable id: source:<name>",
+      "title": "Id",
+      "type": "string"
+    },
+    "insufficient_reason": {
+      "anyOf": [
+        {
+          "enum": [
+            "stale",
+            "low_confidence",
+            "no_usable_metric"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "only when the verdict is insufficient, in the rule's own order: stale = nothing newer than the group's max_age_days; low_confidence = confidence below min_confidence; no_usable_metric = no scored measure has a usable baseline and no rule fired",
+      "title": "Insufficient Reason"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "last_data_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Data At"
+    },
+    "min_confidence": {
+      "title": "Min Confidence",
+      "type": "number"
+    },
+    "previous": {
+      "anyOf": [
+        {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "its verdict the day before",
+      "title": "Previous"
+    },
+    "rules_fired": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Rules Fired",
+      "type": "array"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "better",
+        "as_usual",
+        "worse",
+        "insufficient"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "worse_min_weight": {
+      "title": "Worse Min Weight",
+      "type": "number"
+    },
+    "worse_weight": {
+      "description": "sum of the weights of its drifting metrics",
+      "minimum": 0,
+      "title": "Worse Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "id",
+    "source",
+    "label",
+    "verdict",
+    "confidence",
+    "min_confidence",
+    "worse_weight",
+    "worse_min_weight",
+    "better_weight",
+    "better_min_weight"
+  ],
+  "title": "DebugVerdict",
+  "type": "object"
+}

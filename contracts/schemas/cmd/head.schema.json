@@ -50,6 +50,23 @@
           "default": null,
           "title": "Color"
         },
+        "drum": {
+          "anyOf": [
+            {
+              "enum": [
+                "hold",
+                "end"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only for a head that runs its own ritual (standalone firmware): hold = the hub runs the drum phase now (stay in the drum step, keep reporting taps, no own timer, obey eyes / pan_mode sway / bpm); end = it is over, go on. Re-sent at least every 5 s; 10 s without one = back to the head's own timer. Ignored by a hub-driven head",
+          "title": "Drum"
+        },
         "eyes": {
           "anyOf": [
             {
@@ -112,6 +129,23 @@
           ],
           "default": null
         },
+        "mic": {
+          "anyOf": [
+            {
+              "enum": [
+                "open",
+                "close"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "open = send the head's microphone as PCM frames on audio/head/mic (only while a conversation the person started is open); close = stop. Re-sent at least every 3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while its speaker plays and about 250 ms after",
+          "title": "Mic"
+        },
         "pan": {
           "anyOf": [
             {
@@ -150,6 +184,23 @@
             }
           ],
           "default": null
+        },
+        "show": {
+          "anyOf": [
+            {
+              "enum": [
+                "help",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "help = the head shows the helpline's name and number and the emergency number on its own screen, from constants compiled into the firmware, until `none`, a new ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only",
+          "title": "Show"
         }
       },
       "title": "HeadCmd",

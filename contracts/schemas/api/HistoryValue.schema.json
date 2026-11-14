@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "One number of one session, ready to show.",
+  "properties": {
+    "format": {
+      "default": "number",
+      "enum": [
+        "number",
+        "clock",
+        "percent",
+        "duration"
+      ],
+      "title": "Format",
+      "type": "string"
+    },
+    "key": {
+      "description": "payload field, e.g. tempo_bpm",
+      "title": "Key",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "title": "Value",
+      "type": "number"
+    }
+  },
+  "required": [
+    "key",
+    "title",
+    "value"
+  ],
+  "title": "HistoryValue",
+  "type": "object"
+}

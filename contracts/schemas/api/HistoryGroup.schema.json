@@ -1,0 +1,320 @@
+{
+  "$defs": {
+    "HistoryDay": {
+      "additionalProperties": false,
+      "description": "One local day of one measure.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "sessions": {
+          "description": "readings that day that the value is made from",
+          "minimum": 1,
+          "title": "Sessions",
+          "type": "integer"
+        },
+        "sim": {
+          "default": false,
+          "description": "some of that day's readings are simulated",
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "date",
+        "value",
+        "sessions"
+      ],
+      "title": "HistoryDay",
+      "type": "object"
+    },
+    "HistoryMeasure": {
+      "additionalProperties": false,
+      "description": "One measure over the window: its days, the person's usual range when there is one, and its latest sessions.",
+      "properties": {
+        "days": {
+          "description": "days with a value, oldest first; a day without data is absent",
+          "items": {
+            "$ref": "#/$defs/HistoryDay"
+          },
+          "title": "Days",
+          "type": "array"
+        },
+        "decimals": {
+          "default": 0,
+          "description": "how many decimals the value is worth showing with",
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Decimals",
+          "type": "integer"
+        },
+        "devices": {
+          "description": "where its readings came from in this window, most first (head, sensors and hub are all the robot)",
+          "items": {
+            "enum": [
+              "robot",
+              "phone",
+              "mac",
+              "glasses",
+              "watch",
+              "web"
+            ],
+            "type": "string"
+          },
+          "title": "Devices",
+          "type": "array"
+        },
+        "format": {
+          "default": "number",
+          "description": "clock: minutes after local midnight; percent: a share 0..1 shown as a percentage; duration: minutes shown as hours and minutes. `usual` is in the same format",
+          "enum": [
+            "number",
+            "clock",
+            "percent",
+            "duration"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "key": {
+          "description": "stable key; for a measure the practitioner side also computes, the same name",
+          "title": "Key",
+          "type": "string"
+        },
+        "per_day": {
+          "description": "how one day's value is made from that day's sessions",
+          "enum": [
+            "average",
+            "total",
+            "highest",
+            "lowest",
+            "latest",
+            "first",
+            "count"
+          ],
+          "title": "Per Day",
+          "type": "string"
+        },
+        "sessions": {
+          "description": "newest first",
+          "items": {
+            "$ref": "#/$defs/HistorySession"
+          },
+          "maxItems": 30,
+          "title": "Sessions",
+          "type": "array"
+        },
+        "sim": {
+          "default": false,
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "usual": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryUsual"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "per_day",
+        "devices",
+        "days"
+      ],
+      "title": "HistoryMeasure",
+      "type": "object"
+    },
+    "HistorySession": {
+      "additionalProperties": false,
+      "description": "One recorded session (a drum session, one game, a breathing round, a walk, one dial answer, one morning's\nwatch summary) with its own numbers.",
+      "properties": {
+        "device": {
+          "enum": [
+            "robot",
+            "phone",
+            "mac",
+            "glasses",
+            "watch",
+            "web"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "id": {
+          "description": "the observation's id",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "which kind of session, where one measure lists several (a ritual step: Breathing, Drumming)",
+          "title": "Label"
+        },
+        "sim": {
+          "default": false,
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/HistoryValue"
+          },
+          "maxItems": 16,
+          "title": "Values",
+          "type": "array"
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "games: a practice session, left out of the day's value",
+          "title": "Warmup"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "device"
+      ],
+      "title": "HistorySession",
+      "type": "object"
+    },
+    "HistoryUsual": {
+      "additionalProperties": false,
+      "description": "The person's own usual range for a measure, from their own earlier days. A range and nothing else.",
+      "properties": {
+        "high": {
+          "title": "High",
+          "type": "number"
+        },
+        "low": {
+          "title": "Low",
+          "type": "number"
+        }
+      },
+      "required": [
+        "low",
+        "high"
+      ],
+      "title": "HistoryUsual",
+      "type": "object"
+    },
+    "HistoryValue": {
+      "additionalProperties": false,
+      "description": "One number of one session, ready to show.",
+      "properties": {
+        "format": {
+          "default": "number",
+          "enum": [
+            "number",
+            "clock",
+            "percent",
+            "duration"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "key": {
+          "description": "payload field, e.g. tempo_bpm",
+          "title": "Key",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "value"
+      ],
+      "title": "HistoryValue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "key": {
+      "enum": [
+        "robot",
+        "games",
+        "walks",
+        "checkins",
+        "sleep_body",
+        "mac",
+        "camera"
+      ],
+      "title": "Key",
+      "type": "string"
+    },
+    "measures": {
+      "items": {
+        "$ref": "#/$defs/HistoryMeasure"
+      },
+      "title": "Measures",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "title",
+    "measures"
+  ],
+  "title": "HistoryGroup",
+  "type": "object"
+}

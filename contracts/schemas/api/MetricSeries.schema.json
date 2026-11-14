@@ -87,6 +87,12 @@
       "title": "Points",
       "type": "array"
     },
+    "scored": {
+      "default": true,
+      "description": "false = shown and citable against the person's usual, never part of the group's verdict (criteria `role = \"shown\"`, or weight 0)",
+      "title": "Scored",
+      "type": "boolean"
+    },
     "source": {
       "enum": [
         "robot",

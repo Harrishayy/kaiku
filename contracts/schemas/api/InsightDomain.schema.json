@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "A neighbourhood of the graph: what a group of nodes is about, and where it sits around the person. Declared\nonce in config/kaiku.toml [graph]; the same for every person.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "maxLength": 60,
+      "title": "Label",
+      "type": "string"
+    },
+    "place": {
+      "enum": [
+        "n",
+        "ne",
+        "e",
+        "se",
+        "s",
+        "sw",
+        "w",
+        "nw"
+      ],
+      "title": "Place",
+      "type": "string"
+    },
+    "short": {
+      "maxLength": 24,
+      "title": "Short",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "label",
+    "short",
+    "place"
+  ],
+  "title": "InsightDomain",
+  "type": "object"
+}

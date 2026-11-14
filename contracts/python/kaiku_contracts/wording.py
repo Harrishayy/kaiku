@@ -13,6 +13,8 @@ Issue codes (stable; evals, tests and persona.md examples use them):
     promise         "I promise", "everything will be fine", guarantees
     pretends_human  claims to be a human / not an AI
     wearable_data   mentions watch / sleep / heart data (team decision: never in conversation)
+    face_talk       comments on the person's face or how they look, or says a camera or Kaiku watched them (D52:
+                    face signs are counted on the device with the person's opt-in and are never spoken about)
     surface_rule    a phrase banned on this surface (e.g. "look at your screen" on the glasses)
     too_long        more words than the surface allows
     too_many_sentences
@@ -100,8 +102,29 @@ RULES: dict[str, re.Pattern[str]] = {
         # fi / sv
         r"kellosi", r"sykkeesi", r"syke", r"unidata", r"nukuit", r"din klocka", r"din puls", r"du sov",
     ),
+    # Kaiku's voice never sees the person. "Close your eyes" (breathing) and "the camera is off" (a walk with the
+    # glasses) are fine; what is banned is a remark about their face or looks, and any claim of having watched them.
+    "face_talk": _rx(
+        r"your (?:face|facial|expressions?|smiles?|frowns?|brows?|eyebrows?|blink(?:s|ing)?|gaze)(?!\w)",
+        r"you(?:'re| are| were| weren't| aren't| look| looked| seem| seemed| don't| didn't| did not| do not)? "
+        r"(?:not )?(?:smil(?:e|ed|ing)|frown(?:ed|ing)?|blink(?:ed|ing)?)(?!\w)",
+        r"you look(?:ed|s)? (?:so |really |a bit |a little |quite |very |more |less )?"
+        r"(?:tired|sleepy|exhausted|worn|pale|quiet|quieter|flat|blank|serious|tense|worried|upset|happy|happier|"
+        r"cheerful|bright|brighter|glum|unhappy|miserable|well|good|better|rough|different)",
+        r"(?:look|expression|smile) on your face", r"how you look(?:ed)?",
+        r"i (?:can |could |did )?(?:see|saw|watch|watched|notice|noticed) (?:your face|you smil|you frown|"
+        r"you blink|how you look|that you look|you look)",
+        r"(?:i|we) (?:was|were|am|are|have been|'ve been) watching you", r"watch(?:ed|ing) your face",
+        r"(?:the |your |my )?camera (?:saw|showed|shows|noticed|picked up|caught|could see|can see|was watching|"
+        r"watched|told me|says)", r"(?:saw|seen|watched|noticed) (?:you |it |that )?(?:on|through|with) (?:the |your |my )?camera",
+        # fi / sv
+        r"kasvosi", r"ilmeesi", r"hymysi", r"näytät (?:väsyneeltä|surulliselta|iloiselta)", r"näin kasvosi",
+        r"ditt ansikte", r"ditt leende", r"du ser (?:trött|ledsen|glad) ut", r"din min(?!\w)",
+    ),
 }
 
+_CANNOT_SEE = re.compile(r"(?:can't|cannot|can not|don't|do not|never|not able to|no way to) "
+                         r"(?:really |ever |actually )?(?:see|watch|look at)(?: you| you or)? $")
 _SENTENCE = re.compile(r"[^.!?…]+[.!?…]*")
 
 
@@ -124,6 +147,8 @@ def lint(text: str, *, max_words: int | None = None, max_sentences: int | None =
     issues: list[Issue] = []
     for code, pat in RULES.items():
         m = pat.search(n)
+        if code == "face_talk":  # "I can't see your face" is the honest answer, not a remark about their face
+            m = next((x for x in pat.finditer(n) if not _CANNOT_SEE.search(n[max(0, x.start() - 40):x.start()])), None)
         if m:
             issues.append(Issue(code, m.group(0)))
     for phrase in extra_banned:

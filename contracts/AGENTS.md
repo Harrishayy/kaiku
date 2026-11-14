@@ -42,7 +42,9 @@ dial) · `obs.outing` `method: dat_imu` + `cadence_spm`, `gait_regularity`, `hea
 communication, social, video, news, games, other}`, `switches_per_hour`, `longest_stretch_min`, `breaks`, `paused`;
 no titles/URLs/keystrokes — `extra=forbid` rejects them) · `obs.play_session` (`game: firefly|breathe|tell`,
 `device: phone|mac|web`, reaction/speech/HR features) · `obs.wearable_daily` (`date` = the morning; sleep, sleep
-midpoint in min from local midnight, regularity, resting HR, HRV SDNN, steps, exercise, `device`).
+midpoint in min from local midnight, regularity, resting HR, HRV SDNN, steps, exercise, `device`; since D53 also
+the day's distance, time in daylight, walking heart rate, sleep stages and time awake: see "More of the day from
+Apple Health" below).
 Clinician record assistant: `ClinicianAskRequest`, `ClinicianAskResponse`, `RecordCitation` define
 `POST /v1/patients/{id}/ask`: scoped care-team access, grounded evidence citations, no private notebook.
 `ContextCard.source_context` carries at most four prepared source-labelled activity facts into Live;
@@ -96,6 +98,12 @@ edge rels `moved_first|followed|moved_together|kept_through|slipped_during|after
 `care_action|shared_topic`, `AgentStep.step` adds `course|overview`. `ContextCard.last_reflection: LastReflection
 {when, valence, themes, declined}`, `.today_facts[]`, `.recent_reflection`. `ActionRequest.ts`, `Consensus.simulated`,
 `RecordCitation.simulated`, `TimelinePoint.early`; tool `remember` takes optional `said`.
+The graph as a map (additive): `InsightNode.domain` (the declared neighbourhood, "" for the person and signal
+groups) and `.days: InsightNodeDay[] {date, tone: Trend, value, text}`; `InsightEdge.on: date[]` (the days a link
+speaks of) and `.tag` (a few words for the picture), new edge rels `produces|about`; `InsightGraph.domains:
+InsightDomain[] {id, label, short, place: n|ne|e|se|s|sw|w|nw}` and `.days: InsightGraphDay[] {date, recorded,
+away, changes: InsightChange[] {node, kind: care|moved_away|came_back|better|missed|first|kept, text, tag}}`.
+All default to empty, so an older producer still validates.
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 
@@ -227,3 +235,167 @@ the received words unchanged; completion metadata never authorises transcript re
   processes keep writing seven values); a settlement is one more row, task `live_settlement`, usd below zero for a
   release and above for a correction. `charge` still refuses a negative amount.
 
+## The person's history and the developers' day (2026-11-14, additive, D48)
+- `GET /v1/me/history`: `PersonHistory {home_id, days, first_day, last_day, timezone, groups: HistoryGroup[], sim,
+  generated_at}`; `HistoryGroup {key: robot|games|walks|checkins|sleep_body|mac, title, measures}`;
+  `HistoryMeasure {key, title, unit, format: number|clock|percent|duration (`HistoryFormat`, D53), decimals, per_day: average|total|highest|lowest|latest|
+  first|count, devices: (robot|phone|mac|glasses|watch|web)[], days: HistoryDay[], usual: HistoryUsual?, sessions:
+  HistorySession[≤ 30], sim}`; `HistoryDay {date, value, sessions, sim}`; `HistoryUsual {low, high}`;
+  `HistorySession {id, ts, device, sim, warmup?, label?, values: HistoryValue[≤ 16]}`; `HistoryValue {key, title,
+  value, unit, format}`. `days` may be empty (only practice rounds so far). No model here has a field for a state,
+  a verdict, a score against the usual, a flag, a weight or a direction: keep it that way (tested on the schema).
+- `GET /v1/debug/day` (`generate` defaults to false: a plain GET never calls a model): `DebugDay {home_id, date,
+  timezone, day_start, day_end, is_today, first_day?, sim, events:
+  DebugEvent[], events_total, metrics: DebugMetric[], verdicts: DebugVerdict[], consensus: DebugConsensus,
+  conversations: DebugConversation[], model_calls: DebugModelCall[], facts: DebugFact[], read: DebugRead,
+  computed_at}`. `DebugEvent.day` is the local day the envelope counts toward. `DebugMetric.partial` marks today's
+  running total (no z). `DebugVerdict.insufficient_reason?: stale|low_confidence|no_usable_metric`.
+  `DebugConversation` and `DebugFeel` carry enums and tool names only; `tools_in_order?: bool` says whether
+  `tools` is the call order. `DebugFact {id, kind: metric|source|consensus|missing|tomorrow|event, label,
+  detail, numbers, flags{held|acknowledged|safety|enough_data|scored|beyond|within: bool}}`; `DebugClaim {text ≤
+  500, cites: 1..8 fact ids, by_code}` (`by_code`: a line code wrote inside a Gemma read); `DebugRead {by:
+  gemma|deterministic, model, cached, fallback_reason, failed, attempts, latency_ms?, est_usd?, reading:
+  as_usual|slight_shift|clear_shift|not_enough_data, summary, moved[], missing[], tomorrow[], rule_check?,
+  rejected{category: count}, digest, generated_at}` (`failed`: a kept ask that gave nothing valid; not asked
+  again until the day's data changes).
+- `budget.rows(since, until, path?)`: ledger rows in a time window, read-only (never creates or writes the file).
+- `[live].proactive_audio_purposes` replaces `[live].proactive_audio`: `CompanionSessionResponse.live_setup` has
+  the `proactivity` key only for a walk (D49); for every other purpose the key is absent, which means off.
+
+## An activity agreed in one place, and the home's stream (2026-11-14, additive, D50)
+- `companion_tools`: tool `agree_activity {kind: Activity, said? ≤ 300, line? ≤ 80, when?: now|later}` (executor
+  cloud, every surface, blocking); `AgreeWhen` / `AGREE_WHEN`, exported as `agree_when`. List it in a surface's
+  `tools` in `config/surfaces.toml` (all five do).
+- Its result: `api.AgreedResult {agreed: true, id, kind, name, when, on: Surface[], where, already, listening:
+  Surface[]}`. A refusal is the ordinary `CompanionToolResult {ok: false, error, result: {agreed: false, reason}}`.
+- `InvitationResponse.agreed: AgreedActivity[]` (default empty): `AgreedActivity {id, kind, name, text ≤ 200,
+  voice_key, line?, surface, at, day, when, state: AgreedState, state_at?, on: Surface[], opens_here}`;
+  `AgreedState` = `open | started | done | put_aside`. `AgreedAnswer {id, answer: opened|put_aside}`
+  (`POST /v1/me/agreed/answer`, answered with an `InvitationResponse`).
+- `GET /v1/me/stream` frames (Server-Sent Events; the models describe each frame's `data`): `StreamHello {home_id,
+  heartbeat_s, last_id?, resync, replayed}`, `StreamAgreed {id, kind, state: AgreedState | removed, surface, when,
+  on, day}`, `StreamDay {day, types[], sources[]}`, `StreamInvitation {id, state: answered}`; `ping` carries `{}`.
+  No frame model has a field for words, a value or a state of the person: keep it that way.
+- `ContextCard.agreed: string[] ≤ 3`; `FeelPlan.offer_elsewhere?: Activity`.
+
+## Face signs: counted on the device, shown and citable, not scored (2026-11-14, additive, D52)
+- **`obs.face_signs`** (`payloads.FaceSigns`, uplinkable, signal group `laptop` = "Apps", beside `obs.play_session`):
+  what the phone or Mac camera counted during ONE task. `task` (`FaceTask`: every `PlayGame` value + `check_in`),
+  `device` (as `PlaySession.device`), `method` (`arkit_blendshapes | vision_landmarks`), `duration_s`, `samples`
+  (≥ 1, frames looked at: about 30 a second with `arkit_blendshapes`, 15 with `vision_landmarks`), `coverage` (0–1, share of them with one usable face); optional signs, each null when the
+  method cannot measure it (`FACE_SIGNS`): `smile_share`, `smiles`, `brow_raise_share`, `brow_furrow_share`,
+  `mouth_open_share`, `blinks_per_min`, `gaze_on_share`, `head_movement`, `expression_range`; optional `ref` (the
+  envelope id of the task record it belongs to). Envelope `quality` = `coverage`.
+- **What it cannot carry** (`extra=forbid`, tested): an emotion or mood label, a frame, per-frame coefficients or
+  landmarks, an embedding, an identity. A session with `coverage` 0 must carry no sign at all (validator): no
+  face in view is missing evidence, never a zero. Values are comparable only within one `method`: the landmark
+  method sends no smile, brow or gaze sign, and blinks, head movement and expression range come from both
+  methods on different scales. The apps send nothing when coverage rounds to 0 and leave out blinks under 20 s
+  of face time, head movement under 2 s and expression range under 10 face frames; a check-in has no `ref`.
+- `PlaySession` keeps its older camera fields (`expressivity_index`, `face_movement`, `camera_*`) for producers
+  that still send them; nothing reads them into a metric. Examples: `registry.EXAMPLES["obs.face_signs"]` and
+  `registry.FACE_EXAMPLES` (`landmarks`, `check_in`, `no_face`).
+- **Criteria: a third state for a metric** (`criteria.MetricSpec`). `role = "scored" | "shown"` (default scored)
+  and `at_least = { payload field = minimum }` (a reading counts only when the observation's own fields reach the
+  minimums). `MetricSpec.votes` is the one question "can this move a verdict?" (`enabled and role == "scored" and
+  weight > 0`). `Criteria.metrics_for(source)` (what a verdict reads) leaves shown metrics out;
+  `Criteria.shown_for(source)` lists them; `Criteria.shown_types` are observation types only shown metrics read:
+  they add no coverage, freshness or first day to their group. **The fingerprint (and so `rule_version`) covers
+  what can decide a state**: shown metrics are not in it, and `role` / `at_least` are left out while at their
+  defaults, so adding, retuning or removing a shown metric changes no hash; deleting a `role = "shown"` line (the
+  metric then votes with its `weight`) does. Metrics of one obs type must share one `day_field`.
+- **API (all additive, defaults keep old clients valid):** `MetricSeries.scored` and `DebugMetric.scored`
+  (false = shown beside the record, no vote); `HistoryGroupKey` adds `camera`;
+  `TaskObservationsResponse.face_signs`; `ContextCard.quieter_in: ("games" | "check_in")[] ≤ 2` and
+  `FeelPlan.manner: string ≤ 240 | null` (the companion's words-only cue: an enum and one fixed sentence, never a
+  number); `Course.summary` may be 900 characters (was 700).
+- **Wording rule `face_talk`** (`wording.py`, in every `lint()`): Kaiku comments on the person's face or looks
+  ("you look tired", "you weren't smiling"), or says it or a camera saw, watched or noticed them. "I can't see you /
+  your face" is the honest answer and passes. **Port it to the Swift linter with the other rules.**
+- Tests: `contracts/tests/test_face_signs.py` (payload bounds, no emotion or picture field, the three states, the
+  rule version equal to the hash the file had before, the one line that makes a metric vote, the wording rule).
+
+
+## Tap it back, the drum hold, and the head's audio topics (2026-11-14, additive, D51)
+- **`obs.tap_back`** (`payloads.TapBack`, uplinkable, signal group `robot`): one game of "Tap it back" in the drum
+  step. `levels[]` (`TapBackLevel`, 1 to 9): `level`, `target_bpm` (the song's tempo), `tapped_bpm` and `error_pct`
+  (both or neither: null when she tapped too few to tell a tempo), `steadiness` (0–1, 1 = perfectly even),
+  `taps`, `band` (`TapBackBand`: `perfect | great | nice | again`), `tries` (1 = first go), `beat`
+  (`beat | half | double`: the beat level her tempo was compared at). Game: `levels_played`, `levels_passed`
+  (levels whose band is not `again`), `error_pct` and `steadiness` (means over the levels with a tempo; null when
+  none), `taps`, `rejected_taps?`, `duration_s`, `song` (`music` = generated, `beat` = the hub's own plain beat,
+  `light` = no sound, the chest light only). Validators: a level with no tempo is `again`; the counts agree with the
+  levels. Envelope `quality` as the drum's (share of triggers that were real taps). **Not `obs.drum_session`**: there
+  the tempo is hers, here it is given, and the two must never meet in one baseline. **No `[[metric]]` reads it**
+  (tested): a game, shown in the person's History only. Example: `registry.EXAMPLES["obs.tap_back"]`.
+- **`cmd.head.drum: "hold" | "end"`** (optional): only for a head that runs its own ritual (the standalone
+  firmware). `hold` = the hub runs the drum phase: stay in your drum step, no timer and no tap tones of your own,
+  keep reporting taps, obey `eyes` and `pan_mode: sway` + `bpm`; re-sent at least every 5 s (the hub: every 3 s),
+  the head takes its own timer back after 10 s without one. `end` = the drum phase is over. It means nothing
+  outside the head's own drum step, and a hub-driven head (`kaiku_link`) ignores it.
+- **`cmd.head.mic: "open" | "close"`** (optional): the head streams its microphone only while this is held:
+  `open` again at least every 3 s (the hub: every 2 s), the head closes after 10 s without one; `close` at the end.
+- **`cmd.head.show: "help" | "none"`** (optional; sent by the hub's crisis path only): `help` = the head shows the
+  helpline's name and number and the emergency number on its own screen, from constants compiled into its firmware
+  (`firmware/atech-head/kaiku_link/helpline.h`, checked against `config/kaiku.toml [safety]` by a test), until
+  `none`, a new ritual on the head, or 10 minutes. Never a sound. Two words and no free text: the hub can send the
+  head nothing to display (tested). Examples: `registry.HEAD_EXAMPLES`.
+- **`raw.hub.trace`** (`payloads.HubTrace`, strict; source `hub`; topic `kaiku/v1/<home>/raw/hub/trace`; QoS 0, not
+  retained; `raw.*` is never uplinkable): what Kaiku says and does, live, for the "Kaiku bot" tab of the person's
+  own apps on the home network. `kind`: `said | heard | tool | session | game | music`. `text` (≤ 300): **only for
+  `said`**, Kaiku's own words (a scripted line, or the Live voice's reply as its output transcription gives it).
+  `tool` (≤ 40): only for `tool`, the name of the tool the voice called. `by`: for `said` how it was spoken
+  (`script | live | cached_voice`); for `tool` who answered (`notebook | gemma | flash | argon | rule`), only when
+  the cloud's result says so. `ms` (a tool call's duration), `ok`. `detail` (≤ 80), a machine word: session
+  `open | close`; music `start | song | hush | stop`; game `level:<n> | your_turn | band:<perfect|great|nice|again>`.
+  `bpm`: the tempo of a music `song` or a game `level`. **`heard` carries nothing but its kind** (she spoke; her
+  words never travel on the bus), and the model validator refuses `text` on any kind but `said`, `tool` on any
+  kind but `tool`, and a model's name as the `by` of a `said`. No field exists for a tool's arguments or result.
+  Not stored: `tools/record.py` and `tools/replay.py` drop its `text`. Examples: `registry.EXAMPLES`,
+  `registry.TRACE_EXAMPLES`. Tests: `hub/tests/test_trace.py`, `tools/tests/test_tools.py`.
+- **Audio topics: NOT envelopes** (`topics.py`: `audio_topic`, `is_audio_topic`, `AUDIO_RATE_HZ` 16000,
+  `AUDIO_FRAME_MS` 20, `AUDIO_FRAME_SAMPLES` 320, `AUDIO_FRAME_BYTES` 640, `AUDIO_STREAMS`):
+  `kaiku/v1/<home>/audio/head/speaker` (hub → head: the music, the chimes, Kaiku's voice) and
+  `kaiku/v1/<home>/audio/head/mic` (head → hub). One MQTT message = one frame = 20 ms of signed 16-bit
+  little-endian mono at 16 kHz = 640 bytes, QoS 0, never retained, no JSON, no id, no timestamp. A zero-length
+  message on the speaker topic = "drop what you have buffered, now". `audio` is not a message kind: no type maps to
+  it, `validate()` rejects a frame, and nothing that handles messages may see one. `Bus.publish_audio(data, stream=)`
+  sends (dropped silently while offline: late audio is noise; `Bus.audio_dropped` counts), `Bus.on_audio(stream,
+  handler)` receives the bytes; `Bus._dispatch` routes these topics before any parsing, so they are never
+  validated, logged or handed to an `on()` handler (tested on a real broker). **Every tool that walks topics must
+  skip them** with `is_audio_topic` (`tools/record.py`, `tools/bus_tail.py`, `tools/replay.py` do; tested). The hub's
+  uplink and local store take envelopes only, so audio cannot reach them.
+- `raw.head.tap.src` already had `imu`: the head's own motion-sensor taps use it, with `force` and the head's own
+  clock (`t_ms` of two boards cannot be compared; the hub takes one source per run of taps).
+- Tests: `contracts/tests/test_tap_back_audio.py`.
+
+## More of the day from Apple Health, and how a History value is read (2026-11-14, additive, D53)
+- **`obs.wearable_daily`** (`payloads.WearableDaily`) gains seven optional fields, all default null, no
+  `SCHEMA_VERSION` bump; existing fields keep their meaning:
+
+  | field | bounds | meaning |
+  |---|---|---|
+  | `distance_km` | 0 to 300 | walking and running distance over the previous day, 00:00 to 00:00 local, in km, two decimals |
+  | `daylight_min` | 0 to 1440 | time in daylight that day (Apple Watch only) |
+  | `walking_hr_bpm` | above 20, below 250 | the day's average walking heart rate |
+  | `sleep_deep_min`, `sleep_rem_min`, `sleep_core_min` | 0 to 1440 each | minutes in each stage of the night; all three absent when the night has no stages, all three present (0 allowed) when any staged sample exists |
+  | `sleep_awake_min` | 0 to 1440 | minutes awake between first falling asleep and last waking; absent when none was recorded |
+
+  One total or average a day: there is no field for a sample, a trace, a time of a stage or a place, and none
+  for a sleep score (Apple gives apps none; `extra=forbid` rejects an invented one, tested). The model does not
+  enforce "three stages together": that is the producer's rule, and a cloud that refused a day over it would lose
+  the day's other numbers. Example: `registry.EXAMPLES["obs.wearable_daily"]`.
+- **Criteria:** six `role = "shown"` metrics read these fields (`config/criteria.toml`); the type stays one that
+  scored metrics read, so it is not in `Criteria.shown_types`. The rule version is unchanged (tested:
+  `tests/test_wearable_health.py`).
+- **`api.HistoryFormat = number | clock | percent | duration`** on `HistoryMeasure.format` and
+  `HistoryValue.format`. `percent`: the value stays a share 0..1, the app shows it ×100 with "%", `decimals`
+  applies to the percent number, `unit` says what it is a share of ("of the time") or is empty. `duration`: the
+  value is minutes, the app shows "7 h 20 min" from 60 on and "45 min" below, `unit` is empty.
+  `HistoryUsual.low/high` are in the measure's format. `HistorySession.values` holds up to 16 values.
+- **Which day:** `WearableDaily.date` is the morning the summary was made. Sleep fields are the night that ended
+  that morning; steps, distance, daylight, exercise, resting and walking heart rate and HRV are the day before,
+  00:00 to 00:00 local. The rule engine files every field under `date`; the person's History puts the day-before
+  fields on the day before (`cloud/AGENTS.md` → "Which day a Health number stands under"). No field was added for
+  this: a `HistorySession` of such a measure carries the same envelope `id` with a `ts` at the end of that day.
+  `sleep_regularity` is in the model and no Apple build sends it (the simulators do).

@@ -258,6 +258,252 @@
       "title": "AgentStep",
       "type": "object"
     },
+    "AgreedActivity": {
+      "additionalProperties": false,
+      "description": "One activity the person said yes to in a conversation, held by the cloud for that local day so every\nscreen shows the same thing (tool `agree_activity`). `text` is a template from config/voice_lines.toml\n(`voice_key`) around the activity's name and where it was agreed: never the person's words. It becomes\n`done` by itself when an observation for that activity arrives the same day; a device reports `started`\n(opened) or `put_aside` with POST /v1/me/agreed/answer. Gone after local midnight.",
+      "properties": {
+        "at": {
+          "description": "when it was agreed",
+          "format": "date-time",
+          "type": "string"
+        },
+        "day": {
+          "description": "the local day it belongs to; it is not shown on any other day",
+          "format": "date",
+          "type": "string"
+        },
+        "id": {
+          "description": "send it back in the answer; also the id in the stream's `agreed` events",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Kaiku's own short line from the conversation, when it gave one and it passed the wording rules"
+        },
+        "name": {
+          "description": "how the activity is called on a screen (\"Lantern\", \"a walk\")",
+          "maxLength": 40,
+          "type": "string"
+        },
+        "on": {
+          "description": "the person's screens that can open it",
+          "items": {
+            "enum": [
+              "robot",
+              "glasses",
+              "iphone",
+              "mac",
+              "web"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "opens_here": {
+          "default": false,
+          "description": "the asking device (`surface` in the query) has a screen for it; false: show it without an open button",
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "started",
+            "done",
+            "put_aside"
+          ],
+          "type": "string"
+        },
+        "state_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "when it was opened, done or put aside"
+        },
+        "surface": {
+          "description": "where it was agreed",
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "description": "the sentence for the card and the notification",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "voice_key": {
+          "description": "the template used; speak `text` with POST /v1/voice/say",
+          "type": "string"
+        },
+        "when": {
+          "default": "now",
+          "description": "now: they want to do it now, on another device. later: some time today",
+          "enum": [
+            "now",
+            "later"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "text",
+        "voice_key",
+        "surface",
+        "at",
+        "day",
+        "state"
+      ],
+      "title": "AgreedActivity",
+      "type": "object"
+    },
+    "AgreedAnswer": {
+      "additionalProperties": false,
+      "description": "POST /v1/me/agreed/answer — opened: this device opened the activity's screen (state started). put_aside:\nthe person put it aside (final for today). Done needs no answer: the activity's own observation does it.",
+      "properties": {
+        "answer": {
+          "enum": [
+            "opened",
+            "put_aside"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "answer"
+      ],
+      "title": "AgreedAnswer",
+      "type": "object"
+    },
+    "AgreedResult": {
+      "additionalProperties": false,
+      "description": "Result of the `agree_activity` tool when the yes was kept. A refusal is `ok=false` with `error` (a reason\nthe model can say) and `result {agreed: false, reason}`; nothing is stored then.",
+      "properties": {
+        "agreed": {
+          "const": true,
+          "default": true,
+          "type": "boolean"
+        },
+        "already": {
+          "default": false,
+          "description": "this activity was already agreed and open today: nothing new was added",
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "type": "string"
+        },
+        "listening": {
+          "description": "screens whose app is open right now (the stream is connected): it appeared there this second. The others show it when the app is next opened",
+          "items": {
+            "enum": [
+              "robot",
+              "glasses",
+              "iphone",
+              "mac",
+              "web"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 40,
+          "type": "string"
+        },
+        "on": {
+          "description": "the person's screens that now show it and can open it",
+          "items": {
+            "enum": [
+              "robot",
+              "glasses",
+              "iphone",
+              "mac",
+              "web"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "when": {
+          "default": "now",
+          "enum": [
+            "now",
+            "later"
+          ],
+          "type": "string"
+        },
+        "where": {
+          "description": "say it this way: \"your phone and your Mac\"",
+          "maxLength": 60,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "on",
+        "where"
+      ],
+      "title": "AgreedResult",
+      "type": "object"
+    },
     "BriefSection": {
       "additionalProperties": false,
       "properties": {
@@ -1104,6 +1350,14 @@
     "ContextCard": {
       "additionalProperties": false,
       "properties": {
+        "agreed": {
+          "description": "activities they said yes to today on any device and whether each is done (D50); each is carried once per state, so Kaiku is glad or asks gently once",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
         "care_info": {
           "anyOf": [
             {
@@ -1265,6 +1519,18 @@
           "default": null,
           "description": "set when the device said why it opened the session"
         },
+        "quieter_in": {
+          "description": "today's tasks in which the face signs counted with their opt-in were clearly below their own usual (D52, rule in mind/face_cue.py). An enum and nothing else: the instruction turns it into a cue to go gently and never to mention their face or a camera; no number, no state and no word about how they looked ever crosses",
+          "items": {
+            "enum": [
+              "games",
+              "check_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
         "recent_reflection": {
           "anyOf": [
             {
@@ -1412,7 +1678,7 @@
           "type": "string"
         },
         "summary": {
-          "maxLength": 700,
+          "maxLength": 900,
           "type": "string"
         }
       },
@@ -1764,6 +2030,1188 @@
       "title": "DayAccount",
       "type": "object"
     },
+    "DebugBaseline": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "days the baseline is made from",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "early": {
+          "default": false,
+          "description": "provisional baseline of a young record",
+          "type": "boolean"
+        },
+        "median": {
+          "type": "number"
+        },
+        "spread": {
+          "description": "max(1.4826 x MAD, min_mad): what one z unit is",
+          "type": "number"
+        }
+      },
+      "required": [
+        "median",
+        "spread",
+        "days"
+      ],
+      "title": "DebugBaseline",
+      "type": "object"
+    },
+    "DebugClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "by_code": {
+          "default": false,
+          "description": "inside a Gemma read: this line is code's own, put there because the model left the measure out or its sentence failed a check",
+          "type": "boolean"
+        },
+        "cites": {
+          "description": "DebugFact ids (the model is asked for six at most)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 500,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "cites"
+      ],
+      "title": "DebugClaim",
+      "type": "object"
+    },
+    "DebugConsensus": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "agreement": {
+          "enum": [
+            "agree",
+            "disagree",
+            "low_coverage"
+          ],
+          "type": "string"
+        },
+        "changed": {
+          "description": "by code: what differs from the day before",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "held": {
+          "default": false,
+          "description": "needs_call kept by hysteresis",
+          "type": "boolean"
+        },
+        "id": {
+          "const": "consensus:state",
+          "default": "consensus:state",
+          "type": "string"
+        },
+        "previous_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "stable",
+                "watch",
+                "needs_call",
+                "safety"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "raw_state": {
+          "description": "what the rule gives for that day alone, before hysteresis",
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        },
+        "reasons": {
+          "description": "by code: why the rule gives this state",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "safety_since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        },
+        "state_since": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "state",
+        "raw_state",
+        "agreement",
+        "rule_version"
+      ],
+      "title": "DebugConsensus",
+      "type": "object"
+    },
+    "DebugConversation": {
+      "additionalProperties": false,
+      "description": "One companion conversation that started that day. Never transcripts, topics or words.",
+      "properties": {
+        "billed_minutes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Live minutes the budget ledger counts for it"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "feel": {
+          "items": {
+            "$ref": "#/$defs/DebugFeel"
+          },
+          "type": "array"
+        },
+        "intent": {
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "type": "string"
+        },
+        "minutes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "completed",
+                "skipped",
+                "ended_early",
+                "crisis",
+                "offline"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how it ended; null = never closed"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "tools": {
+          "description": "tool names: in call order while the conversation is open, one of each once the device has uploaded it",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tools_in_order": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "true = `tools` is the call order (repeats kept); false = the device's upload replaced it with one of each, sorted by name; null = cannot be told (a conversation uploaded before this was recorded)"
+        },
+        "transcript_kept": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "session_id",
+        "surface",
+        "intent",
+        "start"
+      ],
+      "title": "DebugConversation",
+      "type": "object"
+    },
+    "DebugDay": {
+      "additionalProperties": false,
+      "description": "GET /v1/debug/day?home_id=&date=&generate= — everything about one local day of one home, for developers.\nNot for a practitioner and never for the person. Closed like /v1/admin on a deployed service. `generate`\ndefaults to false: a plain GET never calls a model; `generate=true` asks for Gemma's read of the day.",
+      "properties": {
+        "computed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "consensus": {
+          "$ref": "#/$defs/DebugConsensus"
+        },
+        "conversations": {
+          "items": {
+            "$ref": "#/$defs/DebugConversation"
+          },
+          "type": "array"
+        },
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "day_end": {
+          "description": "local midnight that ends it, in UTC",
+          "format": "date-time",
+          "type": "string"
+        },
+        "day_start": {
+          "description": "local midnight that starts the day, in UTC",
+          "format": "date-time",
+          "type": "string"
+        },
+        "events": {
+          "description": "every stored envelope stamped inside the day, plus a daily summary that measures this day but arrived later; oldest first",
+          "items": {
+            "$ref": "#/$defs/DebugEvent"
+          },
+          "type": "array"
+        },
+        "events_total": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "facts": {
+          "description": "everything the read may cite",
+          "items": {
+            "$ref": "#/$defs/DebugFact"
+          },
+          "type": "array"
+        },
+        "first_day": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the first local day of the home's record (a day picker has nothing before it); null = no record yet"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "is_today": {
+          "default": false,
+          "type": "boolean"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/DebugMetric"
+          },
+          "type": "array"
+        },
+        "model_calls": {
+          "items": {
+            "$ref": "#/$defs/DebugModelCall"
+          },
+          "type": "array"
+        },
+        "read": {
+          "$ref": "#/$defs/DebugRead"
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "verdicts": {
+          "items": {
+            "$ref": "#/$defs/DebugVerdict"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "date",
+        "timezone",
+        "day_start",
+        "day_end",
+        "events",
+        "events_total",
+        "metrics",
+        "verdicts",
+        "consensus",
+        "read",
+        "computed_at"
+      ],
+      "title": "DebugDay",
+      "type": "object"
+    },
+    "DebugEvent": {
+      "additionalProperties": false,
+      "description": "One stored envelope of the day.",
+      "properties": {
+        "day": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the local day this envelope counts toward (a daily summary can be stamped on the day after the one it measures)"
+        },
+        "id": {
+          "type": "string"
+        },
+        "local_time": {
+          "description": "HH:MM:SS in the home's timezone",
+          "type": "string"
+        },
+        "metrics": {
+          "description": "metrics this envelope counted toward",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "description": "compact: long lists are cut to their first items plus a count",
+          "type": "object"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sim": {
+          "type": "boolean"
+        },
+        "source": {
+          "description": "the envelope's own source (head, sensors, hub, phone, laptop, glasses, ...)",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "local_time",
+        "source",
+        "type",
+        "sim",
+        "payload"
+      ],
+      "title": "DebugEvent",
+      "type": "object"
+    },
+    "DebugFact": {
+      "additionalProperties": false,
+      "description": "One verified line the day read may cite. Ids: metric:<name>, source:<name>, consensus:state,\nmissing:<source or metric>, tomorrow:<name>, event:<envelope id>.",
+      "properties": {
+        "detail": {
+          "description": "written by code from the day's data; every number in it is the data's",
+          "type": "string"
+        },
+        "flags": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "the yes/no facts a claim citing this may state, checked like the numbers: held, acknowledged, safety (consensus), enough_data (a signal group), scored (a measure)",
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "metric",
+            "source",
+            "consensus",
+            "missing",
+            "tomorrow",
+            "event"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "numbers": {
+          "description": "the numbers a claim citing this may use",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "detail"
+      ],
+      "title": "DebugFact",
+      "type": "object"
+    },
+    "DebugFeel": {
+      "additionalProperties": false,
+      "description": "One `feel` call: enums only, never what was said.",
+      "properties": {
+        "depth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "energy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "type": "string"
+        },
+        "offered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan carried an offer"
+        },
+        "stance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan's stance; null for calls stored before it was kept"
+        },
+        "tone": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valence": {
+          "type": "string"
+        },
+        "via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "ts",
+        "kind",
+        "valence"
+      ],
+      "title": "DebugFeel",
+      "type": "object"
+    },
+    "DebugMetric": {
+      "additionalProperties": false,
+      "description": "One criteria metric on that day, beside its baseline.",
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DebugBaseline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "better_days": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "beyond_today": {
+          "default": false,
+          "description": "this day alone is beyond the threshold in the worse direction",
+          "type": "boolean"
+        },
+        "direction": {
+          "description": "criteria worse_when",
+          "enum": [
+            "up",
+            "down"
+          ],
+          "type": "string"
+        },
+        "drift_days_needed": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "flagged": {
+          "default": false,
+          "description": "counted toward its group's worse weight that day",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "citable id: metric:<name>",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "obs": {
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "description": "today's running total of a summed or counted measure: shown, but not compared or scored until the day is over (no z)",
+          "type": "boolean"
+        },
+        "readings": {
+          "default": 0,
+          "description": "envelopes that day that counted toward it",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scored": {
+          "description": "false = observe-only (disabled, weight 0, or criteria role shown): charted, never a vote",
+          "type": "boolean"
+        },
+        "scored_days": {
+          "default": 0,
+          "description": "days in the drift window that had a baseline",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "drifting",
+            "improved",
+            "normal",
+            "insufficient"
+          ],
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the day's value; null = no data that day"
+        },
+        "weight": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "worse_days": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "worse_z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the same, signed so that positive is the worse direction"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "(value - median) / spread, as measured"
+        },
+        "z_threshold": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "metric",
+        "label",
+        "source",
+        "obs",
+        "direction",
+        "z_threshold",
+        "status",
+        "drift_days_needed",
+        "weight",
+        "enabled",
+        "scored"
+      ],
+      "title": "DebugMetric",
+      "type": "object"
+    },
+    "DebugModelCall": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_hit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null: the ledger does not record cache hits"
+        },
+        "est_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the spend ledger's estimate for this call, when one row matches it by model, task and time"
+        },
+        "fallback": {
+          "default": false,
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "gemini | gemma-hosted | modal | none (a deterministic or template answer)",
+          "type": "string"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "task": {
+          "type": "string"
+        },
+        "tokens_in": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "not recorded by the ledger today: null"
+        },
+        "tokens_out": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ts",
+        "provider",
+        "model",
+        "task",
+        "ok"
+      ],
+      "title": "DebugModelCall",
+      "type": "object"
+    },
+    "DebugRead": {
+      "additionalProperties": false,
+      "description": "A developer-facing reading of the day, written from the structured data above. Gemma's when `by` is gemma\n(every claim cites facts, every number is one of theirs); otherwise the same shape written by code. It never\nchanges the consensus.",
+      "properties": {
+        "attempts": {
+          "default": 0,
+          "description": "model calls this ask made (0 = the model was not asked)",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "by": {
+          "enum": [
+            "gemma",
+            "deterministic"
+          ],
+          "type": "string"
+        },
+        "cached": {
+          "default": false,
+          "type": "boolean"
+        },
+        "digest": {
+          "description": "hash of the read version, the instruction, rule version, model and the day's data",
+          "type": "string"
+        },
+        "est_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the spend ledger's estimate for the ask: its rows for this task and model while the ask ran"
+        },
+        "failed": {
+          "default": false,
+          "description": "the model was asked about exactly this day's data and nothing valid came back; kept with its reason and rejections until the day's data, the rule or the instruction changes, and not asked (or paid for) again before that",
+          "type": "boolean"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "why the deterministic read is shown: not_requested | provider_unavailable | over_budget | invalid_json | no_valid_claims | cooldown"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how long the ask took, all attempts together"
+        },
+        "missing": {
+          "description": "what the day lacks",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "moved": {
+          "description": "which measures moved, and by how much",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "type": "array"
+        },
+        "reading": {
+          "description": "by code, from the day's metrics: never the model's call",
+          "enum": [
+            "as_usual",
+            "slight_shift",
+            "clear_shift",
+            "not_enough_data"
+          ],
+          "type": "string"
+        },
+        "rejected": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "validator category -> claims dropped, over all attempts of the ask",
+          "type": "object"
+        },
+        "rule_check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DebugClaim"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "whether the rule's answer looks right"
+        },
+        "summary": {
+          "$ref": "#/$defs/DebugClaim"
+        },
+        "tomorrow": {
+          "description": "what would change the state tomorrow",
+          "items": {
+            "$ref": "#/$defs/DebugClaim"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "by",
+        "reading",
+        "summary",
+        "digest",
+        "generated_at"
+      ],
+      "title": "DebugRead",
+      "type": "object"
+    },
+    "DebugVerdict": {
+      "additionalProperties": false,
+      "description": "One signal group's verdict that day with what made it.",
+      "properties": {
+        "better_min_weight": {
+          "type": "number"
+        },
+        "better_weight": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "days_with_data": {
+          "default": 0,
+          "description": "in the baseline window up to that day",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/VerdictEvidence"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "citable id: source:<name>",
+          "type": "string"
+        },
+        "insufficient_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "stale",
+                "low_confidence",
+                "no_usable_metric"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only when the verdict is insufficient, in the rule's own order: stale = nothing newer than the group's max_age_days; low_confidence = confidence below min_confidence; no_usable_metric = no scored measure has a usable baseline and no rule fired"
+        },
+        "label": {
+          "type": "string"
+        },
+        "last_data_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "min_confidence": {
+          "type": "number"
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "enum": [
+                "better",
+                "as_usual",
+                "worse",
+                "insufficient"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "its verdict the day before"
+        },
+        "rules_fired": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "better",
+            "as_usual",
+            "worse",
+            "insufficient"
+          ],
+          "type": "string"
+        },
+        "worse_min_weight": {
+          "type": "number"
+        },
+        "worse_weight": {
+          "description": "sum of the weights of its drifting metrics",
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "label",
+        "verdict",
+        "confidence",
+        "min_confidence",
+        "worse_weight",
+        "worse_min_weight",
+        "better_weight",
+        "better_min_weight"
+      ],
+      "title": "DebugVerdict",
+      "type": "object"
+    },
     "Defaults": {
       "additionalProperties": false,
       "properties": {
@@ -2093,6 +3541,76 @@
         "available"
       ],
       "title": "EngagementCue",
+      "type": "object"
+    },
+    "Envelope_FaceSigns_": {
+      "additionalProperties": false,
+      "properties": {
+        "home_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/FaceSigns"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "head",
+            "sensors",
+            "hub",
+            "friendlink",
+            "glasses",
+            "laptop",
+            "phone",
+            "cloud",
+            "sim"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "v": {
+          "const": 1,
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "type",
+        "payload"
+      ],
+      "title": "Envelope[FaceSigns]",
       "type": "object"
     },
     "Envelope_PlaySession_": {
@@ -2557,6 +4075,206 @@
       "title": "Explanation",
       "type": "object"
     },
+    "FaceSigns": {
+      "additionalProperties": false,
+      "description": "Face signs during one task (D52), with the person's opt-in \"Camera during activities\": movements of the face\nthat the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in\nwhich the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these\nnumbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),\nnot emotions: nothing here says what the person felt, and no field may. Values are comparable only within one\n`method` (and best within one task): never pool the two methods into one usual. A sign the method cannot\nmeasure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement\nand expression range come from both methods on different scales. The apps also leave out blinks under 20 s of\nface time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when\ncoverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.\nCounts toward the \"laptop\" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not\nscored.",
+      "properties": {
+        "blinks_per_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "blinks per minute of face time"
+        },
+        "brow_furrow_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with lowered, drawn brows"
+        },
+        "brow_raise_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with raised brows"
+        },
+        "coverage": {
+          "description": "share of sampled frames with exactly one usable face",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "duration_s": {
+          "description": "seconds the camera sampled",
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "number"
+        },
+        "expression_range": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "overall variability of expression over the session"
+        },
+        "gaze_on_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames looking toward the screen"
+        },
+        "head_movement": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how much the head moved; the scale belongs to the method"
+        },
+        "method": {
+          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)",
+          "enum": [
+            "arkit_blendshapes",
+            "vision_landmarks"
+          ],
+          "type": "string"
+        },
+        "mouth_open_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with the mouth open"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "id of the obs.play_session (or other record) of the same task"
+        },
+        "samples": {
+          "description": "frames looked at; none is kept",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "smile_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with a smile above the method's threshold"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "distinct smiles"
+        },
+        "task": {
+          "description": "the task it belongs to: a game (PlayGame) or the check-in chat",
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell",
+            "pebbles",
+            "lantern",
+            "seeds",
+            "watering",
+            "check_in"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "device",
+        "method",
+        "duration_s",
+        "samples",
+        "coverage"
+      ],
+      "title": "FaceSigns",
+      "type": "object"
+    },
     "FeelPlan": {
       "additionalProperties": false,
       "description": "Result of the `feel` tool: how to meet what the person just shared. Chosen by code from this person's own\nrecord; hints for the companion's own words, never a script. Nothing here is a state or changes one.",
@@ -2573,6 +4291,19 @@
           "default": false,
           "description": "a thread to ask about next time was kept",
           "type": "boolean"
+        },
+        "manner": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a words-only cue for how to carry yourself in this conversation (go more gently), never something to say, and never a number, a state or where the cue came from (D52)"
         },
         "may_offer": {
           "anyOf": [
@@ -2610,6 +4341,30 @@
           ],
           "default": null,
           "description": "start_activity kind, only after a clear yes"
+        },
+        "offer_elsewhere": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "tell",
+                "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
+                "light_hunt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the offer has no screen on this device but one on their phone or Mac: after a clear yes call agree_activity with this kind (D50)"
         },
         "offer_note": {
           "anyOf": [
@@ -3036,6 +4791,22 @@
           ],
           "default": null
         },
+        "drum": {
+          "anyOf": [
+            {
+              "enum": [
+                "hold",
+                "end"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only for a head that runs its own ritual (standalone firmware): hold = the hub runs the drum phase now (stay in the drum step, keep reporting taps, no own timer, obey eyes / pan_mode sway / bpm); end = it is over, go on. Re-sent at least every 5 s; 10 s without one = back to the head's own timer. Ignored by a hub-driven head"
+        },
         "eyes": {
           "anyOf": [
             {
@@ -3095,6 +4866,22 @@
           ],
           "default": null
         },
+        "mic": {
+          "anyOf": [
+            {
+              "enum": [
+                "open",
+                "close"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "open = send the head's microphone as PCM frames on audio/head/mic (only while a conversation the person started is open); close = stop. Re-sent at least every 3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while its speaker plays and about 250 ms after"
+        },
         "pan": {
           "anyOf": [
             {
@@ -3132,6 +4919,22 @@
             }
           ],
           "default": null
+        },
+        "show": {
+          "anyOf": [
+            {
+              "enum": [
+                "help",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "help = the head shows the helpline's name and number and the emergency number on its own screen, from constants compiled into the firmware, until `none`, a new ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only"
         }
       },
       "title": "HeadCmd",
@@ -3457,6 +5260,293 @@
       "title": "Highlight",
       "type": "object"
     },
+    "HistoryDay": {
+      "additionalProperties": false,
+      "description": "One local day of one measure.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "sessions": {
+          "description": "readings that day that the value is made from",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sim": {
+          "default": false,
+          "description": "some of that day's readings are simulated",
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "date",
+        "value",
+        "sessions"
+      ],
+      "title": "HistoryDay",
+      "type": "object"
+    },
+    "HistoryGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "enum": [
+            "robot",
+            "games",
+            "walks",
+            "checkins",
+            "sleep_body",
+            "mac",
+            "camera"
+          ],
+          "type": "string"
+        },
+        "measures": {
+          "items": {
+            "$ref": "#/$defs/HistoryMeasure"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "measures"
+      ],
+      "title": "HistoryGroup",
+      "type": "object"
+    },
+    "HistoryMeasure": {
+      "additionalProperties": false,
+      "description": "One measure over the window: its days, the person's usual range when there is one, and its latest sessions.",
+      "properties": {
+        "days": {
+          "description": "days with a value, oldest first; a day without data is absent",
+          "items": {
+            "$ref": "#/$defs/HistoryDay"
+          },
+          "type": "array"
+        },
+        "decimals": {
+          "default": 0,
+          "description": "how many decimals the value is worth showing with",
+          "maximum": 2,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "devices": {
+          "description": "where its readings came from in this window, most first (head, sensors and hub are all the robot)",
+          "items": {
+            "enum": [
+              "robot",
+              "phone",
+              "mac",
+              "glasses",
+              "watch",
+              "web"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "format": {
+          "default": "number",
+          "description": "clock: minutes after local midnight; percent: a share 0..1 shown as a percentage; duration: minutes shown as hours and minutes. `usual` is in the same format",
+          "enum": [
+            "number",
+            "clock",
+            "percent",
+            "duration"
+          ],
+          "type": "string"
+        },
+        "key": {
+          "description": "stable key; for a measure the practitioner side also computes, the same name",
+          "type": "string"
+        },
+        "per_day": {
+          "description": "how one day's value is made from that day's sessions",
+          "enum": [
+            "average",
+            "total",
+            "highest",
+            "lowest",
+            "latest",
+            "first",
+            "count"
+          ],
+          "type": "string"
+        },
+        "sessions": {
+          "description": "newest first",
+          "items": {
+            "$ref": "#/$defs/HistorySession"
+          },
+          "maxItems": 30,
+          "type": "array"
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "type": "string"
+        },
+        "usual": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryUsual"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "per_day",
+        "devices",
+        "days"
+      ],
+      "title": "HistoryMeasure",
+      "type": "object"
+    },
+    "HistorySession": {
+      "additionalProperties": false,
+      "description": "One recorded session (a drum session, one game, a breathing round, a walk, one dial answer, one morning's\nwatch summary) with its own numbers.",
+      "properties": {
+        "device": {
+          "enum": [
+            "robot",
+            "phone",
+            "mac",
+            "glasses",
+            "watch",
+            "web"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "description": "the observation's id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "which kind of session, where one measure lists several (a ritual step: Breathing, Drumming)"
+        },
+        "sim": {
+          "default": false,
+          "type": "boolean"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/HistoryValue"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "games: a practice session, left out of the day's value"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "device"
+      ],
+      "title": "HistorySession",
+      "type": "object"
+    },
+    "HistoryUsual": {
+      "additionalProperties": false,
+      "description": "The person's own usual range for a measure, from their own earlier days. A range and nothing else.",
+      "properties": {
+        "high": {
+          "type": "number"
+        },
+        "low": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "low",
+        "high"
+      ],
+      "title": "HistoryUsual",
+      "type": "object"
+    },
+    "HistoryValue": {
+      "additionalProperties": false,
+      "description": "One number of one session, ready to show.",
+      "properties": {
+        "format": {
+          "default": "number",
+          "enum": [
+            "number",
+            "clock",
+            "percent",
+            "duration"
+          ],
+          "type": "string"
+        },
+        "key": {
+          "description": "payload field, e.g. tempo_bpm",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "value"
+      ],
+      "title": "HistoryValue",
+      "type": "object"
+    },
     "HrvSession": {
       "additionalProperties": false,
       "properties": {
@@ -3612,6 +5702,202 @@
       "title": "HubCmd",
       "type": "object"
     },
+    "HubTrace": {
+      "additionalProperties": false,
+      "description": "`raw.hub.trace`: what Kaiku just did, live, for the \"Kaiku bot\" tab of the person's own apps on the home\nnetwork. Local only (raw.* never leaves the home; QoS 0, not retained, not stored). It carries Kaiku's OWN\nlines and the names of the tools the voice called. Never the person's words, a system instruction, or a tool's\narguments or result: `text` exists for `said` alone and `heard` carries nothing but its kind (validated).",
+      "properties": {
+        "bpm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "music song / game level: its tempo"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "enum": [
+                "script",
+                "live",
+                "cached_voice",
+                "notebook",
+                "gemma",
+                "flash",
+                "argon",
+                "rule"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "said: how it was spoken (script | live | cached_voice). tool: who answered, only when the cloud's result says so"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a short machine word. session: open | close. music: start | song | hush | stop. game: level:<n> | your_turn | band:<perfect|great|nice|again>"
+        },
+        "kind": {
+          "enum": [
+            "said",
+            "heard",
+            "tool",
+            "session",
+            "game",
+            "music"
+          ],
+          "type": "string"
+        },
+        "ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tool: how long the call took"
+        },
+        "ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "said only: Kaiku's own words (a scripted line, or the Live voice's reply as its output transcription gives it), cut at 300 characters"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tool only: the name of the tool the voice called"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "HubTrace",
+      "type": "object"
+    },
+    "InsightChange": {
+      "additionalProperties": false,
+      "description": "One thing that is different on a day, pointing at its node. Text and order are written by code.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "care",
+            "moved_away",
+            "came_back",
+            "better",
+            "missed",
+            "first",
+            "kept"
+          ],
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "where it sits in the order of the change, when the course has one: 'first to move', '1 day after the first change' (order in time, never cause)",
+          "maxLength": 80,
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "kind",
+        "text"
+      ],
+      "title": "InsightChange",
+      "type": "object"
+    },
+    "InsightDomain": {
+      "additionalProperties": false,
+      "description": "A neighbourhood of the graph: what a group of nodes is about, and where it sits around the person. Declared\nonce in config/kaiku.toml [graph]; the same for every person.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 60,
+          "type": "string"
+        },
+        "place": {
+          "enum": [
+            "n",
+            "ne",
+            "e",
+            "se",
+            "s",
+            "sw",
+            "w",
+            "nw"
+          ],
+          "type": "string"
+        },
+        "short": {
+          "maxLength": 24,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "short",
+        "place"
+      ],
+      "title": "InsightDomain",
+      "type": "object"
+    },
     "InsightEdge": {
       "additionalProperties": false,
       "properties": {
@@ -3634,6 +5920,14 @@
           ],
           "type": "string"
         },
+        "on": {
+          "description": "the days this link is about, oldest first: the day a measure followed, the days two measures were away together, the day it came back",
+          "items": {
+            "format": "date",
+            "type": "string"
+          },
+          "type": "array"
+        },
         "rel": {
           "enum": [
             "has_signal",
@@ -3648,11 +5942,19 @@
             "kept_through",
             "slipped_during",
             "after",
-            "talked_about"
+            "talked_about",
+            "produces",
+            "about"
           ],
           "type": "string"
         },
         "src": {
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "a few words for a badge: '+1 day', 'first'",
+          "maxLength": 24,
           "type": "string"
         },
         "weight": {
@@ -3683,6 +5985,20 @@
               "shared_conversations"
             ],
             "type": "string"
+          },
+          "type": "array"
+        },
+        "days": {
+          "description": "every calendar day from the first to the last day with data inside the graph's window, oldest first",
+          "items": {
+            "$ref": "#/$defs/InsightGraphDay"
+          },
+          "type": "array"
+        },
+        "domains": {
+          "description": "the neighbourhoods, in declared order",
+          "items": {
+            "$ref": "#/$defs/InsightDomain"
           },
           "type": "array"
         },
@@ -3725,9 +6041,48 @@
       "title": "InsightGraph",
       "type": "object"
     },
+    "InsightGraphDay": {
+      "additionalProperties": false,
+      "description": "One day of the graph's record: what changed that day and how many measures were away from usual.",
+      "properties": {
+        "away": {
+          "description": "measures away from their usual that day",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/InsightChange"
+          },
+          "type": "array"
+        },
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "recorded": {
+          "description": "at least one observation or care action that day",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "date",
+        "recorded",
+        "away"
+      ],
+      "title": "InsightGraphDay",
+      "type": "object"
+    },
     "InsightNode": {
       "additionalProperties": false,
       "properties": {
+        "days": {
+          "description": "oldest first, within `InsightGraph.days`",
+          "items": {
+            "$ref": "#/$defs/InsightNodeDay"
+          },
+          "type": "array"
+        },
         "detail": {
           "anyOf": [
             {
@@ -3739,6 +6094,11 @@
             }
           ],
           "default": null
+        },
+        "domain": {
+          "default": "",
+          "description": "id of the `InsightGraph.domains` entry this node is about; empty for the person and the signal groups (who sent it is not what it is about)",
+          "type": "string"
         },
         "evidence": {
           "description": "recorded days / observations / attempts behind this node",
@@ -3791,6 +6151,44 @@
         "evidence"
       ],
       "title": "InsightNode",
+      "type": "object"
+    },
+    "InsightNodeDay": {
+      "additionalProperties": false,
+      "description": "What one graph node has on one day of the record, by the same code as the course, the trends band and the\ndaily account. A day with nothing for the node has no entry.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "text": {
+          "description": "one plain clause by code: '2 of 5, below their usual 4 of 5'",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "tone": {
+          "default": "unknown",
+          "description": "measure: that day's reading against that day's own usual (worse = away from usual, better = beyond usual on the favourable side, similar = within usual, unknown = no personal usual yet); routine: similar = kept, worse = missed on a recorded day; every other kind: unknown (recorded, not judged)",
+          "enum": [
+            "better",
+            "worse",
+            "similar",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "default": "",
+          "description": "short printed form: '2 of 5', '07:22', 'missed'",
+          "maxLength": 32,
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "text"
+      ],
+      "title": "InsightNodeDay",
       "type": "object"
     },
     "IntelligenceHealth": {
@@ -3990,6 +6388,13 @@
       "additionalProperties": false,
       "description": "GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when\ntoday's was answered, or on an extra-gentle day with nothing to talk about.",
       "properties": {
+        "agreed": {
+          "description": "what the person said yes to today, on any device (D50), oldest first. While one is open or started the invitation waits (`invitation` is null)",
+          "items": {
+            "$ref": "#/$defs/AgreedActivity"
+          },
+          "type": "array"
+        },
         "home_id": {
           "type": "string"
         },
@@ -4905,6 +7310,11 @@
           },
           "type": "array"
         },
+        "scored": {
+          "default": true,
+          "description": "false = shown and citable against the person's usual, never part of the group's verdict (criteria `role = \"shown\"`, or weight 0)",
+          "type": "boolean"
+        },
         "source": {
           "enum": [
             "robot",
@@ -4952,6 +7362,13 @@
             "count"
           ],
           "type": "string"
+        },
+        "at_least": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "payload minimums: a reading counts only when each named numeric payload field is at least this (e.g. coverage, samples). The record is still stored and listed with its provenance",
+          "type": "object"
         },
         "baseline_days": {
           "anyOf": [
@@ -5084,6 +7501,15 @@
             }
           ],
           "default": null
+        },
+        "role": {
+          "default": "scored",
+          "description": "shown = compared with the person's usual, charted and citable, never part of a verdict (no vote, no sufficiency, no coverage) and not in the rule version. Delete the line to let the metric vote with its weight",
+          "enum": [
+            "scored",
+            "shown"
+          ],
+          "type": "string"
         },
         "unit": {
           "default": "",
@@ -6103,6 +8529,58 @@
         "summary"
       ],
       "title": "PeriodComparison",
+      "type": "object"
+    },
+    "PersonHistory": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/history?home_id=&days= — the person's own numbers, as a health app shows them: every measure\nthe home has produced, from every device, by local day, with the latest sessions one tap away. Groups come in\na fixed order (robot, games, walks, checkins, sleep_body, mac, camera); a group or measure with no data in the\nwindow is left out. `camera` holds the face signs counted with \"Camera during activities\" on (D52): her own\nnumbers like every other group, never a word for what they might mean. It is the one person-facing place where numbers are shown (D48), and it carries numbers only:\nnever a state, a verdict, a score against the usual, a flag, a weight, a direction word, anything from the\npractitioner's review, a safety flag or a questionnaire answer.",
+      "properties": {
+        "days": {
+          "description": "the window asked for",
+          "maximum": 90,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "first_day": {
+          "format": "date",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/HistoryGroup"
+          },
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "last_day": {
+          "format": "date",
+          "type": "string"
+        },
+        "sim": {
+          "default": false,
+          "description": "the window contains simulated readings",
+          "type": "boolean"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "days",
+        "first_day",
+        "last_day",
+        "timezone",
+        "groups",
+        "generated_at"
+      ],
+      "title": "PersonHistory",
       "type": "object"
     },
     "Phq9": {
@@ -8304,6 +10782,184 @@
       "title": "StateSpec",
       "type": "object"
     },
+    "StreamAgreed": {
+      "additionalProperties": false,
+      "description": "SSE `event: agreed` — an agreed activity appeared or changed. Ids and kinds only: read the sentence with\nGET /v1/me/invitation. `open`: just agreed (show it, post the notification). `removed`: it is gone (take the\ncard and any pending notification away).",
+      "properties": {
+        "day": {
+          "format": "date",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "type": "string"
+        },
+        "on": {
+          "description": "screens that can open it",
+          "items": {
+            "enum": [
+              "robot",
+              "glasses",
+              "iphone",
+              "mac",
+              "web"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "enum": [
+                "open",
+                "started",
+                "done",
+                "put_aside"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "removed",
+              "type": "string"
+            }
+          ]
+        },
+        "surface": {
+          "description": "where it was agreed",
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "when": {
+          "default": "now",
+          "enum": [
+            "now",
+            "later"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "state",
+        "surface",
+        "day"
+      ],
+      "title": "StreamAgreed",
+      "type": "object"
+    },
+    "StreamDay": {
+      "additionalProperties": false,
+      "description": "SSE `event: day` — new observations were stored for this home: what a screen shows about today may have\nchanged (a check-in on the robot, a walk, a game). Types and senders only, never a value.",
+      "properties": {
+        "day": {
+          "description": "the local day the newest of them belongs to",
+          "format": "date",
+          "type": "string"
+        },
+        "sources": {
+          "description": "who sent them, e.g. \"hub\", \"phone\"",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "types": {
+          "description": "observation types, e.g. \"obs.self_report\"",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "day"
+      ],
+      "title": "StreamDay",
+      "type": "object"
+    },
+    "StreamHello": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/stream, first frame of every connection (SSE `event: hello`, no id). `resync: true`: the\n`Last-Event-ID` the client sent could not be continued (another process, or too long ago), so events may\nhave been missed: read `/v1/me`, `/v1/me/invitation` and whatever else the screen shows again.",
+      "properties": {
+        "heartbeat_s": {
+          "description": "a `ping` at least this often; no frame for well over twice this long means the connection is dead: reconnect with Last-Event-ID",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "last_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "id of the newest event for this home, if any"
+        },
+        "replayed": {
+          "default": 0,
+          "description": "events sent again right after this frame",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resync": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "home_id",
+        "heartbeat_s"
+      ],
+      "title": "StreamHello",
+      "type": "object"
+    },
+    "StreamInvitation": {
+      "additionalProperties": false,
+      "description": "SSE `event: invitation` — today's invitation was answered on some device: take its card away.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "const": "answered",
+          "default": "answered",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "StreamInvitation",
+      "type": "object"
+    },
     "SuggestNudge": {
       "additionalProperties": false,
       "properties": {
@@ -8324,12 +10980,210 @@
       "title": "SuggestNudge",
       "type": "object"
     },
+    "TapBack": {
+      "additionalProperties": false,
+      "description": "Robot rhythm game \"Tap it back\" (D51): Kaiku plays a short song, it goes quiet, she taps its beat from memory.\nThe tempo is given to her, so this is NOT her own spontaneous tempo (that is obs.drum_session) and no metric in\nconfig/criteria.toml reads it: it is stored for her own History and feeds no verdict.",
+      "properties": {
+        "duration_s": {
+          "description": "from the first song to the last band",
+          "minimum": 0,
+          "type": "number"
+        },
+        "error_pct": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean over the levels that have a tapped tempo"
+        },
+        "levels": {
+          "items": {
+            "$ref": "#/$defs/TapBackLevel"
+          },
+          "maxItems": 9,
+          "minItems": 1,
+          "type": "array"
+        },
+        "levels_passed": {
+          "description": "levels whose band is nice, great or perfect",
+          "maximum": 9,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "levels_played": {
+          "maximum": 9,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rejected_taps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "double-triggers dropped by the refractory window"
+        },
+        "song": {
+          "default": "music",
+          "description": "how the tempo was given: generated music, the hub's own plain beat, or the head's light only",
+          "enum": [
+            "music",
+            "beat",
+            "light"
+          ],
+          "type": "string"
+        },
+        "steadiness": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mean over the levels that have one"
+        },
+        "taps": {
+          "description": "taps counted over every try",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "levels",
+        "levels_played",
+        "levels_passed",
+        "taps",
+        "duration_s"
+      ],
+      "title": "TapBack",
+      "type": "object"
+    },
+    "TapBackLevel": {
+      "additionalProperties": false,
+      "description": "One level of Tap it back: the song's tempo and the try that counted (the closer one when a level was replayed).",
+      "properties": {
+        "band": {
+          "enum": [
+            "perfect",
+            "great",
+            "nice",
+            "again"
+          ],
+          "type": "string"
+        },
+        "beat": {
+          "default": "beat",
+          "description": "half / double = she tapped every other beat, or two to a beat, and was compared with that",
+          "enum": [
+            "beat",
+            "half",
+            "double"
+          ],
+          "type": "string"
+        },
+        "error_pct": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "|tapped - target| / target x 100, against the beat level named in `beat`; None with no tempo"
+        },
+        "level": {
+          "maximum": 9,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "steadiness": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1 - spread of the gaps between taps"
+        },
+        "tapped_bpm": {
+          "anyOf": [
+            {
+              "maximum": 400,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "median gap between her taps as a tempo; None = too few taps to call one"
+        },
+        "taps": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target_bpm": {
+          "description": "the tempo of the song Kaiku played",
+          "exclusiveMinimum": 0,
+          "maximum": 400,
+          "type": "number"
+        },
+        "tries": {
+          "description": "times the level was played (1 = no replay)",
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "level",
+        "target_bpm",
+        "taps",
+        "band",
+        "tries"
+      ],
+      "title": "TapBackLevel",
+      "type": "object"
+    },
     "TaskObservationsResponse": {
       "additionalProperties": false,
       "properties": {
         "computed_at": {
           "format": "date-time",
           "type": "string"
+        },
+        "face_signs": {
+          "description": "obs.face_signs of the same window, newest first (D52): `payload.ref` names the task session each belongs to. Movements counted on the device; never an emotion",
+          "items": {
+            "$ref": "#/$defs/Envelope_FaceSigns_"
+          },
+          "maxItems": 100,
+          "type": "array"
         },
         "observations": {
           "items": {
@@ -8838,6 +11692,20 @@
           "format": "date",
           "type": "string"
         },
+        "daylight_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "time in daylight over the previous day, minutes (Apple Watch only; absent otherwise)"
+        },
         "device": {
           "enum": [
             "apple_watch",
@@ -8845,6 +11713,20 @@
             "phone_only"
           ],
           "type": "string"
+        },
+        "distance_km": {
+          "anyOf": [
+            {
+              "maximum": 300,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walking + running distance over the previous day (00:00 to 00:00 local, the window of steps), km"
         },
         "exercise_min": {
           "anyOf": [
@@ -8884,6 +11766,48 @@
             }
           ],
           "default": null
+        },
+        "sleep_awake_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes awake between first falling asleep and the last waking; absent when the source wrote none"
+        },
+        "sleep_core_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of core sleep last night"
+        },
+        "sleep_deep_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of deep sleep last night; the three stages are sent together or not at all (0 allowed)"
         },
         "sleep_midpoint_min": {
           "anyOf": [
@@ -8927,6 +11851,20 @@
           "default": null,
           "description": "1 = same sleep times every night"
         },
+        "sleep_rem_min": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "minutes of REM sleep last night"
+        },
         "steps": {
           "anyOf": [
             {
@@ -8939,6 +11877,20 @@
             }
           ],
           "default": null
+        },
+        "walking_hr_bpm": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 250,
+              "exclusiveMinimum": 20,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "average walking heart rate over the previous day"
         }
       },
       "required": [

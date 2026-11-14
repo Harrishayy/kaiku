@@ -18,13 +18,13 @@
 #   banned_phrases  regexes (on normalised, lower-case text) the linter rejects on this surface only
 #
 # Tool names (registry: kaiku_contracts/companion_tools.py): record_dial start_activity log_walk_moment remember recall forget suggest_nudge
-# send_friend_ping start_phq9 express end_session look_at_this feel suggest_activity set_walk_goal
+# send_friend_ping start_phq9 express end_session look_at_this feel suggest_activity set_walk_goal agree_activity
 
 [surface.robot]
 label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
-tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel"]
+tools = ["record_dial", "start_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel"]
 activities = ["breathe", "drum"]
 target_words = 20
 max_words = 30
@@ -43,7 +43,7 @@ banned_phrases = []
 label = "a voice in the person's glasses while they walk outside"
 modality = "voice"
 body = { eyes = false, ear = false, glow = false, head_pan = false, display = false, cards = false, speaker = true, mic = true, camera = "only while the person has turned on Let Kaiku see: about one still picture a second, told to you by a context event" }
-tools = ["record_dial", "start_activity", "set_walk_goal", "log_walk_moment", "remember", "recall", "forget", "suggest_nudge", "express", "end_session", "look_at_this", "feel"]
+tools = ["record_dial", "start_activity", "agree_activity", "set_walk_goal", "log_walk_moment", "remember", "recall", "forget", "suggest_nudge", "express", "end_session", "look_at_this", "feel"]
 activities = ["walk", "light_hunt"]
 target_words = 8
 max_words = 16
@@ -97,7 +97,7 @@ rules = [
 label = "the Kaiku pebble on the person's phone"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "suggest_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
+tools = ["record_dial", "start_activity", "suggest_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
 activities = ["breathe", "tell", "walk", "lantern", "seeds", "watering", "pebbles", "firefly"]
 target_words = 20
 max_words = 35
@@ -116,7 +116,7 @@ banned_phrases = []
 label = "the Kaiku pebble in the person's menu bar"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "suggest_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
+tools = ["record_dial", "start_activity", "suggest_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
 activities = ["breathe", "tell", "lantern", "seeds", "watering", "pebbles", "firefly"]
 target_words = 20
 max_words = 35
@@ -134,7 +134,7 @@ banned_phrases = ["(?:what|which) (?:apps?|sites?|websites?) (?:were|are) you"]
 label = "Kaiku on the person's /me page"
 modality = "text"
 body = { eyes = true, ear = false, glow = false, head_pan = false, display = true, cards = true, speaker = false, mic = false, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
+tools = ["record_dial", "start_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
 activities = []
 target_words = 30
 max_words = 60

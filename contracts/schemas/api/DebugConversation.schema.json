@@ -1,0 +1,234 @@
+{
+  "$defs": {
+    "DebugFeel": {
+      "additionalProperties": false,
+      "description": "One `feel` call: enums only, never what was said.",
+      "properties": {
+        "depth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth"
+        },
+        "energy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "offered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan carried an offer",
+          "title": "Offered"
+        },
+        "stance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the plan's stance; null for calls stored before it was kept",
+          "title": "Stance"
+        },
+        "tone": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tone",
+          "type": "array"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "valence": {
+          "title": "Valence",
+          "type": "string"
+        },
+        "via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Via"
+        }
+      },
+      "required": [
+        "ts",
+        "kind",
+        "valence"
+      ],
+      "title": "DebugFeel",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One companion conversation that started that day. Never transcripts, topics or words.",
+  "properties": {
+    "billed_minutes": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Live minutes the budget ledger counts for it",
+      "title": "Billed Minutes"
+    },
+    "end": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End"
+    },
+    "feel": {
+      "items": {
+        "$ref": "#/$defs/DebugFeel"
+      },
+      "title": "Feel",
+      "type": "array"
+    },
+    "intent": {
+      "enum": [
+        "ritual",
+        "checkin",
+        "walk",
+        "breathe",
+        "talk",
+        "break"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "minutes": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Minutes"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "completed",
+            "skipped",
+            "ended_early",
+            "crisis",
+            "offline"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "how it ended; null = never closed",
+      "title": "Outcome"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "start": {
+      "format": "date-time",
+      "title": "Start",
+      "type": "string"
+    },
+    "surface": {
+      "enum": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ],
+      "title": "Surface",
+      "type": "string"
+    },
+    "tools": {
+      "description": "tool names: in call order while the conversation is open, one of each once the device has uploaded it",
+      "items": {
+        "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "tools_in_order": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "true = `tools` is the call order (repeats kept); false = the device's upload replaced it with one of each, sorted by name; null = cannot be told (a conversation uploaded before this was recorded)",
+      "title": "Tools In Order"
+    },
+    "transcript_kept": {
+      "default": false,
+      "title": "Transcript Kept",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "session_id",
+    "surface",
+    "intent",
+    "start"
+  ],
+  "title": "DebugConversation",
+  "type": "object"
+}

@@ -1,5 +1,83 @@
 {
   "$defs": {
+    "Envelope_FaceSigns_": {
+      "additionalProperties": false,
+      "properties": {
+        "home_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "title": "Home Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/FaceSigns"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        },
+        "sim": {
+          "default": false,
+          "title": "Sim",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "head",
+            "sensors",
+            "hub",
+            "friendlink",
+            "glasses",
+            "laptop",
+            "phone",
+            "cloud",
+            "sim"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "home_id",
+        "source",
+        "type",
+        "payload"
+      ],
+      "title": "Envelope[FaceSigns]",
+      "type": "object"
+    },
     "Envelope_PlaySession_": {
       "additionalProperties": false,
       "properties": {
@@ -76,6 +154,222 @@
         "payload"
       ],
       "title": "Envelope[PlaySession]",
+      "type": "object"
+    },
+    "FaceSigns": {
+      "additionalProperties": false,
+      "description": "Face signs during one task (D52), with the person's opt-in \"Camera during activities\": movements of the face\nthat the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in\nwhich the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these\nnumbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),\nnot emotions: nothing here says what the person felt, and no field may. Values are comparable only within one\n`method` (and best within one task): never pool the two methods into one usual. A sign the method cannot\nmeasure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement\nand expression range come from both methods on different scales. The apps also leave out blinks under 20 s of\nface time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when\ncoverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.\nCounts toward the \"laptop\" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not\nscored.",
+      "properties": {
+        "blinks_per_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "blinks per minute of face time",
+          "title": "Blinks Per Min"
+        },
+        "brow_furrow_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with lowered, drawn brows",
+          "title": "Brow Furrow Share"
+        },
+        "brow_raise_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with raised brows",
+          "title": "Brow Raise Share"
+        },
+        "coverage": {
+          "description": "share of sampled frames with exactly one usable face",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage",
+          "type": "number"
+        },
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "duration_s": {
+          "description": "seconds the camera sampled",
+          "maximum": 86400,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "expression_range": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "overall variability of expression over the session",
+          "title": "Expression Range"
+        },
+        "gaze_on_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames looking toward the screen",
+          "title": "Gaze On Share"
+        },
+        "head_movement": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how much the head moved; the scale belongs to the method",
+          "title": "Head Movement"
+        },
+        "method": {
+          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)",
+          "enum": [
+            "arkit_blendshapes",
+            "vision_landmarks"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "mouth_open_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with the mouth open",
+          "title": "Mouth Open Share"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "id of the obs.play_session (or other record) of the same task",
+          "title": "Ref"
+        },
+        "samples": {
+          "description": "frames looked at; none is kept",
+          "minimum": 1,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "smile_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with a smile above the method's threshold",
+          "title": "Smile Share"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "distinct smiles",
+          "title": "Smiles"
+        },
+        "task": {
+          "description": "the task it belongs to: a game (PlayGame) or the check-in chat",
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell",
+            "pebbles",
+            "lantern",
+            "seeds",
+            "watering",
+            "check_in"
+          ],
+          "title": "Task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "device",
+        "method",
+        "duration_s",
+        "samples",
+        "coverage"
+      ],
+      "title": "FaceSigns",
       "type": "object"
     },
     "PlaySession": {
@@ -599,6 +893,15 @@
       "format": "date-time",
       "title": "Computed At",
       "type": "string"
+    },
+    "face_signs": {
+      "description": "obs.face_signs of the same window, newest first (D52): `payload.ref` names the task session each belongs to. Movements counted on the device; never an emotion",
+      "items": {
+        "$ref": "#/$defs/Envelope_FaceSigns_"
+      },
+      "maxItems": 100,
+      "title": "Face Signs",
+      "type": "array"
     },
     "observations": {
       "items": {

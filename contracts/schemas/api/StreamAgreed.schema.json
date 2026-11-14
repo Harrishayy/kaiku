@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "description": "SSE `event: agreed` — an agreed activity appeared or changed. Ids and kinds only: read the sentence with\nGET /v1/me/invitation. `open`: just agreed (show it, post the notification). `removed`: it is gone (take the\ncard and any pending notification away).",
+  "properties": {
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "breathe",
+        "tell",
+        "walk",
+        "lantern",
+        "seeds",
+        "watering",
+        "pebbles",
+        "firefly",
+        "drum",
+        "light_hunt"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "on": {
+      "description": "screens that can open it",
+      "items": {
+        "enum": [
+          "robot",
+          "glasses",
+          "iphone",
+          "mac",
+          "web"
+        ],
+        "type": "string"
+      },
+      "title": "On",
+      "type": "array"
+    },
+    "state": {
+      "anyOf": [
+        {
+          "enum": [
+            "open",
+            "started",
+            "done",
+            "put_aside"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "removed",
+          "type": "string"
+        }
+      ],
+      "title": "State"
+    },
+    "surface": {
+      "description": "where it was agreed",
+      "enum": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ],
+      "title": "Surface",
+      "type": "string"
+    },
+    "when": {
+      "default": "now",
+      "enum": [
+        "now",
+        "later"
+      ],
+      "title": "When",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "state",
+    "surface",
+    "day"
+  ],
+  "title": "StreamAgreed",
+  "type": "object"
+}

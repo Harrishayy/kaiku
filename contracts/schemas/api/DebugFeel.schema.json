@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "description": "One `feel` call: enums only, never what was said.",
+  "properties": {
+    "depth": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Depth"
+    },
+    "energy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Energy"
+    },
+    "kind": {
+      "title": "Kind",
+      "type": "string"
+    },
+    "offered": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the plan carried an offer",
+      "title": "Offered"
+    },
+    "stance": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the plan's stance; null for calls stored before it was kept",
+      "title": "Stance"
+    },
+    "tone": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tone",
+      "type": "array"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "valence": {
+      "title": "Valence",
+      "type": "string"
+    },
+    "via": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Via"
+    }
+  },
+  "required": [
+    "ts",
+    "kind",
+    "valence"
+  ],
+  "title": "DebugFeel",
+  "type": "object"
+}

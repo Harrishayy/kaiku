@@ -1,0 +1,97 @@
+{
+  "additionalProperties": false,
+  "description": "Result of the `agree_activity` tool when the yes was kept. A refusal is `ok=false` with `error` (a reason\nthe model can say) and `result {agreed: false, reason}`; nothing is stored then.",
+  "properties": {
+    "agreed": {
+      "const": true,
+      "default": true,
+      "title": "Agreed",
+      "type": "boolean"
+    },
+    "already": {
+      "default": false,
+      "description": "this activity was already agreed and open today: nothing new was added",
+      "title": "Already",
+      "type": "boolean"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "breathe",
+        "tell",
+        "walk",
+        "lantern",
+        "seeds",
+        "watering",
+        "pebbles",
+        "firefly",
+        "drum",
+        "light_hunt"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "listening": {
+      "description": "screens whose app is open right now (the stream is connected): it appeared there this second. The others show it when the app is next opened",
+      "items": {
+        "enum": [
+          "robot",
+          "glasses",
+          "iphone",
+          "mac",
+          "web"
+        ],
+        "type": "string"
+      },
+      "title": "Listening",
+      "type": "array"
+    },
+    "name": {
+      "maxLength": 40,
+      "title": "Name",
+      "type": "string"
+    },
+    "on": {
+      "description": "the person's screens that now show it and can open it",
+      "items": {
+        "enum": [
+          "robot",
+          "glasses",
+          "iphone",
+          "mac",
+          "web"
+        ],
+        "type": "string"
+      },
+      "title": "On",
+      "type": "array"
+    },
+    "when": {
+      "default": "now",
+      "enum": [
+        "now",
+        "later"
+      ],
+      "title": "When",
+      "type": "string"
+    },
+    "where": {
+      "description": "say it this way: \"your phone and your Mac\"",
+      "maxLength": 60,
+      "title": "Where",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "on",
+    "where"
+  ],
+  "title": "AgreedResult",
+  "type": "object"
+}

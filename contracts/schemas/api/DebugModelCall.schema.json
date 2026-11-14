@@ -1,0 +1,116 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cache_hit": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "null: the ledger does not record cache hits",
+      "title": "Cache Hit"
+    },
+    "est_usd": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the spend ledger's estimate for this call, when one row matches it by model, task and time",
+      "title": "Est Usd"
+    },
+    "fallback": {
+      "default": false,
+      "title": "Fallback",
+      "type": "boolean"
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Ms"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "provider": {
+      "description": "gemini | gemma-hosted | modal | none (a deterministic or template answer)",
+      "title": "Provider",
+      "type": "string"
+    },
+    "route": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Route"
+    },
+    "task": {
+      "title": "Task",
+      "type": "string"
+    },
+    "tokens_in": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "not recorded by the ledger today: null",
+      "title": "Tokens In"
+    },
+    "tokens_out": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tokens Out"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ts",
+    "provider",
+    "model",
+    "task",
+    "ok"
+  ],
+  "title": "DebugModelCall",
+  "type": "object"
+}

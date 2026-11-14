@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "by_code": {
+      "default": false,
+      "description": "inside a Gemma read: this line is code's own, put there because the model left the measure out or its sentence failed a check",
+      "title": "By Code",
+      "type": "boolean"
+    },
+    "cites": {
+      "description": "DebugFact ids (the model is asked for six at most)",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Cites",
+      "type": "array"
+    },
+    "text": {
+      "maxLength": 500,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "cites"
+  ],
+  "title": "DebugClaim",
+  "type": "object"
+}

@@ -1,0 +1,208 @@
+{
+  "$defs": {
+    "HubTrace": {
+      "additionalProperties": false,
+      "description": "`raw.hub.trace`: what Kaiku just did, live, for the \"Kaiku bot\" tab of the person's own apps on the home\nnetwork. Local only (raw.* never leaves the home; QoS 0, not retained, not stored). It carries Kaiku's OWN\nlines and the names of the tools the voice called. Never the person's words, a system instruction, or a tool's\narguments or result: `text` exists for `said` alone and `heard` carries nothing but its kind (validated).",
+      "properties": {
+        "bpm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "music song / game level: its tempo",
+          "title": "Bpm"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "enum": [
+                "script",
+                "live",
+                "cached_voice",
+                "notebook",
+                "gemma",
+                "flash",
+                "argon",
+                "rule"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "said: how it was spoken (script | live | cached_voice). tool: who answered, only when the cloud's result says so",
+          "title": "By"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a short machine word. session: open | close. music: start | song | hush | stop. game: level:<n> | your_turn | band:<perfect|great|nice|again>",
+          "title": "Detail"
+        },
+        "kind": {
+          "enum": [
+            "said",
+            "heard",
+            "tool",
+            "session",
+            "game",
+            "music"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tool: how long the call took",
+          "title": "Ms"
+        },
+        "ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ok"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "said only: Kaiku's own words (a scripted line, or the Live voice's reply as its output transcription gives it), cut at 300 characters",
+          "title": "Text"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tool only: the name of the tool the voice called",
+          "title": "Tool"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "HubTrace",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/HubTrace"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<raw.hub.trace>",
+  "type": "object"
+}

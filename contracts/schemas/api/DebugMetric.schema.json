@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "DebugBaseline": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "days the baseline is made from",
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "early": {
+          "default": false,
+          "description": "provisional baseline of a young record",
+          "title": "Early",
+          "type": "boolean"
+        },
+        "median": {
+          "title": "Median",
+          "type": "number"
+        },
+        "spread": {
+          "description": "max(1.4826 x MAD, min_mad): what one z unit is",
+          "title": "Spread",
+          "type": "number"
+        }
+      },
+      "required": [
+        "median",
+        "spread",
+        "days"
+      ],
+      "title": "DebugBaseline",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One criteria metric on that day, beside its baseline.",
+  "properties": {
+    "baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DebugBaseline"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "better_days": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Better Days",
+      "type": "integer"
+    },
+    "beyond_today": {
+      "default": false,
+      "description": "this day alone is beyond the threshold in the worse direction",
+      "title": "Beyond Today",
+      "type": "boolean"
+    },
+    "direction": {
+      "description": "criteria worse_when",
+      "enum": [
+        "up",
+        "down"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "drift_days_needed": {
+      "minimum": 1,
+      "title": "Drift Days Needed",
+      "type": "integer"
+    },
+    "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "event_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Event Ids",
+      "type": "array"
+    },
+    "flagged": {
+      "default": false,
+      "description": "counted toward its group's worse weight that day",
+      "title": "Flagged",
+      "type": "boolean"
+    },
+    "id": {
+      "description": "citable id: metric:<name>",
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "obs": {
+      "title": "Obs",
+      "type": "string"
+    },
+    "partial": {
+      "default": false,
+      "description": "today's running total of a summed or counted measure: shown, but not compared or scored until the day is over (no z)",
+      "title": "Partial",
+      "type": "boolean"
+    },
+    "readings": {
+      "default": 0,
+      "description": "envelopes that day that counted toward it",
+      "minimum": 0,
+      "title": "Readings",
+      "type": "integer"
+    },
+    "scored": {
+      "description": "false = observe-only (disabled, weight 0, or criteria role shown): charted, never a vote",
+      "title": "Scored",
+      "type": "boolean"
+    },
+    "scored_days": {
+      "default": 0,
+      "description": "days in the drift window that had a baseline",
+      "minimum": 0,
+      "title": "Scored Days",
+      "type": "integer"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "drifting",
+        "improved",
+        "normal",
+        "insufficient"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the day's value; null = no data that day",
+      "title": "Value"
+    },
+    "weight": {
+      "minimum": 0,
+      "title": "Weight",
+      "type": "number"
+    },
+    "worse_days": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Worse Days",
+      "type": "integer"
+    },
+    "worse_z": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the same, signed so that positive is the worse direction",
+      "title": "Worse Z"
+    },
+    "z": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "(value - median) / spread, as measured",
+      "title": "Z"
+    },
+    "z_threshold": {
+      "title": "Z Threshold",
+      "type": "number"
+    }
+  },
+  "required": [
+    "id",
+    "metric",
+    "label",
+    "source",
+    "obs",
+    "direction",
+    "z_threshold",
+    "status",
+    "drift_days_needed",
+    "weight",
+    "enabled",
+    "scored"
+  ],
+  "title": "DebugMetric",
+  "type": "object"
+}

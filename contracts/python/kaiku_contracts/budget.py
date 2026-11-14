@@ -200,6 +200,23 @@ def live_reservations(path: Path | str | None = None) -> list[dict[str, Any]]:
         c.close()
 
 
+def rows(since: float, until: float, path: Path | str | None = None) -> list[dict[str, Any]]:
+    """Ledger rows with `since <= ts < until`, oldest first (a developer view matches model calls to their
+    estimate with it). Read-only like `live_reservations`: the ledger is never created or written."""
+    file = Path(path) if path is not None else _db_path()
+    if not file.is_file():
+        return []
+    c = sqlite3.connect(f"file:{file}?mode=ro", uri=True, timeout=10)
+    try:
+        found = c.execute("SELECT ts, provider, model, task, component, usd, units FROM spend WHERE ts >= ? AND ts < ?"
+                          " ORDER BY ts, rowid", (since, until)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        c.close()
+    return [dict(zip(("ts", "provider", "model", "task", "component", "usd", "units"), r, strict=True)) for r in found]
+
+
 def bill(token: dict[str, Any], used_s: float, min_minutes: float = 1.0) -> dict[str, float]:
     """What a reservation costs for `used_s` seconds of conversation: whole started minutes, at least
     `min_minutes`, never more than it reserved. Pure."""

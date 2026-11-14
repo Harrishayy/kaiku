@@ -14,6 +14,7 @@ OBS: dict[str, type[BaseModel]] = {
     "obs.self_report": p.SelfReport,
     "obs.hrv_session": p.HrvSession,
     "obs.drum_session": p.DrumSession,
+    "obs.tap_back": p.TapBack,
     "obs.light_level": p.LightLevel,
     "obs.speech_features": p.SpeechFeatures,
     "obs.engagement": p.Engagement,
@@ -25,6 +26,7 @@ OBS: dict[str, type[BaseModel]] = {
     "obs.laptop_session": p.LaptopSession,
     "obs.screen_activity": p.ScreenActivity,
     "obs.play_session": p.PlaySession,
+    "obs.face_signs": p.FaceSigns,
     "obs.wearable_daily": p.WearableDaily,
     "obs.phq9": p.Phq9,
     "obs.intervention_response": p.InterventionResponse,
@@ -42,6 +44,7 @@ RAW: dict[str, type[BaseModel]] = {
     "raw.sensors.button": p.RawButton,
     "raw.sensors.hall": p.RawHall,
     "raw.hub.face": p.RawFace,
+    "raw.hub.trace": p.HubTrace,
 }
 
 CMD: dict[str, type[BaseModel]] = {
@@ -96,6 +99,15 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "obs.self_report": {"item": "mood", "value": 3, "context": "ritual", "channel": "robot"},
     "obs.hrv_session": {"hr_bpm": 68.0, "rmssd_pre_ms": 31.0, "rmssd_post_ms": 42.0, "duration_s": 90.0, "breath_bpm": 6.0},
     "obs.drum_session": {"tempo_bpm": 96.0, "force_mean": 0.55, "duration_s": 45.0, "regularity": 0.8, "taps": 72},
+    "obs.tap_back": {"levels": [
+        {"level": 1, "target_bpm": 102.0, "tapped_bpm": 100.4, "error_pct": 1.6, "steadiness": 0.95, "taps": 8,
+         "band": "perfect", "tries": 1, "beat": "beat"},
+        {"level": 2, "target_bpm": 124.0, "tapped_bpm": 132.5, "error_pct": 6.9, "steadiness": 0.92, "taps": 8,
+         "band": "great", "tries": 1, "beat": "beat"},
+        {"level": 3, "target_bpm": 74.0, "tapped_bpm": 76.1, "error_pct": 2.8, "steadiness": 0.94, "taps": 12,
+         "band": "perfect", "tries": 2, "beat": "beat"}],
+        "levels_played": 3, "levels_passed": 3, "error_pct": 3.8, "steadiness": 0.94, "taps": 40, "rejected_taps": 0,
+        "duration_s": 78.0, "song": "music"},
     "obs.light_level": {"lux_est": 240.0, "window_min": 60.0},
     "obs.speech_features": {"syllables_per_s": 3.9, "pause_ratio": 0.22, "duration_s": 30.0},
     "obs.engagement": {"session_id": "0199b2c4-ritual", "level": 0.58, "confidence": 0.71, "cues_available": 3,
@@ -119,9 +131,16 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "obs.play_session": {"game": "firefly", "device": "phone", "duration_s": 60.0, "reaction_ms_median": 318.0,
                          "reaction_ms_iqr": 58.0, "lapses": 1, "false_taps": 0, "expressivity_index": 0.15,
                          "camera_face_coverage": 0.9, "camera_samples": 120, "camera_method": "vision_landmarks"},
+    "obs.face_signs": {"task": "lantern", "device": "phone", "method": "arkit_blendshapes", "duration_s": 88.0,
+                       "samples": 2640, "coverage": 0.94, "smile_share": 0.12, "smiles": 3, "brow_raise_share": 0.05,
+                       "brow_furrow_share": 0.08, "mouth_open_share": 0.03, "blinks_per_min": 14.5,
+                       "gaze_on_share": 0.91, "head_movement": 0.21, "expression_range": 0.34,
+                       "ref": "0199b2c4-7c1e-7a55-9a3e-2f1d6b7c8e90"},
     "obs.wearable_daily": {"date": "2026-11-14", "sleep_min": 432.0, "sleep_midpoint_min": 195.0, "sleep_regularity": 0.81,
                            "resting_hr_bpm": 61.0, "hrv_sdnn_ms": 46.0, "steps": 6400, "exercise_min": 22.0,
-                           "device": "apple_watch"},
+                           "distance_km": 4.52, "daylight_min": 47.0, "walking_hr_bpm": 98.5,
+                           "sleep_deep_min": 71.0, "sleep_rem_min": 96.0, "sleep_core_min": 265.0,
+                           "sleep_awake_min": 34.0, "device": "apple_watch"},
     "obs.phq9": {"total": 7, "items": [1, 1, 1, 1, 1, 1, 1, 0, 0], "item9_positive": False, "mode": "laptop"},
     "obs.intervention_response": {"activity": "breathe", "pre": {"rmssd_ms": 31.0, "mood": 3},
                                   "post": {"rmssd_ms": 42.0, "mood": 4}, "delta": {"rmssd_ms": 11.0, "mood": 1.0}},
@@ -136,6 +155,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "raw.sensors.button": {"id": "top", "pressed": True},
     "raw.sensors.hall": {"at_home": True},
     "raw.hub.face": {"x_norm": -0.2, "y_norm": 0.1, "size": 0.3, "confidence": 0.93},
+    "raw.hub.trace": {"kind": "said", "text": "How are you today?", "by": "live"},
     "cmd.head": {"eyes": "wide", "pan_mode": "track"},
     "cmd.sensors": {"ppg": "start"},
     "cmd.friendlink": {"ping": {"pattern": "glow"}},
@@ -165,6 +185,43 @@ PLAY_EXAMPLES: dict[str, dict[str, Any]] = {
     "doubtful": {"game": "lantern", "device": "phone", "duration_s": 60.0, "lapses": 14, "false_starts": 2,
                  "trials_n": 24, "valid_n": 9, "input": "touch", "session_index": 7, "warmup": False, "valid": False,
                  "flags": ["few_trials", "interrupted"]},
+}
+
+
+# obs.face_signs beside the main example (D52): what the landmark method sends (signs it cannot measure are absent,
+# never zero), and a session in which no usable face was seen (provenance only).
+FACE_EXAMPLES: dict[str, dict[str, Any]] = {
+    "landmarks": {"task": "firefly", "device": "mac", "method": "vision_landmarks", "duration_s": 58.0, "samples": 870,
+                  "coverage": 0.88, "mouth_open_share": 0.04, "blinks_per_min": 12.5, "head_movement": 0.031,
+                  "expression_range": 0.27},  # no smile, brow or gaze sign from this method; other scales than ARKit
+    "check_in": {"task": "check_in", "device": "phone", "method": "arkit_blendshapes", "duration_s": 142.0,
+                 "samples": 4260, "coverage": 0.97, "smile_share": 0.21, "smiles": 6, "brow_raise_share": 0.11,
+                 "brow_furrow_share": 0.04, "mouth_open_share": 0.38, "blinks_per_min": 19.0, "gaze_on_share": 0.83,
+                 "head_movement": 0.33, "expression_range": 0.52},
+    "no_face": {"task": "pebbles", "device": "phone", "method": "arkit_blendshapes", "duration_s": 74.0,
+                "samples": 2220, "coverage": 0.0},
+}
+
+# cmd.head beside the main example (D51): what only a hub sends. The drum hold for a head that runs its own ritual,
+# the microphone hold of an open conversation, and the help screen of the crisis path (numbers the head has compiled
+# in; never a sound).
+TRACE_EXAMPLES: dict[str, dict[str, Any]] = {
+    "said_script": {"kind": "said", "text": "Your turn.", "by": "cached_voice"},
+    "heard": {"kind": "heard"},
+    "tool": {"kind": "tool", "tool": "feel", "by": "rule", "ms": 412, "ok": True},
+    "session_open": {"kind": "session", "detail": "open"},
+    "game_band": {"kind": "game", "detail": "band:great"},
+    "game_level": {"kind": "game", "detail": "level:2", "bpm": 126.0},
+    "music_song": {"kind": "music", "detail": "song", "bpm": 100.0},
+}
+
+HEAD_EXAMPLES: dict[str, dict[str, Any]] = {
+    "drum_hold": {"drum": "hold", "eyes": "soft", "pan_mode": "sway", "bpm": 96.0},
+    "drum_end": {"drum": "end", "pan_mode": "still"},
+    "mic_open": {"mic": "open"},
+    "mic_close": {"mic": "close"},
+    "help_shown": {"show": "help"},
+    "help_cleared": {"show": "none"},
 }
 
 
