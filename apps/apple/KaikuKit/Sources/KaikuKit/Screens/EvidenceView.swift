@@ -6,7 +6,7 @@ import SwiftUI
 /// counted movement, never that they saw anything; daylight minutes appear only when a reading exists; practice
 /// (simulated) records are labelled; nothing is inferred from a missing record.
 public struct DayEvidence: Equatable, Sendable {
-    public enum Kind: String, Sendable, CaseIterable { case outing, checkin, task, talk, health, robot, mac }
+    public enum Kind: String, Sendable, CaseIterable { case outing, checkin, task, camera, talk, health, robot, mac }
     public enum Sharing: Equatable, Sendable { case numbers, wordsKept, wordsNotKept }
 
     public struct Item: Identifiable, Equatable, Sendable {
@@ -37,7 +37,53 @@ public struct DayEvidence: Equatable, Sendable {
     }
     static let sourceOrder = ["evidence.src.phone", "evidence.src.glasses", "evidence.src.laptop", "evidence.src.robot", "evidence.src.cloud"]
 
+    /// The tasks in which the camera was on today, each once: what the service holds (`obs.face_signs`, and a game
+    /// session of another kind of app that carries camera numbers of its own) and what this device sent. The list
+    /// of this device's own sends makes the line true before the service knows the observation type.
+    struct CameraTasks: Equatable, Sendable {
+        var count: Int
+        var sources: [String]
+        var practice: Bool
+    }
+
+    static func cameraTasks(events: [AnyEnvelope], sent: [CameraChoice.Sent]) -> CameraTasks? {
+        let signs = events.filter { $0.type == "obs.face_signs" }
+        let ids = Set(signs.map(\.id)).union(sent.map(\.id))
+        let refs = Set(signs.compactMap { $0.payload["ref"]?.string }).union(sent.compactMap(\.ref))
+        let alone = events.filter { $0.type == "obs.play_session" && ($0.payload["camera_samples"]?.double ?? 0) > 0 && !refs.contains($0.id) }
+        let count = ids.count + alone.count
+        guard count > 0 else { return nil }
+        var keys = Set((signs + alone).compactMap { sourceKey($0.source) })
+        if !sent.isEmpty { keys.insert(KaikuPlatform.isPhone ? "evidence.src.phone" : "evidence.src.laptop") }
+        let held = Set(signs.map(\.id))
+        let practice = (signs + alone).allSatisfy { $0.sim == true } && sent.filter { !held.contains($0.id) }.allSatisfy(\.sim)
+        return CameraTasks(count: count, sources: sourceOrder.filter(keys.contains), practice: practice)
+    }
+
+    /// The kinds of numbers today's Apple Health summaries hold, in plain words and a fixed order. They are named
+    /// here, not shown: the numbers themselves are in History. Only what a summary really carries is named.
+    static func healthNames(_ events: [AnyEnvelope]) -> [String] {
+        let health = events.filter { $0.type == "obs.wearable_daily" }
+        func has(_ fields: String...) -> Bool { health.contains { e in fields.contains { e.payload[$0]?.double != nil } } }
+        var keys: [String] = []
+        if has("sleep_min", "sleep_midpoint_min") { keys.append("sleep") }
+        if has("sleep_deep_min", "sleep_rem_min", "sleep_core_min") { keys.append("stages") }
+        if has("sleep_awake_min") { keys.append("awake") }
+        if has("resting_hr_bpm") { keys.append("resting") }
+        if has("walking_hr_bpm") { keys.append("walking") }
+        if has("hrv_sdnn_ms") { keys.append("hrv") }
+        if has("steps") { keys.append("steps") }
+        if has("distance_km") { keys.append("distance") }
+        if has("exercise_min") { keys.append("exercise") }
+        if has("daylight_min") { keys.append("daylight") }
+        return keys.map { T("health.name.\($0)") }
+    }
+
     public static func build(events: [AnyEnvelope], talks: Int, transcriptsKept: Bool) -> DayEvidence {
+        build(events: events, talks: talks, transcriptsKept: transcriptsKept, camera: [])
+    }
+
+    static func build(events: [AnyEnvelope], talks: Int, transcriptsKept: Bool, camera: [CameraChoice.Sent]) -> DayEvidence {
         func of(_ types: String...) -> [AnyEnvelope] { events.filter { types.contains($0.type) } }
         func sources(_ ev: [AnyEnvelope], extra: [String] = []) -> [String] {
             let keys = Set(ev.compactMap { sourceKey($0.source) } + extra)
@@ -69,6 +115,11 @@ public struct DayEvidence: Equatable, Sendable {
             items.append(Item(kind: .task, facts: [T("evidence.task.n", n: tasks.count)], sources: sources(tasks),
                               sharing: .numbers, practice: practice(tasks)))
         }
+        if let seen = cameraTasks(events: events, sent: camera) {
+            // Face signs as numbers; the note says what that means and what was never made.
+            items.append(Item(kind: .camera, facts: [T("evidence.camera.n", n: seen.count)], sources: seen.sources,
+                              sharing: .numbers, practice: seen.practice, note: T("evidence.camera.note")))
+        }
         if talks > 0 {
             items.append(Item(kind: .talk, facts: [T("evidence.talk.n", n: talks)],
                               sources: [KaikuPlatform.isPhone ? "evidence.src.phone" : "evidence.src.laptop"],
@@ -76,8 +127,10 @@ public struct DayEvidence: Equatable, Sendable {
         }
         let health = of("obs.wearable_daily")
         if !health.isEmpty {
-            items.append(Item(kind: .health, facts: [T("evidence.health.d")], sources: sources(health), sharing: .numbers,
-                              practice: practice(health)))
+            let names = healthNames(health)
+            items.append(Item(kind: .health,
+                              facts: [names.isEmpty ? T("evidence.health.d") : T("evidence.health.read", ["list": names.joined(separator: ", ")])],
+                              sources: sources(health), sharing: .numbers, practice: practice(health)))
         }
         let robot = of("obs.ritual", "obs.ritual_complete")
         if !robot.isEmpty {
@@ -100,6 +153,7 @@ extension DayEvidence.Kind {
         case .outing: return "figure.walk"
         case .checkin: return "dial.medium.fill"
         case .task: return "sparkles"
+        case .camera: return "camera.fill"
         case .talk: return "bubble.left.and.bubble.right.fill"
         case .health: return "heart.fill"
         case .robot: return "circle.hexagongrid.fill"
@@ -108,7 +162,7 @@ extension DayEvidence.Kind {
     }
     var tone: KTone {
         switch self {
-        case .outing, .health: return .sage
+        case .outing, .health, .camera: return .sage
         case .checkin, .mac: return .sky
         case .task, .robot: return .honey
         case .talk: return .clay
@@ -122,7 +176,8 @@ struct EvidenceSection: View {
     var showsDetailLink = false
 
     var evidence: DayEvidence {
-        DayEvidence.build(events: app.todayEvents, talks: app.talksToday, transcriptsKept: app.consents[.transcripts] == true)
+        DayEvidence.build(events: app.todayEvents, talks: app.talksToday, transcriptsKept: app.consents[.transcripts] == true,
+                          camera: app.cameraChoice.sentToday())
     }
 
     var body: some View {

@@ -93,6 +93,9 @@ final class CheckInChat {
     static let reopening = "[the person wants to keep talking after today's check-in]"
 
     let talk: TalkModel
+    /// The check-in's camera, for the choice "Camera during activities": beside the chat from its start to its
+    /// end, only while this screen is in front. Face signs as numbers; nothing of it goes to the conversation.
+    let camera: TaskCamera
     private(set) var state = CheckInState()
     var values: [DialItem: Int] = [.mood: 3, .energy: 3, .sleep: 3]
     /// The dial being turned (Kaiku's ear follows it); nil while chatting.
@@ -108,11 +111,17 @@ final class CheckInChat {
     @ObservationIgnored private var seenShape = false
     @ObservationIgnored private var observing = false
     @ObservationIgnored private var kaikuLinesAtDials = 0
+    /// The screen was left (another tab, back, the way on): this check-in is over and its screen goes with it.
+    private(set) var left = false
+    /// She turned the camera off for this check-in: "Keep talking" does not turn it back on.
+    @ObservationIgnored private var cameraOffByHer = false
 
-    init(talk: TalkModel? = nil) {
+    init(talk: TalkModel? = nil, camera: TaskCamera? = nil) {
         self.talk = talk ?? TalkModel(opening: Self.opening) {
             TalkModel.liveConversation(intent: .checkin, purpose: .check_in, typedWithoutMic: true)
         }
+        self.camera = camera ?? TaskCamera()
+        self.camera.blocked = { [weak self] in TaskCamera.busyElsewhere(own: self?.talk) }
         self.talk.silentGreeting = "checkin.hello"
         self.talk.allowsQuestionnaire = false
         self.talk.scriptedKeys = ["checkin.typed.offline", "talk.scripted.2"]
@@ -147,21 +156,53 @@ final class CheckInChat {
 
     // MARK: lifecycle
 
+    /// The screen is showing: the chat opens. An ended check-in never opens a conversation again, whatever brings
+    /// its screen back (the tab reappearing, a tab switch, the app returning from the background): the end screen
+    /// has no call bar, so a conversation behind it would be one nobody can see. Only the person's own "keep
+    /// talking" starts a new one (`keepTalking`).
     func start(app: AppModel) async {
         self.app = app
+        guard state.end == nil, !left else { return }
         talk.onDial = { [weak self] item, value in self?.spoken(item, value) }
         talk.onActivity = { [weak self] _ in self?.run(.closed) }
         if !observing { observing = true; observe() }
         await talk.start(app: app)
         sync()
+        await beginCamera()
+    }
+
+    // MARK: the camera beside the check-in
+
+    /// Opens the camera for this check-in if her choice is on, the check-in is still going and she has not turned
+    /// it off here. The system's own permission question comes with the first task that has the choice on.
+    func beginCamera() async {
+        guard let app, state.end == nil, !left, !cameraOffByHer, camera.state == .off else { return }
+        await camera.begin(allowed: app.cameraOn)
+    }
+
+    /// Her choice changed while the check-in is open (the switch, "pause everything", the one-time question).
+    func cameraChoiceChanged(on: Bool) async {
+        if on { await beginCamera() } else { camera.cancel() }
+    }
+
+    /// The check-in is over: the camera closes at once. What it measured is sent only for a check-in that counted
+    /// (she took part); one she only opened and left sends nothing.
+    private func endCamera() {
+        if camera.state == .stopped { cameraOffByHer = true }
+        guard camera.state != .off else { return }
+        let seen = camera.finish()
+        guard state.ticked, let seen, let app else { return }
+        Task { await app.recordFaceSigns(seen, task: FaceSigns.checkIn) }
     }
 
     /// Leaving the screen: a chat the person took part in counts, even when it had not wrapped up yet.
     func leave() {
         sync()
         if state.end == nil { run(.closed) }
+        camera.cancel()        // nothing stays open behind a screen that was left
         observing = false
-        talk.stop()
+        left = true
+        talk.retire()
     }
 
     // MARK: the person's moves
@@ -171,7 +212,10 @@ final class CheckInChat {
         sync()
     }
 
-    func toggleMic() { talk.toggleMic() }
+    func toggleMic() {
+        guard state.end == nil else { return }        // an end screen never has an open microphone
+        talk.toggleMic()
+    }
 
     /// "That's it": the dials count on their own. Kaiku answers what was dialled in one warm line: in its Live
     /// voice when a conversation is open, otherwise the scripted line (Gemini voice line when the service has it).
@@ -183,8 +227,9 @@ final class CheckInChat {
         talk.planCardAtOnce = true            // nothing more is being said: an offer may show on the end screen
         run(.dials(mood: v[.mood] ?? 3, energy: v[.energy] ?? 3, sleep: v[.sleep] ?? 3))
         if talk.hasLive {
-            talk.conversation.setMuted(true)      // an end screen never has an open microphone
-            talk.conversation.personDid(Self.dialContext(v))
+            // An end screen has no call bar, so no conversation stays open behind it: the microphone shuts now,
+            // Kaiku says its one line, and the conversation closes itself.
+            talk.conversation.closeAfterAnswer(to: Self.dialContext(v))
         } else if case .dials(let key)? = state.end {
             VoiceLines.shared.play(key, lang: app.language, fallback: T(key))
         }
@@ -207,14 +252,22 @@ final class CheckInChat {
         run(.closed)
     }
 
+    /// The call was ended away from this screen (End on the Lock Screen or in the Dynamic Island, or a long quiet
+    /// time in a pocket): the same warm end as "That's enough for now".
+    private var endedElsewhere: Bool {
+        let c = talk.conversation
+        return c.wasLive && c.phase == .idle && !c.endedInCrisis      // a crisis is not a check-in that went well
+    }
+
     /// From an end state: carry on talking (a new conversation, no second hello).
     func keepTalking() async {
-        guard let app else { return }
+        guard let app, !left else { return }
         talk.stop()
         talk.opening = Self.reopening
         run(.keepTalking)
         await talk.start(app: app)
         sync()
+        await beginCamera()
     }
 
     // MARK: private
@@ -237,7 +290,7 @@ final class CheckInChat {
         guard observing else { return }
         withObservationTracking {
             let c = talk.conversation
-            _ = (c.lines.count, c.planCount, c.closedByModel, c.endedByLimit, c.session?.session_id)
+            _ = (c.lines.count, c.planCount, c.closedByModel, c.endedByLimit, c.session?.session_id, c.phase)
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.observing else { return }
@@ -261,7 +314,7 @@ final class CheckInChat {
         let turns = c.lines.filter(\.me).count
         while seenTurns < turns { seenTurns += 1; run(.personSpoke) }
         if c.planCount > seenPlans, let p = c.plan { seenPlans = c.planCount; run(.plan(p)) }
-        if (c.closedByModel || c.endedByLimit) && !seenClose { seenClose = true; run(.closed) }
+        if (c.closedByModel || c.endedByLimit || endedElsewhere) && !seenClose { seenClose = true; run(.closed) }
     }
 
     private func run(_ event: CheckInState.Event) {
@@ -271,5 +324,6 @@ final class CheckInChat {
             case .sparkle: app?.celebrate()
             }
         }
+        if state.end != nil { endCamera() }
     }
 }

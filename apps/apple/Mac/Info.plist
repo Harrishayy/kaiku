@@ -41,6 +41,6 @@
 		<string>_kaiku-api._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Find nearby Kaiku companion services for voice. Robot hardware is separate.</string>
+	<string>Find nearby Kaiku companion services for voice, and, while the Kaiku bot page is open, listen to your robot's messages on your home network (never its sound).</string>
 </dict>
 </plist>

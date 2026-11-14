@@ -30,7 +30,7 @@ final class LiveSessionTests: XCTestCase {
         let gen = s["generationConfig"] as! [String: Any]
         XCTAssertNil(gen["enableAffectiveDialog"], "gemini-3.8-live rejects it (1007) — verified live")
         XCTAssertEqual(gen["responseModalities"] as? [String], ["AUDIO"])
-        XCTAssertEqual((s["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, true)
+        XCTAssertNil(s["proactivity"], "never by default: only when the cloud's live_setup carries it")
         XCTAssertNotNil((s["contextWindowCompression"] as? [String: Any])?["slidingWindow"])
         XCTAssertNotNil(s["sessionResumption"])
         XCTAssertNotNil(s["inputAudioTranscription"])
@@ -55,11 +55,20 @@ final class LiveSessionTests: XCTestCase {
     }
 
     func testWhatLetsACallOutliveOneSocketIsAlwaysSentAndTheCloudsSettingsWin() {
-        // Without `live_setup`: resumption, sliding-window compression and proactive audio are still asked for.
+        // Without `live_setup`: resumption and sliding-window compression are still asked for. Proactive audio
+        // (the model may leave an input unanswered) is not: the field is left out.
         let plain = setup(.init())
         XCTAssertNotNil(plain["sessionResumption"] as? [String: Any])
         XCTAssertNotNil((plain["contextWindowCompression"] as? [String: Any])?["slidingWindow"])
-        XCTAssertEqual((plain["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, true)
+        XCTAssertNil(plain["proactivity"])
+        var noChoice = session()
+        noChoice.live_setup = .object(["sessionResumption": .object([:])])
+        XCTAssertNil((LiveSession.setup(session: noChoice, options: .init())["setup"] as! [String: Any])["proactivity"],
+                     "a live_setup without the key (talk, check-in): still left out")
+        var walk = session()
+        walk.live_setup = .object(["proactivity": .object(["proactiveAudio": .bool(true)])])
+        let walking = LiveSession.setup(session: walk, options: .init())["setup"] as! [String: Any]
+        XCTAssertEqual((walking["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, true, "the cloud's choice for a walk")
 
         var s = session()
         s.live_setup = .object([
@@ -75,6 +84,14 @@ final class LiveSessionTests: XCTestCase {
         XCTAssertEqual(cw["triggerTokens"] as? Double, 12000)
         XCTAssertEqual((cw["slidingWindow"] as? [String: Any])?["targetTokens"] as? Double, 6000)
         XCTAssertEqual((cloud["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, false)
+    }
+
+    func testAnUnansweredLineIsResentAsOneWholeUserTurn() {
+        let frame = LiveSession.turn("I miss her.")["clientContent"] as! [String: Any]
+        XCTAssertEqual(frame["turnComplete"] as? Bool, true)
+        let turn = (frame["turns"] as! [[String: Any]])[0]
+        XCTAssertEqual(turn["role"] as? String, "user")
+        XCTAssertEqual(((turn["parts"] as! [[String: Any]])[0])["text"] as? String, "I miss her.", "the person's own words, nothing added")
     }
 
     func testAskMindIsNonBlockingOthersAreNot() {

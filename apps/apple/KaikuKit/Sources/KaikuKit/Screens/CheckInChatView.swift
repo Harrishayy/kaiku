@@ -32,8 +32,8 @@ public struct CheckInChatView: View {
                     HStack(alignment: .top, spacing: KaikuTokens.Space.s6) {
                         chatColumn(dialsInside: false).frame(maxWidth: .infinity)
                         Group {
-                            if staticLayout { dials } else {
-                                ScrollView { dials.padding(.vertical, KaikuTokens.Space.s2) }.scrollBounceBehavior(.basedOnSize)
+                            if staticLayout { dials(button: true) } else {
+                                ScrollView { dials(button: true).padding(.vertical, KaikuTokens.Space.s2) }.scrollBounceBehavior(.basedOnSize)
                             }
                         }
                         .frame(maxWidth: 420)
@@ -43,27 +43,57 @@ public struct CheckInChatView: View {
                 }
             }
         }
-        .task { if !staticLayout { await chat.start(app: app) } }
+        // A check-in that was left is over. If its screen is still on a stack and comes back, it shows nothing
+        // and goes at once (the tab shell also takes it off the stack when the tab is left).
+        .opacity(chat.left ? 0 : 1)
+        .task {
+            guard !staticLayout, !chat.left else { return }
+            chat.talk.screenAppeared()
+            await chat.start(app: app)
+        }
         .onDisappear { chat.leave() }
+        // The camera beside the check-in: only while this screen is in front, and only with her choice on.
+        .keepsCameraInFront(chat.camera)
+        .onChange(of: app.cameraOn) { _, on in Task { await chat.cameraChoiceChanged(on: on) } }
         .onChange(of: chat.talk.hasLive, initial: true) { _, live in typing = live && !chat.talk.conversation.listens }
         .onChange(of: scenePhase) { _, p in
             bgTask?.cancel()
             if p == .background { bgTask = Task { await chat.talk.backgrounded() } }
         }
-        .onAppear { KSound.warmUp([.tick]) }
+        .onAppear {
+            KSound.warmUp([.tick])
+            if chat.left {
+                var now = Transaction()
+                now.disablesAnimations = true
+                withTransaction(now) { dismiss() }
+            } else if !staticLayout {
+                chat.talk.screenAppeared()
+            }
+        }
     }
 
     // MARK: the chat
 
     private func chatContent(dialsInside: Bool) -> some View {
         VStack(spacing: KaikuTokens.Space.s3) {
+            if chat.state.end == nil {
+                // She can always see the camera and stop it; a choice made under the older wording is asked once more.
+                TaskCameraChip(camera: chat.camera)
+                CameraConfirmCard()
+            }
             kaiku.id(Self.top)
             if chat.state.end == nil { thread } else { ending }
             Color.clear.frame(height: 1).id(Self.bottom)
-            if dialsInside { dials }
+            if dialsInside { dials(button: !pinsDialButton) }
         }
         .padding(.vertical, KaikuTokens.Space.s2)
     }
+
+    /// No call on the line (no voice right now, not connected, paused): the dials are the way through this
+    /// screen, so "That's it" stays in view under them instead of below the fold, and Kaiku takes less room.
+    private var dialsOnly: Bool { chat.state.end == nil && !chat.state.dialsDone && !chat.hasLive && !chat.connecting }
+    private var pinsDialButton: Bool { dialsOnly && !staticLayout }
+    private var mascotSize: CGFloat { dialsOnly ? KaikuTokens.Size.mascotM * 2 / 3 : KaikuTokens.Size.mascotM }
 
     @ViewBuilder private func chatColumn(dialsInside: Bool) -> some View {
         if staticLayout {
@@ -104,6 +134,7 @@ public struct CheckInChatView: View {
                 #endif
             }
             composer
+            if dialsInside && pinsDialButton { dialButton }
         }
     }
 
@@ -155,11 +186,12 @@ public struct CheckInChatView: View {
     private var kaiku: some View {
         VStack(spacing: KaikuTokens.Space.s2) {
             ZStack {
-                if chat.micOn { ListeningRing(size: KaikuTokens.Size.mascotM + KaikuTokens.Space.s3, active: chat.phase == .hearing || chat.phase == .listening) }
-                GlowingMascot(state: mascotState, size: KaikuTokens.Size.mascotM,
+                if chat.micOn { ListeningRing(size: mascotSize + KaikuTokens.Space.s3, active: chat.phase == .hearing || chat.phase == .listening) }
+                GlowingMascot(state: mascotState, size: mascotSize,
                               dial: chat.activeDial.map { Double(chat.values[$0] ?? 3) }, tappable: false)
             }
-            .frame(height: KaikuTokens.Size.mascotM + KaikuTokens.Space.s4)
+            .frame(height: mascotSize + KaikuTokens.Space.s4)
+            .animation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.base), value: mascotSize)
             .accessibilityHidden(true)
             if let status {
                 Text(status).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted)
@@ -219,7 +251,9 @@ public struct CheckInChatView: View {
             VStack(spacing: KaikuTokens.Space.s1) {
                 if chat.state.end != .quiet {
                     if let next = app.nextPathStep {
-                        Button(T("path.upnext", ["name": T(next.titleKey)])) { app.go(next) }
+                        // On the way to the next stop the check-in leaves its stack: it is over, and must not be
+                        // found again behind the tab it was on.
+                        Button(T("path.upnext", ["name": T(next.titleKey)])) { dismiss(); app.go(next) }
                             .buttonStyle(.kPrimary).keyboardShortcut(.defaultAction)
                     } else {
                         Button(T("checkin.done")) { dismiss() }.buttonStyle(.kPrimary).keyboardShortcut(.defaultAction)
@@ -248,23 +282,29 @@ public struct CheckInChatView: View {
 
     // MARK: the dials — the quiet alternative, on the same screen
 
-    @ViewBuilder private var dials: some View {
+    @ViewBuilder private func dials(button: Bool) -> some View {
         if !chat.state.dialsDone {
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+            VStack(alignment: .leading, spacing: dialsOnly ? KaikuTokens.Space.s2 : KaikuTokens.Space.s3) {
                 Text(T("checkin.dials.t")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
                     .accessibilityAddTraits(.isHeader)
                 ForEach(DialItem.allCases) { item in
                     WeatherDial(item: item, value: binding(item), active: chat.activeDial == item) { chat.activeDial = item }
                 }
-                Button(T("wx.done")) {
-                    Haptics.finished()
-                    KSound.play(.done)
-                    Task { await chat.submitDials() }
-                }
-                .buttonStyle(.kSecondary)
+                if button { dialButton }
             }
-            .padding(.top, KaikuTokens.Space.s3)
+            .padding(.top, dialsOnly ? 0 : KaikuTokens.Space.s3)
         }
+    }
+
+    /// "That's it": the dials count on their own.
+    private var dialButton: some View {
+        Button(T("wx.done")) {
+            Haptics.finished()
+            KSound.play(.done)
+            Task { await chat.submitDials() }
+        }
+        .buttonStyle(KButtonStyle(dialsOnly ? .primary : .secondary))
+        .accessibilityIdentifier("checkin.dials.done")
     }
 
     private func binding(_ item: DialItem) -> Binding<Int> {

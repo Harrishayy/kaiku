@@ -1,16 +1,23 @@
 import SwiftUI
 
-/// The five tabs, same names and order on iPhone (tab bar) and Mac (sidebar) — design/ia.md → Navigation.
+/// The tabs, same names and order on iPhone (tab bar) and Mac (sidebar) — design/ia.md → Navigation.
+/// History took the place of Your days (2026-11-14; Your days is History's first block and a screen under it,
+/// `KaikuRoute.days`). Kaiku bot (2026-11-14): what the robot at home hears and does, live. It is a tab in the Mac's
+/// sidebar; an iPhone tab bar shows five (a sixth puts the fifth AND the sixth behind "More", You included), so on
+/// iPhone it is a screen under You (`KaikuRoute.bot`) and the bar keeps its five (`phoneBar`).
 public enum KaikuTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case today, play, talk, days, you
+    case today, play, talk, history, bot, you
     public var id: String { rawValue }
     public var title: String { T("tab.\(rawValue)") }
+    /// The iPhone tab bar: every tab but Kaiku bot.
+    public static var phoneBar: [KaikuTab] { allCases.filter { $0 != .bot } }
     public var symbol: String {
         switch self {
         case .today: return "sun.horizon"
         case .play: return "sparkles"
         case .talk: return "bubble.left.and.bubble.right"
-        case .days: return "leaf"
+        case .history: return "chart.bar"
+        case .bot: return "antenna.radiowaves.left.and.right"
         case .you: return "person.crop.circle"
         }
     }
@@ -22,10 +29,14 @@ public enum KaikuRoute: String, Hashable, CaseIterable, Sendable {
     case weather, firefly, pebbles, breathe, tell, walk
     case lantern, seeds, watering
     case memories, saw, voice, quiet, devices, help, glasses
+    case days
+    /// Kaiku bot as a pushed screen (iPhone, under You); on the Mac it is a tab.
+    case bot
 
     public var tab: KaikuTab {
         switch self {
         case .weather: return .today
+        case .days: return .history
         case .firefly, .pebbles, .breathe, .tell, .walk, .lantern, .seeds, .watering: return .play
         default: return .you
         }
@@ -40,6 +51,8 @@ public enum KaikuScreen: String, CaseIterable, Sendable {
     case lantern, seeds, watering
     case talk
     case days, markDay
+    case history, historyMeasure
+    case bot
     case you, memories, saw, voice, quiet, devices, help, glasses
     case crisis
     case menuBarPopover
@@ -73,6 +86,8 @@ func destination(_ r: KaikuRoute) -> some View {
     case .devices: DevicesView()
     case .help: HelpView()
     case .glasses: GlassesCheckView()
+    case .days: DaysView()
+    case .bot: BotView(pushed: true)
     }
 }
 
@@ -118,7 +133,7 @@ struct PhoneTabs: View {
     var body: some View {
         @Bindable var app = app
         TabView(selection: $app.selectedTab) {
-            ForEach(KaikuTab.allCases) { tab in
+            ForEach(KaikuTab.phoneBar) { tab in
                 NavigationStack(path: binding(tab)) {
                     tabRoot(tab).navigationDestination(for: KaikuRoute.self) { destination($0) }
                 }
@@ -126,8 +141,21 @@ struct PhoneTabs: View {
                 .tag(tab)
             }
         }
-        .onAppear { follow(app.deepLink) }
+        .onAppear { follow(app.deepLink); botUnderYou() }
         .onChange(of: app.deepLink) { _, r in follow(r) }
+        // A check-in ends when its screen is left. Left by switching tabs it would stay on its tab's stack and
+        // come back later as if it were still there, so it is taken off as the tab is left.
+        .onChange(of: app.selectedTab) { old, _ in
+            if paths[old]?.contains(.weather) == true { paths[old]?.removeAll { $0 == .weather } }
+            botUnderYou()
+        }
+    }
+
+    /// `kaiku://bot`, `-kaikuTab bot`: on iPhone Kaiku bot is a screen under You.
+    private func botUnderYou() {
+        guard app.selectedTab == .bot else { return }
+        app.selectedTab = .you
+        paths[.you] = [.bot]
     }
 
     private func follow(_ r: KaikuRoute?) {
@@ -149,7 +177,8 @@ func tabRoot(_ tab: KaikuTab) -> some View {
     case .today: TodayView()
     case .play: PlayView()
     case .talk: TalkView(model: .forTalkScreen())   // on the Mac: the conversation quick talk shares (QuickTalkModel)
-    case .days: DaysView()
+    case .history: HistoryView()
+    case .bot: BotView()
     case .you: YouView()
     }
 }

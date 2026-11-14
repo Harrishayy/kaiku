@@ -9,12 +9,15 @@ public enum CallStatus: String, Codable, Sendable, CaseIterable {
     case connecting, listening, speaking, thinking, muted, micOff, paused
 
     /// Paused and connecting first; then what Kaiku is doing; then the person's own mute.
-    public init(phase: Conversation.Phase, listens: Bool, micMuted: Bool, kaikuSpeaking: Bool) {
+    public init(phase: Conversation.Phase, listens: Bool, micMuted: Bool, kaikuSpeaking: Bool, awaitingAnswer: Bool = false) {
         switch phase {
         case .connecting, .idle, .unavailable: self = .connecting
         case .paused: self = .paused
         default:
             if kaikuSpeaking || phase == .speaking { self = .speaking }
+            // A written line is on its way to an answer: that is what the person wants to know, whatever the
+            // microphone is doing (in a typed call the bar otherwise said "Microphone is off" the whole time).
+            else if awaitingAnswer { self = .thinking }
             else if !listens { self = .micOff }
             else if micMuted || phase == .muted { self = .muted }
             else if phase == .thinking { self = .thinking }
@@ -23,7 +26,8 @@ public enum CallStatus: String, Codable, Sendable, CaseIterable {
     }
 
     @MainActor public init(_ c: Conversation) {
-        self.init(phase: c.phase, listens: c.listens, micMuted: c.micMuted, kaikuSpeaking: c.kaikuSpeaking)
+        self.init(phase: c.phase, listens: c.listens, micMuted: c.micMuted, kaikuSpeaking: c.kaikuSpeaking,
+                  awaitingAnswer: c.awaitingAnswer)
     }
 
     public var key: String { "call.state.\(rawValue)" }

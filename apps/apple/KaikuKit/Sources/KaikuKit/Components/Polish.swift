@@ -162,14 +162,17 @@ public struct KAdaptiveColumns<Leading: View, Trailing: View>: View {
     var minWidth: CGFloat
     var spacing: CGFloat
     var leadingFraction: CGFloat
+    /// The gap between the things stacked in a column (sections take the page's own section gap, `space.5`).
+    var stack: CGFloat
     let leading: Leading
     let trailing: Trailing
     @Environment(\.dynamicTypeSize) private var dts
     @Environment(\.kaikuPaneWidth) private var width
 
     public init(minWidth: CGFloat = 600, spacing: CGFloat = KaikuTokens.Space.s6, leadingFraction: CGFloat = 0.46,
+                stack: CGFloat = KaikuTokens.Space.s4,
                 @ViewBuilder leading: () -> Leading, @ViewBuilder trailing: () -> Trailing) {
-        self.minWidth = minWidth; self.spacing = spacing; self.leadingFraction = leadingFraction
+        self.minWidth = minWidth; self.spacing = spacing; self.leadingFraction = leadingFraction; self.stack = stack
         self.leading = leading(); self.trailing = trailing()
     }
 
@@ -180,13 +183,13 @@ public struct KAdaptiveColumns<Leading: View, Trailing: View>: View {
     public var body: some View {
         if Self.isWide(width, dts, min: minWidth) {
             HStack(alignment: .top, spacing: spacing) {
-                VStack(alignment: .leading, spacing: KaikuTokens.Space.s4) { leading }
+                VStack(alignment: .leading, spacing: stack) { leading }
                     .frame(width: (width - spacing) * leadingFraction, alignment: .topLeading)
-                VStack(alignment: .leading, spacing: KaikuTokens.Space.s4) { trailing }
+                VStack(alignment: .leading, spacing: stack) { trailing }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s4) {
+            VStack(alignment: .leading, spacing: stack) {
                 leading
                 trailing
             }

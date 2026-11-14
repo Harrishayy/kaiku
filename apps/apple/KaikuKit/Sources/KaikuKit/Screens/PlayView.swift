@@ -247,6 +247,8 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
     @State private var phase: Phase = .intro
     @State private var round = 0
     @State private var camera = TaskCamera()
+    /// This round began with the camera choice on: its chip's row keeps its place for the whole round.
+    @State private var cameraWanted = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -255,16 +257,9 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
         VStack(spacing: 0) {
             VStack(spacing: KaikuTokens.Space.s3) {
                 topBar
-                if phase == .play, camera.state != .off {
-                    HStack(spacing: KaikuTokens.Space.s2) {
-                        Image(systemName: "camera.fill")
-                        Text(T(camera.state == .capturing ? "task.camera.active" : camera.state == .requesting ? "task.camera.request" : "task.camera.unavailable"))
-                            .wraps()
-                        Spacer(minLength: 0)
-                        Button(T("task.camera.stop")) { camera.cancel(); app.consents[.camera] = false }
-                    }
-                    .kText(.footnote).foregroundStyle(scene.ink)
-                    .accessibilityElement(children: .contain)
+                // While the camera samples she can see it and turn it off (TaskCapture/TaskCameraViews.swift).
+                if phase == .play, cameraWanted {
+                    TaskCameraChip(camera: camera, action: scene.isDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.clay, holdsPlace: true)
                 }
                 Group {
                     switch phase {
@@ -286,14 +281,22 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
         .background { SceneBackground(scene: scene) }
         .environment(\.colorScheme, scene.isDark ? .dark : colorSchemeFallback)
         .task(id: phase) {
-            if phase == .play { await camera.begin(allowed: app.allowed(.camera) && app.allowed(.checkins)) }
+            // The camera runs from the game's start to its end, only with her choice on, and never beside a
+            // walk or a voice call (those are not tasks).
+            if phase == .play {
+                camera.blocked = { TaskCamera.busyElsewhere() }
+                await camera.begin(allowed: app.cameraOn)
+            }
         }
         .onDisappear { camera.cancel() }
-        .onChange(of: app.allowed(.camera)) { _, allowed in if !allowed { camera.cancel() } }
-        .onChange(of: app.allowed(.checkins)) { _, allowed in if !allowed { camera.cancel() } }
+        .onChange(of: app.cameraOn) { _, on in if !on { camera.cancel() } }
         .onChange(of: scenePhase) { _, state in
             if state != .active, phase == .play { camera.cancel(); phase = .intro }
         }
+        #if os(macOS)
+        // Another app in front: the camera closes at once, whatever the window's own phase says.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in camera.cancel() }
+        #endif
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
@@ -340,11 +343,18 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
                 .multilineTextAlignment(.center).wraps().frame(maxWidth: 440)
             Spacer(minLength: 0)
             VStack(spacing: KaikuTokens.Space.s1) {
-                Toggle(isOn: Binding(get: { app.consents[.camera] == true }, set: { app.consents[.camera] = $0 })) {
-                    Text(T("task.camera.optin")).kText(.footnote).wraps()
+                Group {
+                    if app.cameraNeedsConfirm {
+                        CameraConfirmCard()   // the choice was made under an older wording: asked once more
+                    } else {
+                        Toggle(isOn: Binding(get: { app.consents[.camera] == true }, set: { app.consents[.camera] = $0 })) {
+                            Text(T("task.camera.optin")).kText(.footnote).wraps()
+                        }
+                        .tint(KaikuTokens.Colors.sage)
+                        .disabled(app.isPaused)
+                    }
                 }
-                .tint(KaikuTokens.Colors.sage)
-                .disabled(app.isPaused)
+                .padding(.bottom, KaikuTokens.Space.s2)   // the choice stands apart from the button under it
                 Button(T("game.start")) { start() }
                     .buttonStyle(KButtonStyle(.primary))
                     .keyboardShortcut(.defaultAction)
@@ -357,16 +367,12 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
     private var play: some View {
         field { session in
             guard phase == .play else { return }
-            let summary = camera.finish()
-            if var s = session {
-                if app.allowed(.camera), let summary {
-                    s.expressivity_index = summary.expressivity; s.face_movement = summary.movement
-                    s.camera_face_coverage = summary.coverage; s.camera_samples = summary.samples
-                    s.camera_method = "vision_landmarks"
-                }
+            // The game is over: the camera closes now. What it measured goes out with the game's own record.
+            let seen = camera.finish()
+            if let s = session {
                 Haptics.finished()
                 KSound.play(.done)
-                Task { await app.recordPlay(s) }
+                Task { await app.recordPlay(s, camera: seen) }
                 withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.base)) { phase = .end }
             } else {
                 withAnimation(fade) { phase = .intro }
@@ -416,6 +422,7 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
 
     private func start() {
         round += 1
+        cameraWanted = app.cameraOn
         onStart()
         KSound.play(.start)
         withAnimation(fade) { phase = .play }

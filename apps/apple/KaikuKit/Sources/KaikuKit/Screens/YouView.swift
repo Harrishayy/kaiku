@@ -3,60 +3,98 @@ import SwiftUI
 import UIKit
 #endif
 
-/// You: grouped rows (remembers, saw today, voice & language, quiet hours, devices, help) + "Pause everything".
+/// Layout pictures of the You page with one of its parts open (DEBUG: `-kaikuYouOpen sharing|service|quicktalk`).
+enum YouDebug {
+    static func opens(_ part: String) -> Bool {
+        #if DEBUG
+        return UserDefaults.standard.string(forKey: "kaikuYouOpen") == part
+        #else
+        return false
+        #endif
+    }
+}
+
+extension Signal {
+    /// The signal's symbol in a list of choices.
+    var symbol: String {
+        switch self {
+        case .checkins: return "checklist"
+        case .walks: return "figure.walk"
+        case .voice: return "waveform"
+        case .camera: return "camera"
+        case .mac: return "laptopcomputer"
+        case .watch: return "applewatch"
+        case .transcripts: return "text.bubble"
+        case .see: return "eyeglasses"
+        }
+    }
+    /// One short line for a row: the signal's own line, or its short form where the full text is a paragraph
+    /// (`sig.<x>.s`; the paragraph is then shown in full under the list, `SharingInFull`).
+    var lineKey: String { hasShortForm ? "sig.\(rawValue).s" : "sig.\(rawValue).d" }
+    var hasShortForm: Bool { L10n.shared.has("sig.\(rawValue).s", .en) }
+    /// The whole text of the choice, as setup and "In full" show it: `sig.<x>.d`, or `sig.<x>.full` where this app
+    /// has to say more than the shared line does (the Watch choice names every kind of Apple Health data it reads).
+    var wholeKey: String { L10n.shared.has("sig.\(rawValue).full", .en) ? "sig.\(rawValue).full" : "sig.\(rawValue).d" }
+}
+
+/// You: four short sections of rows. A row is an icon, a short title, at most one short line and ONE control: a
+/// switch, or a link to the screen (chevron) or sheet that holds the rest. Two columns on the Mac pane, where the
+/// whole page fits the default window; one column on the phone.
 public struct YouView: View {
     @Environment(AppModel.self) private var app
-    @State private var confirmUnpair = false
-    @State private var showServices = false
-    @State private var showSharing = false
+    @State private var showSharing = YouDebug.opens("sharing")
+    @State private var showService = YouDebug.opens("service")
     public init() {}
 
     public var body: some View {
         @Bindable var app = app
+        ScrollViewReader { proxy in
         KScreen(T("tab.you"), subtitle: T("you.sub"), maxWidth: KaikuTokens.Size.paneMax) {
-            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
+            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5, stack: KaikuTokens.Space.s5) {
                 KSection(T("you.sec.privacy"), icon: "hand.raised.fill", tone: .honey) {
                     KToggleRow(icon: "pause.fill", tint: KaikuTokens.Colors.honey, title: T("you.pauseall"),
-                               detail: T("you.pauseall.d"), isOn: $app.pausedAll)
+                               detail: T("you.pauseall.s"), isOn: $app.pausedAll)
                     KDivider()
-                    Button {
-                        withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { showSharing.toggle() }
-                    } label: {
-                        KRow(icon: "person.2.fill", tint: KaikuTokens.Colors.honey,
-                             title: T(showSharing ? "you.sharing.hide" : "you.sharing"), accessory: showSharing ? .none : .chevron)
+                    sharingRow
+                    if showSharing && KaikuPlatform.isPhone {   // the phone opens the choices in place; the Mac in a sheet
+                        KDivider()
+                        SharingRows()
+                        SharingInFull().padding(KaikuTokens.Space.s4)
                     }
-                    .buttonStyle(.kPressRow())
-                    if showSharing {
-                        ForEach(Signal.forThisDevice, id: \.self) { signal in
-                            KDivider()
-                            KToggleRow(title: T("sig.\(signal.rawValue).t"), detail: T("sig.\(signal.rawValue).d"),
-                                       isOn: Binding(get: { app.consents[signal] ?? false }, set: { app.consents[signal] = $0 }))
-                        }
-                    }
-                }
-                KSection(T("you.sec.kaiku"), subtitle: T("you.sec.kaiku.d"), icon: "sparkles", tone: .clay) {
-                    link(.memories, "sparkles", KaikuTokens.Colors.clay, "you.remembers")
                     KDivider()
                     link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
+                }
+                KSection(T("you.sec.kaiku"), icon: "sparkles", tone: .clay) {
+                    link(.memories, "sparkles", KaikuTokens.Colors.clay, "you.remembers")
                     KDivider()
                     link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
+                    KDivider()
+                    // "Your choices and connection stay as they are": a line on the phone; in the Mac's half-width
+                    // column it wraps and pushes the page past the window, so there it is the row's tooltip.
+                    Button { app.restartSetup() } label: {
+                        KRow(icon: "arrow.counterclockwise", tint: KaikuTokens.Colors.clay, title: T("setup.again"),
+                             detail: KaikuPlatform.isPhone ? T("setup.again.d") : nil)
+                    }
+                    .buttonStyle(.kPressRow())
+                    #if os(macOS)
+                    .help(T("setup.again.d"))
+                    #endif
                 }
-                #if os(macOS)
-                QuickTalkSettingsSection()   // Mac only: talk from any app (KaikuKit/Mac/QuickTalkView.swift)
-                #endif
             } trailing: {
                 KSection(T("you.sec.settings"), icon: "slider.horizontal.3", tone: .sky) {
                     link(.voice, "globe", KaikuTokens.Colors.sky, "voice.title")
                     KDivider()
                     link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
-                    KDivider()
-                    link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
                     if KaikuPlatform.isPhone {
                         KDivider()
                         link(.glasses, "eyeglasses", KaikuTokens.Colors.sage, "gc.title")
                         KDivider()
                         WalkStyleSetting()   // Calm · Playful · Chatty (Walk/WalkView.swift)
                     }
+                    #if os(macOS)
+                    KDivider()
+                    QuickTalkSettingsRow()   // Mac only: talk from any app (KaikuKit/Mac/QuickTalkView.swift)
+                    #endif
                     KDivider()
                     KToggleRow(icon: "speaker.wave.2.fill", tint: KaikuTokens.Colors.sage, title: T("you.sounds"), isOn: $app.sounds)
                     if app.notificationsOn == false {
@@ -64,22 +102,140 @@ public struct YouView: View {
                         NotificationsOffRow()
                     }
                 }
-                KSection(T("you.sec.connection"), icon: "link", tone: .sage) {
-                    HStack(spacing: 0) {
-                        KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
-                             detail: app.pairing?.baseURL.host, accessory: .none)
-                        if app.isPaired {
-                            Button(T("you.unpair.short")) { confirmUnpair = true }
-                                .buttonStyle(KButtonStyle(.ghost, fullWidth: false))
-                                .fixedSize()
-                                .padding(.trailing, KaikuTokens.Space.s1)
+                KSection(T("you.sec.devices"), icon: "link", tone: .sage) {
+                    if KaikuPlatform.isPhone {   // (`.id("devices")`: `-kaikuYouScroll devices` in DEBUG pictures)   // on the Mac Kaiku bot is a tab of its own
+                        NavigationLink(value: KaikuRoute.bot) {
+                            KRow(icon: KaikuTab.bot.symbol, tint: KaikuTokens.Colors.honey, title: T("tab.bot"), detail: T("bot.row.d"))
                         }
+                        .buttonStyle(.kPressRow())
+                        .accessibilityIdentifier("you.bot")
+                        KDivider()
                     }
-                    Button(T("service.search")) { showServices = true }.buttonStyle(.kGhost)
+                    link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
                     KDivider()
-                    Button { app.restartSetup() } label: {
-                        KRow(icon: "arrow.counterclockwise", tint: KaikuTokens.Colors.sage, title: T("setup.again"),
-                             detail: T("setup.again.d"))
+                    Button { showService = true } label: {
+                        KRow(icon: "link", tint: app.isPaired ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted, title: T("you.service"),
+                             detail: app.isPaired ? T("you.service.host", ["host": app.pairing?.baseURL.host ?? ""]) : T("you.notpaired"))
+                    }
+                    .buttonStyle(.kPressRow())
+                }
+                .id("devices")
+            }
+        }
+        #if DEBUG
+        .task {   // `-kaikuYouScroll devices`: a picture of the end of You on a small iPhone
+            guard let to = UserDefaults.standard.string(forKey: "kaikuYouScroll") else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            proxy.scrollTo(to, anchor: .top)
+        }
+        #endif
+        }
+        .sheet(isPresented: $showService) { ServiceSheet().environment(app) }
+        #if os(macOS)
+        .sheet(isPresented: $showSharing) { SharingSheet().environment(app) }
+        #endif
+    }
+
+    /// "Sharing and permissions": how many are on, at a glance; the choices themselves one step away.
+    private var sharingRow: some View {
+        let open = showSharing && KaikuPlatform.isPhone
+        let all = Signal.forThisDevice
+        let count = T("share.count", ["n": "\(all.filter { app.consents[$0] ?? false }.count)", "m": "\(all.count)"])
+        return Button {
+            if KaikuPlatform.isPhone {
+                withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { showSharing.toggle() }
+                // Her choices are in front of her: if "Watch" is on and this build reads kinds of Apple Health
+                // data that iOS has not asked her about yet, iOS asks now.
+                if showSharing { Task { await HealthAccess.review(app: app) } }
+            } else {
+                showSharing = true
+            }
+        } label: {
+            KRow(icon: "person.2.fill", tint: KaikuTokens.Colors.honey, title: T(open ? "you.sharing.hide" : "you.sharing"),
+                 detail: count, accessory: open ? .none : .chevron)
+        }
+        .buttonStyle(.kPressRow())
+        .accessibilityLabel(T(open ? "you.sharing.hide" : "you.sharing"))
+        .accessibilityValue(count)
+    }
+
+    private func link(_ r: KaikuRoute, _ icon: String, _ tint: Color, _ key: String) -> some View {
+        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.kPressRow())
+    }
+}
+
+/// The sharing choices as a list to take in at a glance: one row a signal, its tile green while it is on and
+/// grey while it is off, the title, one short line on what it is, and its switch. Every signal of this device,
+/// in the same order and with the same meaning as at setup; nothing is switched by showing them.
+struct SharingRows: View {
+    @Environment(AppModel.self) private var app
+    var body: some View {
+        ForEach(Array(Signal.forThisDevice.enumerated()), id: \.element) { i, signal in
+            if i > 0 { KDivider() }
+            let on = app.consents[signal] ?? false
+            KToggleRow(icon: signal.symbol, tint: on ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted,
+                       title: T("sig.\(signal.rawValue).t"), detail: T(signal.lineKey),
+                       isOn: app.choiceBinding(signal))   // the whole text of each choice stands under this list
+                // "Watch" switched on here: iOS asks for Apple Health now, with the choice's text on screen.
+                .onChange(of: on) { _, now in if signal == .watch, now { Task { await HealthAccess.review(app: app) } } }
+        }
+    }
+}
+
+/// The whole text of every choice whose row shows a short form: consent text is never cut, it is here in full.
+struct SharingInFull: View {
+    var signals: [Signal] = Signal.forThisDevice
+    var body: some View {
+        let long = signals.filter(\.hasShortForm)
+        if !long.isEmpty {
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                Text(T("share.full")).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink2)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(long, id: \.self) { signal in
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
+                        Text(T("sig.\(signal.rawValue).t")).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                        Text(T(signal.wholeKey)).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Sharing and permissions on the Mac: the choices in a sheet (the two-column page has no room to open them in place).
+struct SharingSheet: View {
+    var body: some View {
+        KSheet(T("you.sharing"), width: KaikuTokens.Size.contentMax) {
+            Text(T("share.sub")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+            KSection { SharingRows() }
+            SharingInFull()
+        }
+    }
+}
+
+/// The Kaiku service this device talks to: where it is connected, looking for another one nearby, unpairing.
+struct ServiceSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmUnpair = false
+    @State private var showServices = false
+    var body: some View {
+        KSheet(T("you.sec.connection"), height: 300) {
+            KSection {
+                KRow(icon: "link", tint: app.isPaired ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted,
+                     title: app.isPaired ? T("you.paired") : T("you.notpaired"), detail: app.pairing?.baseURL.host,
+                     accessory: app.isPaired ? .check : .none)
+                KDivider()
+                Button { showServices = true } label: {
+                    KRow(icon: "magnifyingglass", tint: KaikuTokens.Colors.sage, title: T("service.search"))
+                }
+                .buttonStyle(.kPressRow())
+                if app.isPaired {
+                    KDivider()
+                    Button { confirmUnpair = true } label: {
+                        KRow(icon: "xmark.circle", tint: KaikuTokens.Colors.clay, title: T("you.unpair"), accessory: .none)
                     }
                     .buttonStyle(.kPressRow())
                 }
@@ -91,18 +247,25 @@ public struct YouView: View {
         .confirmationDialog(T("you.unpair.confirm"), isPresented: $confirmUnpair, titleVisibility: .visible) {
             Button(T("you.unpair"), role: .destructive) {
                 Task { await app.unpair(); app.onboarded = false }
+                dismiss()
             }
             Button(T("common.back"), role: .cancel) {}
         }
-    }
-
-    private func link(_ r: KaikuRoute, _ icon: String, _ tint: Color, _ key: String) -> some View {
-        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.kPressRow())
     }
 }
 
 /// What Kaiku remembers: list with Delete each, Forget everything, remember on/off. /v1/me/memories.
 public struct MemoriesView: View {
+    /// Full width on the phone; as wide as its words on the Mac (a button across the whole pane is a phone layout).
+    static var button: KButtonStyle { KButtonStyle(.secondary, fullWidth: KaikuPlatform.isPhone) }
+
+    @ViewBuilder private var conversationButtons: some View {
+        Button(T("conv.read")) { showConversations = true }.buttonStyle(Self.button)
+        if let n = app.conversationsKept, n > 0 {
+            Button(T("conv.forgetall")) { confirmConversations = true }.buttonStyle(Self.button)
+        }
+    }
+
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var confirmAll = false
@@ -114,7 +277,8 @@ public struct MemoriesView: View {
         KScreen(T("you.remembers"), back: { dismiss() }) {
             Text(T("mem.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             KSection {
-                KToggleRow(title: T("mem.remember.t"), detail: T("mem.remember.d"),
+                KToggleRow(icon: "sparkles", tint: app.remember ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted,
+                           title: T("mem.remember.t"), detail: T("mem.remember.d"),
                            isOn: Binding(get: { app.remember }, set: { v in Task { await app.setRemember(v) } }))
             }
             if !app.memoriesLoaded {
@@ -124,7 +288,7 @@ public struct MemoriesView: View {
             } else {
                 KSection {
                     ForEach(Array(app.memories.enumerated()), id: \.element.id) { i, m in
-                        if i > 0 { KDivider() }
+                        if i > 0 { KDivider(plain: true) }
                         HStack(spacing: KaikuTokens.Space.s3) {
                             Text(m.text).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,17 +300,23 @@ public struct MemoriesView: View {
                         .padding(.vertical, KaikuTokens.Space.s3)
                     }
                 }
-                Button(T("mem.forgetall")) { confirmAll = true }.buttonStyle(.kSecondary)
+                Button(T("mem.forgetall")) { confirmAll = true }.buttonStyle(Self.button)
             }
-            // Opt-in conversation words (`transcripts` signal): the switch + how many are kept + delete them all.
-            KSection {
-                KToggleRow(title: T("sig.transcripts.t"), detail: T("sig.transcripts.d"),
-                           isOn: Binding(get: { app.consents[.transcripts] ?? false }, set: { app.consents[.transcripts] = $0 }))
-            }
-            Button(T("conv.read")) { showConversations = true }.buttonStyle(.kSecondary)
-            if let n = app.conversationsKept, n > 0 {
-                Text(T("conv.kept", n: n)).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-                Button(T("conv.forgetall")) { confirmConversations = true }.buttonStyle(.kSecondary)
+            // Opt-in conversation words (`transcripts` signal), one group: the switch (its line says how many are
+            // kept), the whole consent text under the card, then the ways to read or delete them.
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                KSection {
+                    let on = app.consents[.transcripts] ?? false
+                    let kept = app.conversationsKept ?? 0
+                    KToggleRow(icon: Signal.transcripts.symbol, tint: on ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted,
+                               title: T("sig.transcripts.t"), detail: kept > 0 ? T("conv.kept", n: kept) : nil,
+                               isOn: Binding(get: { app.consents[.transcripts] ?? false }, set: { app.consents[.transcripts] = $0 }))
+                }
+                Text(T("sig.transcripts.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: KaikuTokens.Space.s3) { conversationButtons }
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) { conversationButtons }
+                }
             }
         }
         .sheet(isPresented: $showConversations) { SavedConversationsView().environment(app) }
@@ -171,6 +341,17 @@ public struct SawTodayView: View {
 
     struct Line: Identifiable { let id: String; let text: String; let signal: Signal? }
 
+    /// One row a signal: what was noticed for it today, line by line (the robot's line has no switch of its own).
+    struct Row: Identifiable { let id: String; let signal: Signal?; var texts: [String] }
+    var rows: [Row] {
+        var out: [Row] = []
+        for l in lines {
+            if let sig = l.signal, let i = out.firstIndex(where: { $0.signal == sig }) { out[i].texts.append(l.text) }
+            else { out.append(Row(id: l.signal?.rawValue ?? l.id, signal: l.signal, texts: [l.text])) }
+        }
+        return out
+    }
+
     var lines: [Line] {
         let ev = app.todayEvents
         func of(_ t: String) -> [AnyEnvelope] { ev.filter { $0.type == t } }
@@ -184,13 +365,19 @@ public struct SawTodayView: View {
         let walk = of("obs.outing").compactMap { $0.payload["minutes"]?.double }.reduce(0, +)
         out.append(Line(id: "walk", text: walk > 0 ? T("saw.walk.n", n: Int(walk.rounded())) : T("saw.walk.none"), signal: .walks))
         out.append(Line(id: "voice", text: T("saw.voice"), signal: .voice))
+        // Face signs during games and the check-in: how many activities had the camera on (numbers, never pictures).
+        let seen = DayEvidence.cameraTasks(events: ev, sent: app.cameraChoice.sentToday())
+        out.append(Line(id: "camera", text: seen.map { T("saw.camera.n", n: $0.count) } ?? T("saw.camera.none"), signal: .camera))
         #if os(macOS)
         // The same local aggregate the hourly usage-rhythm numbers come from (numbers + app types only).
         out.append(Line(id: "mac", text: MacUsageStore.shared.receiptLines().joined(separator: "\n"), signal: .mac))
         #else
         out.append(Line(id: "mac", text: T("saw.mac"), signal: .mac))
         #endif
-        out.append(Line(id: "watch", text: T("saw.watch"), signal: .watch))
+        // Which kinds of numbers today's Apple Health summary held (named here; the numbers are in History).
+        let health = DayEvidence.healthNames(ev)
+        out.append(Line(id: "watch", text: health.isEmpty ? T("saw.watch.none") : T("saw.watch.read", ["list": health.joined(separator: ", ")]),
+                        signal: .watch))
         out.append(Line(id: "transcripts", text: T("saw.transcripts"), signal: .transcripts))
         return out
     }
@@ -200,13 +387,19 @@ public struct SawTodayView: View {
             EvidenceSection()
             Text(T("saw.head")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             KSection {
-                ForEach(Array(lines.enumerated()), id: \.element.id) { i, l in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
                     if i > 0 { KDivider() }
-                    if let sig = l.signal {
-                        KToggleRow(title: l.text, detail: app.allowed(sig) ? nil : T("saw.paused"),
+                    if let sig = row.signal {
+                        let on = app.allowed(sig)
+                        KToggleRow(icon: sig.symbol, tint: on ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted,
+                                   title: T("sig.\(sig.rawValue).t"), detail: on ? row.texts.joined(separator: "\n") : T("saw.paused"),
                                    isOn: Binding(get: { app.consents[sig] ?? false }, set: { app.consents[sig] = $0 }))
+                            .onChange(of: app.consents[sig] ?? false) { _, now in
+                                if sig == .watch, now { Task { await HealthAccess.review(app: app) } }   // iOS asks for Apple Health now
+                            }
                     } else {
-                        KRow(title: l.text, accessory: .none)
+                        KRow(icon: "circle.hexagongrid.fill", tint: KaikuTokens.Colors.sage, title: T("dev.robot"),
+                             detail: row.texts.joined(separator: "\n"), accessory: .none)
                     }
                 }
             }
@@ -237,18 +430,23 @@ public struct VoiceLanguageView: View {
     public var body: some View {
         @Bindable var app = app
         KScreen(T("voice.title"), back: { dismiss() }) {
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                Text(T("voice.lang")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                Text("English").kText(.body)
-            }
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                Text(T("voice.pace")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                KSegmented([(VoicePace.slow, T("voice.slow")), (.normal, T("voice.normal"))], selection: $app.pace)
+            KSection {
+                KRow(icon: "globe", tint: KaikuTokens.Colors.sky, title: T("voice.lang"), accessory: .value("English"))
+                KDivider()
+                HStack(alignment: .top, spacing: KaikuTokens.Space.s3) {
+                    RowIcon(symbol: "metronome", tint: KaikuTokens.Colors.sky)
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                        Text(T("voice.pace")).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                        KSegmented([(VoicePace.slow, T("voice.slow")), (.normal, T("voice.normal"))], selection: $app.pace)
+                    }
+                }
+                .padding(.horizontal, KaikuTokens.Space.s4)
+                .padding(.vertical, KaikuTokens.Space.s3)
             }
             Button {
                 Task { await player.play(api: app.api, lang: app.language.rawValue) { app.showToast(T("voice.sample.none")) } }
             } label: { Label(T("voice.sample"), systemImage: "play.fill") }
-            .buttonStyle(.kSecondary)
+            .buttonStyle(MemoriesView.button)
         }
     }
 }
@@ -276,9 +474,9 @@ public struct QuietHoursView: View {
             Text(T("quiet.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             KSection {
                 timeRow(T("quiet.from"), $app.quietFrom)
-                KDivider()
+                KDivider(plain: true)
                 timeRow(T("quiet.to"), $app.quietTo)
-                KDivider()
+                KDivider(plain: true)
                 KToggleRow(title: T("quiet.weekend"), isOn: $app.quietWeekend)
             }
         }

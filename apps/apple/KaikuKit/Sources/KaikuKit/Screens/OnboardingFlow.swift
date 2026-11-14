@@ -258,9 +258,9 @@ struct ConsentStep: View {
             Text(T("setup.choices.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             KSection {
                 ForEach(Array(Signal.forThisDevice.enumerated()), id: \.element) { i, s in
-                    if i > 0 { KDivider() }
-                    KToggleRow(title: T("sig.\(s.rawValue).t"), detail: T("sig.\(s.rawValue).d"),
-                               isOn: Binding(get: { app.consents[s] ?? false }, set: { app.consents[s] = $0 }))
+                    if i > 0 { KDivider(plain: true) }   // these rows have no icon tile
+                    KToggleRow(title: T("sig.\(s.rawValue).t"), detail: T(s.wholeKey),
+                               isOn: app.choiceBinding(s))   // each row shows the choice's whole text
                 }
             }
         } actions: {

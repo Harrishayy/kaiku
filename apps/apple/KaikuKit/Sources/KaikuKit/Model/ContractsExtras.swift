@@ -35,6 +35,19 @@ public struct WearableDaily: Codable, Sendable, Equatable {
     public var hrv_sdnn_ms: Double?
     public var steps: Int?
     public var exercise_min: Double?
+    /// Walking and running distance of the previous day, km to two places.
+    public var distance_km: Double?
+    /// Time in daylight of the previous day, whole minutes (an Apple Watch measures it).
+    public var daylight_min: Double?
+    /// Average heart rate while walking, the previous day.
+    public var walking_hr_bpm: Double?
+    /// Minutes in each sleep stage last night. All three are absent when the night has no staged samples.
+    public var sleep_deep_min: Double?
+    public var sleep_rem_min: Double?
+    public var sleep_core_min: Double?
+    /// Minutes awake between first falling asleep and last waking. Absent when the source wrote neither awake
+    /// samples nor stages.
+    public var sleep_awake_min: Double?
 
     public init(date: String, device: WearableDevice) { self.date = date; self.device = device }
 }

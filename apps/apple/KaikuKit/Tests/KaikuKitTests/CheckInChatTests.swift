@@ -503,7 +503,8 @@ private final class ChatHTTP: URLProtocol {
         XCTAssertEqual(waiting, 3, "the three dial answers wait in the offline queue")
     }
 
-    func testDialsWithKaikuListeningGetAnAnswerInItsOwnVoice() async {
+    func testDialsWithKaikuListeningGetAnAnswerInItsOwnVoiceAndTheConversationClosesItself() async {
+        Conversation.closeGrace = 0.3                       // the real path: Kaiku's line is said, then it closes
         let (app, audio, live, chat, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }
         await chat.start(app: app)
@@ -513,6 +514,8 @@ private final class ChatHTTP: URLProtocol {
         await chat.submitDials()
         XCTAssertEqual(chat.state.end, .dials("checkin.dials.bright"))
         XCTAssertFalse(audio.mic, "an end screen never has an open microphone")
+        chat.toggleMic(); chat.talk.toggleMic()             // the screen's button, and the Lock Screen's
+        XCTAssertFalse(audio.mic, "and nothing opens it again while Kaiku says its line")
         let told = live.contexts.last ?? ""
         XCTAssertTrue(told.contains("Clear sky") && told.contains("Good") && told.contains("Well"), told)
         XCTAssertNil(told.range(of: #"\d"#, options: .regularExpression), "the dial words, never the numbers")
@@ -520,6 +523,108 @@ private final class ChatHTTP: URLProtocol {
         live.event?(.kaikuText("That sounds like a lovely day.")); await settle()
         XCTAssertEqual(chat.dialReply, "That sounds like a lovely day.", "Kaiku's own answer takes over once it is said")
         XCTAssertEqual(chat.state.personTurns, 0)
+        // The end screen has no call bar, so the conversation does not stay open behind it.
+        live.event?(.turnComplete)
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        XCTAssertFalse(chat.hasLive, "closed by itself once the line was said")
+        XCTAssertTrue(live.closed)
+        XCTAssertEqual(chat.dialReply, "That sounds like a lovely day.", "the line stays on the end screen")
+        XCTAssertEqual(chat.state.end, .dials("checkin.dials.bright"))
+    }
+
+    // MARK: an ended check-in is over (2026-11-14: one left on its tab opened a hidden conversation)
+
+    func testAnEndedCheckInNeverOpensAConversationAgainExceptByKeepTalking() async {
+        let (app, audio, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        chat.talk.screenAppeared()
+        await open(chat, app, live, saying: "Fine. A normal day.")
+        chat.enough(); await settle()
+        XCTAssertEqual(chat.state.end, .chat)
+        XCTAssertEqual(ChatHTTP.sessions.count, 1)
+
+        // Its screen comes back (the tab reappears, the app returns from the background): nothing starts.
+        chat.talk.screenAppeared()
+        await chat.start(app: app); await settle()
+        XCTAssertEqual(ChatHTTP.sessions.count, 1, "no new conversation is asked for")
+        XCTAssertFalse(chat.hasLive)
+        XCTAssertFalse(chat.connecting)
+        XCTAssertFalse(audio.mic)
+        chat.toggleMic()
+        XCTAssertFalse(audio.mic)
+
+        // The person's own "keep talking" is the one way back in.
+        await chat.keepTalking()
+        XCTAssertEqual(ChatHTTP.sessions.count, 2)
+        XCTAssertNil(chat.state.end)
+    }
+
+    func testACheckInThatWasLeftIsOverForGood() async {
+        let (app, audio, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        chat.talk.screenAppeared()
+        await open(chat, app, live, saying: "A bit tired.")
+        chat.leave()                                        // another tab, back, "Up next": the screen is gone
+        XCTAssertEqual(chat.state.end, .chat, "a chat she took part in counts")
+        XCTAssertTrue(app.weatherDoneToday)
+        XCTAssertTrue(chat.left)
+        XCTAssertTrue(live.closed)
+
+        // Whatever brings the screen back before it is popped: no conversation, no microphone, no way to restart.
+        chat.talk.screenAppeared()
+        await chat.start(app: app)
+        await chat.keepTalking()
+        chat.talk.restart(); await settle()
+        XCTAssertEqual(ChatHTTP.sessions.count, 1)
+        XCTAssertFalse(chat.hasLive)
+        XCTAssertFalse(audio.mic)
+    }
+
+    func testNoConversationStartsBehindAScreenThatIsNotShowing() async {
+        let (app, audio, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let talk = chat.talk                                // the same model Talk runs on
+        talk.screenAppeared()
+        await talk.start(app: app)
+        live.event?(.ready); await settle()
+        XCTAssertTrue(talk.hasLive)
+        XCTAssertTrue(audio.mic)
+
+        talk.screenDisappeared()                            // another tab is showing now
+        XCTAssertFalse(talk.hasLive)
+        XCTAssertFalse(audio.mic)
+        XCTAssertTrue(live.closed)
+        // The app comes back from the background while that tab is still hidden; someone calls restart.
+        await talk.start(app: app)
+        talk.restart(); await settle()
+        XCTAssertEqual(ChatHTTP.sessions.count, 1, "nothing is asked of the service from a hidden screen")
+        XCTAssertFalse(talk.hasLive)
+        XCTAssertFalse(audio.mic)
+
+        talk.screenAppeared()                               // the screen is back in front
+        await talk.start(app: app)
+        XCTAssertEqual(ChatHTTP.sessions.count, 2)
+    }
+
+    func testEndingTheCallAwayFromTheScreenEndsTheCheckInLikeThatsEnough() async {
+        let (app, _, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(chat, app, live, saying: "It was a long day.")
+        XCTAssertNil(chat.state.end)
+        chat.talk.end()                                     // what End on the Lock Screen and the pocket rule call
+        await settle()
+        XCTAssertEqual(chat.state.end, .chat, "the end screen, as after \"That's enough for now\"")
+        XCTAssertTrue(app.weatherDoneToday, "she took part: the stop is ticked")
+        XCTAssertFalse(chat.hasLive)
+
+        // Ended the same way before she said anything: the quiet end, nothing ticked.
+        let (app2, _, live2, chat2, dir2) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir2) }
+        await chat2.start(app: app2)
+        live2.event?(.ready); await settle()
+        chat2.talk.end(); await settle()
+        XCTAssertEqual(chat2.state.end, .quiet)
+        XCTAssertFalse(app2.weatherDoneToday)
     }
 
     func testWritingWorksLikeSpeakingEvenWithoutTheMicrophone() async {
@@ -663,6 +768,13 @@ private final class ChatHTTP: URLProtocol {
         chat.send(phrase); await settle()
         XCTAssertTrue(app.showCrisis)
         XCTAssertTrue(live.text.isEmpty, "nothing goes to the model")
+        XCTAssertFalse(app.weatherDoneToday)
+        // The conversation ended (the crisis path stops it), but not as a check-in that went well: no end screen,
+        // no tick, also once the chat has seen that the call is over.
+        XCTAssertTrue(chat.talk.conversation.endedInCrisis)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        chat.sync()
+        XCTAssertNil(chat.state.end, "a crisis is not \"Good to see you\"")
         XCTAssertFalse(app.weatherDoneToday)
     }
 }

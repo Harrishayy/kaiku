@@ -8,7 +8,10 @@ import SwiftUI
 /// `-kaikuSnapshotSize 980x720` picks the window size (default: the minimum, 720 × 480). The pane lays out
 /// statically (no ScrollView), so anything that would need scrolling shows up clipped at the bottom edge.
 enum DebugSnapshot {
-    static var isSnapshot: Bool { UserDefaults.standard.string(forKey: "kaikuSnapshot") != nil }
+    /// A picture-taking run: nothing is armed, nothing is sampled or scheduled, the app quits by itself.
+    static var isSnapshot: Bool { UserDefaults.standard.string(forKey: "kaikuSnapshot") != nil || isQuiet }
+    /// `-kaikuWindowShots`: the run also stays out of the person's way (no Dock icon, no focus, an unseen window).
+    static var isQuiet: Bool { WindowShots.dir != nil }
 
     /// Snapshot runs never touch the Keychain: the pairing comes from `-kaikuSnapshotPair <link>`, in memory only.
     @MainActor static func model() -> AppModel {
@@ -16,6 +19,7 @@ enum DebugSnapshot {
     }
 
     @MainActor static func runIfAsked(app: AppModel) {
+        WindowShots.runIfAsked(app: app)
         guard let path = UserDefaults.standard.string(forKey: "kaikuSnapshot") else { return }
         QuickTalkSnapshot.runIfAsked(app: app)
         let dims = (UserDefaults.standard.string(forKey: "kaikuSnapshotSize") ?? "720x480")
@@ -302,6 +306,320 @@ enum QuickTalkSnapshot {
     }
 }
 
+/// `-kaikuWindowShots <dir>`: pictures of the REAL main window, taken from inside the app (a view may draw itself
+/// into a bitmap: `cacheDisplay`, no Screen Recording permission). Unlike `-kaikuSnapshot` this is the window the
+/// person uses: real switches, real pickers, the real scroll view, the real sidebar. One run walks the screens,
+/// each at every size and look, and where a pane is longer than the window it is scrolled a page at a time
+/// (`-p2`, `-p3`); a sheet the screen has open is pictured too (`-sheet`). It writes
+/// `<screen>-<w>x<h>-<look>[-pN].png` at 2x, `shots-<look>.txt` (what was taken, and each pane's content height
+/// against what the window shows) and `sheet-<w>x<h>.png`, a contact sheet of every picture of that size in the folder.
+///
+/// What the pictures cannot show: the window is drawn part by part (the whole window comes out blank on macOS 26),
+/// so the sidebar's and the title bar's glass are flat fills, and because the window is never the key window its
+/// switches are drawn in the grey of an inactive window where the person sees them in sage.
+///
+/// The run is a snapshot run (inert quick talk, no usage sampling, no notification scheduling, in-memory pairing)
+/// and a quiet one: no Dock icon, no menu bar item, never frontmost, the window at 1 % opacity and deaf to the mouse.
+/// - `-kaikuShotScreens you,memories,…` (default: You and its screens). Every tab root but Talk, the You routes,
+///   and the games that open no sensor (`breathe`, `lantern`, `seeds`, `watering`, `pebbles`, `firefly`; one game a
+///   run, since a pushed screen is not popped). Talk, Tell and the walk are refused (they open a conversation or
+///   a microphone); the check-in (`weather`) only together with `-kaikuTalkDemo <state>`, the scripted Live.
+///   `window` is the window as it stands (a setup step with `-kaikuOnboardingStep 3`, without `-kaikuSkipOnboarding`).
+/// - `-kaikuShotSizes 980x720,720x480` (the window's size; the smallest the window allows is 720 × 532, the
+///   480 pt of content under its 52 pt title bar) · `-kaikuShotLook light|dark` (one look a run: the app is
+///   launched in it; without it, the system's)
+/// - `-kaikuShotsOnline YES` draws the pane as when the service answers (the "can't reach the cloud" banner off);
+///   pair with `-kaikuSnapshotPair` to an address nothing listens on, never to a real service.
+/// - `-kaikuShotName <text>` is added to every file name (a second run with `-kaikuYouOpen sharing`, say).
+/// - `-kaikuShotCompare "<before dir>|<after dir>"` writes only `compare-<w>x<h>-<look>.png` into `<dir>`: every
+///   picture of either folder beside the one of the same name in the other.
+enum WindowShots {
+    static var dir: String? { UserDefaults.standard.string(forKey: "kaikuWindowShots") }
+    static let tabs: [KaikuTab] = KaikuTab.allCases.filter { $0 != .talk }   // Talk opens a conversation
+    /// The You screens, and the games that open no sensor of their own (with `-kaikuAutostart YES` a game is
+    /// pictured while it is played). A picture run never opens a camera: the task camera is closed in it
+    /// (`TaskCamera.standard`), and `-kaikuFaceSource scripted` shows the indicator on the stand-in source. The
+    /// check-in is opened only on the scripted Live (`-kaikuTalkDemo <state>`: no network, no microphone).
+    static var routes: [KaikuRoute] {
+        let games: [KaikuRoute] = [.breathe, .lantern, .seeds, .watering, .pebbles, .firefly]
+        let scripted = UserDefaults.standard.string(forKey: "kaikuTalkDemo") != nil
+        return [.memories, .saw, .voice, .quiet, .devices, .help] + games + (scripted ? [.weather] : [])
+    }
+    @MainActor static var started = false
+
+    @MainActor static func runIfAsked(app: AppModel) {
+        guard let dir, !started else { return }
+        started = true
+        let out = URL(fileURLWithPath: dir, isDirectory: true)
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        Task { @MainActor in
+            if let pair = UserDefaults.standard.string(forKey: "kaikuShotCompare") {
+                compare(pair, into: out)
+            } else {
+                await run(app: app, out: out)
+            }
+            exit(0)   // the pictures are written; an open sheet would hold an ordinary quit back
+        }
+    }
+
+    static func pause(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+
+    @MainActor static func mainWindow() -> NSWindow? {
+        NSApp.windows.first { !($0 is NSPanel) && ($0.identifier?.rawValue.contains("main") == true || $0.title == "Kaiku") }
+    }
+
+    @MainActor static func run(app: AppModel, out: URL) async {
+        let d = UserDefaults.standard
+        func list(_ key: String, _ fallback: String) -> [String] {
+            (d.string(forKey: key) ?? fallback).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        let names = list("kaikuShotScreens", "you,memories,saw,voice,quiet,devices,help")
+        let sizes: [CGSize] = list("kaikuShotSizes", "980x720,720x480").compactMap {
+            let p = $0.split(separator: "x").compactMap { Double($0) }
+            return p.count == 2 ? CGSize(width: p[0], height: p[1]) : nil
+        }
+        // One look a run: the whole app is launched in it (`KaikuMacApp.init`); switching a live window's
+        // appearance left the pane drawn in the old one.
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let looks = [dark ? "dark" : "light"]
+        let online = d.bool(forKey: "kaikuShotsOnline")
+        let tag = d.string(forKey: "kaikuShotName").map { "-" + $0 } ?? ""
+        var log: [String] = []
+        defer { try? log.joined(separator: "\n").write(to: out.appendingPathComponent("shots\(tag)-\(looks[0]).txt"), atomically: true, encoding: .utf8) }
+
+        var found: NSWindow?
+        for _ in 0..<60 where found == nil { found = mainWindow(); if found == nil { await pause(0.1) } }
+        guard let window = found else { log.append("no main window"); return }
+        // Almost, not fully, transparent: a window the system counts as unseen is redrawn late, and the pictures
+        // then show the state before the last change. Every window of this run, a sheet too, as soon as it is there.
+        let alpha = 0.01
+        func ghost() { for w in NSApp.windows where w.alphaValue != alpha || !w.ignoresMouseEvents { w.alphaValue = alpha; w.ignoresMouseEvents = true } }
+        for _ in 0..<15 { ghost(); await pause(0.1) }
+        if online, app.isPaired {   // the first load has to have failed before its banner can be taken away for good
+            for _ in 0..<50 where !app.offline { await pause(0.15) }
+            app.offline = false
+            await pause(0.4)
+        }
+        log.append("window: policy=\(NSApp.activationPolicy().rawValue) (accessory=\(NSApplication.ActivationPolicy.accessory.rawValue)) "
+            + "appActive=\(NSApp.isActive) key=\(window.isKeyWindow) alpha=\(window.alphaValue) paired=\(app.isPaired) offline=\(app.offline) online-look=\(online)")
+
+        // Tab roots first: a pushed screen cannot be popped from here.
+        var screens: [(name: String, go: () -> Void)] = []
+        for n in names { if let t = tabs.first(where: { $0.rawValue == n }) { screens.append((n, { app.selectedTab = t })) } }
+        for n in names { if let r = routes.first(where: { $0.rawValue == n }) { screens.append((n, { app.deepLink = r })) } }
+        if names.contains("window") { screens.append(("window", {})) }   // the window as it stands (setup, say)
+        let refused = names.filter { n in !screens.contains { $0.name == n } }
+        if !refused.isEmpty { log.append("refused (not a screen this tool opens): \(refused.joined(separator: ", "))") }
+
+        for screen in screens {
+            screen.go()
+            await pause(0.9)
+            for look in looks {
+                for size in sizes {
+                    window.setContentSize(size)
+                    await pause(0.6)
+                    if online { app.offline = false; await pause(0.3) }
+                    let base = "\(screen.name)\(tag)-\(Int(size.width))x\(Int(size.height))-\(look)"
+                    ghost()
+                    let note = await shoot(window, base: base, out: out)
+                    log.append("\(base): window \(Int(window.frame.width))x\(Int(window.frame.height)), \(note)")
+                    if let sheet = window.attachedSheet {   // a sheet is a window of its own: its own picture
+                        let n = await shoot(sheet, base: base + "-sheet", out: out)
+                        log.append("\(base)-sheet: \(Int(sheet.frame.width))x\(Int(sheet.frame.height)), \(n)")
+                    }
+                }
+            }
+        }
+        // One sheet a size, of every picture of that size in the folder (so a second run in the other look adds to it).
+        let files = inOrder(((try? FileManager.default.contentsOfDirectory(atPath: out.path)) ?? []).filter { $0.hasSuffix(".png") })
+        for size in sizes {
+            let key = "\(Int(size.width))x\(Int(size.height))"
+            let items = files.filter { $0.contains("-\(key)-") && !$0.hasPrefix("sheet") && !$0.hasPrefix("compare") }
+                .map { (String($0.dropLast(4)), Optional(out.appendingPathComponent($0))) }
+            sheet(items, columns: 4, cell: CGSize(width: size.width / 2, height: size.height / 2), to: out.appendingPathComponent("sheet-\(key).png"))
+        }
+    }
+
+    /// One window's pictures: as it stands, and a page at a time where its pane is longer than what shows.
+    @MainActor static func shoot(_ window: NSWindow, base: String, out: URL) async -> String {
+        let scroll = pane(in: window)
+        var offsets: [CGFloat] = [0]
+        var note = "fits"
+        if let scroll, let doc = scroll.documentView {
+            // The pane rests with its top under the title bar's inset; a page is what shows below it.
+            let inset = scroll.contentInsets.top
+            let visible = scroll.contentView.bounds.height, total = doc.frame.height
+            let last = total - visible, page = max(80, visible - inset - 56)
+            offsets = [-inset]
+            var y = -inset + page
+            while y < last && offsets.count < 6 { offsets.append(y); y += page }
+            offsets.append(last)
+            note = "scrolls: content \(Int(total)) pt, \(Int(visible - inset)) pt show (\(offsets.count) pages)"
+        }
+        for (i, y) in offsets.enumerated() {
+            if let scroll, let doc = scroll.documentView {
+                let top = doc.isFlipped ? y : doc.frame.height - scroll.contentView.bounds.height - y
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: top))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                await pause(0.25)
+            }
+            _ = capture(window, to: out.appendingPathComponent(i == 0 ? "\(base).png" : "\(base)-p\(i + 1).png"))
+        }
+        if let scroll, let doc = scroll.documentView {   // back to the top for the next size
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: doc.isFlipped ? -scroll.contentInsets.top : doc.frame.height - scroll.contentView.bounds.height))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        return note
+    }
+
+    /// The pane's scroll view when its content is taller than what shows (the widest one: not the sidebar).
+    @MainActor static func pane(in window: NSWindow) -> NSScrollView? {
+        var best: NSScrollView?
+        func walk(_ v: NSView) {
+            if let s = v as? NSScrollView, let doc = s.documentView, s.frame.width > 300,
+               doc.frame.height > s.contentView.bounds.height - s.contentInsets.top + 1, s.frame.width > (best?.frame.width ?? 0) { best = s }
+            v.subviews.forEach(walk)
+        }
+        if let root = window.contentView { walk(root) }
+        return best
+    }
+
+    /// The window's content as its own views draw it. The window as a whole cannot draw itself into a bitmap (the
+    /// glass of the sidebar and the title bar are the window server's, and a `cacheDisplay` of the whole comes out
+    /// blank), but its parts can: each column's SwiftUI view (the page backdrop, anything that does not scroll),
+    /// then every scrolled area on top of it at its real place and scroll position. So everything in the pane is
+    /// the real drawing (switches, pickers, text, the scroll position); only the sidebar's and the title bar's
+    /// materials are a flat fill.
+    @MainActor static func capture(_ window: NSWindow, to url: URL) -> Bool {
+        guard let root = window.contentView else { return false }
+        let size = root.bounds.size, scale = window.backingScaleFactor
+        guard size.width > 0, size.height > 0,
+              let canvas = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+                                            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return false }
+        canvas.size = size
+        guard let context = NSGraphicsContext(bitmapImageRep: canvas) else { return false }
+
+        func place(_ v: NSView) -> NSRect {   // the view's rectangle on the canvas (origin bottom-left)
+            let r = v.convert(v.bounds, to: root)
+            return NSRect(x: r.minX, y: root.isFlipped ? size.height - r.maxY : r.minY, width: r.width, height: r.height)
+        }
+        func draw(_ v: NSView) {
+            guard v.bounds.width > 0, v.bounds.height > 0, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+            v.cacheDisplay(in: v.bounds, to: rep)
+            rep.draw(in: place(v), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        }
+        func all<T: NSView>(_ type: T.Type, in v: NSView, into found: inout [T]) {
+            if let t = v as? T { found.append(t) }
+            v.subviews.forEach { all(type, in: $0, into: &found) }
+        }
+        func named(_ prefix: String, in v: NSView, into found: inout [NSView]) {
+            if String(describing: Swift.type(of: v)).hasPrefix(prefix) { found.append(v); return }
+            v.subviews.forEach { named(prefix, in: $0, into: &found) }
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
+            // The page backdrop is drawn afresh (it is a gradient the window's own view does not hand over).
+            let backdrop = ImageRenderer(content: KBackdrop().frame(width: size.width, height: size.height)
+                .environment(\.colorScheme, dark ? .dark : .light))
+            backdrop.scale = scale
+            if let image = backdrop.nsImage {
+                image.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1)
+            } else {
+                NSColor(KaikuTokens.Colors.bg).setFill()
+                NSRect(origin: .zero, size: size).fill()
+            }
+            // The columns, widest first (the pane lies under the sidebar).
+            var columns: [NSView] = []
+            named("_NSSplitViewItemViewWrapper", in: root, into: &columns)
+            if columns.isEmpty { columns = [root] }
+            for (i, column) in columns.sorted(by: { $0.frame.width > $1.frame.width }).enumerated() {
+                if i > 0 {   // a sidebar: its glass, as a flat fill
+                    NSColor(KaikuTokens.Colors.surface2).withAlphaComponent(0.94).setFill()
+                    place(column).fill()
+                    NSColor(KaikuTokens.Colors.line).setFill()
+                    NSRect(x: place(column).maxX, y: 0, width: 1, height: size.height).fill()
+                }
+                var hosts: [NSView] = []
+                named("NSHostingView", in: column, into: &hosts)
+                (hosts.isEmpty ? [column] : hosts).forEach(draw)
+                var clips: [NSClipView] = []
+                all(NSClipView.self, in: column, into: &clips)
+                clips.forEach(draw)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return (try? canvas.representation(using: .png, properties: [:])?.write(to: url)) != nil
+    }
+
+    /// File names in reading order: a screen's first page before its `-p2` (plain sorting puts "-p2.png" first).
+    static func inOrder(_ names: [String]) -> [String] { names.sorted { $0.dropLast(4) < $1.dropLast(4) } }
+
+    /// Before | after: every picture of either folder beside the one of the same name in the other (a page
+    /// only one of them has stands beside an empty cell).
+    @MainActor static func compare(_ pair: String, into out: URL) {
+        let dirs = pair.split(separator: "|").map { URL(fileURLWithPath: String($0), isDirectory: true) }
+        guard dirs.count == 2 else { return }
+        func pictures(_ dir: URL) -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+                .filter { $0.hasSuffix(".png") && !$0.hasPrefix("sheet") && !$0.hasPrefix("compare") }
+        }
+        let names = inOrder(Array(Set(pictures(dirs[0])).union(pictures(dirs[1]))))
+        func there(_ u: URL) -> URL? { FileManager.default.fileExists(atPath: u.path) ? u : nil }
+        var groups: [String: [(String, URL?)]] = [:]
+        var cells: [String: CGSize] = [:]
+        for name in names {
+            // <screen>…-<w>x<h>-<look>[-pN].png
+            guard let m = name.range(of: #"-(\d+)x(\d+)-(light|dark)"#, options: .regularExpression) else { continue }
+            let key = String(name[m]).dropFirst()
+            let dims = key.split(separator: "-")[0].split(separator: "x").compactMap { Double($0) }
+            cells[String(key)] = CGSize(width: dims[0] * 0.75, height: dims[1] * 0.75)   // large enough to read
+            let label = String(name.dropLast(4))
+            groups[String(key), default: []].append(("before  " + label, there(dirs[0].appendingPathComponent(name))))
+            groups[String(key), default: []].append(("after   " + label, there(dirs[1].appendingPathComponent(name))))
+        }
+        for (key, items) in groups {
+            sheet(items, columns: 2, cell: cells[key] ?? CGSize(width: 490, height: 360), to: out.appendingPathComponent("compare-\(key).png"))
+        }
+    }
+
+    /// A contact sheet: labelled thumbnails in a grid (a missing picture is a grey cell).
+    static func sheet(_ items: [(String, URL?)], columns: Int, cell: CGSize, to url: URL) {
+        guard !items.isEmpty else { return }
+        let pad: CGFloat = 16, label: CGFloat = 26
+        let rows = (items.count + columns - 1) / columns
+        let w = Int(CGFloat(columns) * (cell.width + pad) + pad), h = Int(CGFloat(rows) * (cell.height + label + pad) + pad)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        NSColor(white: 0.8, alpha: 1).setFill()
+        NSRect(x: 0, y: 0, width: w, height: h).fill()
+        let text: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium),
+                                                   .foregroundColor: NSColor(white: 0.12, alpha: 1)]
+        for (i, item) in items.enumerated() {
+            let x = pad + CGFloat(i % columns) * (cell.width + pad)
+            let top = CGFloat(h) - pad - CGFloat(i / columns) * (cell.height + label + pad)
+            (item.0 as NSString).draw(at: NSPoint(x: x, y: top - label + 7), withAttributes: text)
+            let r = NSRect(x: x, y: top - label - cell.height, width: cell.width, height: cell.height)
+            NSColor(white: 0.7, alpha: 1).setFill()
+            r.fill()
+            if let u = item.1, let image = NSImage(contentsOf: u), image.size.width > 0, image.size.height > 0 {
+                let s = min(cell.width / image.size.width, cell.height / image.size.height)
+                let size = NSSize(width: image.size.width * s, height: image.size.height * s)
+                image.draw(in: NSRect(x: r.minX, y: r.maxY - size.height, width: size.width, height: size.height),
+                           from: .zero, operation: .sourceOver, fraction: 1)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+}
+
 /// A drawn stand-in for the List sidebar (ImageRenderer can't draw NSTableView-backed lists).
 private struct MacSidebarSnapshot: View {
     let selected: KaikuTab
@@ -327,6 +645,7 @@ private struct MacSidebarSnapshot: View {
 import KaikuKit
 enum DebugSnapshot {
     static let isSnapshot = false
+    static let isQuiet = false
     @MainActor static func model() -> AppModel { AppModel() }
 }
 #endif

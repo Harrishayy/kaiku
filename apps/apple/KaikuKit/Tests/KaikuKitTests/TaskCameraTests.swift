@@ -47,58 +47,12 @@ final class TaskCameraFeatureTests: XCTestCase {
     }
 }
 
-private final class SyntheticCamera: TaskCameraSource, @unchecked Sendable {
-    var starts = 0, stops = 0
-    var frame: (@Sendable (TaskFaceFrame?) -> Void)?
-    func start(frame: @escaping @Sendable (TaskFaceFrame?) -> Void, failed: @escaping @Sendable () -> Void) async -> Bool {
-        starts += 1; self.frame = frame; return true
-    }
-    func stop() { stops += 1 }
-}
+// The controller's lifecycle (default off, permission, the tap that turns it off, leaving the front, a camera
+// taken away) is in FaceSignsTests.swift → TaskCameraControllerTests, on a stand-in source.
 
 @MainActor final class TaskCameraLifecycleTests: XCTestCase {
-    func testDefaultOffDoesNotAskPermissionOrStartCapture() async {
-        let source = SyntheticCamera()
-        var requested = false
-        let camera = TaskCamera(source: source, permission: { requested = true; return true })
-        await camera.begin(allowed: false)
-        XCTAssertFalse(requested); XCTAssertEqual(source.starts, 0); XCTAssertEqual(camera.state, .off)
-    }
-
-    func testPermissionDeniedKeepsActivityUsableWithoutCamera() async {
-        let source = SyntheticCamera()
-        let camera = TaskCamera(source: source, permission: { false })
-        await camera.begin(allowed: true)
-        XCTAssertEqual(camera.state, .unavailable); XCTAssertEqual(source.starts, 0); XCTAssertNil(camera.finish())
-    }
-
-    func testLatePermissionAfterCancelCannotOpenCamera() async {
-        let source = SyntheticCamera()
-        var permission: CheckedContinuation<Bool, Never>?
-        let camera = TaskCamera(source: source, permission: { await withCheckedContinuation { permission = $0 } })
-        let starting = Task { await camera.begin(allowed: true) }
-        while permission == nil { await Task.yield() }
-        camera.cancel(); permission?.resume(returning: true)
-        await starting.value
-        XCTAssertEqual(source.starts, 0); XCTAssertEqual(camera.state, .off)
-    }
-
-    func testCompletionAndRevocationStopCaptureAndDiscardLateFrames() async {
-        let source = SyntheticCamera(), sample = TaskFaceFrame(centerX: 0.5, centerY: 0.5, mouthAspect: 0.2, eyeAspect: 0.1)
-        let camera = TaskCamera(source: source, permission: { true })
-        await camera.begin(allowed: true); XCTAssertEqual(camera.state, .capturing)
-        source.frame?(sample); source.frame?(sample)
-        try? await Task.sleep(nanoseconds: 10_000_000)
-        let summary = camera.finish()
-        XCTAssertEqual(summary?.samples, 2); XCTAssertEqual(camera.state, .off)
-        source.frame?(sample); await Task.yield(); XCTAssertNil(camera.finish())
-        await camera.begin(allowed: true)
-        let late = source.frame
-        camera.cancel() // used on background, Back, consent revocation and cancelled games
-        late?(sample); await Task.yield()
-        XCTAssertNil(camera.finish()); XCTAssertGreaterThan(source.stops, 0)
-    }
-    /// Synthetic geometry through the production recorder/outbox/API. No device, microphone or model is used.
+    /// Made-up numbers through the production controller, recorder, outbox and API, into a real service (a scratch
+    /// one: `KAIKU_TASK_CAPTURE_TEST_CLOUD`). No camera, microphone or model is used; everything is sent `sim: true`.
     func testSyntheticTaskMeasurementsPersistThroughActualRecorder() async throws {
         guard let raw = ProcessInfo.processInfo.environment["KAIKU_TASK_CAPTURE_TEST_CLOUD"], let url = URL(string: raw) else {
             throw XCTSkip("Set KAIKU_TASK_CAPTURE_TEST_CLOUD for synthetic database integration")
@@ -114,26 +68,54 @@ private final class SyntheticCamera: TaskCameraSource, @unchecked Sendable {
                            episodes: EpisodeOutbox(url: directory.appendingPathComponent("episodes.json")))
         var sample = PlaySession(game: .firefly, device: KaikuPlatform.device, duration_s: 30)
         sample.reaction_ms_median = 430; sample.reaction_ms_iqr = 80
-        sample.expressivity_index = 0.04; sample.face_movement = 0.02
-        sample.camera_face_coverage = 0.75; sample.camera_samples = 20; sample.camera_method = "vision_landmarks"
-        let since = Date().addingTimeInterval(-1)
         app.consents[.camera] = true
-        await app.recordPlay(sample, sim: true)
+        app.cameraChoice.agree()   // as on the screens that show the choice's whole text
+        // One task on the stand-in source: 30 s, a 2 s smile, a blink every 3 s, the face out of the picture for 6 s.
+        let source = FakeFaceSource(); source.simulated = true
+        let camera = TaskCamera(source: source, permission: { true })
+        await camera.begin(allowed: app.cameraOn)
+        source.feed(seconds: 30) { t in
+            if t >= 20 && t < 26 { return nil }
+            return FaceReading(smile: t >= 5 && t < 7 ? 0.7 : 0.05, browRaise: 0.05, browFurrow: 0.04,
+                               eyeClosed: t.truncatingRemainder(dividingBy: 3) < 0.2 ? 0.95 : 0.1, mouthOpen: 0.03, gazeOn: t < 15,
+                               head: .rotation(x: 0, y: sin(t / 40), z: 0, w: cos(t / 40)))
+        }
+        let seen = try XCTUnwrap(camera.finish())
+        let since = Date().addingTimeInterval(-1)
+        await app.recordPlay(sample, camera: seen)
+        let left = await app.queue.count
+        XCTAssertEqual(left, 0, "nothing waits in the queue, whether or not the service knows obs.face_signs")
         var events = try await api.todaysEvents(since: since)
         let recorded = try XCTUnwrap(events.events.first { $0.type == "obs.play_session" && $0.home_id == home })
         XCTAssertEqual(recorded.sim, true)
         XCTAssertEqual(recorded.payload["camera_method"]?.string, "vision_landmarks")
-        XCTAssertEqual(recorded.payload["expressivity_index"]?.double, 0.04)
-        XCTAssertEqual(recorded.payload["camera_face_coverage"]?.double, 0.75)
+        XCTAssertNotNil(recorded.payload["expressivity_index"]?.double)
+        XCTAssertEqual(recorded.payload["camera_face_coverage"]?.double ?? 0, 0.8, accuracy: 0.01)
         XCTAssertEqual(recorded.payload["reaction_ms_median"]?.double, 430)
+        // A service that knows the type keeps the face signs beside the game; one that does not has only refused them.
+        if let signs = events.events.first(where: { $0.type == "obs.face_signs" && $0.home_id == home }) {
+            XCTAssertEqual(signs.payload["ref"]?.string, recorded.id)
+            XCTAssertEqual(signs.sim, true); XCTAssertEqual(signs.payload["task"]?.string, "firefly")
+            XCTAssertEqual(signs.payload["method"]?.string, "arkit_blendshapes")
+            XCTAssertEqual(signs.payload["coverage"]?.double ?? 0, 0.8, accuracy: 0.01); XCTAssertEqual(signs.quality ?? 0, 0.8, accuracy: 0.01)
+            XCTAssertEqual(signs.payload["smiles"]?.int, 1)
+            XCTAssertEqual(signs.payload["blinks_per_min"]?.double ?? 0, 20, accuracy: 2.6)
+            XCTAssertEqual(signs.payload["gaze_on_share"]?.double ?? 0, 15.0 / 24, accuracy: 0.02)
+            print("face_signs stored by the service:", signs.payload)
+        } else {
+            print("this service does not know obs.face_signs yet: it took the game record and refused the face signs")
+        }
+        XCTAssertEqual(app.cameraChoice.sentToday().count, 1)
         let revokedSince = Date().addingTimeInterval(-1)
         app.consents[.camera] = false
-        await app.recordPlay(sample, sim: true)
+        await app.recordPlay(sample, sim: true, camera: seen)
         events = try await api.todaysEvents(since: revokedSince)
         let scrubbed = try XCTUnwrap(events.events.first { $0.id != recorded.id && $0.type == "obs.play_session" })
         XCTAssertNil(scrubbed.payload["camera_method"])
         XCTAssertNil(scrubbed.payload["expressivity_index"])
         XCTAssertEqual(scrubbed.payload["reaction_ms_median"]?.double, 430)
+        XCTAssertEqual(events.events.filter { $0.type == "obs.face_signs" && $0.payload["ref"]?.string == scrubbed.id }.count, 0,
+                       "with the choice withdrawn nothing of the camera is sent")
     }
 
 }

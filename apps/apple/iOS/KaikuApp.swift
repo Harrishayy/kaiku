@@ -61,6 +61,7 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
     }
 
     func launched() async {
+        HomeUpdates.shared.start(app: app)   // the home stream: what is agreed or done elsewhere shows here at once
         await WalkModel.recover(app: app)
         await foreground()
         #if DEBUG
@@ -110,6 +111,7 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         guard let d = await current else { return }
         await d.app.refresh()
         await Notifier.shared.refresh(app: d.app)
+        await HomeUpdates.shared.catchUp(app: d.app)   // an activity agreed while the app was suspended: its notification, late
         await HealthSync.shared.sync(app: d.app)
     }
 
@@ -119,12 +121,19 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         [.banner, .sound, .list]
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    /// The completion-handler form on purpose: UIKit must be told "done" on the main thread. The `async` form
+    /// finishes wherever it last ran, and an action that opens the app (Let's go, Start) then stopped the app
+    /// with "call must be made on main thread" (seen on iOS 26.2, 2026-11-14).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
         let action = response.actionIdentifier
         let info = response.notification.request.content.userInfo
         let sendable = info.reduce(into: [String: String]()) { if let k = $1.key as? String, let v = $1.value as? String { $0[k] = v } }
-        await MainActor.run {} // hop
-        await handle(action: action, info: sendable)
+        nonisolated(unsafe) let done = completionHandler
+        Task { @MainActor in
+            await self.handle(action: action, info: sendable)
+            done()
+        }
     }
 
     private func handle(action: String, info: [String: String]) async {

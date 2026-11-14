@@ -53,6 +53,11 @@ import XCTest
                  "Maybe. I just miss her so much."],
         "good": ["I have news! I got the job I interviewed for last week. I start in January!",
                  "I'm so relieved. I really didn't think they'd pick me."],
+        // Plain statements, no question and no name: the take in which Kaiku went silent (2026-11-14).
+        "plain": ["It has been a hard day. My mother would have turned ninety today, and I miss her more than I expected.",
+                  "She always baked cardamom buns on her birthday. I could not face making them today.",
+                  "I do not really know what to do with the evening.",
+                  "Thank you for staying with me."],
     ]
 
     func testRealCheckInChat() async throws {
@@ -104,6 +109,13 @@ import XCTest
             lastKind = kind
             if env["KAIKU_CHECKIN_LIVE_TRACE"] != nil { note("   · " + kind) }
         }
+        chat.talk.conversation.noted = { event, fields in
+            guard env["KAIKU_CHECKIN_LIVE_TRACE"] != nil else { return }
+            note("   # " + event + " " + fields.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))
+        }
+        // KAIKU_CHECKIN_LIVE_PACE: seconds from one typed line to the next whatever Kaiku does (a recorded take's
+        // rhythm); unset, the next line waits for Kaiku's turn to end.
+        let pace = env["KAIKU_CHECKIN_LIVE_PACE"].flatMap(Double.init)
         await chat.start(app: app)
         XCTAssertTrue(chat.hasLive, "bootstrap: \(String(describing: chat.unavailable))")
         guard chat.hasLive else { return }
@@ -121,8 +133,10 @@ import XCTest
             let plans = chat.talk.conversation.planCount
             let turns = turnsDone
             chat.send(line)
-            await quiet(25, after: turns)
+            let heard = audio.bytes
+            if let pace { try await Task.sleep(nanoseconds: UInt64(pace * 1_000_000_000)) } else { await quiet(25, after: turns) }
             flush()
+            note("answered aloud: \(audio.bytes > heard ? "yes, \((audio.bytes - heard) / 48_000) s" : "NO")  ·  phase \(chat.phase)  ·  status \(chat.talk.status)")
             if chat.talk.conversation.planCount > plans, let p = chat.talk.conversation.plan {
                 note("FEEL → stance \(p.stance ?? "-"), depth \(p.depth.rawValue), may_offer \(p.mayOffer ?? "none"), activity \(p.offerActivity ?? "none"); card: \(chat.card?.kind ?? "none")")
             }

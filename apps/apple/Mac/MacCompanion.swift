@@ -27,6 +27,9 @@ final class MacCompanion {
     func start(app: AppModel) {
         guard self.app == nil else { return }
         self.app = app
+        // A picture run only looks: no usage sampling, no peeks, no notification planning (they would write to
+        // the same files and notification centre as the person's own running Kaiku).
+        if DebugSnapshot.isSnapshot { _ = island; return }
         let ws = NSWorkspace.shared.notificationCenter
         // Only a count of switches is kept; which app was activated is never looked at here.
         observers.append(ws.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
@@ -42,6 +45,7 @@ final class MacCompanion {
         _ = island
         tick()
         DailyInvitation.schedule(app: app)
+        HomeUpdates.shared.start(app: app)   // the home stream: what is agreed or done elsewhere shows here at once
         if UserDefaults.standard.bool(forKey: "kaikuSimulateLate") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.simulateLateEvening() }
         }

@@ -36,6 +36,29 @@ final class TalkModel {
         conversation = makeConversation()
     }
     weak var app: AppModel?
+    /// Is the screen that shows this conversation's call bar in front of the person? The screen says so as it
+    /// appears and disappears. While it is not, no conversation starts and no microphone opens: a tab that is
+    /// not showing stays alive on the iPhone, and what it does there nobody would see (2026-11-14: a check-in
+    /// left on its tab opened a new conversation with no call bar when the tab came back). nil: no screen has
+    /// claimed this model (the Mac's quick talk panel owns its window and its own rules).
+    private(set) var onScreen: Bool?
+    private var retired = false
+
+    func screenAppeared() { if !retired { onScreen = true } }
+
+    /// The screen is gone (another tab, popped, closed): the conversation ends with it.
+    func screenDisappeared() {
+        onScreen = false
+        stop()
+    }
+
+    /// The screen is gone for good (a check-in that was left): this model never opens a conversation again,
+    /// whatever calls it later.
+    func retire() {
+        retired = true
+        screenDisappeared()
+    }
+
     private var audioTokens: [NSObjectProtocol] = []
     private var routeAnnounced = false
     private var started = false
@@ -71,6 +94,7 @@ final class TalkModel {
 
     func start(app: AppModel) async {
         self.app = app
+        guard onScreen != false else { return }       // never behind a screen that is not showing
         #if DEBUG
         // Inspect a real window without opening capture or minting a provider session.
         if UserDefaults.standard.bool(forKey: "kaikuInspectOnly") { started = true; return }
@@ -98,7 +122,7 @@ final class TalkModel {
         c.onReady = { [weak c, opening] in c?.context(opening) }   // Kaiku greets in its live voice
         denied = AudioCapture.permission == .denied
         await app.ensureServiceConnection()
-        guard started else { return }
+        guard started, onScreen != false, conversation === c else { return }
         let ok = await c.start(app: app)
         denied = AudioCapture.permission == .denied
         #if DEBUG
@@ -176,6 +200,9 @@ final class TalkModel {
     /// Mute / unmute me. Kaiku goes on answering what is typed.
     func toggleMic() {
         guard hasLive, conversation.listens else { return }
+        // Muting is always allowed; the microphone only opens while the call's own screen is the one showing
+        // (or the app is out of sight with the call on the Lock Screen: the screen is still the call's).
+        guard !conversation.micMuted || onScreen != false else { return }
         conversation.setMuted(!conversation.micMuted)
     }
 
@@ -191,7 +218,7 @@ final class TalkModel {
 
     /// Start again after an end, a drop or a failed start.
     func restart() {
-        guard let app, !hasLive else { return }
+        guard let app, !hasLive, onScreen != false else { return }
         started = false
         Task { await start(app: app) }
     }
@@ -398,7 +425,7 @@ extension TalkModel {
         guard observingCall else { return }
         withObservationTracking {
             let c = conversation
-            _ = (c.phase, c.micMuted, c.voiceMuted, c.kaikuSpeaking, c.listens, c.liveSince, c.lines.last?.text)
+            _ = (c.phase, c.micMuted, c.voiceMuted, c.kaikuSpeaking, c.listens, c.liveSince, c.lines.last?.text, c.awaitingAnswer)
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.observingCall else { return }
@@ -478,16 +505,29 @@ public struct TalkView: View {
             PairStep(back: { showPairing = false }, next: { showPairing = false; model.restart() })
                 .environment(app)
         }
+        .onAppear { if governsCall { model.screenAppeared() } }
         .task { if !staticLayout { await model.start(app: app) } }
-        .onDisappear { model.stop() }
+        .onDisappear { if governsCall { model.screenDisappeared() } else { model.stop() } }
         .onChange(of: app.pairing) { _, _ in model.stop(); text = "" }
         // No call: nothing to type into. A call without the microphone: typing is the way to talk, so it is open.
         .onChange(of: model.hasLive, initial: true) { _, live in typing = live && !model.conversation.listens }
         .onChange(of: phase) { _, p in
             bgTask?.cancel()
             if p == .background { bgTask = Task { await model.backgrounded() } }
+            // Back in front: Talk picks up again, but only the Talk that is showing. (This also fires for a Talk
+            // tab that sits behind another tab; `start` refuses there.)
             if p == .active { Task { await model.start(app: app) } }
         }
+    }
+
+    /// On the iPhone and iPad this screen owns its call: it starts while the screen is showing and ends when it
+    /// goes. On the Mac the model is the one quick talk shares, which runs without this window.
+    private var governsCall: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
     }
 
     // MARK: Kaiku — the centre of the call

@@ -110,14 +110,34 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     private func keepAlive(_ t: URLSessionWebSocketTask) {
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 20) { [weak self, weak t] in
             guard let self, let t, self.task === t else { return }
-            t.sendPing { [weak self] error in
-                guard let self, self.task === t else { return }
-                if error != nil {
-                    if self.closeReason == nil { self.closeReason = "ping failed" }
-                    self.reportClosed()
-                } else { self.keepAlive(t) }
+            self.ping(timeout: 8) { [weak self, weak t] alive in
+                guard let self, let t, self.task === t, alive else { return }
+                self.keepAlive(t)
             }
         }
+    }
+
+    /// Is the socket still there? A pong within `timeout` says yes. No pong, or an error: the socket is reported
+    /// closed (once), so the conversation reconnects instead of waiting on a line that will never answer.
+    public func ping(timeout: TimeInterval, _ done: @escaping @Sendable (Bool) -> Void) {
+        guard let t = task else { done(false); return }
+        let answered = PingAnswer()
+        let finish: @Sendable (Bool, String) -> Void = { [weak self, weak t] alive, why in
+            guard answered.first() else { return }
+            if !alive, let self, let t, self.task === t {
+                if self.closeReason == nil { self.closeReason = why }
+                self.reportClosed()
+            }
+            done(alive)
+        }
+        t.sendPing { error in finish(error == nil, "ping failed") }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { finish(false, "no pong in \(Int(timeout)) s") }
+    }
+
+    private final class PingAnswer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        func first() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
     }
 
     public func close() {
@@ -148,6 +168,14 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     }
 
     public func sendText(_ text: String) { send(["realtimeInput": ["text": text]]) }
+
+    /// The person's written line as one whole user turn (`clientContent`, turn complete): the second try of a
+    /// line the model left without any answer.
+    public func sendTurn(_ text: String) { send(Self.turn(text)) }
+
+    static func turn(_ text: String) -> [String: Any] {
+        ["clientContent": ["turns": [["role": "user", "parts": [["text": text]]]], "turnComplete": true] as [String: Any]]
+    }
 
     /// A context event from Kaiku's senses (`[walk · 10 min]`), appended as a turn the model may react to — or,
     /// with proactive audio, stay quiet about. Same wording as the hub's `send_context`.
@@ -202,7 +230,7 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         var resumption = session.live_setup?["sessionResumption"]?.any as? [String: Any] ?? [:]
         if let h = options.resumeHandle { resumption["handle"] = h }
         let compression = session.live_setup?["contextWindowCompression"]?.any as? [String: Any] ?? ["slidingWindow": [String: Any]()]
-        return ["setup": [
+        var setup: [String: Any] = [
             "model": model,
             "generationConfig": [
                 "responseModalities": ["AUDIO"],
@@ -215,11 +243,14 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
             "realtimeInputConfig": realtime,
             "sessionResumption": resumption,
             "contextWindowCompression": compression,
-            // the cloud's choice when it sends one (`live_setup.proactivity`), otherwise proactive audio on
-            "proactivity": session.live_setup?["proactivity"]?.any ?? ["proactiveAudio": true],
             "inputAudioTranscription": [String: Any](),
             "outputAudioTranscription": [String: Any](),
-        ] as [String: Any]]
+        ]
+        // Proactive audio lets the model leave an input unanswered. Only the cloud turns it on, for the purposes
+        // that want it (`live_setup.proactivity`, today the walk); without it the field is not sent at all and
+        // Kaiku answers everything the person says or writes.
+        if let proactivity = session.live_setup?["proactivity"]?.any { setup["proactivity"] = proactivity }
+        return ["setup": setup]
     }
 
     static func context(_ text: String) -> [String: Any] {
@@ -293,7 +324,15 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     private func send(_ obj: [String: Any]) {
         guard let task, let data = try? JSONSerialization.data(withJSONObject: obj),
               let s = String(data: data, encoding: .utf8) else { return }
-        task.send(.string(s)) { err in if err != nil { kaikuLog.notice("live_send_failed") } }
+        // A frame that could not be sent means the socket is gone: say so, instead of a line that looks open and
+        // never answers.
+        task.send(.string(s)) { [weak self, weak task] err in
+            guard err != nil else { return }
+            kaikuLog.notice("live_send_failed")
+            guard let self, let task, self.task === task else { return }
+            if self.closeReason == nil { self.closeReason = "send failed" }
+            self.reportClosed()
+        }
     }
 
     private func receive() {

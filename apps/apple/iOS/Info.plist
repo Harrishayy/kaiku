@@ -64,7 +64,7 @@
 		<string>_bonjour._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Find nearby Kaiku companion services for voice, and reach your Meta glasses' camera when you let Kaiku see.</string>
+	<string>Find nearby Kaiku companion services for voice, reach your Meta glasses' camera when you let Kaiku see, and, while the Kaiku bot page is open, listen to your robot's messages on your home network (never its sound).</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

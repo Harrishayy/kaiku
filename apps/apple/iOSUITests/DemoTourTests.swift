@@ -643,7 +643,9 @@ final class DemoTourTests: XCTestCase {
         launch()
         step("today")
         pause(3)
-        tab("Your days", after: 3.5)
+        tab("History", after: 3.5)   // Your days sits under History since the History tab arrived
+        let days = app.staticTexts["Your garden, today so far and little moments"].firstMatch
+        if days.waitForExistence(timeout: 6) { days.tap(); pause(2.5) } else { NSLog("DEMO-MISSING your days row under History") }
         step("your-days")
         let title = app.staticTexts["Today, so far"].firstMatch
         _ = title.waitForExistence(timeout: 8)

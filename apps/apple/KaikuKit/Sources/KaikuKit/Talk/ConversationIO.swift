@@ -38,9 +38,15 @@ protocol ConversationTransport: AnyObject, Sendable {
     func respond(id: String, name: String, result: JSONValue)
     /// The results of calls that arrived in one `toolCall` frame, answered in ONE `toolResponse` frame.
     func respond(_ answers: [ToolAnswer])
+    /// Is the socket still there? Answers within `timeout`; a socket that is not reports itself closed.
+    func ping(timeout: TimeInterval, _ done: @escaping @Sendable (Bool) -> Void)
+    /// The person's written line as one whole turn the model must answer (the second try of an unanswered line).
+    func sendTurn(_ text: String)
 }
 extension ConversationTransport {
     func sendVideo(_ jpeg: Data) {}
+    func ping(timeout: TimeInterval, _ done: @escaping @Sendable (Bool) -> Void) { done(true) }
+    func sendTurn(_ text: String) { sendText(text) }
     func respond(_ answers: [ToolAnswer]) { answers.forEach { respond(id: $0.id, name: $0.name, result: $0.result) } }
 }
 

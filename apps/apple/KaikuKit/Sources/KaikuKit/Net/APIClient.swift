@@ -70,6 +70,11 @@ public actor APIClient {
         try await send("PUT", "/v1/me/memory_settings", query: ["home_id": try home()], body: MemorySettings(remember: on))
     }
 
+    /// History: every measure the person has, by local day, with each measure's latest sessions (D48).
+    public func history(days: Int) async throws -> PersonHistory {
+        try await get("/v1/me/history", query: ["home_id": try home(), "days": String(days)])
+    }
+
     public func todaysEvents(since: Date) async throws -> LiveEventsResponse {
         try await get("/v1/events", query: ["home_id": try home(), "since": KaikuTime.iso(since), "limit": "500"])
     }

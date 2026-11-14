@@ -5,6 +5,8 @@ import Foundation
 /// check is not done by the person's usual time, and the PHQ-9 card once. Never a crisis message, never in quiet
 /// hours, never something the person already did today on any surface. All times are local wall-clock minutes,
 /// so a timezone or DST change just recomputes the same ids (no duplicates).
+/// Besides the plan: one notification for each activity the person said yes to in a conversation (`agreed`),
+/// posted at once when the app is not in front, with the same quiet hours and pause.
 public enum NudgeScheduler {
     /// Things the person can already have done today, on any surface (robot, phone, Mac, glasses, web).
     public enum Activity: String, Sendable, CaseIterable { case checkin, walk, breathe, play, drum, friend }
@@ -78,6 +80,10 @@ public enum NudgeScheduler {
         public static let invitationNoLater = "kaiku.invite.nolater"
         public static let checkin = "kaiku.checkin"
         public static let phq9 = "kaiku.phq9"
+        /// An activity agreed in a conversation: Start · Not now.
+        public static let agreed = "kaiku.agreed"
+        /// The same for an activity this device has no screen for: Not now only.
+        public static let agreedElsewhere = "kaiku.agreed.elsewhere"
     }
 
     /// The activity an arm invites to (for "already did it today" and the deep link).
@@ -196,6 +202,74 @@ public enum NudgeScheduler {
     public static func dayKey(_ d: Date, _ cal: Calendar) -> String {
         let c = cal.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    // MARK: an activity agreed in a conversation (D50)
+
+    /// One of today's agreed items as the rule sees it: its id and whether it is still open (not started, done
+    /// or put aside).
+    public struct AgreedItem: Sendable, Equatable {
+        public var id: String
+        public var open: Bool
+        /// It was agreed in a conversation on this very device (not the glasses a walk speaks through): Kaiku
+        /// has just said where it is, so this device does not ring about it.
+        public var here: Bool
+        public init(id: String, open: Bool, here: Bool = false) { self.id = id; self.open = open; self.here = here }
+    }
+
+    public struct AgreedInput: Sendable {
+        public var now: Date
+        public var calendar: Calendar
+        public var quiet: Quiet
+        public var paused: Bool
+        /// The app is in front of the person right now (iPhone: active; Mac: the main window is key).
+        public var inFront: Bool
+        /// Today's agreed items as just read from the service.
+        public var items: [AgreedItem]
+        /// Items this device has already shown the person: the card arrived while the app was in front, or a
+        /// notification went out.
+        public var shown: Set<String>
+        /// Items whose notification this device posted and has not taken away yet.
+        public var posted: Set<String>
+
+        public init(now: Date, calendar: Calendar = .current, quiet: Quiet = Quiet(), paused: Bool = false, inFront: Bool,
+                    items: [AgreedItem], shown: Set<String> = [], posted: Set<String> = []) {
+            self.now = now; self.calendar = calendar; self.quiet = quiet; self.paused = paused; self.inFront = inFront
+            self.items = items; self.shown = shown; self.posted = posted
+        }
+    }
+
+    public struct AgreedPlan: Sendable, Equatable {
+        /// Items to post one notification for, now.
+        public var post: [String] = []
+        /// Items whose notification is taken away (removed, done, started or put aside, here or elsewhere).
+        public var remove: [String] = []
+        /// Items that now count as shown on this device (never notified about again).
+        public var shown: [String] = []
+    }
+
+    public static let agreedKind = "agreed"
+    public static func agreedID(_ item: String) -> String { "kaiku.agreed.\(item)" }
+
+    /// What to do about agreed items after a read. An open item the person has not been shown here yet: in
+    /// front, or agreed on this very device, the card arriving is the notice (nothing is posted, now or later);
+    /// otherwise one notification, unless everything is paused or it is quiet hours (then the card waits on
+    /// Today, and a later read outside quiet hours may still post it once). Whatever is no longer open loses
+    /// its notification.
+    public static func agreed(_ input: AgreedInput) -> AgreedPlan {
+        var plan = AgreedPlan()
+        let open = Set(input.items.filter(\.open).map(\.id))
+        plan.remove = input.posted.subtracting(open).sorted()
+        let quiet = input.quiet.contains(minute: minute(input.now, input.calendar), weekend: input.calendar.isDateInWeekend(input.now))
+        for item in input.items where item.open && !input.shown.contains(item.id) {
+            if input.inFront || item.here {
+                plan.shown.append(item.id)
+            } else if !input.paused && !quiet {
+                plan.post.append(item.id)
+                plan.shown.append(item.id)
+            }
+        }
+        return plan
     }
 
     /// Which activities happened today, from the cloud's event list (any surface counts).

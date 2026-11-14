@@ -44,7 +44,11 @@ public struct KScreen<Content: View>: View {
                 inner.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).fillsProposal()
             } else {
                 ScrollView {
-                    inner.frame(maxWidth: .infinity)
+                    // Exactly the width offered, never what the content would like. A scroll view grows to its
+                    // content's minimum width, and this screen's width is what `kaikuPaneWidth` (and so the two
+                    // columns) is read from: content too wide for its column made the screen wider, the wider
+                    // screen made the first column wider, and the Mac's Today never stopped laying out.
+                    inner.frame(minWidth: 0, maxWidth: .infinity)
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollDismissesKeyboard(.interactively)
@@ -285,14 +289,19 @@ public struct KSection<Content: View>: View {
     }
 }
 
+/// The hairline between rows, inset to where the rows' text starts: past the icon tile, or (`plain`) at the row
+/// padding for rows that have no icon.
 public struct KDivider: View {
-    public init() {}
+    var plain = false
+    public init(plain: Bool = false) { self.plain = plain }
     public var body: some View { Rectangle().fill(KaikuTokens.Colors.line).frame(height: 1)
-            .padding(.leading, KaikuTokens.Space.s4 + KaikuTokens.Size.iconTile + KaikuTokens.Space.s3)
+            .padding(.leading, plain ? KaikuTokens.Space.s4 : KaikuTokens.Space.s4 + KaikuTokens.Size.iconTile + KaikuTokens.Space.s3)
     }
 }
 
-public enum KRowAccessory { case chevron, check, none, value(String) }
+/// What a row ends with. `link` is a short value and the chevron (a row that leads somewhere and says where
+/// things stand: "On", "3 of 5 on").
+public enum KRowAccessory { case chevron, check, none, value(String), link(String) }
 
 /// List row: optional tone icon tile, title + detail column (takes the rest, wraps), trailing accessory.
 public struct KRow: View {
@@ -326,6 +335,11 @@ public struct KRow: View {
                 Image(systemName: "checkmark.circle.fill").kText(.title3).foregroundStyle(KaikuTokens.Colors.sage)
             case .value(let v) where v.count <= 14:
                 Text(v).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).lineLimit(1).fixedSize()
+            case .link(let v):
+                HStack(spacing: KaikuTokens.Space.s2) {
+                    Text(v).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).lineLimit(1).fixedSize()
+                    KChevron()
+                }
             default: EmptyView()
             }
         }
@@ -352,7 +366,9 @@ public struct RowIcon: View {
     }
 }
 
-/// Switch row (consent, pauses). Text column wraps; the switch never moves off-screen.
+/// Switch row (consent, pauses): optional icon tile, title + one quiet line (the column wraps and takes the
+/// rest), the switch. The row lays its parts out itself: as the label of the system switch the text was not
+/// given its height on the Mac, so a second line ran over the row's padding into the rows around it.
 public struct KToggleRow: View {
     let icon: String?
     let tint: Color
@@ -369,23 +385,30 @@ public struct KToggleRow: View {
                 // Stacked: full-width text, the switch under it (long Finnish words never break mid-word).
                 VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
                     labels
-                    Toggle(isOn: $isOn) { Text(title) }.labelsHidden()
+                    toggle
                 }
-                .accessibilityElement(children: .combine)
             } else {
-                Toggle(isOn: $isOn) {
-                    HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
-                        if let icon { RowIcon(symbol: icon, tint: tint) }
-                        labels
-                    }
+                HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
+                    if let icon { RowIcon(symbol: icon, tint: tint) }
+                    labels
+                    toggle
                 }
             }
         }
-        .toggleStyle(.switch)
-        .tint(KaikuTokens.Colors.sage)
         .padding(.horizontal, KaikuTokens.Space.s4)
         .padding(.vertical, KaikuTokens.Space.s3)
         .frame(minHeight: KaikuTokens.Size.rowMin)
+    }
+
+    /// The switch alone; VoiceOver hears the title and the quiet line on it, as when they were its label
+    /// (a consent text must not depend on hints being switched on).
+    private var toggle: some View {
+        Toggle(isOn: $isOn) { Text(title) }
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(KaikuTokens.Colors.sage)
+            .fixedSize()
+            .accessibilityLabel([title, detail].compactMap { $0 }.joined(separator: ", "))
     }
 
     private var labels: some View {
@@ -394,6 +417,48 @@ public struct KToggleRow: View {
             if let detail { Text(detail).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Sheet scaffold (components.md → Sheet / modal): the title, Done top right (Esc closes too), and content that
+/// scrolls inside. On the Mac a sheet is a small window of its own: `width` × `height` is how it opens.
+public struct KSheet<Content: View>: View {
+    let title: String
+    var width: CGFloat
+    var height: CGFloat
+    let content: Content
+    @Environment(\.dismiss) private var dismiss
+    public init(_ title: String, width: CGFloat = 520, height: CGFloat = 520, @ViewBuilder content: () -> Content) {
+        self.title = title; self.width = width; self.height = height; self.content = content()
+    }
+    public var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
+                Text(title).kText(.title3, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                Button(T("common.done")) { dismiss() }
+                    .buttonStyle(KButtonStyle(.ghost, fullWidth: false))
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, KaikuPlatform.sidePadding)
+            .padding(.top, KaikuTokens.Space.s4)
+            .padding(.bottom, KaikuTokens.Space.s2)
+            ScrollView {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s5) { content }
+                    .padding(.horizontal, KaikuPlatform.sidePadding)
+                    .padding(.top, KaikuTokens.Space.s2)
+                    .padding(.bottom, KaikuTokens.Space.s5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .background(KaikuTokens.Colors.bg)
+        #if os(macOS)
+        .frame(width: width, height: height)
+        #endif
     }
 }
 

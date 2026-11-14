@@ -2,27 +2,14 @@ import SwiftUI
 
 /// Your days: the garden (a sprout per interaction; rests after 3 quiet days, never wilts), this week's strip
 /// (tap a day to mark it good or hard — hard days count too), little moments from /v1/me highlights, postcards.
+/// A pushed screen under History since 2026-11-14 (History's first block is this week's strip and the way here).
 public struct DaysView: View {
     @Environment(AppModel.self) private var app
-    @State private var marking: Date?
+    @Environment(\.dismiss) private var dismiss
     public init() {}
 
-    var week: [Date] {
-        var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
-        let today = cal.startOfDay(for: Date())
-        let start = cal.dateInterval(of: .weekOfYear, for: today)?.start ?? today
-        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
-    }
-
-    func kind(_ d: Date) -> HighlightKind? {
-        let key = AppModel.dayKey(d)
-        if let m = app.marks[key] { return m }
-        return app.me?.highlights?.first(where: { $0.date == key })?.kind
-    }
-
     public var body: some View {
-        KScreen(T("tab.days"), subtitle: T("days.sub"), maxWidth: KaikuTokens.Size.paneMax) {
+        KScreen(T("tab.days"), back: { dismiss() }, maxWidth: KaikuTokens.Size.paneMax) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
                 WideAware { wide in
                     VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
@@ -37,7 +24,7 @@ public struct DaysView: View {
                 }
                 VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
                     SectionHeader(T("days.week"), subtitle: T("days.mark"), icon: "calendar", tone: .honey)
-                    WeekStrip(days: week, kind: kind) { marking = $0 }
+                    WeekMarks()
                 }
             } trailing: {
                 EvidenceSection(showsDetailLink: true)
@@ -61,16 +48,40 @@ public struct DaysView: View {
                 }
             }
         }
-        .sheet(item: Binding(get: { marking.map(IdentDate.init) }, set: { marking = $0?.date })) { d in
-            MarkDaySheet(date: d.date, current: app.marks[AppModel.dayKey(d.date)]) { k in
-                let key = AppModel.dayKey(d.date)
-                if let k { app.marks[key] = k } else { app.marks.removeValue(forKey: key) }
-                marking = nil
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
         .refreshable { await app.refresh() }
+    }
+}
+
+/// This week's seven days with their marks, and the sheet that marks one (Your days, and the top of History).
+struct WeekMarks: View {
+    @Environment(AppModel.self) private var app
+    @State private var marking: Date?
+
+    var week: [Date] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.firstWeekday = 2
+        let today = cal.startOfDay(for: Date())
+        let start = cal.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    func kind(_ d: Date) -> HighlightKind? {
+        let key = AppModel.dayKey(d)
+        if let m = app.marks[key] { return m }
+        return app.me?.highlights?.first(where: { $0.date == key })?.kind
+    }
+
+    var body: some View {
+        WeekStrip(days: week, kind: kind) { marking = $0 }
+            .sheet(item: Binding(get: { marking.map(IdentDate.init) }, set: { marking = $0?.date })) { d in
+                MarkDaySheet(date: d.date, current: app.marks[AppModel.dayKey(d.date)]) { k in
+                    let key = AppModel.dayKey(d.date)
+                    if let k { app.marks[key] = k } else { app.marks.removeValue(forKey: key) }
+                    marking = nil
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
     }
 }
 
@@ -163,14 +174,15 @@ struct GardenLegend: View {
     }
 }
 
-/// Wraps children onto new lines (legend chips).
+/// Wraps children onto new lines (legend chips, a session's numbers). A child wider than the whole row is given
+/// the row's width, so its own text wraps inside the row instead of running past its edge.
 struct FlowRow: Layout {
     var spacing: CGFloat = 8
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let w = proposal.width ?? 320
         var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = v.sizeThatFits(ProposedViewSize(width: w, height: nil))
             if x > 0 && x + s.width > w { x = 0; y += line + 4; line = 0 }
             x += s.width + spacing; line = max(line, s.height)
         }
@@ -179,7 +191,7 @@ struct FlowRow: Layout {
     func placeSubviews(in b: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = b.minX, y = b.minY, line: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = v.sizeThatFits(ProposedViewSize(width: b.width, height: nil))
             if x > b.minX && x + s.width > b.maxX { x = b.minX; y += line + 4; line = 0 }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; line = max(line, s.height)
@@ -214,7 +226,9 @@ struct WeekStrip: View {
                                     .foregroundStyle(k == .good ? KaikuTokens.Colors.honey : KaikuTokens.Colors.sky)
                             }
                         }
-                        .frame(width: 42, height: 42)
+                        // 42 pt where seven fit; on a 320 pt column they shrink together instead of running off the card.
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: 42, maxHeight: 42)
                     }
                     .frame(maxWidth: .infinity, minHeight: KaikuTokens.Size.rowMin)
                     .contentShape(Rectangle())

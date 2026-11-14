@@ -250,7 +250,7 @@ struct GardenBeds: View {
                 if weeks > 1 {
                     Text(T(w == weeks - 1 ? "garden.recent" : "garden.lastweek")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted)
                 }
-                HStack(alignment: .bottom, spacing: KaikuTokens.Space.s2) {
+                GardenPlots(spacing: KaikuTokens.Space.s2) {
                     ForEach(row, id: \.date) { d in plot(d) }
                 }
             }
@@ -273,14 +273,8 @@ struct GardenBeds: View {
             VStack(spacing: KaikuTokens.Space.s2) {
                 DayPlant(count: d.count, seed: d.date.hashValue, tint: d.kinds.contains("play_session") ? KaikuTokens.Colors.honey : KaikuTokens.Colors.mascotBlush)
                     .frame(height: plantHeight)
-                HStack(spacing: KaikuTokens.Space.s1) {
-                    ForEach(d.kinds.prefix(3), id: \.self) { k in
-                        if let (sym, c) = GardenDay.kindStyle[k] {
-                            Image(systemName: sym).kText(.micro, weight: .bold).foregroundStyle(c)
-                        }
-                    }
-                }
-                .frame(height: 11)
+                PlotMarks(kinds: d.kinds)
+                    .frame(height: 11)
                 VStack(spacing: 0) {
                     Text(d.dateValue.map { DayName.short($0) } ?? "").kText(.caption, weight: d.isToday ? .bold : .regular)
                         .foregroundStyle(d.isToday ? KaikuTokens.Colors.clay : KaikuTokens.Colors.muted)
@@ -303,11 +297,98 @@ struct GardenBeds: View {
     }
 }
 
+/// How a row of the garden is shared out (pure): every plot gets the same width, whatever it holds.
+enum GardenRow {
+    /// The width a plot is drawn for when nobody says how wide the row may be.
+    static let idealPlot: CGFloat = 48
+
+    /// One plot's width in a row this wide: the plots and the gaps between them fill the row exactly. A row too
+    /// narrow even for its gaps gives zero, never less.
+    static func plotWidth(row: CGFloat, plots: Int, gap: CGFloat) -> CGFloat {
+        guard plots > 0, row.isFinite else { return 0 }
+        return max(0, (row - gap * CGFloat(plots - 1)) / CGFloat(plots))
+    }
+
+    static func idealWidth(plots: Int, gap: CGFloat) -> CGFloat {
+        CGFloat(max(0, plots)) * idealPlot + gap * CGFloat(max(0, plots - 1))
+    }
+}
+
+/// A row of day plots, all the same width. The row is exactly as wide as it is offered: what a plot holds can
+/// never make the row, its card or the page wider. (As an `HStack` the row could not be narrower than its
+/// plots' icons: six days of three icons each needed 334 pt, more than a small phone's card has, which pushed
+/// Today past the screen and left an empty day with no width at all.)
+struct GardenPlots: Layout {
+    var spacing: CGFloat = KaikuTokens.Space.s2
+
+    private func plot(in row: CGFloat, _ subviews: Subviews) -> CGFloat {
+        GardenRow.plotWidth(row: row, plots: subviews.count, gap: spacing)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        var row = GardenRow.idealWidth(plots: subviews.count, gap: spacing)
+        if let offered = proposal.width, offered.isFinite { row = max(0, offered) }
+        let each = ProposedViewSize(width: plot(in: row, subviews), height: nil)
+        return CGSize(width: row, height: subviews.map { $0.sizeThatFits(each).height }.max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = plot(in: bounds.width, subviews)
+        var x = bounds.minX
+        for subview in subviews {
+            subview.place(at: CGPoint(x: x + width / 2, y: bounds.maxY), anchor: .bottom,
+                          proposal: ProposedViewSize(width: width, height: nil))
+            x += width + spacing
+        }
+    }
+}
+
+/// What a day held, under its plant: up to three icons at the largest of a few sizes the plot has room for
+/// (their own size where there is room; a phone's plot takes them a little smaller). In a plot too narrow even
+/// for the smallest, how many kinds of thing there were.
+struct PlotMarks: View {
+    let kinds: [String]
+    /// Smaller sizes to try after the icons' own (`micro`, 12 pt, 4 pt apart): the size and the gap at that size.
+    static let smaller: [(size: CGFloat, gap: CGFloat)] = [(10.5, 3), (9.5, 2), (8.5, 1.5), (7.5, 1)]
+    @ScaledMetric(relativeTo: .caption2) private var unit: CGFloat = 1
+
+    var body: some View {
+        let marks = kinds.prefix(3).compactMap { GardenDay.kindStyle[$0] }
+        ZStack {   // always a view, so a quiet day's plot keeps the same height as its neighbours
+            if !marks.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: KaikuTokens.Space.s1) {
+                        ForEach(marks.indices, id: \.self) { i in
+                            Image(systemName: marks[i].0).kText(.micro, weight: .bold).foregroundStyle(marks[i].1)
+                        }
+                    }
+                    ForEach(Self.smaller.indices, id: \.self) { step in
+                        HStack(spacing: Self.smaller[step].gap) {
+                            ForEach(marks.indices, id: \.self) { i in
+                                Image(systemName: marks[i].0)
+                                    .font(.system(size: Self.smaller[step].size * unit, weight: .bold, design: .rounded))
+                                    .foregroundStyle(marks[i].1)
+                            }
+                        }
+                    }
+                    Text("\(marks.count)").kText(.micro, weight: .bold).foregroundStyle(KaikuTokens.Colors.muted)
+                }
+            }
+        }
+    }
+}
+
 /// One day's plant: a seed in soil (quiet day, never wilted) → sprout → leaves → bud → flower as the day fills up.
 struct DayPlant: View {
     let count: Int
     let seed: Int
     let tint: Color
+
+    /// How long a leaf is drawn (pure): as designed where the plot has room, and in a narrow plot (a phone's
+    /// week) no further than the plot's edge, where the drawing would be cut off straight.
+    static func leafLength(level: Int, plot: CGFloat, sway: CGFloat) -> CGFloat {
+        min(13 + CGFloat(level) * 1.5, max(6, plot / 2 - abs(sway) - 1))
+    }
     var body: some View {
         Canvas { ctx, s in
             let soilY = s.height - 8
@@ -331,7 +412,7 @@ struct DayPlant: View {
                 let t = 0.3 + 0.17 * CGFloat(i)
                 let a = CGPoint(x: mid + sway * t, y: soilY - h * t)
                 let dir: CGFloat = i % 2 == 0 ? -1 : 1
-                let len: CGFloat = 13 + CGFloat(level) * 1.5
+                let len = Self.leafLength(level: level, plot: s.width, sway: sway)
                 var leaf = Path()
                 leaf.move(to: a)
                 leaf.addQuadCurve(to: CGPoint(x: a.x + dir * len, y: a.y - len * 0.7), control: CGPoint(x: a.x + dir * len, y: a.y))

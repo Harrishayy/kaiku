@@ -80,6 +80,8 @@ public final class AppModel {
         saveDict(consents.mapKeys(\.rawValue), "kaiku.consents")
         if consents[.transcripts] != true { episodes.removeTranscripts() }
     } }
+    /// "Camera during activities": the wording agreed to, and what this device sent today.
+    @ObservationIgnored let cameraChoice: CameraChoice
     public var pausedAll: Bool { didSet { defaults.set(pausedAll, forKey: "kaiku.pausedAll") } }
     public var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "kaiku.pausedUntil") } }
     public var pace: VoicePace { didSet { defaults.set(pace.rawValue, forKey: "kaiku.pace") } }
@@ -107,11 +109,13 @@ public final class AppModel {
     init(defaults: UserDefaults, pairing: Pairing?, api injectedAPI: APIClient?, queue: OfflineQueue, episodes: EpisodeOutbox, discovery: ServiceDiscovery? = nil,
          saveService: @escaping (Pairing) -> Bool = PairingStore.save) {
         self.defaults = defaults
+        cameraChoice = CameraChoice(defaults: defaults)
         self.serviceDiscovery = discovery ?? ServiceDiscovery()
         self.saveService = saveService
         // Dev/test launch arguments (UserDefaults argument domain): -kaikuPairLink <url>, -kaikuSkipOnboarding YES
         var p = pairing
         if let link = defaults.string(forKey: "kaikuPairLink"), let parsed = Pairing.parse(link) {
+            if parsed.homeID != pairing?.homeID { cameraChoice.clearSent() }   // the day's camera receipt belongs to one home
             p = parsed
             PairingStore.save(parsed)
         }
@@ -261,6 +265,8 @@ public final class AppModel {
         if let next { ServiceIdentity.remember(next, defaults: defaults) }
         if changedHome {
             WalkModel.shared.clearForPairingChange()
+            HistoryModel.shared.clearForPairingChange()   // the numbers on screen and the copy kept for offline
+            InvitationModel.shared.clearForPairingChange()   // the invitation and what was agreed today (D50)
             me = nil; nudge = nil; memories = []; todayEvents = []
             remember = true; memoriesLoaded = false; conversationsKept = nil
             savedConversations = []; conversationsLoading = false; conversationsFailed = false
@@ -268,6 +274,7 @@ public final class AppModel {
             toast = nil; celebrateUntil = nil; showCrisis = false; crisisShownForMood = false
             phq9Requested = false; deepLink = nil
             marks = [:]; playedDays = [:]; weatherDoneDay = nil; talkDays = [:]
+            cameraChoice.clearSent()
         }
         await api.setPairing(next)
     }
@@ -429,12 +436,26 @@ public final class AppModel {
 
     /// One finished game → obs.play_session. Speech features only with the voice signal on.
     public func recordPlay(_ session: PlaySession, sim: Bool = false) async {
+        await recordPlay(session, sim: sim, camera: nil)
+    }
+
+    /// The same, with what the task's camera measured (nil = it did not run): the two older numbers go into the
+    /// game's own observation as before, and the face signs follow as one obs.face_signs that points at it.
+    func recordPlay(_ session: PlaySession, sim: Bool = false, camera: TaskCameraResult?) async {
         playedDays[session.game.rawValue] = Self.dayKey(Date())
         celebrate()
         guard allowed(.checkins) else { return }
         var s = session
         if s.game == .tell && !allowed(.voice) { s.speech_rate = nil; s.pause_ratio = nil; s.pitch_variability = nil }
-        if !allowed(.camera) {
+        // The camera choice may have been switched off while the game ran: then nothing of it is sent.
+        let camera = cameraOn ? camera : nil
+        let sim = sim || camera?.simulated == true
+        if let geometry = camera?.geometry {
+            s.expressivity_index = geometry.expressivity; s.face_movement = geometry.movement
+            s.camera_face_coverage = geometry.coverage; s.camera_samples = geometry.samples
+            s.camera_method = "vision_landmarks"
+        }
+        if !cameraOn {
             s.expressivity_index = nil; s.face_movement = nil; s.camera_face_coverage = nil
             s.camera_samples = nil; s.camera_method = nil
         }
@@ -445,7 +466,9 @@ public final class AppModel {
             s = GameHistory.stamp(s, defaults: defaults)
             quality = GameHistory.quality(s)
         }
-        await emit("obs.play_session", s, sim: sim, quality: quality)
+        let id = UUID7.make()
+        await emit("obs.play_session", s, id: id, sim: sim, quality: quality)
+        if let camera { await recordFaceSigns(camera, task: s.game.rawValue, ref: id) }
         await loadToday()
     }
 

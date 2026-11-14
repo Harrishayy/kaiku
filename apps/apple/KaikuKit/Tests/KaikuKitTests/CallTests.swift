@@ -30,7 +30,10 @@ private final class CallLink: ConversationTransport, @unchecked Sendable {
     var tokens: [String] = []
     var closed = 0
     var frames: [[ToolAnswer]] = []
-    func connect(token: String, session: CompanionSessionResponse, options: LiveSession.Options) { tokens.append(token) }
+    var handles: [String?] = []
+    func connect(token: String, session: CompanionSessionResponse, options: LiveSession.Options) {
+        tokens.append(token); handles.append(options.resumeHandle)
+    }
     func close() { closed += 1 }
     func sendAudio(_ pcm: Data) {}
     func audioStreamEnd() {}
@@ -38,6 +41,16 @@ private final class CallLink: ConversationTransport, @unchecked Sendable {
     func sendContext(_ event: String) { contexts.append(event) }
     func respond(id: String, name: String, result: JSONValue) {}
     func respond(_ answers: [ToolAnswer]) { frames.append(answers) }
+    var alive = true
+    var pings = 0
+    var turns: [String] = []
+    func ping(timeout: TimeInterval, _ done: @escaping @Sendable (Bool) -> Void) {
+        pings += 1
+        let alive = alive, event = event
+        if !alive { event?(.closed) }               // a socket that does not answer reports itself closed
+        done(alive)
+    }
+    func sendTurn(_ text: String) { turns.append(text) }
 }
 
 private final class CallHTTP: URLProtocol {
@@ -333,6 +346,138 @@ private final class CallHTTP: URLProtocol {
 
     // MARK: the gated nudge
 
+    // MARK: a line the person wrote is always answered (the take in which Kaiku went silent, 2026-11-14)
+
+    func testAWrittenLineThatArrivesWhileAHeldTurnIsPendingStillGetsItsAnswerHeard() async {
+        let (app, audio, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        var notes: [String] = []
+        c.noted = { event, fields in notes.append(event + (fields["after_a_dropped_turn"] != nil ? "+rescued" : "")) }
+
+        // Kaiku's own turn (nobody asked): sound with no word yet, so it is held. The server never says it is over.
+        c.nudge("[walk · 10 min]")
+        link.event?(.audio(chunk)); link.event?(.audio(chunk)); await settle()
+        XCTAssertTrue(audio.played.isEmpty, "held until a word")
+        // The person writes. The held turn is theirs to take; no `interrupted`, no `turnComplete` arrive.
+        c.send(text: "It has been a hard day.")
+        XCTAssertTrue(c.awaitingAnswer)
+        XCTAssertEqual(CallStatus(c), .thinking, "the bar says Kaiku is on it, not just that the microphone is off")
+        try? await Task.sleep(nanoseconds: UInt64((Conversation.supersededGap + 0.15) * 1_000_000_000))
+        // The answer starts well within the old three-second window of the dropped turn.
+        link.event?(.audio(chunk)); link.event?(.kaikuText("That sounds heavy.")); link.event?(.audio(chunk)); await settle()
+        XCTAssertEqual(audio.played.count, 2, "the answer plays at once and in full")
+        XCTAssertEqual(c.lines.last?.text, "That sounds heavy.")
+        XCTAssertFalse(c.awaitingAnswer)
+        XCTAssertTrue(notes.contains("turn_dropped_for_person"))
+        XCTAssertTrue(notes.contains("turn+rescued"), "the trace says the old gate would have swallowed this answer: \(notes)")
+    }
+
+    func testFramesStillInFlightFromTheDroppedTurnAreNotMistakenForTheAnswer() async {
+        let (app, audio, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        c.nudge("[walk · 10 min]")
+        link.event?(.audio(chunk)); await settle()
+        c.send(text: "Wait.")
+        link.event?(.audio(chunk)); link.event?(.kaikuText("<no speech>")); link.event?(.audio(chunk)); await settle()
+        XCTAssertTrue(audio.played.isEmpty, "what was already on its way belongs to the turn the person took over")
+        XCTAssertFalse(c.lines.contains { !$0.me })
+    }
+
+    func testTheEndOfAnInterruptedTurnDoesNotUseUpThePersonsAnswer() async {
+        let (app, audio, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        link.event?(.userText("Tell me something.")); link.event?(.userTranscriptComplete)
+        link.event?(.audio(chunk)); link.event?(.kaikuText("Well, once upon")); await settle()
+        let before = audio.played.count
+        // The person writes over Kaiku: the server interrupts that turn and then closes it.
+        c.send(text: "Sorry, my mother would have turned ninety today.")
+        link.event?(.interrupted); link.event?(.turnComplete); await settle()
+        // Their answer starts with a sound that is not a word. It is still theirs: never held, never dropped.
+        link.event?(.modelOutput); link.event?(.audio(chunk)); link.event?(.kaikuText("<sigh>")); link.event?(.audio(chunk))
+        link.event?(.kaikuText(" I am so sorry.")); await settle()
+        XCTAssertEqual(audio.played.count, before + 2, "an answer to the person is never held back")
+        XCTAssertEqual(c.lines.last?.text, "I am so sorry.")
+    }
+
+    func testAnAnswerThatComesLongAfterTheLineBecauseOfASlowToolIsStillThePersons() async {
+        let window = Conversation.answerWindow
+        Conversation.answerWindow = 0.25
+        defer { Conversation.answerWindow = window }
+        let (app, audio, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        var whose: [String] = []
+        c.noted = { event, fields in if event == "turn" { whose.append("\(fields["whose"] ?? "")") } }
+        c.send(text: "I could not face baking today.")
+        try? await Task.sleep(nanoseconds: 400_000_000)          // the wait for an answer has run out
+        link.event?(.toolCall(id: "f1", name: "feel", args: [:]))  // the model was reading the feeling all along
+        link.event?(.turnComplete)
+        try? await Task.sleep(nanoseconds: 150_000_000)          // the tool has answered (the fake cloud is quick)
+        link.event?(.modelOutput); link.event?(.audio(chunk)); link.event?(.kaikuText("<sigh>")); link.event?(.audio(chunk))
+        link.event?(.kaikuText(" That is completely understandable.")); await settle()
+        XCTAssertEqual(whose.last, "the person's answer", "the tool renews the wait, also the quiet one")
+        XCTAssertEqual(audio.played.count, 2, "so the answer is not held, and a sound at its start cannot drop it")
+        XCTAssertEqual(c.lines.last?.text, "That is completely understandable.")
+    }
+
+    func testWordsAfterASoundInKaikusOwnTurnAreHeardFromThere() async {
+        let (app, audio, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        c.nudge("[walk · 10 min]")
+        link.event?(.audio(chunk)); link.event?(.kaikuText("<sigh>")); link.event?(.audio(chunk)); await settle()
+        XCTAssertTrue(audio.played.isEmpty, "the sound itself is not played")
+        link.event?(.kaikuText(" Ten minutes already.")); link.event?(.audio(chunk)); await settle()
+        XCTAssertEqual(audio.played.count, 1, "the words that follow are")
+        XCTAssertEqual(c.lines.last?.text, "Ten minutes already.")
+    }
+
+    func testAWrittenLineOnADeadSocketIsNoticedAndSentAgainOnTheNextOne() async {
+        let patience = Conversation.answerPatience
+        Conversation.answerPatience = 0.3
+        defer { Conversation.answerPatience = patience }
+        let (app, _, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        link.event?(.resumable(handle: "h-1")); await settle()
+        var notes: [String] = []
+        c.noted = { event, _ in notes.append(event) }
+        link.alive = false
+        c.send(text: "Are you there?")
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(link.pings, 1, "silence after a written line: the socket is checked, once")
+        XCTAssertTrue(notes.contains("typed_unanswered") && notes.contains("live_dropped"), "\(notes)")
+        XCTAssertEqual(link.tokens.count, 2, "a dead socket is replaced")
+        link.alive = true
+        link.event?(.ready); await settle()
+        XCTAssertEqual(link.text, ["Are you there?", "Are you there?"], "and the line goes out again on the new one")
+        XCTAssertTrue(c.isLive)
+    }
+
+    func testAWrittenLineTheModelLeavesInTotalSilenceIsPutToItOnceMore() async {
+        let patience = Conversation.answerPatience
+        Conversation.answerPatience = 0.3
+        defer { Conversation.answerPatience = patience }
+        let (app, _, link, c, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await open(c, app, link)
+        c.send(text: "I do not really know what to do with the evening.")
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        XCTAssertEqual(link.pings, 1)
+        XCTAssertEqual(link.turns, ["I do not really know what to do with the evening."], "once, as a whole turn")
+        XCTAssertEqual(link.tokens.count, 1, "the socket answered: no reconnect")
+
+        // A line that gets any sign of life is left alone.
+        c.send(text: "Thank you.")
+        link.event?(.toolCall(id: "f1", name: "feel", args: [:]))
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(link.pings, 1)
+        XCTAssertEqual(link.turns.count, 1)
+    }
+
     func testANudgeIsHeardOnlyOnceARealWordArrives() async {
         let (app, audio, link, c, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir); c.stop() }
@@ -432,6 +577,36 @@ private final class CallHTTP: URLProtocol {
         XCTAssertNotEqual(c.phase, .connecting, "first try: quiet")
         link.event?(.closed); await settle()
         XCTAssertEqual(c.phase, .connecting, "second in a row: the person is told")
+    }
+
+    func testAResumptionThatKeepsBeingRefusedEndsOnAFreshLineNotInSilence() async {
+        func sessions() -> Int { CallHTTP.lock.lock(); defer { CallHTTP.lock.unlock() }; return CallHTTP.sessions.filter { $0.contains("fresh-home") }.count }
+        let (app, _, link, c, dir) = fixture(home: "fresh-home")
+        defer { try? FileManager.default.removeItem(at: dir); c.stop() }
+        await open(c, app, link)
+        link.event?(.resumable(handle: "h1"))
+        c.send(text: "My mother would have turned ninety today.")
+        link.event?(.modelOutput); link.event?(.kaikuText("That must feel heavy.")); link.event?(.kaikuTranscriptComplete)
+        link.event?(.turnComplete); await settle()
+
+        link.event?(.closed); await settle()                              // the quiet try, with the handle
+        XCTAssertEqual(link.handles.last ?? nil, "h1")
+        link.event?(.closed)                                              // refused: the visible try, with the handle
+        try? await Task.sleep(nanoseconds: 1_100_000_000)
+        XCTAssertEqual(link.handles.last ?? nil, "h1")
+        XCTAssertEqual(sessions(), 1)
+        link.event?(.closed)                                              // refused again: a fresh line
+        try? await Task.sleep(nanoseconds: 1_600_000_000)
+        XCTAssertEqual(sessions(), 2, "a new token is asked for")
+        XCTAssertNil(link.handles.last ?? nil, "and the last try carries no handle")
+        XCTAssertEqual(c.phase, .connecting)
+        link.event?(.ready); await settle()
+        XCTAssertTrue(c.isLive, "the call is back instead of \"Kaiku can't talk right now\"")
+        let told = link.contexts.last ?? ""
+        XCTAssertTrue(told.contains("the person: My mother would have turned ninety today.") && told.contains("you: That must feel heavy."),
+                      "Kaiku is told what was just said: \(told)")
+        XCTAssertTrue(told.contains("do not greet again"))
+        XCTAssertEqual(c.lines.count, 2, "the words on screen stay")
     }
 
     func testADropBeforeAnyHandleIsAVisibleReconnect() async {

@@ -3,7 +3,8 @@ import SwiftUI
 /// The weather dial card: title + the current value (a honey chip) on one row, a five-stop track under it. Drag
 /// the big knob (it has grip lines, an open hand on Mac), tap a stop, or use ←/→ when focused. It snaps to whole
 /// steps with a tick sound + haptic per step; Kaiku's ear follows. The active dial gets a honey outline.
-/// VoiceOver: adjustable.
+/// VoiceOver: adjustable. On a touch screen the track takes sideways drags and taps only: a drag up or down that
+/// starts on it scrolls the page it sits in.
 public struct WeatherDial: View {
     let item: DialItem
     @Binding var value: Int
@@ -112,16 +113,12 @@ public struct WeatherDial: View {
                     .animation(rm ? nil : KaikuTokens.Spring.gentle, value: value)
             }
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        guard !disabled else { return }
-                        if !dragging { dragging = true; onFocus?() }
-                        let v = Int(((g.location.x - inset) / step).rounded()) + 1
-                        set(min(5, max(1, v)))
-                    }
-                    .onEnded { _ in dragging = false }
-            )
+            .modifier(TrackTouch(moved: { x in
+                guard !disabled else { return }
+                if !dragging { dragging = true; onFocus?() }
+                let v = Int(((x - inset) / step).rounded()) + 1
+                set(min(5, max(1, v)))
+            }, ended: { dragging = false }))
             .kPointer(!disabled, cursor: .openHand)
             .onHover { hover = $0 }
         }
@@ -150,3 +147,73 @@ public struct WeatherDial: View {
         KSound.play(.tick)
     }
 }
+
+/// How the track is touched. With a pointer (Mac): press and drag anywhere on it. On a touch screen the track
+/// sits in a page that scrolls, so it claims a tap and a sideways drag and nothing else: a drag that starts up
+/// or down is the page's (a drag gesture that claimed every touch made the page impossible to scroll with a
+/// thumb that landed on a dial).
+private struct TrackTouch: ViewModifier {
+    let moved: (CGFloat) -> Void
+    let ended: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 18.0, *) {
+            content
+                .onTapGesture(coordinateSpace: .local) { p in moved(p.x); ended() }
+                .gesture(SidewaysPan(moved: moved, ended: ended))
+        } else {
+            content
+                .onTapGesture(coordinateSpace: .local) { p in moved(p.x); ended() }
+                // Before iOS 18: a drag beside the page's own scrolling that acts only while it runs sideways.
+                .simultaneousGesture(DragGesture(minimumDistance: 10)
+                    .onChanged { g in
+                        if DragAxis(dx: g.translation.width, dy: g.translation.height) == .sideways { moved(g.location.x) }
+                    }
+                    .onEnded { _ in ended() })
+        }
+        #else
+        content.gesture(DragGesture(minimumDistance: 0).onChanged { moved($0.location.x) }.onEnded { _ in ended() })
+        #endif
+    }
+}
+
+/// Which way a drag is going, decided by its first movement (pure; tested).
+enum DragAxis: Equatable {
+    case sideways, upDown
+    init(dx: CGFloat, dy: CGFloat) { self = abs(dx) > abs(dy) ? .sideways : .upDown }
+}
+
+#if os(iOS)
+/// A pan that begins only when the finger moves sideways; anything else is left to the page.
+@available(iOS 18.0, *)
+private struct SidewaysPan: UIGestureRecognizerRepresentable {
+    let moved: (CGFloat) -> Void
+    let ended: () -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        switch pan.state {
+        case .began, .changed: moved(context.converter.localLocation.x)
+        case .ended, .cancelled, .failed: ended()
+        default: break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let pan = g as? UIPanGestureRecognizer else { return true }
+            let v = pan.velocity(in: pan.view)
+            return DragAxis(dx: v.x, dy: v.y) == .sideways
+        }
+    }
+}
+
+#endif

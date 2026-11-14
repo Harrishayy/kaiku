@@ -3,13 +3,16 @@ import SwiftUI
 /// Today: greeting + not-OK, Kaiku in its time-of-day glow with the one suggestion, primary + "not today", Weather
 /// check (sky) + Breathe (sage) rows, garden. One viewport: two columns on the Mac window, a compact stack on
 /// iPhone. Mascot mood from /v1/me; loading → thinking; offline → sky banner. When the cloud has an invitation
-/// (`InvitationModel`), its card stands where Kaiku's line is until it is answered.
+/// (`InvitationModel`), its card stands where Kaiku's line is until it is answered. What the person said yes to
+/// in a conversation today, on any device, stands above it (`AgreedStack`): it arrives through the home stream
+/// while this screen is open, with no reload.
 public struct TodayView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.kaikuPaneWidth) private var width
     @Environment(\.scenePhase) private var scenePhase
     @State private var declined = false
-    @State private var invite = InvitationModel()
+    /// The one list the app keeps (the home stream refreshes it, the notification rules follow it).
+    private var invite: InvitationModel { .shared }
 
     public init() {}
 
@@ -35,32 +38,74 @@ public struct TodayView: View {
         KScreen(app.greeting, maxWidth: KaikuTokens.Size.paneMax) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.48) {
                 WideAware { wide in
+                    // Agreed items first, then the invitation; Kaiku's own line only when neither has a card.
+                    let board = board(wide: wide)
                     if wide {
                         VStack(spacing: KaikuTokens.Space.s4) {
                             GlowingMascot(state: app.ambientState, size: KaikuTokens.Size.mascotL)
+                            if !board.isEmpty { agreedStack(board, mascot: false) }
                             if let inv = invite.invitation {
                                 invitationCard(inv, mascot: false)
-                            } else {
+                            } else if board.card == nil {
                                 Bubble(bubble, big: true, centered: true)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                    } else if let inv = invite.invitation {
-                        invitationCard(inv, mascot: true)
                     } else {
-                        MascotWithBubble(state: app.ambientState, text: bubble, size: KaikuTokens.Size.mascotM, big: true)
+                        // One card with buttons at a time: the service holds the invitation back while an
+                        // agreed item is open or started, so the invitation only ever stands under done lines.
+                        VStack(spacing: KaikuTokens.Space.s3) {
+                            if !board.isEmpty { agreedStack(board, mascot: true) }
+                            if let inv = invite.invitation {
+                                invitationCard(inv, mascot: board.card == nil)
+                            } else if board.card == nil {
+                                MascotWithBubble(state: app.ambientState, text: bubble, size: KaikuTokens.Size.mascotM, big: true)
+                            }
+                        }
                     }
                 }
                 .animation(gently, value: invite.invitation?.id)   // the card arrives and leaves softly
-                if invite.invitation == nil { actions }
+                .animation(gently, value: board(wide: false).key)
+                if invite.invitation == nil, board(wide: false).card == nil { actions }
             } trailing: {
                 TodayPathCard()
-                GardenCard(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
+                GardenCard(garden: app.me?.garden ?? Garden()) { app.deepLink = .days }
             }
         }
         .refreshable { await app.refresh(); await loadInvitation() }
         .task(id: app.pairingRevision) { await loadInvitation() }
         .onChange(of: scenePhase) { _, p in if p == .active { Task { await loadInvitation() } } }
+    }
+
+    // MARK: agreed in a conversation today (D50)
+
+    /// One card and at most a few single lines (two on a phone): the day's path keeps its first stop on screen
+    /// on the smallest phone.
+    private func board(wide: Bool) -> AgreedBoard {
+        AgreedBoard.make(invite.agreed, today: AppModel.dayKey(Date()), maxRows: wide ? AgreedBoard.maxRows : 2)
+    }
+
+    private func agreedStack(_ board: AgreedBoard, mascot: Bool) -> some View {
+        AgreedStack(board: board, showsMascot: mascot, waiting: invite.settling,
+                    hear: { VoiceLines.shared.say($0.text, lang: app.language) },
+                    start: { start($0) }, notNow: { putAside($0) })
+    }
+
+    /// Start: the activity's screen opens at once and the service hears it was opened (the item then reads
+    /// "Started" on every screen).
+    private func start(_ item: AgreedActivity) {
+        VoiceLines.shared.stop()
+        guard let route = item.route() else { return }
+        Task { await invite.settle(item.id, .opened, app: app) }
+        app.deepLink = route
+        app.selectedTab = route.tab
+    }
+
+    /// Not now: the item leaves here and everywhere, and Kaiku says it will be here.
+    private func putAside(_ item: AgreedActivity) {
+        VoiceLines.shared.stop()
+        declined = true
+        Task { await invite.settle(item.id, .put_aside, app: app) }
     }
 
     // MARK: invitation (one thing Kaiku would like to bring up or offer now)

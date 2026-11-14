@@ -73,6 +73,8 @@ public final class Conversation {
     }
     /// The conversation reached the cloud's session length limit (the caller may offer to start again).
     public private(set) var endedByLimit = false
+    /// A crisis phrase ended this conversation (the crisis screen has taken over; nothing else follows from its end).
+    public private(set) var endedInCrisis = false
     /// Camera frames handed to Live in this conversation (glasses walk, only with the person's choice on).
     public private(set) var framesSent = 0
     public private(set) var lastPersonAt: Date?
@@ -134,6 +136,8 @@ public final class Conversation {
     @ObservationIgnored private var muted: Bool { get { micMuted } set { if micMuted != newValue { micMuted = newValue } } }
     /// Kaiku's voice is playing right now (also while the person is muted, and while its voice is muted).
     public private(set) var kaikuSpeaking = false
+    /// The person wrote a line and Kaiku has not answered it yet (the call bar says "Thinking").
+    public private(set) var awaitingAnswer = false
     @ObservationIgnored private var pendingTools = 0
     @ObservationIgnored private var pauseGeneration = 0
     @ObservationIgnored private var pairingRevision = 0
@@ -188,7 +192,7 @@ public final class Conversation {
         guard phase == .idle || phase == .unavailable else { return isLive }
         stopped = false
         unavailableReason = nil
-        endedByLimit = false; framesSent = 0; lastPersonAt = nil; lastKaikuAt = nil
+        endedByLimit = false; endedInCrisis = false; framesSent = 0; lastPersonAt = nil; lastKaikuAt = nil
         lines = []; personTurnID = nil; kaikuTurnID = nil
         inputFinalObserved = false; outputFinalObserved = false; audioTurnEnded = false
         toolsUsed = []; everReady = false; wasLive = false; failures = 0; muted = false; handle = nil
@@ -248,6 +252,8 @@ public final class Conversation {
         readyTask?.cancel(); readyTask = nil
         closeTask?.cancel(); closeTask = nil; closing = nil
         resumeTask?.cancel(); resumeTask = nil; resuming = false; awaitingReady = false; turn = nil; heldText = []
+        answerWatch?.cancel(); answerWatch = nil; unanswered = nil; awaitingAnswer = false; afterInterruption = false
+        freshLine = false
         contextDrain?.cancel(); contextDrain = nil; heldContext = []; answerOwed = false; toolFrames = []; cancelledCalls = []
         contextTask?.cancel(); contextTask = nil; pendingContext = []
         connectionGeneration += 1
@@ -290,6 +296,8 @@ public final class Conversation {
 
     public func setMuted(_ on: Bool) {
         guard isLive, listens else { return }
+        // A conversation that is closing has said its last words: its microphone stays shut.
+        guard on || closing == nil else { return }
         muted = on
         audio.setMic(!on && phase != .paused && phase != .connecting)
         guard phase != .paused && phase != .connecting else { return }
@@ -324,7 +332,52 @@ public final class Conversation {
         personTookTheTurn()
         if SafetyGate.shared.check(t) != nil { crisis(); return }
         // Typed in the second or two a call spends moving to its next socket: sent as soon as that one answers.
+        note("typed", ["chars": t.count, "sent": !awaitingReady, "socket": live != nil])
         if awaitingReady { heldText.append(t) } else { live?.sendText(t) }
+        watchForAnswer(to: t)
+    }
+
+    /// A written line is always answered. If the line stays completely silent after it (not one frame from the
+    /// service for `answerPatience`), the socket is checked: a dead one is replaced and the line is sent again
+    /// on the new one; on a live one the line is put to the model once more as a whole turn. Seen in a real
+    /// take (2026-11-14): two written lines got no answer and no sign of trouble for 44 s, then the line dropped.
+    static var answerPatience: TimeInterval = 8
+    @ObservationIgnored private var answerWatch: Task<Void, Never>?
+    @ObservationIgnored private var unanswered: String?
+    @ObservationIgnored private var lastFrameAt = Date.distantPast
+
+    private func watchForAnswer(to text: String) {
+        awaitingAnswer = true
+        unanswered = text
+        let asked = Date()
+        answerWatch?.cancel()
+        answerWatch = Task { [weak self] in
+            var checked = false
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: UInt64(Self.answerPatience * 250_000_000)) } catch { return }
+                guard let self, !self.stopped, self.unanswered == text else { return }
+                let waited = Date().timeIntervalSince(asked)
+                if waited >= Self.answerPatience * 3 { self.awaitingAnswer = false; self.unanswered = nil; return }
+                guard !checked, waited >= Self.answerPatience, !self.awaitingReady, self.phase != .connecting,
+                      self.lastFrameAt < asked else { continue }
+                checked = true
+                self.note("typed_unanswered", ["waited_s": Int(waited)])
+                let link = self.live
+                link?.ping(timeout: 4) { alive in Task { @MainActor [weak self] in
+                    guard let self, !self.stopped, self.unanswered == text, self.live === link, self.lastFrameAt < asked else { return }
+                    self.note("typed_unanswered_line", ["alive": alive])
+                    // A dead socket reports itself closed (the ping does that): the reconnect sends the line again.
+                    if alive { self.live?.sendTurn(text); self.note("typed_sent_again", [:]) }
+                } }
+            }
+        }
+    }
+
+    private func answerCame() {
+        guard awaitingAnswer || unanswered != nil else { return }
+        awaitingAnswer = false
+        unanswered = nil
+        answerWatch?.cancel(); answerWatch = nil
     }
 
     /// One camera frame from the glasses → Live (`realtimeInput.video`). Only while the conversation is open and
@@ -339,7 +392,11 @@ public final class Conversation {
         return true
     }
 
+    /// Tests: every trace note as it is made (what was sent, whose turn a model turn was, what was played).
+    @ObservationIgnored var noted: ((String, [String: Any]) -> Void)?
+
     private func note(_ event: String, _ fields: [String: Any] = [:]) {
+        noted?(event, fields)
         #if DEBUG
         Self.debugTrace(event, fields)
         #endif
@@ -435,6 +492,20 @@ public final class Conversation {
         notePhase()
     }
 
+    /// The conversation came back on a line that remembers nothing (a resumption was refused).
+    @ObservationIgnored private var freshLine = false
+
+    /// What a fresh line is told so Kaiku can carry on: the last few lines of the two of them (pure; tested).
+    nonisolated static func carryOn(_ lines: [Line]) -> String? {
+        let said = lines.suffix(6).compactMap { l -> String? in
+            let t = (l.typed ? l.text : MarkerFilter.clean(l.text)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : (l.me ? "the person: " : "you: ") + String(t.prefix(300))
+        }
+        guard !said.isEmpty else { return nil }
+        return "[the connection dropped and is back on a new line; you were in the middle of this conversation. "
+            + said.joined(separator: " / ") + ". Carry on from there, warmly; do not greet again.]"
+    }
+
     /// How long before a Live token ends the conversation moves to the next one.
     static var resumeMargin: TimeInterval = 45
     @ObservationIgnored private var endedWhileResuming = false
@@ -525,6 +596,14 @@ public final class Conversation {
         phase = .connecting
         failures += 1
         guard failures <= 3 else { reconnecting = false; unavailable(everReady ? .connection : .voice); return }
+        // A resumption the service keeps refusing must not end the call (seen in a real take, 2026-11-14: the line
+        // dropped, came back and failed, and the check-in ended as "Kaiku can't talk right now"). The last try is
+        // a fresh line: a new token and no handle, and Kaiku is told what was just said so it can carry on.
+        if failures == 3, everReady, handle != nil {
+            handle = nil
+            freshLine = true
+            note("live_fresh_line", [:])
+        }
         Task {
             defer { reconnecting = false }
             try? await Task.sleep(nanoseconds: UInt64(400_000_000 * failures))
@@ -659,12 +738,23 @@ public final class Conversation {
         var sound = false
         /// When its latest frame arrived.
         var last = Date()
+        /// The person spoke or wrote while this turn had not been heard: it is over for them, and the model's
+        /// next frames after the shortest pause are their answer.
+        var superseded = false
     }
     /// A turn streams without gaps. The server does not always say that a declined turn is over (seen live: a
     /// `<no speech>` turn with no `turnComplete` for half a minute), so a turn with no frame for this long is over:
     /// it no longer holds context events back, and the next frame starts a new turn.
     static var turnGap: TimeInterval = 3
-    private var turnOpen: Bool { turn.map { Date().timeIntervalSince($0.last) < Self.turnGap } ?? false }
+    /// The same for a turn the person took over: only its frames still in flight belong to it (they follow each
+    /// other within a few hundredths of a second; the answer to the person takes several tenths to start).
+    static var supersededGap: TimeInterval = 0.3
+    private var turnOpen: Bool {
+        turn.map { Date().timeIntervalSince($0.last) < ($0.superseded ? Self.supersededGap : Self.turnGap) } ?? false
+    }
+    /// The server ends a turn the person interrupted with its own `turnComplete`: that one says nothing about
+    /// the answer the person is waiting for.
+    @ObservationIgnored private var afterInterruption = false
     @ObservationIgnored private var turn: ModelTurn?
     /// The person spoke or typed and the model has not answered since: its next turn is theirs. The credit is
     /// used up by a turn with sound, or by a turn that ends with nothing at all (the model chose to stay quiet);
@@ -679,8 +769,14 @@ public final class Conversation {
     private func modelTurn() -> ModelTurn {
         if let t = turn, turnOpen { turn?.last = Date(); return t }
         let owed = owesAnswer || closing != nil          // the goodbye of a conversation the model closed is an answer too
+        // Before 2026-11-14 a frame within `turnGap` of a turn the person had taken over joined that turn and
+        // was dropped with it: the trace says when that would have happened.
+        let rescued = turn.map { $0.superseded && Date().timeIntervalSince($0.last) < Self.turnGap } ?? false
         let t = ModelTurn(gated: !owed, play: owed ? true : nil)
         turn = t
+        afterInterruption = false
+        note("turn", rescued ? ["whose": owed ? "the person's answer" : "Kaiku's own", "after_a_dropped_turn": true]
+                             : ["whose": owed ? "the person's answer" : "Kaiku's own"])
         return t
     }
 
@@ -692,7 +788,10 @@ public final class Conversation {
     private func personTookTheTurn() {
         answerOwed = true
         owedAt = Date()
-        if let t = turn, t.gated, t.play != true { turn?.play = false; turn?.held = [] }
+        if let t = turn, t.play != true {
+            turn?.play = false; turn?.held = []; turn?.superseded = true
+            note("turn_dropped_for_person", ["decided": t.play != nil])
+        }
     }
 
     /// Context events wait while Kaiku is speaking, a tool is running, or the person is owed an answer: a context
@@ -726,6 +825,7 @@ public final class Conversation {
         }
         contextDrain?.cancel(); contextDrain = nil
         let text = heldContext.joined(separator: "\n")
+        note("context_sent", ["events": heldContext.count, "waited_s": Int(Date().timeIntervalSince(heldContextSince))])
         heldContext = []
         answerOwed = false                      // what the model says next answers this, not the person
         live?.sendContext(text)
@@ -740,6 +840,10 @@ public final class Conversation {
         guard !stopped else { return }
         trace?(ev)
         guard app?.pairing == sessionPairing else { stop(outcome: .ended_early); return }
+        switch ev {
+        case .ready, .resumable, .goAway, .closed: break
+        default: lastFrameAt = Date()               // the service is there and working on something
+        }
         switch ev {
         case .ready:
             readyTask?.cancel(); readyTask = nil
@@ -757,6 +861,10 @@ public final class Conversation {
             wasLive = true
             if liveSince == nil { liveSince = Date() }
             if !everReady { everReady = true; onReady?(); startContextRefresh() } else if !planned { onReconnected?() }
+            if freshLine {
+                freshLine = false
+                if let before = Self.carryOn(lines) { context(before) }
+            }
         case .modelOutput:
             _ = modelTurn()
             if audioTurnEnded {
@@ -774,7 +882,7 @@ public final class Conversation {
             switch play {
             case nil: turn?.held.append(pcm)                              // held until the first word, or dropped
             case false?: break
-            case true?: audio.play(pcm)
+            case true?: answerCame(); audio.play(pcm)
             }
         case .interrupted:
             if let id = kaikuTurnID, let index = lines.firstIndex(where: { $0.id == id }) {
@@ -782,7 +890,9 @@ public final class Conversation {
                 lines[index].completionUnknown = false
             }
             audio.flush()
+            note("turn_interrupted", [:])
             turn = nil
+            afterInterruption = true
             kaikuMarks.reset()
             if phase != .muted && phase != .paused { phase = .hearing }
         case .userText(let raw):
@@ -809,21 +919,31 @@ public final class Conversation {
                 case .word:
                     turn?.play = true
                     turn?.held = []
+                    note("turn_heard", ["held_chunks": now.held.count])
                     now.held.forEach { audio.play($0) }
-                case .notSpeech: turn?.play = false; turn?.held = []          // sound, not speech
+                case .notSpeech:                                              // sound, not speech
+                    turn?.play = false; turn?.held = []
+                    note("turn_not_speech", [:])
                 case .undecided: break
                 }
             }
             let text = words(raw, me: false)
+            // Words after a sound that was not speech ("<sigh> I'm here."): Kaiku is heard from here on.
+            if let t = turn, t.play == false, !t.superseded, text?.contains(where: { $0.isLetter || $0.isNumber }) == true {
+                turn?.play = true
+                note("turn_heard_after_sound", [:])
+            }
             if turn?.play == false { return }                                  // an unheard turn shows nothing
             guard let t = text else { return }
+            answerCame()
             if let c = closing {
                 if c.turnDone { return }               // filler after the goodbye turn
                 closing?.sawOutput = true
             }
             // A turn never starts with a stray mark ("-"): that is transcription noise, not a line.
             if kaikuTurnID == nil && !t.contains(where: { $0.isLetter || $0.isNumber }) { return }
-            append(t, me: false)
+            // (Nor with the space a marker left behind.)
+            append(kaikuTurnID == nil ? String(t.drop(while: \.isWhitespace)) : t, me: false)
         case .userTranscriptComplete:
             inputFinalObserved = true
             finishTranscript(me: true)
@@ -832,8 +952,15 @@ public final class Conversation {
             finishTranscript(me: false)
         case .turnComplete:
             // The turn is over: unheard if it never had a word. A turn with words was the person's answer.
+            note("turn_complete", ["played": turn.map { $0.play == true && $0.sound } ?? false, "sound": turn?.sound ?? false,
+                                   "tools": toolsThisTurn])
             if let t = turn { if t.play == true && t.sound { answerOwed = false } }
-            else if toolsThisTurn == 0 && pendingTools == 0 { answerOwed = false }
+            else if afterInterruption { note("turn_complete_of_interrupted", ["owed": answerOwed]) }
+            else if toolsThisTurn == 0 && pendingTools == 0 {
+                answerOwed = false
+                answerCame()                              // the model chose to say nothing: nothing more is coming
+            }
+            afterInterruption = false
             turn = nil
             toolsThisTurn = 0
             kaikuMarks.reset()
@@ -847,6 +974,9 @@ public final class Conversation {
             drainContext()
         case .toolCall(let id, let name, let args):
             toolsThisTurn += 1
+            unanswered = nil                              // the model is working on what was written
+            if turn?.superseded == true { turn = nil }
+            note("tool_call", ["name": name])
             Task { await tool(id: id, name: name, args: args) }
         case .toolFrame(let ids):
             toolFrames.append(ToolFrame(ids: ids))
@@ -862,7 +992,10 @@ public final class Conversation {
             note("live_go_away", [:])
             plannedResume()
         case .closed:
-            note("live_dropped", ["attempt": failures + 1, "quiet": everReady && handle != nil && failures == 0])
+            note("live_dropped", ["attempt": failures + 1, "quiet": everReady && handle != nil && failures == 0,
+                                  "why": (live as? LiveSession)?.closeReason ?? "-", "unanswered": unanswered != nil])
+            // A written line the dead socket never answered goes out again on the next one.
+            if let u = unanswered, !heldText.contains(u) { heldText.append(u) }
             if resuming && !awaitingReady { endedWhileResuming = true }            // the next token is on its way
             else if everReady, handle != nil, failures == 0, phase != .connecting { quietReconnect() }
             else { resuming = false; reconnect() }
@@ -976,8 +1109,7 @@ public final class Conversation {
         guard !stopped, app.pairing == sessionPairing else { return }
         onToolResult?(name, r)
         if r.crisis == true { crisis(); return }
-        if answerOwed && !quiet { owedAt = Date() }       // the answer the person is waiting for comes after this tool
-        answer(id: id, name: name, result: r.result ?? .object(["ok": .bool(r.ok)]))
+        answer(id: id, name: name, result: r.forModel)   // a refusal carries the cloud's reason (`error`) to the model
         if name == "feel", r.ok, let p = FeelPlan(result: r.result) {
             plan = p; planTurns = lines.filter(\.me).count; planCount += 1
         }
@@ -1003,7 +1135,13 @@ public final class Conversation {
 
     private func answer(id: String, name: String, result: JSONValue) {
         if cancelledCalls.remove(id) != nil { return }                 // the model no longer waits for this one
+        // The answer the person is waiting for comes after this tool, however long the tool took and whatever it
+        // answered (also `feel`, which is quiet on screen, and a tool the cloud could not run: until 2026-11-14
+        // those did not renew the wait, so an answer that came more than `answerWindow` after the person's words
+        // was taken for Kaiku's own turn and put through the gate).
+        if answerOwed { owedAt = Date() }
         guard let i = toolFrames.firstIndex(where: { $0.ids.contains(id) }) else {
+            note("tool_answered", ["names": name])
             live?.respond([ToolAnswer(id: id, name: name, result: result)])
             return
         }
@@ -1032,7 +1170,10 @@ public final class Conversation {
             let order = f.ids
             let out = f.answers.filter { order.contains($0.id) }
                 .sorted { (order.firstIndex(of: $0.id) ?? 0) < (order.firstIndex(of: $1.id) ?? 0) }
-            if !out.isEmpty { live?.respond(out) }
+            if !out.isEmpty {
+                note("tool_answered", ["names": out.map(\.name).joined(separator: "+"), "complete": complete])
+                live?.respond(out)
+            }
             f.ids.removeAll(where: answered.contains)
             f.answers = []
             f.since = nil
@@ -1047,7 +1188,17 @@ public final class Conversation {
     /// after it (its voice is still playing): both were seen live. Stop listening at once and let the goodbye be
     /// heard (bounded), then end: it is never cut off and never skipped. Whatever the model produces after the
     /// goodbye turn is filler (seen live: seconds of silent audio, transcribed as "-"), so that is dropped.
-    private func closeAfterGoodbye(_ outcome: EpisodeOutcome) {
+    /// The person finished on the screen (the check-in's dials): Kaiku answers that in one line, and the
+    /// conversation closes itself once the line has been said. The microphone is shut from this moment: the
+    /// screen that follows has no call bar, and a conversation is never left open behind such a screen.
+    public func closeAfterAnswer(to text: String, outcome: EpisodeOutcome = .completed) {
+        guard !stopped, isLive, app?.pairing == sessionPairing else { return }
+        personTookTheTurn()
+        live?.sendContext(text)
+        closeAfterGoodbye(outcome, patience: 8)
+    }
+
+    private func closeAfterGoodbye(_ outcome: EpisodeOutcome, patience: TimeInterval? = nil) {
         guard Self.closeGrace > 0 || audio.isPlaying else { stop(outcome: outcome); return }
         muted = true
         audio.setMic(false)
@@ -1065,7 +1216,7 @@ public final class Conversation {
                 if c.sawOutput {
                     // the goodbye turn ended and its voice has played out (or it simply went quiet)
                     if (c.turnDone && quiet >= max(0.2, grace * 0.4)) || quiet >= max(0.2, grace * 2) { break }
-                } else if waited >= grace * 3 && quiet >= max(0.2, grace) { break }   // it had already said goodbye
+                } else if waited >= (patience ?? grace * 3) && quiet >= max(0.2, grace) { break }   // it had already said goodbye
             }
             self?.stop(outcome: outcome)
         }
@@ -1130,6 +1281,7 @@ public final class Conversation {
     }
 
     private func crisis() {
+        endedInCrisis = true
         stop(outcome: .crisis)
         onCrisis?()
     }

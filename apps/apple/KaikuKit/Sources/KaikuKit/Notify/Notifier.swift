@@ -6,6 +6,9 @@ import SwiftUI
 /// categories (Let's go · Later · Not today; Good · Okay · Low), handles the answers without opening the app
 /// (quick mood → `obs.self_report`, invitation answers → `obs.nudge_outcome`), and counts an invitation nobody
 /// answered within 4 h as not accepted. No APNs. Everything goes through the app's offline queue.
+/// Also the one notification for an activity the person said yes to in a conversation (`agreed`, D50): posted at
+/// once when the rule in `NudgeScheduler.agreed` says so, taken away when the item is over, and its Start and
+/// Not now do what the card on Today does.
 @MainActor
 public final class Notifier {
     public static let shared = Notifier()
@@ -14,6 +17,7 @@ public final class Notifier {
     public enum Action {
         public static let go = "kaiku.go", later = "kaiku.later", notToday = "kaiku.nottoday"
         public static let good = "kaiku.mood.4", okay = "kaiku.mood.3", low = "kaiku.mood.2"
+        public static let start = "kaiku.agreed.start", aside = "kaiku.agreed.aside"
     }
 
     private let center: UNUserNotificationCenter?
@@ -27,6 +31,9 @@ public final class Notifier {
         var declinedDay: String?
         var laterUntil: Date?
         var checkinMinutes: [String: Int] = [:]    // day → local minute of that day's weather check
+        // Optional so a book saved before these existed still reads.
+        var agreedShown: [String: Date]?           // agreed item → when this device first showed it (card or notification)
+        var agreedPosted: [String]?                // agreed items with a notification of ours still out
     }
     private var book: Book
 
@@ -69,11 +76,15 @@ public final class Notifier {
         let good = UNNotificationAction(identifier: Action.good, title: T("notif.good"), options: [])
         let okay = UNNotificationAction(identifier: Action.okay, title: T("notif.okay"), options: [])
         let low = UNNotificationAction(identifier: Action.low, title: T("notif.low"), options: [])
+        let start = UNNotificationAction(identifier: Action.start, title: T("agreed.start"), options: [.foreground])
+        let aside = UNNotificationAction(identifier: Action.aside, title: T("invite.notnow"), options: [])
         center?.setNotificationCategories([
             UNNotificationCategory(identifier: NudgeScheduler.Category.invitation, actions: [go, later, no], intentIdentifiers: []),
             UNNotificationCategory(identifier: NudgeScheduler.Category.invitationNoLater, actions: [go, no], intentIdentifiers: []),
             UNNotificationCategory(identifier: NudgeScheduler.Category.checkin, actions: [good, okay, low], intentIdentifiers: []),
             UNNotificationCategory(identifier: NudgeScheduler.Category.phq9, actions: [], intentIdentifiers: []),
+            UNNotificationCategory(identifier: NudgeScheduler.Category.agreed, actions: [start, aside], intentIdentifiers: []),
+            UNNotificationCategory(identifier: NudgeScheduler.Category.agreedElsewhere, actions: [aside], intentIdentifiers: []),
         ])
     }
 
@@ -196,6 +207,9 @@ public final class Notifier {
     /// A notification answer (button or tap). Returns the deep link to open, if any.
     @discardableResult
     public func handle(action: String, userInfo: [AnyHashable: Any], app: AppModel, now: Date = Date()) async -> URL? {
+        if (userInfo["kind"] as? String) == NudgeScheduler.agreedKind {
+            return await handleAgreed(action: action, userInfo: userInfo, app: app)
+        }
         let id = userInfo["id"] as? String ?? ""
         let arm = (userInfo["arm"] as? String).flatMap(NudgeArm.init(rawValue:))
         let link = (userInfo["link"] as? String).flatMap(URL.init(string:))
@@ -247,6 +261,121 @@ public final class Notifier {
         }
         book.offered = book.offered.filter { !book.resolved.contains($0.key) || book.delivered[$0.key] == nil }
         save()
+    }
+
+    // MARK: an activity agreed in a conversation (D50)
+
+    /// Whether the app is in front of the person right now (`AppPresence`; tests set their own).
+    var inFront: @MainActor () -> Bool = { AppPresence.inFront }
+    /// This device, as conversations on it name themselves (a walk through the glasses is `glasses`, not this).
+    var surface: CompanionSurface = KaikuPlatform.surface
+    /// Sends a notification's answer to the service and the screen (the app's shared list; tests set their own).
+    var agreedAnswer: @MainActor (String, AgreedAnswer.Answer, AppModel) async -> Void = { id, answer, app in
+        await InvitationModel.shared.settle(id, answer, app: app)
+    }
+    /// The answer a notification's Start set off (it does not hold the screen up).
+    private(set) var answering: Task<Void, Never>?
+
+    /// Stands in for the notification centre in tests: whether posting is allowed, and what was posted and removed.
+    final class AgreedProbe {
+        var allowed = true
+        var posted: [UNNotificationRequest] = []
+        var removed: [String] = []
+    }
+    var agreedProbe: AgreedProbe?
+
+    /// The agreed list as it now stands (after a read, an answer or a stream event): posts what
+    /// `NudgeScheduler.agreed` says, once per item, and takes away the notification of an item that is no longer
+    /// open. Nothing is posted without permission (asked only where the app already asks), and an item that could
+    /// not be posted is not counted as shown.
+    @discardableResult
+    public func agreed(_ items: [AgreedActivity], app: AppModel, now: Date = Date()) async -> NudgeScheduler.AgreedPlan {
+        let cal = Calendar.current
+        func minute(_ d: Date) -> Int { cal.component(.hour, from: d) * 60 + cal.component(.minute, from: d) }
+        let today = items.filter { $0.isFor(day: AppModel.dayKey(now)) }
+        let plan = NudgeScheduler.agreed(.init(
+            now: now, calendar: cal,
+            quiet: .init(from: minute(app.quietFrom), to: minute(app.quietTo), sleepInWeekends: app.quietWeekend),
+            paused: app.isPaused, inFront: inFront(),
+            items: today.map { .init(id: $0.id, open: $0.state == .open, here: $0.surface == surface.rawValue) },
+            shown: Set((book.agreedShown ?? [:]).keys), posted: Set(book.agreedPosted ?? [])))
+        guard !plan.post.isEmpty || !plan.remove.isEmpty || !plan.shown.isEmpty else { return plan }
+
+        var shown = book.agreedShown ?? [:]
+        var posted = Set(book.agreedPosted ?? [])
+        if !plan.remove.isEmpty {
+            let ids = plan.remove.map(NudgeScheduler.agreedID)
+            if let agreedProbe { agreedProbe.removed += ids } else {
+                center?.removeDeliveredNotifications(withIdentifiers: ids)
+                center?.removePendingNotificationRequests(withIdentifiers: ids)
+            }
+            posted.subtract(plan.remove)
+        }
+        var acted = plan
+        if !plan.post.isEmpty {
+            var allowed = agreedProbe?.allowed
+            if allowed == nil { allowed = await authorized() == true }
+            if allowed == true, let home = app.pairing?.homeID {
+                if agreedProbe == nil { registerCategories() }
+                for id in plan.post {
+                    guard let item = today.first(where: { $0.id == id }) else { continue }
+                    let request = agreedRequest(item, home: home)
+                    if let agreedProbe { agreedProbe.posted.append(request) } else { try? await center?.add(request) }
+                    posted.insert(id)
+                }
+                kaikuLog.notice("notify_agreed \(plan.post.count)")
+            } else {
+                acted.post = []
+                acted.shown = plan.shown.filter { !plan.post.contains($0) }   // not posted: not shown yet
+            }
+        }
+        for id in acted.shown where shown[id] == nil { shown[id] = now }
+        let cutoff = now.addingTimeInterval(-3 * 86400)
+        book.agreedShown = shown.filter { $0.value > cutoff }
+        book.agreedPosted = posted.sorted()
+        save()
+        return acted
+    }
+
+    /// The notification for one agreed item: its name, the cloud's sentence, and Start · Not now (Not now alone
+    /// where this device has no screen for it, with a line on where it can be started). Delivered at once.
+    func agreedRequest(_ item: AgreedActivity, home: String) -> UNNotificationRequest {
+        let c = UNMutableNotificationContent()
+        let link = item.startsHere() ? item.link() : nil
+        c.title = item.title
+        c.body = link != nil ? item.text : item.text + " " + item.elsewhereLine()
+        c.categoryIdentifier = link != nil ? NudgeScheduler.Category.agreed : NudgeScheduler.Category.agreedElsewhere
+        c.threadIdentifier = "kaiku"
+        c.userInfo = ["kind": NudgeScheduler.agreedKind, "id": NudgeScheduler.agreedID(item.id), "agreed": item.id,
+                      "link": link ?? "kaiku://today", "opens": link != nil ? "1" : "0", "home": home]
+        c.interruptionLevel = .active                 // never time-sensitive
+        #if os(iOS)
+        c.sound = UNNotificationSound(named: UNNotificationSoundName("kaiku-chime.caf"))
+        if agreedProbe == nil, let a = Self.mascotAttachment(at: Date()) { c.attachments = [a] }
+        #else
+        c.sound = .default
+        #endif
+        return UNNotificationRequest(identifier: NudgeScheduler.agreedID(item.id), content: c, trigger: nil)
+    }
+
+    /// Start (or a tap) opens the activity's screen and reports it opened; Not now puts it aside: what the card
+    /// does. An answer that belongs to another home than the one paired now is dropped. Not now is answered
+    /// before this returns (the system may stop a background launch right after); Start does not hold the
+    /// screen up.
+    private func handleAgreed(action: String, userInfo: [AnyHashable: Any], app: AppModel) async -> URL? {
+        guard let item = userInfo["agreed"] as? String, let home = userInfo["home"] as? String,
+              home == app.pairing?.homeID else { return nil }
+        let answer = agreedAnswer
+        switch action {
+        case UNNotificationDismissActionIdentifier:
+            return nil
+        case Action.aside:
+            await answer(item, .put_aside, app)
+            return nil
+        default:
+            if (userInfo["opens"] as? String) == "1" { answering = Task { await answer(item, .opened, app) } }
+            return (userInfo["link"] as? String).flatMap(URL.init(string:))
+        }
     }
 
     // MARK: debug (screenshots, demo): the real request, firing in a few seconds

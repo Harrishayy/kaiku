@@ -2,7 +2,9 @@ import Foundation
 
 /// Every obs the app makes goes through this queue: appended to a JSON file first (so nothing is lost if the app
 /// dies or the cloud is away), then sent in batches. Envelope ids are fixed at creation, so resending is safe
-/// (the cloud ignores duplicates by id). Events the cloud rejects as invalid are dropped (they never will pass).
+/// (the cloud ignores duplicates by id). Events the cloud rejects as invalid are dropped (they never will pass):
+/// an envelope the service names in `rejected` of an accepted batch, or one it refuses alone with 400 / 422. The
+/// rest of the batch and everything behind it is delivered all the same.
 public actor OfflineQueue {
     private let url: URL
     private struct Entry: Codable { var event: AnyEnvelope; var server: URL? }
@@ -50,10 +52,21 @@ public actor OfflineQueue {
                 }
                 persist()
             } catch APIError.http(let code) where code == 422 || code == 400 {
-                // A malformed batch never passes: drop it rather than block everything behind it.
-                let sent = Set(batch.map(\.id))
-                items.removeAll { sent.contains($0.event.id) && $0.server == pairing.baseURL }
-                kaikuLog.error("events_dropped_invalid \(batch.count)")
+                // The service refused the batch as a whole. One envelope it cannot read (a type it does not know
+                // yet, say) must not take the others with it, nor block what waits behind: each is sent alone,
+                // and only an envelope refused alone is dropped (it never will pass).
+                for event in batch {
+                    do {
+                        if batch.count > 1 { _ = try await api.postEvents([event], pairedTo: pairing) }
+                        else { kaikuLog.error("events_dropped_invalid 1 \(event.type, privacy: .public)") }
+                    } catch APIError.http(let code) where code == 422 || code == 400 {
+                        kaikuLog.error("events_dropped_invalid 1 \(event.type, privacy: .public)")
+                    } catch {
+                        persist()
+                        return false
+                    }
+                    items.removeAll { $0.event.id == event.id && $0.server == pairing.baseURL }
+                }
                 persist()
             } catch {
                 return false

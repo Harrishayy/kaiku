@@ -9,6 +9,16 @@ struct KaikuMacApp: App {
     @State private var app = DebugSnapshot.isSnapshot ? DebugSnapshot.model() : AppModel()
     @Environment(\.openWindow) private var openWindow
 
+    init() {
+        // A picture run (`-kaikuWindowShots`) stays out of the person's way: no Dock icon, never frontmost.
+        if DebugSnapshot.isQuiet {
+            NSApplication.shared.setActivationPolicy(.accessory)
+            if let look = UserDefaults.standard.string(forKey: "kaikuShotLook") {
+                NSApplication.shared.appearance = NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+            }
+        }
+    }
+
     var body: some Scene {
         Window("Kaiku", id: "main") {
             KaikuRootView()
@@ -17,7 +27,7 @@ struct KaikuMacApp: App {
                 // kaiku://play/firefly etc. switch screens (same links as iPhone); anything else is a pairing link
                 .onOpenURL { url in if !app.open(url) { Task { await app.pair(link: url.absoluteString) } } }
                 .onAppear { MacCompanion.shared.start(app: app); startQuickTalk() }
-                .task(id: app.nudge?.arm) { DailyInvitation.schedule(app: app) }
+                .task(id: app.nudge?.arm) { if !DebugSnapshot.isSnapshot { DailyInvitation.schedule(app: app) } }
                 #if DEBUG
                 .onAppear { DebugSnapshot.runIfAsked(app: app) }
                 #endif
@@ -25,7 +35,9 @@ struct KaikuMacApp: App {
         .defaultSize(width: 980, height: 720)
         .windowResizability(.contentMinSize)
 
-        MenuBarExtra {
+        // A picture run has no menu bar item: a second Kaiku item beside the person's own running app is noise, and
+        // the system may quit the newcomer for it (seen on macOS 26: the status item's scene asks the app to end).
+        MenuBarExtra(isInserted: .constant(!DebugSnapshot.isSnapshot)) {
             VStack(spacing: 0) {
                 talkNow
                 MenuBarPopover { tab, route in

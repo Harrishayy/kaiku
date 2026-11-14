@@ -535,44 +535,58 @@ public struct QuickTalkPanelHost: View {
     }
 }
 
-/// You → Quick talk (Mac only): a small card in the page's own pattern (a switch, and a row that opens the rest).
-/// On/off with the key combination; then the bar at the screen edge, the double tap and captions. Stored by
-/// `QuickTalkModel` in UserDefaults.
-struct QuickTalkSettingsSection: View {
+/// You → Settings → Quick talk (Mac only): one row that says where things stand; the choices are in a sheet.
+struct QuickTalkSettingsRow: View {
     private let model = QuickTalkModel.shared
-    @State private var showMore = YouDebug.open
+    @State private var show = YouDebug.opens("quicktalk")
+
+    var body: some View {
+        Button { show = true } label: {
+            KRow(icon: "waveform", tint: KaikuTokens.Colors.clay, title: T("quick.title"),
+                 accessory: .link(T(model.enabled ? "quick.state.on" : "quick.state.off")))
+        }
+        .buttonStyle(.kPressRow())
+        .sheet(isPresented: $show) { QuickTalkSettingsSheet() }
+    }
+}
+
+/// The quick-talk choices: on/off, the bar at the screen edge, captions, the double tap. Stored by
+/// `QuickTalkModel` in UserDefaults. Each row is a title, one short line and its control.
+struct QuickTalkSettingsSheet: View {
+    private let model = QuickTalkModel.shared
 
     var body: some View {
         @Bindable var model = model
-        KSection {
-            KToggleRow(icon: "waveform", tint: KaikuTokens.Colors.clay, title: T("quick.title"),
-                       detail: T("quick.set.on.d", ["keys": T("quick.keys")]), isOn: $model.enabled)
-            if model.enabled {
+        KSheet(T("quick.title"), height: 500) {
+            Text(T("quick.set.on.d", ["keys": T("quick.keys")])).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+            KSection {
+                KToggleRow(icon: "waveform", tint: KaikuTokens.Colors.clay, title: T("quick.title"),
+                           detail: T("quick.set.on.s"), isOn: $model.enabled)
+            }
+            KSection {
+                KToggleRow(icon: "sidebar.left", tint: KaikuTokens.Colors.clay, title: T("quick.set.bar"),
+                           detail: T("quick.set.bar.s"), isOn: $model.showBar)
                 KDivider()
-                Button {
-                    withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { showMore.toggle() }
-                } label: {
-                    KRow(icon: "slider.horizontal.3", tint: KaikuTokens.Colors.clay,
-                         title: T(showMore ? "quick.set.less" : "quick.set.more"), accessory: showMore ? .none : .chevron)
-                }
-                .buttonStyle(.kPressRow())
-                if showMore {
-                    KDivider()
-                    KToggleRow(title: T("quick.set.bar"), detail: T("quick.set.bar.d"), isOn: $model.showBar)
-                    KDivider()
+                KToggleRow(icon: "captions.bubble", tint: KaikuTokens.Colors.clay, title: T("quick.set.captions"),
+                           detail: T("quick.set.captions.s"), isOn: $model.captions)
+                KDivider()
+                HStack(alignment: .top, spacing: KaikuTokens.Space.s3) {
+                    RowIcon(symbol: "hand.tap", tint: KaikuTokens.Colors.clay)
                     VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                        Text(T("quick.set.double")).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                        Text(T("quick.set.double.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                        VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
+                            Text(T("quick.set.double")).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                            Text(T("quick.set.double.s")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                        }
                         KSegmented([(QuickTalkDoubleTapKey.off, T("quick.set.double.off")),
                                     (.option, T("quick.set.double.option")),
                                     (.control, T("quick.set.double.control"))], selection: $model.doubleTap)
                     }
-                    .padding(.horizontal, KaikuTokens.Space.s4)
-                    .padding(.vertical, KaikuTokens.Space.s3)
-                    KDivider()
-                    KToggleRow(title: T("quick.set.captions"), detail: T("quick.set.captions.d"), isOn: $model.captions)
                 }
+                .padding(.horizontal, KaikuTokens.Space.s4)
+                .padding(.vertical, KaikuTokens.Space.s3)
             }
+            .disabled(!model.enabled)
+            .opacity(model.enabled ? 1 : 0.42)
         }
     }
 }
