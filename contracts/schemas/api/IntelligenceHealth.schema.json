@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "ModelUsageRow": {
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "minimum": 0,
+          "title": "Calls",
+          "type": "integer"
+        },
+        "day": {
+          "format": "date",
+          "title": "Day",
+          "type": "string"
+        },
+        "fallbacks": {
+          "minimum": 0,
+          "title": "Fallbacks",
+          "type": "integer"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "ok": {
+          "minimum": 0,
+          "title": "Ok",
+          "type": "integer"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50 Ms"
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Ms"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "model",
+        "task",
+        "calls",
+        "ok",
+        "fallbacks"
+      ],
+      "title": "ModelUsageRow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,\nhow fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback).",
+  "properties": {
+    "calls": {
+      "title": "Calls",
+      "type": "integer"
+    },
+    "days": {
+      "title": "Days",
+      "type": "integer"
+    },
+    "fallback_rate": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Fallback Rate",
+      "type": "number"
+    },
+    "p50_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P50 Ms"
+    },
+    "p95_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P95 Ms"
+    },
+    "per_model": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Per Model",
+      "type": "object"
+    },
+    "routes": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Routes",
+      "type": "object"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/ModelUsageRow"
+      },
+      "title": "Rows",
+      "type": "array"
+    },
+    "since": {
+      "format": "date",
+      "title": "Since",
+      "type": "string"
+    }
+  },
+  "required": [
+    "since",
+    "days",
+    "rows",
+    "per_model",
+    "routes",
+    "calls",
+    "fallback_rate"
+  ],
+  "title": "IntelligenceHealth",
+  "type": "object"
+}

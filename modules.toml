@@ -56,7 +56,10 @@ http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "GET /v1/patient
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
         "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
-        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
+        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
+        "GET /v1/me/constellation", "POST /v1/companion/postcard", "GET /v1/me/postcards/{id}",
+        "GET /v1/health/intelligence", "GET /v1/patients/{id}/brief", "POST /v1/admin/reflect",
+        "POST /v1/admin/nightly-mind", "POST /v1/admin/weekly"]
 
 [[module]]
 name = "web"
@@ -97,10 +100,11 @@ name = "apple"
 path = "apps/apple"
 owner = "A"
 kind = "app"
-summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis"
+summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
 removable = true
-emits = ["obs.self_report", "obs.play_session", "obs.safety_flag"]
-http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice/{line_key}",
+emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
+         "obs.wearable_daily", "obs.nudge_outcome"]
+http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
 
@@ -200,5 +204,3 @@ removable = false
 # them today. `make agents` fails once a real module emits a type still listed here, so delete the line then.
 # apps/apple (iPhone + Mac, workstreams A1-A3) and design/ (workstream D) add their own [[module]] entries.
 [planned_producers]
-"obs.screen_activity" = "apps/apple Mac app (A3)"
-"obs.wearable_daily" = "apps/apple iPhone HealthKit adapter (A2)"

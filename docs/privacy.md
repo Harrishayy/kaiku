@@ -20,6 +20,11 @@
 | Kaiku's notebook (memories) | short facts the person chose to tell Kaiku (`remember`: name, people, places, likes, what helps, plans, preference) in the cloud SQLite | yes, until the person deletes them ("What Kaiku remembers": delete one / all, "don't remember things"); plans expire after 7 days. **Never** health details (refused by rule), never shown to clinicians |
 | Episodes | one row per conversation: surface, intent, start/end, tool names, how it ended | yes; **no transcript, no audio** |
 | Open thread | one short topic to pick up next time on any device ("the walk by the lake"), expires after 3 days | yes |
+| Kaiku's mind (`ask_mind`) | the question Live asks + ≤ a few clean facts (the person's own memories, approved care passages, words for what they did today) → Gemini Flash / Argon in the cloud | **no**: nothing stored; only a contentless ledger row |
+| Graph memory + vectors | nodes/edges built from the notebook, sessions and what helped; Gemini Embedding 2 vectors of memory text | yes, derived from the notebook; deleting a memory deletes its node and vector; never shown to clinicians |
+| Usage ledger (`model_calls`) | which model, task, route, latency, ok, fallback | yes; **no content, no text** |
+| Walk postcard | a length word, light-hunt find words and a weather word → Nano Banana 2 Lite (fixed style, no people/faces) | the image (cached, shared by everyone with the same walk shape); never photos |
+| Weekly clinician brief | consensus metric ids + verdicts → Gemini Argon | yes (clinician-facing); never memories or conversations |
 | Kaiku's voice (`/v1/voice`) | fixed script text → Gemini TTS in the cloud | rendered audio of the script only (no personal data) |
 | Raw sensor streams (`raw/*`) | local MQTT on the home network | never uplinked (cloud rejects them) |
 | Observations (`obs/*`) | uplinked to the Modal cloud | yes: derived numbers, ritual metadata |

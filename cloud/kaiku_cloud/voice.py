@@ -114,19 +114,54 @@ def _audio_bytes(resp: Any) -> bytes:
     return base64.b64decode(data) if isinstance(data, str) else bytes(data)
 
 
+def _pcm_to_wav(pcm: bytes, rate: int = 24000) -> bytes:
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
+def _platform_tts(client: Any, model: str, text: str, style: str, language: str) -> bytes:
+    """Gemini platform (ADC): generate_content with AUDIO output → 24 kHz 16-bit PCM → WAV."""
+    from google.genai import types
+
+    resp = client.models.generate_content(
+        model=model,
+        contents=f"Say in a {style} voice: {text}" if style else text,
+        config=types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                language_code=language or None,
+                voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name())))))
+    for part in resp.candidates[0].content.parts:
+        blob = getattr(part, "inline_data", None)
+        if blob is not None and blob.data:
+            mime = blob.mime_type or ""
+            rate = int(mime.split("rate=")[1].split(";")[0]) if "rate=" in mime else 24000
+            data = blob.data if isinstance(blob.data, bytes) else base64.b64decode(blob.data)
+            return data if data[:4] == b"RIFF" else _pcm_to_wav(data, rate)
+    raise VoiceUnavailable("TTS returned no audio")
+
+
 def synthesize(text: str, style: str, lang: str) -> bytes:
     """One TTS call (google-genai Interactions API, unary -> complete WAV). Retries once with backoff."""
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    from kaiku_contracts import genai_client
+
     model = tts_model()
-    if not key:
-        raise VoiceUnavailable("GEMINI_API_KEY is not set on the cloud; audio is served from the cache only")
+    if not genai_client.available():
+        raise VoiceUnavailable("no Gemini backend on the cloud (GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT+ADC); cache only")
     if not model or model.upper().startswith("VERIFY"):
         raise VoiceUnavailable("config/kaiku.toml [voice].model is not set")
-    from google import genai  # lazy: the cloud runs without it when voice is unused
 
     codes = get("voice", "lang_codes", {}) or {}
     timeout_s = float(get("voice", "timeout_s", 20))
-    client = genai.Client(api_key=key, http_options={"timeout": int(timeout_s * 1000)})
+    client = genai_client.make_client(timeout_s=timeout_s)
     from kaiku_contracts import budget
 
     est = budget.estimate(model, in_tokens=len(text) // 3 + 50, out_tokens=600)
@@ -138,6 +173,8 @@ def synthesize(text: str, style: str, lang: str) -> bytes:
     for attempt in range(2):
         budget.charge("gemini", model, est, task="tts", component="cloud")
         try:
+            if genai_client.backend() == "platform":  # TTS models aren't on the platform Interactions API
+                return _platform_tts(client, model, text, style, codes.get(lang, lang))
             resp = client.interactions.create(
                 model=model,
                 input=[{"type": "user_input", "content": [{

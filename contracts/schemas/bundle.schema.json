@@ -81,6 +81,91 @@
       "title": "ActionResult",
       "type": "object"
     },
+    "BriefSection": {
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "description": "criteria metric names this sentence rests on",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 600,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "BriefSection",
+      "type": "object"
+    },
+    "ClinicianBrief": {
+      "additionalProperties": false,
+      "description": "GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).\nExplains the consensus; never changes it.",
+      "properties": {
+        "by": {
+          "enum": [
+            "model",
+            "template"
+          ],
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "patient_id": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/BriefSection"
+          },
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "stable",
+            "watch",
+            "needs_call",
+            "safety"
+          ],
+          "type": "string"
+        },
+        "week": {
+          "description": "ISO week, e.g. 2026-W46",
+          "type": "string"
+        }
+      },
+      "required": [
+        "patient_id",
+        "week",
+        "state",
+        "rule_version",
+        "sections",
+        "by",
+        "generated_at"
+      ],
+      "title": "ClinicianBrief",
+      "type": "object"
+    },
     "ClinicianMessage": {
       "additionalProperties": false,
       "properties": {
@@ -416,6 +501,102 @@
         "computed_at"
       ],
       "title": "Consensus",
+      "type": "object"
+    },
+    "ConstellationEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "dst": {
+          "type": "integer"
+        },
+        "rel": {
+          "enum": [
+            "knows",
+            "goes_to",
+            "likes",
+            "helped_by",
+            "plans",
+            "did",
+            "helped",
+            "about"
+          ],
+          "type": "string"
+        },
+        "src": {
+          "type": "integer"
+        },
+        "weight": {
+          "description": "0..1, for line thickness only",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "rel",
+        "weight"
+      ],
+      "title": "ConstellationEdge",
+      "type": "object"
+    },
+    "ConstellationNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "me",
+            "person",
+            "place",
+            "like",
+            "helper",
+            "plan",
+            "activity"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label"
+      ],
+      "title": "ConstellationNode",
+      "type": "object"
+    },
+    "ConstellationResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/constellation — person-facing \"Your constellation\": people, places, activities, what helps.\nBuilt from what the person told Kaiku and what they did. Never health data, scores or states.",
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/ConstellationEdge"
+          },
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/ConstellationNode"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "nodes",
+        "edges"
+      ],
+      "title": "ConstellationResponse",
       "type": "object"
     },
     "ContextCard": {
@@ -1743,6 +1924,78 @@
       "title": "HubCmd",
       "type": "object"
     },
+    "IntelligenceHealth": {
+      "additionalProperties": false,
+      "description": "GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,\nhow fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback).",
+      "properties": {
+        "calls": {
+          "type": "integer"
+        },
+        "days": {
+          "type": "integer"
+        },
+        "fallback_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "per_model": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "routes": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/ModelUsageRow"
+          },
+          "type": "array"
+        },
+        "since": {
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "days",
+        "rows",
+        "per_model",
+        "routes",
+        "calls",
+        "fallback_rate"
+      ],
+      "title": "IntelligenceHealth",
+      "type": "object"
+    },
     "InterventionResponse": {
       "additionalProperties": false,
       "description": "Immediate before/after effect of one activity (feeds the bandit learner).",
@@ -2537,6 +2790,128 @@
       "title": "MetricSpec",
       "type": "object"
     },
+    "MindAnswer": {
+      "additionalProperties": false,
+      "description": "`result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are\nverified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.\n`route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line.",
+      "properties": {
+        "answer": {
+          "type": "string"
+        },
+        "ask_person": {
+          "default": false,
+          "type": "boolean"
+        },
+        "cites": {
+          "description": "verified ids: mem:<id> | kg:<id> | doc:<id>",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "care",
+            "memory",
+            "plan",
+            "emotional"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "route": {
+          "enum": [
+            "memory",
+            "flash",
+            "argon",
+            "fallback"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer",
+        "kind",
+        "route",
+        "confidence"
+      ],
+      "title": "MindAnswer",
+      "type": "object"
+    },
+    "ModelUsageRow": {
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "day": {
+          "format": "date",
+          "type": "string"
+        },
+        "fallbacks": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "ok": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "model",
+        "task",
+        "calls",
+        "ok",
+        "fallbacks"
+      ],
+      "title": "ModelUsageRow",
+      "type": "object"
+    },
     "NextDay": {
       "additionalProperties": false,
       "properties": {
@@ -3218,6 +3593,75 @@
         "duration_s"
       ],
       "title": "PlaySession",
+      "type": "object"
+    },
+    "PostcardRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "finds": {
+          "description": "light-hunt finds as short words, e.g. 'green', 'bird'",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "minutes": {
+          "maximum": 600,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "weather_word": {
+          "default": "cloudy",
+          "enum": [
+            "sunny",
+            "cloudy",
+            "rainy",
+            "snowy",
+            "windy",
+            "foggy",
+            "grey",
+            "frosty",
+            "clear"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "minutes"
+      ],
+      "title": "PostcardRequest",
+      "type": "object"
+    },
+    "PostcardResponse": {
+      "additionalProperties": false,
+      "description": "POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,\nhint} when image generation is unavailable: the app shows its own static card.",
+      "properties": {
+        "cached": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "url": {
+          "description": "GET this path for the image",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "cached",
+        "model"
+      ],
+      "title": "PostcardResponse",
       "type": "object"
     },
     "Presence": {

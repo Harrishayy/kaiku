@@ -1,17 +1,124 @@
+import BackgroundTasks
 import KaikuKit
 import SwiftUI
+import UIKit
+import UserNotifications
+import WidgetKit
+#if canImport(MWDATCore)
+import MWDATCore
+#endif
 
-/// iPhone shell: everything lives in KaikuKit. Pairing links (`kaiku://pair?…` or a universal https link with
-/// `?home=&t=`) open the app and pair it.
+/// iPhone shell: everything lives in KaikuKit. Links: `kaiku://today|checkin|walk|play/<game>|phq9` (notifications,
+/// widgets, Live Activities, Siri), the DAT registration callback, and pairing links (`?home=&t=`).
 @main
 struct KaikuApp: App {
-    @State private var app = AppModel()
+    @UIApplicationDelegateAdaptor(KaikuAppDelegate.self) private var delegate
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.openURL) private var openURL
 
     var body: some Scene {
         WindowGroup {
             KaikuRootView()
-                .environment(app)
-                .onOpenURL { url in Task { await app.pair(link: url.absoluteString) } }
+                .environment(delegate.app)
+                .onOpenURL { url in Task { await delegate.route(url) } }
+                .task { await delegate.launched() }
+                .onChange(of: phase) { _, p in if p == .active { Task { await delegate.foreground() } } }
+                .onChange(of: delegate.app.phq9Requested) { _, want in
+                    guard want else { return }
+                    delegate.app.phq9Requested = false
+                    if let u = delegate.app.phq9URL { openURL(u) }
+                }
         }
+        .backgroundTask(.appRefresh(KaikuAppDelegate.refreshID)) { await KaikuAppDelegate.backgroundRefresh() }
+    }
+}
+
+@MainActor
+final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    static let refreshID = "fi.kaiku.app.refresh"
+    let app = AppModel()
+    private static weak var current: KaikuAppDelegate?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions opts: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        Self.current = self
+        UNUserNotificationCenter.current().delegate = self
+        Notifier.shared.registerCategories()
+        #if DEBUG
+        SurfaceSnapshots.runIfAsked()
+        #endif
+        app.makeGlasses = { GlassesChoice.make() }
+        IntentRouter.open = { [weak self] u in Task { await self?.route(u) } }
+        if let u = IntentRouter.pending { IntentRouter.pending = nil; Task { await route(u) } }
+        return true
+    }
+
+    func launched() async {
+        await WalkModel.recover(app: app)
+        await foreground()
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "kaikuHealthSample") {   // simulator demo: You → Devices → Try it out
+            app.consents[.watch] = true
+            if await HealthSync.shared.addSampleData() { await HealthSync.shared.sync(app: app) }
+        }
+        #endif
+        if let kind = UserDefaults.standard.string(forKey: "kaikuNotifyTest") {
+            await Notifier.shared.fireTest(kind == "checkin" ? .checkin : .invitation, app: app,
+                                           in: max(3, UserDefaults.standard.double(forKey: "kaikuNotifyDelay")))
+        }
+    }
+
+    /// On every foreground (and after pairing via refresh): notifications, voice cache, Health, widgets.
+    func foreground() async {
+        await app.refresh()
+        app.notificationsOn = await Notifier.shared.authorized()
+        await Notifier.shared.refresh(app: app)
+        WidgetShared.write(app.widgetSnapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+        await HealthSync.shared.sync(app: app)
+        Self.scheduleRefresh()
+        if app.isPaired { await VoiceLines.shared.prefetch(api: app.api, lang: app.language) }
+    }
+
+    func route(_ url: URL) async {
+        if app.open(url) { return }
+        #if canImport(MWDATCore)
+        if (try? await Wearables.shared.handleUrl(url)) == true { return }
+        #endif
+        if await app.pair(link: url.absoluteString) { await foreground() }
+    }
+
+    static func scheduleRefresh() {
+        let r = BGAppRefreshTaskRequest(identifier: refreshID)
+        r.earliestBeginDate = Date().addingTimeInterval(3 * 3600)
+        try? BGTaskScheduler.shared.submit(r)
+    }
+
+    /// Best effort: fetch /v1/nudge + /v1/me, re-plan notifications, sync Health.
+    nonisolated static func backgroundRefresh() async {
+        await MainActor.run { scheduleRefresh() }
+        guard let d = await current else { return }
+        await d.app.refresh()
+        await Notifier.shared.refresh(app: d.app)
+        await HealthSync.shared.sync(app: d.app)
+    }
+
+    // MARK: notifications
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .list]
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let action = response.actionIdentifier
+        let info = response.notification.request.content.userInfo
+        let sendable = info.reduce(into: [String: String]()) { if let k = $1.key as? String, let v = $1.value as? String { $0[k] = v } }
+        await MainActor.run {} // hop
+        await handle(action: action, info: sendable)
+    }
+
+    private func handle(action: String, info: [String: String]) async {
+        let link = await Notifier.shared.handle(action: action, userInfo: info, app: app)
+        if let link { await route(link) }
+        await app.flush()
     }
 }

@@ -37,3 +37,15 @@ def test_total_cap(monkeypatch):
         budget.guard("gemini", "gemini-4-argon", 0.06)
     r = budget.report()
     assert r["spent_usd"] == pytest.approx(0.95) and r["remaining_usd"] == pytest.approx(0.05)
+
+
+def test_dotenv_never_loaded_under_pytest(tmp_path, monkeypatch):
+    from kaiku_contracts import config
+
+    env = tmp_path / ".env"
+    env.write_text("KAIKU_TEST_SECRET=leak\n")
+    monkeypatch.delenv("KAIKU_TEST_SECRET", raising=False)
+    config.load_dotenv(env)
+    import os
+
+    assert "KAIKU_TEST_SECRET" not in os.environ

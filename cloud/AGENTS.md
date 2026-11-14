@@ -50,6 +50,12 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/me/memories?home_id=` | `MemoriesResponse` ("What Kaiku remembers", newest first, expired plans dropped) |
 | `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` | `DeletedResponse` (404 if not that home's) |
 | `PUT /v1/me/memory_settings?home_id=` | `MemorySettings {remember}` — false = no memory writes |
+| `POST /v1/companion/tool` `ask_mind` | `result` = `MindAnswer` (route memory › flash › argon › fallback; grounded cites, tags stripped) — see "Gemini-first mind" |
+| `GET /v1/me/constellation?home_id=` | `ConstellationResponse`: people/places/likes/what helps/plans/activities + edges (no health data, scores, states, evidence ids) |
+| `POST /v1/companion/postcard` · `GET /v1/me/postcards/{id}` | `PostcardResponse {id, url, cached, model}` (Nano Banana 2 Lite, cached) · the image; **503 + `{detail, reason, hint}`** without a key / over the daily cap |
+| `GET /v1/health/intelligence?days=7` | `IntelligenceHealth`: per day/model/task calls, ok, fallbacks, p50/p95 ms; ask_mind `routes`; fallback rate |
+| `GET /v1/patients/{id}/brief` | `ClinicianBrief` (latest `POST /v1/admin/weekly`; template until then). Never reads the notebook |
+| `POST /v1/admin/reflect` · `POST /v1/admin/nightly-mind?home_id=` · `POST /v1/admin/weekly?home_id=` | daily focus · graph rebuild + Embedding 2 backfill + validated consolidation diffs + pre-render list · weekly briefs |
 | emits `obs.safety_flag` | `{trigger: phrase, handled_locally: false}` (source `cloud`) when a crisis phrase arrives in a tool call |
 | `/` | static Next.js export (`apps/web/out`) when built; `/v1/*` and `/healthz` always win |
 
@@ -81,6 +87,13 @@ kaiku_cloud/
                           sessions of one intent on one weekday in 35 d), open thread (3 d, one at a time)
     session.py            start_session (episode opened), run_tool (crisis -> safety_flag, nothing stored), end_session
                           (closes episode, closes the thread of the same skill, opens follow_up), record_episode
+    router.py             ask_mind: deterministic route (memory/graph/today) → Flash JSON → Argon escalation; grounding
+                          (cite ids verified + stripped), conflict → ask, prompt hygiene (`clean_fact`), Argon budget
+    graph.py              kg_nodes/kg_edges built by code (memories, episodes, bandit `helped`), Embedding 2 index +
+                          recall (cosine, FTS fallback, 1-hop), conflicts, consolidation diffs, constellation
+    brief.py              weekly clinician brief (flagship, metric-id grounded, template fallback)
+    postcard.py           walk postcard (fixed style prompt from stats; disk cache; daily cap)
+    nightly.py            POST /v1/admin/nightly-mind
     live_token.py         Gemini Live ephemeral token (REST v1beta auth_tokens, uses=1, 30 min / 1 min to start);
                           None without GEMINI_API_KEY or on any error
   api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
@@ -96,6 +109,7 @@ kaiku_cloud/
     consensus.py          [state] rule + day-by-day replay (hysteresis) + correlated-family caveat / count-as-one
     bandit.py             Thompson sampling; reward = 0.5 immediate (intervention_response) + 0.5 next day
   llm/
+    ledger.py             usage ledger `model_calls` (no content) + /v1/health/intelligence summary
     explain.py            Consensus → Explanation; LLM JSON validated, retried once, banned words → template
     template.py           deterministic explanation (default, always available)
     gemma_hosted.py       hosted Gemma adapter       gemma_vllm.py   Modal GPU adapter     prompts/explain.md
@@ -133,6 +147,12 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
 - **Memories, episodes and threads are person-facing only**: no clinician route reads them (tested). Episodes hold
   no transcript. The context card never contains the consensus state, scores, numbers or wearable data; tone is the
   only cue. A crisis phrase in a tool call stores nothing, raises `obs.safety_flag` and returns the scripted message.
+- **ask_mind never decides state and never stores anything.** Code verifies every cite id; an unknown id, a missing
+  cite (except `emotional`), bad wording or a pick between conflicting notes → next tier or the scripted line.
+  Prompts carry only the question + facts that pass `router.clean_fact` (no digits, state words, wearable/health
+  words). The graph, vectors, constellation and ledger are person-facing / contentless; no clinician route reads them.
+- Every paid call (Flash, Argon, Embedding 2, image) goes through `kaiku_contracts.budget` (guard + metered) and
+  writes a `model_calls` row; `BudgetExceeded` = unavailable → fallback.
 - One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
 - No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient, every
   voice line and every `person_hard` sentence).
@@ -235,8 +255,14 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
   handles both `output_audio` and `steps[].content[]`. Pre-render once a key is available.
 - Companion: Live model/voice come from `config/kaiku.toml [models].gemini_live` / `[voice].name`. The ephemeral token
   call follows the current docs but has not run against the real API here (no key); it fails soft to null.
-  `forget` is in the registry on every surface but not yet in `config/surfaces.toml` tool lists (prompt lists the
-  served tools, so it is described anyway). Memories are not embedded (FTS5 only, per the scope guard).
+  `forget` and `ask_mind` are in the registry on every surface but not yet in `config/surfaces.toml` tool lists (the
+  prompt lists the served tools, so they are described anyway; owner of config/persona.md + surfaces.toml: add an
+  "ask_mind when unsure" line).
+- Plan 06 paths (Flash/Argon JSON for ask_mind, Embedding 2, Nano Banana 2 Lite image) are tested with a mocked SDK
+  client only; no real call has been made from this build env (no key). The image `response_format` shape
+  (`{"type": "image", "aspect_ratio": "4:3"}`) follows the May-2026 Interactions docs.
+- The nightly Argon judge over eval scenarios is skipped in the cloud (scenarios live in tools/, which the cloud may
+  not import) — run `make eval-companion`.
 - The synth emits screen activity in 4 blocks a day (not hourly) to keep `make tune` fast; the real Mac app is hourly.
 
 ## Intelligence wiring (2026-11-14)
@@ -252,3 +278,22 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
   fallback); runs in the nightly job and `POST /v1/admin/reflect`; sessions only read the cached plan (card `focus`).
 - **Live through the mind:** every surface opens Gemini Live with what `POST /v1/companion/session` returns
   (persona + surface + context card + tools; ephemeral `live_token` for apps); cloud tools go to `/v1/companion/tool`.
+
+## Gemini-first mind (plan 06 §1–§3, workstream I4)
+- **ask_mind routing** (`mind/router.py`, one ledger outcome row `ask_mind.route` per question):
+
+  | case | route |
+  |---|---|
+  | kind fact/memory/plan, exactly one strong memory hit (≥ half the question's content words), or "what did I do today" | `memory` (code, no model) |
+  | otherwise | Flash JSON `{answer, confidence, cites}` |
+  | Flash confidence < `[mind].escalate_below` (0.6), Flash failed/invalid | → Argon |
+  | kind care / emotional, or conflicting notes | Argon first, then Flash |
+  | Argon over `[budget].argon_per_home_day` (20, local day) or spend cap | Flash only |
+  | nothing valid | scripted line (care: best approved `[care_passages]` passage; conflict: "which is right?") |
+- **Graph** (`mind/graph.py`): rebuilt by code on every memory write/delete, ask_mind, constellation and nightly; node
+  statuses (merged/expired) come only from validated diffs. Recall uses Embedding 2 vectors when a key + vectors
+  exist (memory vectors on write, nightly backfill), else FTS5; the context card uses it too (FTS path = the old rule).
+- **Ledger** (`llm/ledger.py`): `model_calls(ts, home_id, model, task, route, latency_ms, ok, fallback)`; written by
+  gemini.py (text/embed/image), gemma adapters, the router, explain/reflect/brief fallbacks.
+- Config: `config/kaiku.toml [mind]` (escalate_below, embedding/image model, postcard_dir), `[budget]`
+  (argon_per_home_day, images_per_home_day + the spend caps), `[care_passages]`.

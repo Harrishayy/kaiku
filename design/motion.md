@@ -64,6 +64,12 @@ Each state has a **pose** (static values held for the whole state, also the Redu
 `peek` only moves the root; it **composes** with another state's pose for the other parts (01:10 notch =
 `peek` + `sleepy`).
 
+**Mac notch island** (layout: `layout.md` → Mac notch island): collapsed → peek → expanded is ONE spring on the
+same shape (response 0.8 s, damping 0.82): the band widens to notch + wings and the body grows down and out of the
+notch — never a fade between windows. A beat later (150 ms) Kaiku drops into the body on a slower spring
+(response 1.1 s, damping 0.78), clipped by the shape, keeping its state (`sleepy` at 01:10: z's, slow blink,
+yawns). Auto-hides after 20 s (hovering holds it). Reduce Motion: crossfade (`crossfade`), Kaiku just appears.
+
 **Ambient mood** (`GET /v1/me` → `mascot.mood`) maps to a state through `mascot.spec.json → ambient_mood`.
 `safety` has no mascot: the crisis screen replaces everything.
 

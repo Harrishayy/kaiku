@@ -33,6 +33,7 @@ from .devices.atech_adapter import AtechAdapter
 from .devices.lora_serial import LoraSerialAdapter
 from .devices.unoq_yolo import UnoqYoloFaces
 from .live import Music, Voice, make_music, make_voice
+from .live.context_events import ContextEvents, DrumFeel, breathing_calmer, late_key, light_key
 from .live.lines import LinePlayer
 from .live.tools import SYSTEM_PROMPT, TOOLS
 from .perception import face
@@ -51,6 +52,8 @@ CLOUD_TOOLS = frozenset(n for n, t in REGISTRY.items() if t.get("executor") == "
 SIM_WINDOW_S = 60.0
 CRISIS_DEDUPE_S = 60.0
 ATTENTION_HZ = 5.0
+THINK_TIMEOUT_S = 8.0  # a cloud tool (ask_mind, recall, ...) slower than this -> scripted line, ritual goes on
+THINK_LATER = "Let me think about that later."
 QUIET = re.compile(r"\b(not now|quiet|be quiet|hiljaa|ei nyt|tyst|inte nu)\b", re.I)
 
 
@@ -97,6 +100,12 @@ class Hub:
         self._seen_cmds: set[str] = set()
         self._tasks: list[asyncio.Task] = []
         self.emitted: list[Envelope[Any]] = []  # in-process tap for tests/debugging (bounded)
+        self.context = ContextEvents(self._send_context)  # T5 live events, one "session" per ritual
+        self.drum_feel = DrumFeel(refractory_ms=s.tap_refractory_ms)
+        self.think_timeout_s = THINK_TIMEOUT_S
+        self.thinking = 0  # cloud tool calls in flight (body shows "thinking")
+        self._eyes = "neutral"  # last eyes the ritual/attention asked for (restored after thinking)
+        self._crisis_n = 0
 
     # ================================================================ RitualContext
     async def say(self, text: str) -> None:
@@ -106,7 +115,16 @@ class Hub:
             log.warning("voice_failed", str(e))
 
     async def head(self, **cmd: Any) -> None:
+        if cmd.get("eyes"):
+            self._eyes = cmd["eyes"]
         await self._cmd("cmd.head", cmd)
+
+    async def _send_context(self, text: str) -> None:
+        await self.voice.send_context(text)
+
+    async def notice(self, key: str | None) -> bool:
+        """Context event for the open Live session (live/context_events.py rules); dropped if no ritual."""
+        return bool(key) and await self.context.notice(key)
 
     async def sensors(self, **cmd: Any) -> None:
         await self._cmd("cmd.sensors", cmd)
@@ -133,6 +151,8 @@ class Hub:
         self.emitted.append(env)
         del self.emitted[:-500]
         log.info("obs", type_, **{k: v for k, v in payload.items() if isinstance(v, (int, float, str, bool))})
+        if type_ == "obs.intervention_response" and breathing_calmer(payload):
+            await self.notice("breathe.calmer")
         if type_ == "obs.phq9":  # safety gate on PHQ-9 answers, whichever step produced them
             trig = SafetyGate.check_phq9(item9_positive=env.payload.item9_positive)
             if trig:
@@ -157,6 +177,10 @@ class Hub:
         task = self.machine.start()
         if task:
             task.add_done_callback(self._ritual_done)
+            self.context.open_session()
+            self.drum_feel.reset()
+            self._tasks.append(asyncio.create_task(self.notice(late_key(datetime.now().astimezone().hour)),
+                                                   name="context-late"))
             if self.voice.wants_session:
                 self._tasks.append(asyncio.create_task(self._open_live(), name="live-open"))
         return task is not None
@@ -178,6 +202,7 @@ class Hub:
     def _ritual_done(self, task: asyncio.Task) -> None:
         self._last_ritual_end = time.monotonic()
         self.ritual_reason = ""
+        self.context.close_session()
         if self.voice.wants_session:
             asyncio.get_running_loop().create_task(self.voice.close_session())
         if task.cancelled():
@@ -194,6 +219,8 @@ class Hub:
     async def crisis(self, trigger: Trigger) -> None:
         """Deterministic crisis path. No LLM. Order matters (handoff §10)."""
         now = time.monotonic()
+        self._crisis_n += 1
+        self.context.close_session()  # nothing but the script after a crisis
         log.warning("safety_trigger", trigger.kind, matched=trigger.detail, lang=trigger.language)
         # 1. stop the ritual and any generated audio
         await self.machine.abort()
@@ -240,7 +267,12 @@ class Hub:
     async def on_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Voice-model tool calls. Requests only; the hub decides. Cloud tools (memory, nudge, end) are forwarded."""
         if name in CLOUD_TOOLS:
-            res = await self.cloud.companion_tool(name, args, getattr(self, "_session_id", None))
+            try:
+                res = await self._cloud_tool_thinking(name, args)
+            except TimeoutError:
+                log.info("cloud_tool_timeout", name, after_s=self.think_timeout_s)
+                self._tasks.append(asyncio.create_task(self.say(THINK_LATER), name="think-later"))
+                return {"ok": False, "error": "taking too long; Kaiku already said it will think about it later"}
             if res is None:
                 if name == "end_session":
                     self.machine.feed(Event("skip"))
@@ -272,6 +304,22 @@ class Hub:
             return {"ok": True}
         return {"ok": False, "error": f"unknown tool {name}"}
 
+    async def _cloud_tool_thinking(self, name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+        """Body while a cloud tool (ask_mind, recall, ...) is in flight: eyes `thinking` + a small upward glance
+        (the head has no ear command), restored afterwards unless a crisis took over. Raises TimeoutError."""
+        crisis_n = self._crisis_n
+        self.thinking += 1
+        await self._cmd("cmd.head", {"eyes": "thinking", "look": {"x": 0.0, "y": 0.3}})
+        try:
+            return await asyncio.wait_for(
+                self.cloud.companion_tool(name, args, getattr(self, "_session_id", None),
+                                          timeout_s=self.think_timeout_s + 1),
+                self.think_timeout_s)
+        finally:
+            self.thinking -= 1
+            if self.thinking == 0 and self._crisis_n == crisis_n:
+                await self._cmd("cmd.head", {"eyes": self._eyes, "look": {"x": 0.0, "y": 0.0}})
+
     # ================================================================ bus handlers
     def _mark_sim(self, env: Envelope[Any]) -> None:
         if env.sim:
@@ -283,6 +331,8 @@ class Hub:
         name = t.name
         if name == "head/tap":
             self.machine.feed(Event("tap", p))
+            if self.machine.state == "drum":
+                await self.notice(self.drum_feel.add(int(p["t_ms"]), float(p["force"])))
         elif name == "head/ear":
             if self.machine.running:
                 self.machine.feed(Event("ear", p))
@@ -298,6 +348,8 @@ class Hub:
             await self._on_distance(p["cm"])
         elif name == "sensors/light":
             out = self.light.add(p["lux_est"], datetime.now().astimezone())
+            if self.machine.state in ("greet", "dial"):  # early only: never crowds out breathing/drum events
+                await self.notice(light_key(p["lux_est"]))
             if out:
                 await self.emit("obs.light_level", out)
         elif (name == "sensors/button" and p.get("id") == "top") or name == "head/button":
@@ -340,7 +392,10 @@ class Hub:
 
     async def _on_distance(self, cm: float) -> None:
         now = datetime.now().astimezone()
+        was_present = self.presence.present
         arrival = self.presence.update(cm, now)
+        if was_present and not self.presence.present and self.machine.running:
+            await self.notice("people.away")
         self.attention.set_present(self.presence.present)
         if self.face is not None:
             (self.face.start() if self.presence.present else self.face.stop())
@@ -366,6 +421,8 @@ class Hub:
         done = self.state.ritual_done_on(now.date()) and not self.settings.demo_mode
         prev = self.attention.state
         actions = self.attention.tick(now, ritual_done_today=done, ritual_running=self.machine.running)
+        if self.machine.running and self.attention.face_count(now) >= 2:
+            await self.notice("people.second")
         if self.attention.state != prev:
             log.info("attention", f"{prev} -> {self.attention.state}", faces=self.attention.face_count(now))
         for kind, arg in actions:

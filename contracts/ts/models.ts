@@ -25,6 +25,37 @@ export interface ActionResult {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "BriefSection".
+ */
+export interface BriefSection {
+  /**
+   * criteria metric names this sentence rests on
+   */
+  metrics?: string[];
+  text: string;
+}
+/**
+ * GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).
+ * Explains the consensus; never changes it.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ClinicianBrief".
+ */
+export interface ClinicianBrief {
+  by: "model" | "template";
+  generated_at: string;
+  model?: string | null;
+  patient_id: string;
+  rule_version: string;
+  sections: BriefSection[];
+  state: "stable" | "watch" | "needs_call" | "safety";
+  /**
+   * ISO week, e.g. 2026-W46
+   */
+  week: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "ClinicianMessage".
  */
 export interface ClinicianMessage {
@@ -259,6 +290,40 @@ export interface VerdictEvidence {
   metric: string;
   summary?: string;
   z?: number | null;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationEdge".
+ */
+export interface ConstellationEdge {
+  dst: number;
+  rel: "knows" | "goes_to" | "likes" | "helped_by" | "plans" | "did" | "helped" | "about";
+  src: number;
+  /**
+   * 0..1, for line thickness only
+   */
+  weight: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationNode".
+ */
+export interface ConstellationNode {
+  id: number;
+  label: string;
+  type: "me" | "person" | "place" | "like" | "helper" | "plan" | "activity";
+}
+/**
+ * GET /v1/me/constellation — person-facing "Your constellation": people, places, activities, what helps.
+ * Built from what the person told Kaiku and what they did. Never health data, scores or states.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationResponse".
+ */
+export interface ConstellationResponse {
+  edges: ConstellationEdge[];
+  home_id: string;
+  nodes: ConstellationNode[];
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -806,6 +871,42 @@ export interface SuggestNudge {
   arm: "breathe" | "drum" | "daylight_walk" | "friend_ping" | "icbt_exercise";
 }
 /**
+ * GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,
+ * how fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "IntelligenceHealth".
+ */
+export interface IntelligenceHealth {
+  calls: number;
+  days: number;
+  fallback_rate: number;
+  p50_ms?: number | null;
+  p95_ms?: number | null;
+  per_model: {
+    [k: string]: number;
+  };
+  routes: {
+    [k: string]: number;
+  };
+  rows: ModelUsageRow[];
+  since: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ModelUsageRow".
+ */
+export interface ModelUsageRow {
+  calls: number;
+  day: string;
+  fallbacks: number;
+  model: string;
+  ok: number;
+  p50_ms?: number | null;
+  p95_ms?: number | null;
+  task: string;
+}
+/**
  * Immediate before/after effect of one activity (feeds the bandit learner).
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -996,6 +1097,26 @@ export interface TimelinePoint {
   value: number | null;
 }
 /**
+ * `result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are
+ * verified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.
+ * `route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "MindAnswer".
+ */
+export interface MindAnswer {
+  answer: string;
+  ask_person?: boolean;
+  /**
+   * verified ids: mem:<id> | kg:<id> | doc:<id>
+   */
+  cites?: string[];
+  confidence: number;
+  kind: "fact" | "care" | "memory" | "plan" | "emotional";
+  model?: string | null;
+  route: "memory" | "flash" | "argon" | "fallback";
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "NextDay".
  */
@@ -1177,6 +1298,43 @@ export interface PlaySession {
    * tell: syllables per second
    */
   speech_rate?: number | null;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PostcardRequest".
+ */
+export interface PostcardRequest {
+  /**
+   * light-hunt finds as short words, e.g. 'green', 'bird'
+   *
+   * @maxItems 5
+   */
+  finds?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string];
+  home_id: string;
+  minutes: number;
+  weather_word?: "sunny" | "cloudy" | "rainy" | "snowy" | "windy" | "foggy" | "grey" | "frosty" | "clear";
+}
+/**
+ * POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,
+ * hint} when image generation is unavailable: the app shows its own static card.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PostcardResponse".
+ */
+export interface PostcardResponse {
+  cached: boolean;
+  id: string;
+  model: string;
+  /**
+   * GET this path for the image
+   */
+  url: string;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema

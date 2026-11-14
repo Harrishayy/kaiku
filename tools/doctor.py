@@ -218,8 +218,11 @@ def check_gemini() -> list[Check]:
     import httpx
 
     key = os.environ.get("GEMINI_API_KEY")
+    if not key and os.environ.get("GOOGLE_CLOUD_PROJECT"):
+        return check_platform()
     if not key:
-        return [Check("cloud", "gemini key", WARN, "GEMINI_API_KEY unset", "needed for voice/music (KAIKU_VOICE=text works without)")]
+        return [Check("cloud", "gemini key", WARN, "no GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT",
+                      "set one in .env (ADC: gcloud auth application-default login)")]
     try:
         r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
                       headers={"x-goog-api-key": key}, timeout=5)
@@ -245,6 +248,22 @@ def check_gemini() -> list[Check]:
         except Exception as e:
             out.append(Check("cloud", f"model {role}", WARN, f"{mid}: {type(e).__name__}"))
     return out
+
+
+def check_platform() -> list[Check]:
+    """Gemini platform via ADC: credentials present + a token can be minted (free, no generation)."""
+    proj = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    try:
+        import google.auth
+        import google.auth.transport.requests
+
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        creds.refresh(google.auth.transport.requests.Request())
+        return [Check("cloud", "gemini platform (ADC)", OK, f"project {proj}, token ok",
+                      "Live ephemeral tokens for apps need GEMINI_API_KEY")]
+    except Exception as e:
+        return [Check("cloud", "gemini platform (ADC)", FAIL, f"{type(e).__name__}",
+                      "run: gcloud auth application-default login")]
 
 
 def check_modal() -> list[Check]:

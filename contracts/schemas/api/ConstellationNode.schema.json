@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "integer"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "me",
+        "person",
+        "place",
+        "like",
+        "helper",
+        "plan",
+        "activity"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "label"
+  ],
+  "title": "ConstellationNode",
+  "type": "object"
+}

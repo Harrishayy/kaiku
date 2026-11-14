@@ -33,6 +33,7 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `GET /v1/nudge?home_id` | bandit arm (falls back to clinician suggestion, then uniform random) |
 | `GET /v1/voice/{key}?lang=` | greeting audio in the one Kaiku voice (404/503/offline → `say`/text fallback) |
 | `POST /v1/companion/session` | `{surface: robot, home_id, intent: ritual}` → Live system instruction + tools (404/offline → local `tools.py`) |
+| `POST /v1/companion/tool` | every registry tool with `executor: cloud` (incl. `ask_mind`); body shows `thinking` while in flight, 8 s cap |
 
 ## Emits (topics/endpoints)
 | Topic / endpoint | When |
@@ -49,6 +50,7 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `obs/friend_link` | LoRa ping sent/received |
 | `obs/safety_flag` | any crisis trigger (priority uplink, deduped per trigger for 60 s) |
 | `cmd/head`, `cmd/sensors` | attention: `eyes` glance/`listening`, `look` + `pan{target_deg}` tracking (smoothed, deadband, ≤ 5 Hz), `purr`, `home`; ritual: eyes, pan_mode, chest, purr; `ppg: start/stop`; `camera_enable` (unoq_yolo) |
+| Live context events (not a topic) | `Voice.send_context("[drumming · lively]")` into the open Live session — fixed vocabulary, see Invariants |
 | `health/hub` | retained heartbeat every 5 s (ritual state, uplink queue/lag/error, adapters) |
 | `POST /v1/events` | batched obs (Bearer `KAIKU_HOME_TOKEN` if set) |
 | `PUT /v1/health/{home_id}` | every 10 s: all node heartbeats + uplink queue/lag |
@@ -72,7 +74,9 @@ kaiku_hub/
   live/            base.py (Voice/Music interfaces; open_session/close_session per ritual), factory.py,
                    text.py, gemini_live.py (gemini-3.8-live, affective dialog, proactive audio, [voice].name),
                    lines.py (keyed lines: cloud voice cache -> local TTS/text), lyria.py, local_audio.py,
-                   tools.py (local fallback tools + system prompt)
+                   tools.py (local fallback tools + system prompt),
+                   context_events.py (T5: fixed vocabulary, rate limit/dedupe, DrumFeel, breathing/light/late rules),
+                   meter.py (SessionMeter: Live/Lyria spend on the kaiku_contracts.budget ledger)
   devices/         atech_adapter.py (stub), lora_serial.py (friend link), camera.py,
                    unoq_yolo.py (face source: UNO Q App Lab boxes; interface for owner A + box_to_face)
   uplink.py        SQLite offline queue, batches, backoff, safety_flag priority lane, obs-only
@@ -125,6 +129,21 @@ tests/             unit + contract tests per area; test_integration.py = full ri
 - **Gemini Live is per ritual:** the session opens at ritual start and closes at the end (mic streams only then).
   Every input transcript hits `on_utterance` (safety gate) first; a crisis closes the session before anything else
   plays. If the model doesn't start speaking within 4 s of a scripted prompt, the line is spoken locally.
+- **Live context events (plan 06 §4, `live/context_events.py`):** only keys of the fixed `VOCAB` can be sent
+  (`[drumming · lively|steady|gentle]` relative to this ritual's first 6 taps, `[breathing · heart calmer]` from
+  the breathe `obs.intervention_response` delta, `[second person nearby]` (≥ 2 faces), `[person stepped away]`
+  (presence lost), `[light · dim|bright]` (< 50 / ≥ 1000 lux, greet/dial steps only), `[it's late]` (ritual start 23:00–03:59)) — never
+  numbers or state words (a property test checks). ≥ 20 s apart, ≤ 8 per ritual, each once per ritual; the
+  "session" is the ritual (open at start, closed at the end and on crisis); dropped silently otherwise.
+  Gemini: `send_client_content(turn_complete=True)` mid-session; text voice prints `· context: …`; off = no-op.
+- **Spend cap (`live/meter.py`, `kaiku_contracts/budget.py`):** Gemini Live and Lyria RealTime only open if
+  `budget.guard(estimate(model, audio_min=5))` passes; then one `budget.charge(audio_min=1)` per started minute.
+  Over the cap → Live isn't opened (scripted ritual) or closes politely mid-session (one local line, ritual
+  continues scripted); Lyria → local click only. Ledger `logs/spend.sqlite` (`KAIKU_SPEND_DB`), `make spend`.
+- **Thinking body:** while any `executor: cloud` tool (e.g. `ask_mind`) is in flight → `cmd.head {eyes: thinking,
+  look: up}`; restored to the last eyes after (not after a crisis — the crisis body stays). > 8 s
+  (`THINK_TIMEOUT_S`) → the tool answers `{ok: false}`, Kaiku says "Let me think about that later." and the ritual
+  goes on.
 
 ## Run standalone
 ```bash
@@ -201,6 +220,12 @@ uv run pytest hub/tests      # ~10 s; the MQTT integration test needs mosquitto 
   session (404/ok/offline), Live config fields (+ validated by the installed `google-genai` types), UNO Q box →
   RawFace, Hub: approach → greeting + offer → "not now" ends it + quiet; two people no offer; done today no offer;
   own `raw.hub.face` echo ignored.
+- `test_context_events.py`: vocabulary/format, no digits/state words (seeded property test), rate limit 19 s vs
+  20 s, dedupe, 9th event dropped, no-session no-op, DrumFeel relative to start, breathing/light/late rules, voice
+  no-ops + text print, Hub: breathing event from its own obs, thinking set/cleared, 8 s timeout line + ritual
+  continues, crisis keeps the crisis body.
+- `test_budget.py` (temp `KAIKU_SPEND_DB`): open guards 5 min + charges minute 1, refused near the cap, per-minute
+  charges until the cap then `on_exceeded`, stop ends charging, Live doesn't connect over budget.
 - `test_integration.py`: real mosquitto + fake head/sensors (dial protocol) → full v2 ritual → self_report ×4,
   hrv, drum, intervention_response, nudge obs.
 
@@ -226,6 +251,8 @@ uv run pytest hub/tests      # ~10 s; the MQTT integration test needs mosquitto 
 - The phrase list will miss things and can false-trigger on quoted speech. See `docs/safety.md`.
 - Ritual-time invitations (`set_ritual_time`) only fire while the hub is running, checked every 20 s.
 - Env overrides (`KAIKU_RITUAL_DRUM_S=…`) only work for keys that exist in `config/kaiku.toml`.
+- Context-event thresholds (light lux, late hours, drum ±15 %, 20 s / 8) are constants in `context_events.py`, not
+  yet in `config/kaiku.toml` (config owner). Rate-limited events are dropped, not queued.
 - `obs.*` are flagged `sim: true` for 60 s after any sim input arrives.
 - Step deadlines are re-checked after every event; a multi-phase step must move `deadline()` forward in
   `on_deadline()` or the machine ends it.

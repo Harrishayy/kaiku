@@ -35,6 +35,8 @@ API_MODELS = [
     api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
     api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
     api.DeletedResponse, api.ThreadIn, api.EpisodeIn, api.EpisodeResult,
+    api.MindAnswer, api.ModelUsageRow, api.IntelligenceHealth, api.ConstellationNode, api.ConstellationEdge,
+    api.ConstellationResponse, api.PostcardRequest, api.PostcardResponse, api.BriefSection, api.ClinicianBrief,
 ]
 
 

@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "metrics": {
+      "description": "criteria metric names this sentence rests on",
+      "items": {
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "text": {
+      "maxLength": 600,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "BriefSection",
+  "type": "object"
+}

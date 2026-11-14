@@ -19,13 +19,13 @@ public enum KaikuTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// Every pushed screen. Parity: both targets render exactly this list (plan 02 §4); `platformOnly` marks the
 /// exceptions, mirrored in apps/apple/AGENTS.md → Parity.
 public enum KaikuRoute: String, Hashable, CaseIterable, Sendable {
-    case weather, firefly, pebbles, breathe, tell
+    case weather, firefly, pebbles, breathe, tell, walk
     case memories, saw, voice, quiet, devices, help
 
     public var tab: KaikuTab {
         switch self {
         case .weather: return .today
-        case .firefly, .pebbles, .breathe, .tell: return .play
+        case .firefly, .pebbles, .breathe, .tell, .walk: return .play
         default: return .you
         }
     }
@@ -35,7 +35,7 @@ public enum KaikuRoute: String, Hashable, CaseIterable, Sendable {
 public enum KaikuScreen: String, CaseIterable, Sendable {
     case onboardingWelcome, onboardingPair, onboardingConsent, onboardingNotifications, onboardingMeet
     case today, weatherCheck
-    case play, firefly, pebbles, tell, breathe
+    case play, firefly, pebbles, tell, breathe, walk
     case talk
     case days, markDay
     case you, memories, saw, voice, quiet, devices, help
@@ -43,7 +43,13 @@ public enum KaikuScreen: String, CaseIterable, Sendable {
     case menuBarPopover
 
     public enum Platform: Sendable { case both, iPhoneOnly, macOnly }
-    public var platform: Platform { self == .menuBarPopover ? .macOnly : .both }
+    public var platform: Platform {
+        switch self {
+        case .menuBarPopover: return .macOnly
+        case .walk: return .iPhoneOnly
+        default: return .both
+        }
+    }
 }
 
 @ViewBuilder
@@ -54,6 +60,7 @@ func destination(_ r: KaikuRoute) -> some View {
     case .pebbles: PebbleGame()
     case .breathe: BreatheView()
     case .tell: TellKaikuView()
+    case .walk: WalkView()
     case .memories: MemoriesView()
     case .saw: SawTodayView()
     case .voice: VoiceLanguageView()

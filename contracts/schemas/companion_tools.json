@@ -38,6 +38,40 @@
     "web"
   ],
   "tools": {
+    "ask_mind": {
+      "description": "Ask Kaiku's mind when unsure, when you need a fact the person told you before, or for a care or hard emotional question. Returns an answer to say in your own words (may say to ask the person or the care team). kind: fact | care | memory | plan | emotional.",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "fact",
+              "care",
+              "memory",
+              "plan",
+              "emotional"
+            ],
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 300,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
     "end_session": {
       "description": "Close the session politely. Optionally leave one open thread to pick up next time on any device (e.g. skill walk_companion, topic \"the walk by the lake\").",
       "executor": "cloud",

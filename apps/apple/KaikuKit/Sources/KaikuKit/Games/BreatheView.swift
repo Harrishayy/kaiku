@@ -55,6 +55,9 @@ struct BreatheField: View {
             .onChange(of: Int(t / (cycle / 2))) { _, half in
                 if half != lastHalf {
                     lastHalf = half
+                    #if os(iOS)
+                    if half % 2 == 0 { KaikuLiveActivities.updateBreathe(breath: min(Self.breaths, half / 2 + 1), total: Self.breaths) }
+                    #endif
                     if app.breathHaptics { Haptics.breathTurn() }
                 }
                 if t >= cycle * Double(Self.breaths), !finished {
@@ -63,6 +66,16 @@ struct BreatheField: View {
                 }
             }
         }
-        .onAppear { start = Date() }
+        .onAppear {
+            start = Date()
+            #if os(iOS)
+            KaikuLiveActivities.startBreathe(lang: app.language.rawValue, total: Self.breaths)
+            #endif
+        }
+        .onDisappear {
+            #if os(iOS)
+            KaikuLiveActivities.endBreathe()
+            #endif
+        }
     }
 }

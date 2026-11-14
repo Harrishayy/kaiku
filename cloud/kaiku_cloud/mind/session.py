@@ -3,7 +3,7 @@
 session: persona + surface + context card (+ the surface's tools) -> one system instruction; an episode row is
 opened (no transcript ever). tool: devices forward the model's tool calls; the crisis phrase check runs on every
 string argument FIRST (hit -> nothing stored, obs.safety_flag raised, scripted message returned), then surface +
-schema checks, then the deterministic effect. episode: closes a session (or records one run offline).
+schema checks, then the deterministic effect (`ask_mind` -> mind/router.py). episode: closes a session (or records one run offline).
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from kaiku_contracts.safety import version as safety_version
 from .. import service
 from ..settings import Settings
 from ..store.db import Store
-from . import assemble, live_token, memory
-from .card import SUGGESTION, build_card, card_dict
+from . import assemble, graph, live_token, memory, router
+from .card import SUGGESTION, build_card, card_dict, done_today
 
 log = get_logger("cloud.mind")
 
@@ -119,8 +119,15 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
     try:
         if name == "remember":
             res = memory.remember(store, home, a["category"], a["text"], now)
+            if res["action"] in ("stored", "forgot"):
+                graph.on_memory_write(store, home)
+        elif name == "ask_mind":
+            today = done_today(store.events_for_home(home), store.episodes(home), now)
+            res = router.ask(store, settings, home, a["question"], a["kind"], done_today=today,
+                             now=now).model_dump(mode="json")
         elif name == "forget":
             res = memory.forget(store, home, a["scope"])
+            graph.on_memory_write(store, home)
         elif name == "recall":
             res = {"memories": [m["text"] for m in memory.recall(store, home, a["topic"], now=now)]}
         elif name == "suggest_nudge":

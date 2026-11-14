@@ -82,7 +82,8 @@ def test_patients_ranked_and_consensus_views(client):
     assert ex["by"] == "template" and ex["disagreement_note"] and ex["suggested_actions"][0] == "check_in_call"
     assert contains_banned(str(c)) is None
     assert client.get("/v1/patients/nobody/consensus").status_code == 404
-    assert client.get("/v1/patients/demo-aino/brief").status_code == 404  # v1 route is gone
+    brief = client.get("/v1/patients/demo-aino/brief").json()  # plan 06 weekly brief (template until generated)
+    assert brief["by"] == "template" and brief["state"] == "needs_call"
 
     # one enabled metric per source, taken from config/criteria.toml (no names hard-coded here)
     from kaiku_contracts.criteria import load_criteria

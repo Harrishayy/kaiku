@@ -7,7 +7,7 @@ import SwiftUI
 @Observable @MainActor
 final class TalkModel {
     struct Line: Identifiable, Equatable { let id = UUID(); let text: String; let me: Bool }
-    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied }
+    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied, paused }
 
     var lines: [Line] = []
     var mode: Mode = .connecting
@@ -20,6 +20,13 @@ final class TalkModel {
     private var started = Date()
     private var toolsUsed: [String] = []
     weak var app: AppModel?
+    // A2: on-device listening (safety gate + spoken dial), interruptions / routes, reconnects.
+    private let listener = OnDeviceListener()
+    private var audioTokens: [NSObjectProtocol] = []
+    private var routeAnnounced = false
+    private var userStopped = false
+    private var reconnects = 0
+    private(set) var lastSpokenDial: Int?
 
     var hasLive: Bool { live != nil }
 
@@ -27,6 +34,13 @@ final class TalkModel {
         self.app = app
         guard session == nil else { return }
         started = Date()
+        userStopped = false
+        if audioTokens.isEmpty {
+            audioTokens = TalkAudio.observe { [weak self] ev in self?.audioEvent(ev) }
+            listener.onHit = { [weak self] hit in Task { @MainActor in self?.onDeviceHit(hit) } }
+            // Kaiku says hello in its own voice (cached line; on-device synthesizer when not cached / offline).
+            VoiceLines.shared.play(Self.greetingKey(), lang: app.language)
+        }
         let req = CompanionSessionRequest(surface: KaikuPlatform.surface, home_id: app.pairing?.homeID ?? "",
                                           intent: .talk, language: app.language.rawValue)
         guard app.isPaired, let s = try? await app.api.companionSession(req) else {
@@ -41,9 +55,14 @@ final class TalkModel {
     }
 
     func stop() {
+        userStopped = true
         live?.close()
         live = nil
         _ = capture.stop()
+        listener.stop()
+        audioTokens.forEach(NotificationCenter.default.removeObserver)
+        audioTokens = []
+        VoiceLines.shared.stop()
         guard let app, let s = session else { return }
         // Close the episode the session opened (no transcript is ever sent).
         let ep = EpisodeIn(id: s.session_id, home_id: app.pairing?.homeID ?? "", surface: KaikuPlatform.surface, intent: .talk,
@@ -78,7 +97,11 @@ final class TalkModel {
         case .granted: break
         }
         guard let live else { return }
+        if !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
         capture.onPCM = { [weak live] d in live?.sendAudio(d) }
+        let listener = listener
+        capture.onBuffer = { b in listener.append(b) }
+        listener.start(lang: app?.language ?? .en)
         do {
             try capture.start()
             live.activityStart()
@@ -91,6 +114,8 @@ final class TalkModel {
         guard mode == .listening else { return }
         _ = capture.stop()
         capture.onPCM = nil
+        capture.onBuffer = nil
+        listener.stop()
         live?.activityEnd()
         holdStart = nil
         mode = .thinking
@@ -111,6 +136,10 @@ final class TalkModel {
     }
 
     private func crisis() {
+        userStopped = true
+        _ = capture.stop()
+        listener.stop()
+        VoiceLines.shared.stop()
         live?.close()
         live = nil
         mode = .scripted
@@ -130,6 +159,7 @@ final class TalkModel {
         case .toolCall(let id, let name, let args): Task { await tool(id: id, name: name, args: args) }
         case .closed:
             if live != nil { live = nil; if mode != .scripted { mode = .scripted } }
+            reconnect()
         }
     }
 
@@ -151,7 +181,7 @@ final class TalkModel {
                 let f = args["feeling"]?.string ?? "happy"
                 expression = ["sleepy": .sleepy, "cozy": .cozy, "curious": .listening, "proud": .cheering][f] ?? .happy
             case "record_dial":
-                if let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)), let v = args["value"]?.int {
+                if let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)), let v = args["value"]?.int ?? lastSpokenDial {
                     await app.emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel, context: "adhoc"))
                 }
             case "start_activity":
@@ -177,11 +207,66 @@ final class TalkModel {
     }
 }
 
+extension TalkModel {
+    static func greetingKey(_ d: Date = Date()) -> String {
+        let h = Calendar.current.component(.hour, from: d)
+        return h < 5 ? "greet.night" : h < 12 ? "greet.morning" : h < 18 ? "greet.afternoon" : h < 23 ? "greet.evening" : "greet.night"
+    }
+
+    /// Phone call / Siri / alarm → pause (mascot sleepy, "listening paused"); afterwards resume politely.
+    /// Glasses or AirPods connecting / leaving → keep going on the new route, tell the person once.
+    func audioEvent(_ ev: TalkAudio.Event) {
+        switch ev {
+        case .interrupted:
+            if mode == .listening { release() }
+            VoiceLines.shared.stop()
+            mode = .paused
+        case .resumed:
+            guard mode == .paused else { return }
+            mode = hasLive ? .live : .scripted
+            try? TalkAudio.activate()
+            let line = T("talk.resumed")
+            lines.append(Line(text: line, me: false))
+            VoiceLines.shared.say(line, lang: app?.language ?? .en)
+        case .routeChanged(let name):
+            guard !routeAnnounced, !name.isEmpty else { return }
+            routeAnnounced = true
+            app?.showToast(T("talk.route", ["name": name]))
+        }
+    }
+
+    func onDeviceHit(_ hit: OnDeviceListener.Hit) {
+        switch hit {
+        case .crisis: crisis()
+        case .dial(let n): lastSpokenDial = n
+        }
+    }
+
+    /// Live sessions have time limits: reconnect (twice at most) and say "I'm still here".
+    func reconnect() {
+        guard !userStopped, reconnects < 2, let app else { return }
+        reconnects += 1
+        session = nil
+        Task {
+            await start(app: app)
+            if hasLive { lines.append(Line(text: T("talk.still"), me: false)) }
+        }
+    }
+
+    /// Backgrounded during Talk: end the session cleanly after 30 s.
+    func backgrounded() async {
+        try? await Task.sleep(nanoseconds: 30_000_000_000)
+        if !Task.isCancelled { stop() }
+    }
+}
+
 public struct TalkView: View {
     @Environment(AppModel.self) private var app
     @State private var model = TalkModel()
     @State private var text = ""
     @State private var pressing = false
+    @State private var bgTask: Task<Void, Never>?
+    @Environment(\.scenePhase) private var phase
     @Environment(\.dynamicTypeSize) private var dts
 
     public init() {}
@@ -193,6 +278,7 @@ public struct TalkView: View {
         case .listening: return .listening
         case .thinking, .connecting: return .thinking
         case .speaking: return .speaking
+        case .paused: return .sleepy
         default: return model.expression ?? app.ambientState
         }
     }
@@ -234,6 +320,10 @@ public struct TalkView: View {
         }
         .task { await model.start(app: app) }
         .onDisappear { model.stop() }
+        .onChange(of: phase) { _, p in
+            bgTask?.cancel()
+            if p == .background { bgTask = Task { await model.backgrounded() } }
+        }
     }
 
     private var holdArea: some View {
@@ -273,6 +363,7 @@ public struct TalkView: View {
         case .thinking: return T("talk.thinking")
         case .live, .speaking: return T("talk.hold")
         case .scripted, .denied: return ""   // the hint already sits above the bubbles
+        case .paused: return T("talk.paused")
         }
     }
 }

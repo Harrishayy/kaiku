@@ -21,12 +21,14 @@ from kaiku_contracts import SCHEMA_VERSION, UPLINKABLE, ContractError, make, val
 from kaiku_contracts.api import (
     ActionRequest,
     ActionResult,
+    ClinicianBrief,
     CommandsResponse,
     CompanionSessionRequest,
     CompanionSessionResponse,
     CompanionToolCall,
     CompanionToolResult,
     Consensus,
+    ConstellationResponse,
     CriteriaPreview,
     CriteriaResponse,
     CriteriaUpdate,
@@ -37,6 +39,7 @@ from kaiku_contracts.api import (
     EventsResult,
     HealthOverview,
     Healthz,
+    IntelligenceHealth,
     LiveEventsResponse,
     MemoriesResponse,
     MemorySettings,
@@ -45,6 +48,8 @@ from kaiku_contracts.api import (
     NudgeResponse,
     PatientsResponse,
     Phq9History,
+    PostcardRequest,
+    PostcardResponse,
     TimelineResponse,
     VoiceLang,
     VoiceLinesResponse,
@@ -53,9 +58,14 @@ from kaiku_contracts.jlog import get_logger
 
 from .. import service, voice
 from ..jobs import nightly
+from ..llm import ledger
+from ..mind import brief as mind_brief
+from ..mind import graph as mind_graph
 from ..mind import memory as mind_memory
+from ..mind import nightly as mind_nightly
+from ..mind import postcard as mind_postcard
 from ..mind import session as mind
-from ..settings import VERSION, Settings
+from ..settings import TZ, VERSION, Settings
 from ..store.db import Store
 
 MAX_BATCH = 500
@@ -80,6 +90,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
                after_write: Callable[[], None] | None = None) -> FastAPI:
     settings = settings or Settings()
     store = Store(settings.db_path)
+    ledger.bind(store)  # usage ledger rows (no content) from every model adapter
     app = FastAPI(title="Kaiku cloud", version=VERSION)
     app.state.store = store
     app.state.settings = settings
@@ -239,11 +250,39 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         n = store.memory_delete(home_id, memory_id)
         if not n:
             raise HTTPException(404, "no such memory")
+        mind_graph.rebuild(store, home_id)  # its graph node + vector go with it
         return DeletedResponse(deleted=n)
 
     @app.delete("/v1/me/memories", response_model=DeletedResponse)
     def me_forget_all(home_id: str) -> DeletedResponse:
-        return DeletedResponse(deleted=store.memory_delete(home_id))
+        n = store.memory_delete(home_id)
+        mind_graph.rebuild(store, home_id)
+        return DeletedResponse(deleted=n)
+
+    @app.get("/v1/me/constellation", response_model=ConstellationResponse)
+    def me_constellation(home_id: str) -> ConstellationResponse:
+        """"Your constellation": people, places, activities and what helps — no health data, scores or states."""
+        return ConstellationResponse.model_validate(mind_graph.constellation(store, home_id))
+
+    @app.post("/v1/companion/postcard", response_model=PostcardResponse, dependencies=[Depends(require_home_token)],
+              responses={503: {}})
+    def companion_postcard(req: PostcardRequest) -> Any:
+        """Walk postcard from stats only (Nano Banana 2 Lite). 503 + hint when unavailable: show the static card."""
+        try:
+            pid, cached, model = mind_postcard.make(store, req, mind._gate().check)
+        except mind_postcard.PostcardUnavailable as e:
+            return JSONResponse(status_code=503, content={
+                "detail": "postcard unavailable", "reason": str(e),
+                "hint": "show the app's own static walk card; postcards need GEMINI_API_KEY on the cloud"})
+        return PostcardResponse(id=pid, url=f"/v1/me/postcards/{pid}", cached=cached, model=model)
+
+    @app.get("/v1/me/postcards/{postcard_id}", response_class=Response,
+             responses={200: {"content": {"image/png": {}}}, 404: {}})
+    def me_postcard(postcard_id: str) -> Response:
+        got = mind_postcard.load(store, postcard_id)
+        if not got:
+            raise HTTPException(404, "no such postcard")
+        return Response(content=got[0], media_type=got[1], headers={"cache-control": "public, max-age=604800"})
 
     @app.put("/v1/me/memory_settings", response_model=MemorySettings)
     def me_memory_settings(home_id: str, body: MemorySettings) -> MemorySettings:
@@ -299,6 +338,15 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         return TimelineResponse(patient_id=patient_id,
                                 series=service.timeline(store, patient_id, wanted, days))
 
+    @app.get("/v1/patients/{patient_id}/brief", response_model=ClinicianBrief)
+    def patient_brief(patient_id: str) -> ClinicianBrief:
+        """This week's brief (POST /v1/admin/weekly); the deterministic template until one is generated."""
+        row = known_home(patient_id)
+        cached = store.kv_get(mind_brief.key(patient_id))
+        if cached:
+            return ClinicianBrief.model_validate(cached)
+        return mind_brief.generate(store, patient_id, Consensus.model_validate(row["consensus"]), use_model=False)
+
     @app.post("/v1/patients/{patient_id}/actions", response_model=ActionResult)
     def patient_action(patient_id: str, req: ActionRequest) -> ActionResult:
         known_home(patient_id)
@@ -331,6 +379,22 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
             store.kv_delete(f"reflect:{hid}:{now.astimezone(reflect.TZ).date().isoformat()}")
             out[hid] = reflect.plan(store, hid, card, now=now, use_model=True, log=log)
         return {"reflected": len(out), "plans": out}
+
+    @app.post("/v1/admin/nightly-mind", dependencies=[Depends(require_admin)])
+    def admin_nightly_mind(home_id: str | None = None) -> dict[str, Any]:
+        """Graph rebuild + Embedding 2 backfill + validated consolidation diffs + pre-render list (plan 06 §2)."""
+        homes = [home_id] if home_id else sorted({*store.home_ids(), *store.memory_homes()})
+        return mind_nightly.run(store, homes)
+
+    @app.post("/v1/admin/weekly", dependencies=[Depends(require_admin)])
+    def admin_weekly(home_id: str | None = None) -> dict[str, Any]:
+        """Weekly clinician briefs (flagship, grounded in metric ids; template fallback), stored per patient."""
+        out = {}
+        for hid in ([home_id] if home_id else store.home_ids()):
+            b = mind_brief.generate(store, hid, Consensus.model_validate(known_home(hid)["consensus"]))
+            store.kv_set(mind_brief.key(hid), b.model_dump(mode="json"))
+            out[hid] = {"by": b.by, "sections": len(b.sections)}
+        return {"briefs": out}
 
     @app.post("/v1/admin/reset", dependencies=[Depends(require_admin)])
     def admin_reset() -> dict[str, Any]:
@@ -372,6 +436,11 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     def put_health(home_id: str, report: NodeHealthReport) -> dict[str, bool]:
         store.save_node_health(home_id, report.model_dump(mode="json"))
         return {"ok": True}
+
+    @app.get("/v1/health/intelligence", response_model=IntelligenceHealth)
+    def get_intelligence(days: int = Query(default=7, ge=1, le=90)) -> IntelligenceHealth:
+        """Usage ledger: which models ran, how often, how fast, how often we fell back (no content)."""
+        return IntelligenceHealth.model_validate(ledger.summary(store, days, TZ))
 
     @app.get("/v1/health", response_model=HealthOverview)
     def get_health() -> HealthOverview:

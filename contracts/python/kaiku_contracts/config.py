@@ -47,7 +47,11 @@ def get(section: str, key: str, default: Any = None) -> Any:
 
 
 def load_dotenv(path: str | os.PathLike[str] | None = None) -> None:
-    """Load KEY=VALUE lines from .env into os.environ (existing env wins). Supports `# comments`."""
+    """Load KEY=VALUE lines from .env into os.environ (existing env wins). Supports `# comments`.
+    Never under pytest (PYTEST_CURRENT_TEST) or with KAIKU_NO_DOTENV=1: tests must not pick up real credentials
+    and make paid calls."""
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("KAIKU_NO_DOTENV"):
+        return
     p = Path(path) if path else find_repo_file(".env")
     if not p or not p.is_file():
         return

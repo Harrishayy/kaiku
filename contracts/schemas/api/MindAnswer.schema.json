@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "description": "`result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are\nverified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.\n`route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line.",
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "ask_person": {
+      "default": false,
+      "title": "Ask Person",
+      "type": "boolean"
+    },
+    "cites": {
+      "description": "verified ids: mem:<id> | kg:<id> | doc:<id>",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cites",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        "fact",
+        "care",
+        "memory",
+        "plan",
+        "emotional"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "route": {
+      "enum": [
+        "memory",
+        "flash",
+        "argon",
+        "fallback"
+      ],
+      "title": "Route",
+      "type": "string"
+    }
+  },
+  "required": [
+    "answer",
+    "kind",
+    "route",
+    "confidence"
+  ],
+  "title": "MindAnswer",
+  "type": "object"
+}

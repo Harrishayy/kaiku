@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .companion_tools import Intent, MemoryCategory, Skill, Surface
+from .companion_tools import Intent, MemoryCategory, MindKind, Skill, Surface
 from .criteria import Criteria
 from .envelope import Envelope
 from .payloads import Health, NudgeArm
@@ -452,3 +452,112 @@ class EpisodeIn(ApiModel):
 class EpisodeResult(ApiModel):
     ok: bool
     id: str
+
+
+# ----------------------------------------------------------------- Gemini-first mind (plan 06 §1–§3)
+MindRoute = Literal["memory", "flash", "argon", "fallback"]
+
+
+class MindAnswer(ApiModel):
+    """`result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are
+    verified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.
+    `route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line."""
+
+    answer: str
+    kind: MindKind
+    route: MindRoute
+    confidence: float = Field(ge=0, le=1)
+    cites: list[str] = Field(default_factory=list, description="verified ids: mem:<id> | kg:<id> | doc:<id>")
+    ask_person: bool = False
+    model: str | None = None
+
+
+class ModelUsageRow(ApiModel):
+    day: date
+    model: str
+    task: str
+    calls: int = Field(ge=0)
+    ok: int = Field(ge=0)
+    fallbacks: int = Field(ge=0)
+    p50_ms: float | None = None
+    p95_ms: float | None = None
+
+
+class IntelligenceHealth(ApiModel):
+    """GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,
+    how fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback)."""
+
+    since: date
+    days: int
+    rows: list[ModelUsageRow]
+    per_model: dict[str, int]
+    routes: dict[str, int]
+    calls: int
+    fallback_rate: float = Field(ge=0, le=1)
+    p50_ms: float | None = None
+    p95_ms: float | None = None
+
+
+ConstellationType = Literal["me", "person", "place", "like", "helper", "plan", "activity"]
+
+
+class ConstellationNode(ApiModel):
+    id: int
+    type: ConstellationType
+    label: str
+
+
+class ConstellationEdge(ApiModel):
+    src: int
+    dst: int
+    rel: Literal["knows", "goes_to", "likes", "helped_by", "plans", "did", "helped", "about"]
+    weight: float = Field(ge=0, le=1, description="0..1, for line thickness only")
+
+
+class ConstellationResponse(ApiModel):
+    """GET /v1/me/constellation — person-facing "Your constellation": people, places, activities, what helps.
+    Built from what the person told Kaiku and what they did. Never health data, scores or states."""
+
+    home_id: str
+    nodes: list[ConstellationNode]
+    edges: list[ConstellationEdge]
+
+
+WeatherWord = Literal["sunny", "cloudy", "rainy", "snowy", "windy", "foggy", "grey", "frosty", "clear"]
+
+
+class PostcardRequest(ApiModel):
+    home_id: str
+    minutes: int = Field(ge=0, le=600)
+    finds: list[str] = Field(default_factory=list, max_length=5,
+                             description="light-hunt finds as short words, e.g. 'green', 'bird'")
+    weather_word: WeatherWord = "cloudy"
+
+
+class PostcardResponse(ApiModel):
+    """POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,
+    hint} when image generation is unavailable: the app shows its own static card."""
+
+    id: str
+    url: str = Field(description="GET this path for the image")
+    cached: bool
+    model: str
+
+
+class BriefSection(ApiModel):
+    text: str = Field(max_length=600)
+    metrics: list[str] = Field(default_factory=list, description="criteria metric names this sentence rests on")
+
+
+class ClinicianBrief(ApiModel):
+    """GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).
+    Explains the consensus; never changes it."""
+
+    patient_id: str
+    week: str = Field(description="ISO week, e.g. 2026-W46")
+    state: State
+    rule_version: str
+    sections: list[BriefSection]
+    by: Literal["model", "template"]
+    model: str | None = None
+    generated_at: datetime

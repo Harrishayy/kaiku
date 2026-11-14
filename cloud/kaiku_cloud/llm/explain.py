@@ -18,7 +18,7 @@ from kaiku_contracts.api import Explanation
 from kaiku_contracts.config import get
 
 from ..settings import Settings
-from . import gemini, gemma_hosted, gemma_vllm
+from . import gemini, gemma_hosted, gemma_vllm, ledger
 from .errors import LlmUnavailable
 from .template import CAVEATS, template_explanation
 
@@ -83,5 +83,7 @@ def make_explanation(ctx: dict[str, Any], settings: Settings | None = None, log:
                 if log:
                     log.warning("llm_invalid_explanation", f"{backend} attempt {attempt}: {e}")
     ex = template_explanation(ctx)
+    if choice != "template":  # an LLM was selected but none answered: count the fallback
+        ledger.record("template", "explain", ok=True, fallback=True, route="fallback", home_id=ctx.get("home_id"))
     assert contains_banned(ex.model_dump_json()) is None
     return ex

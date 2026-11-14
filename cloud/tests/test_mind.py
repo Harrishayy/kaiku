@@ -68,7 +68,7 @@ def test_registry_matches_surfaces_toml_and_exports():
     for name, s in surfaces.items():
         served = {t["name"] for t in for_surface(name)}
         # surfaces.toml lists what the prompt describes; the registry may add forget (memory control) everywhere
-        assert set(s["tools"]) <= served and served - set(s["tools"]) <= {"forget"}, name
+        assert set(s["tools"]) <= served and served - set(s["tools"]) <= {"forget", "ask_mind"}, name
     assert set(SURFACES) == set(surfaces)
     assert {"look_at_this"} & {t["name"] for t in for_surface("robot")} == set()
     exported = json.loads((assemble.ROOT / "contracts/schemas/companion_tools.json").read_text())

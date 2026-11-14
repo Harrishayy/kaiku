@@ -57,7 +57,11 @@ public struct TodayView: View {
         case .icbt_exercise:
             NavigationLink(value: KaikuRoute.tell) { Text(T("today.cta.icbt_exercise")) }.buttonStyle(.kPrimary)
         case .daylight_walk:
-            Button(T("today.cta.walk")) { app.showToast(T("today.walk.toast")); declined = true }.buttonStyle(.kPrimary)
+            if KaikuPlatform.isPhone {
+                NavigationLink(value: KaikuRoute.walk) { Text(T("today.cta.walk")) }.buttonStyle(.kPrimary)
+            } else {
+                Button(T("today.cta.walk")) { app.showToast(T("today.walk.toast")); declined = true }.buttonStyle(.kPrimary)
+            }
         case .drum, .friend_ping:
             Button(T("today.cta.\(arm.rawValue)")) { app.showToast(T("today.robot.toast")); declined = true }.buttonStyle(.kPrimary)
         }

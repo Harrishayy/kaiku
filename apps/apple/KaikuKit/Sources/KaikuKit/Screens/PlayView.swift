@@ -22,9 +22,13 @@ public struct PlayView: View {
             Card(route: .tell, key: "tell", symbol: "ear", tint: KaikuTokens.Colors.clay, minutes: 1),
             Card(route: .breathe, key: "breathe", symbol: "wind", tint: KaikuTokens.Colors.sage, minutes: 1),
         ]
+        if KaikuPlatform.isPhone {
+            c.append(Card(route: .walk, key: "lighthunt", symbol: "figure.walk", tint: KaikuTokens.Colors.sage, minutes: 15))
+        }
         let first: String? = switch app.nudge?.arm {
         case .breathe?: "breathe"
         case .icbt_exercise?: "tell"
+        case .daylight_walk?: KaikuPlatform.isPhone ? "lighthunt" : nil
         default: nil
         }
         if let f = first, let i = c.firstIndex(where: { $0.key == f }) { c.insert(c.remove(at: i), at: 0) }

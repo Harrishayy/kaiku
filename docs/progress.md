@@ -250,3 +250,129 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: nothing compiled for the boards (VERIFY lists in both firmware AGENTS.md). A — the KY-035 is on A1 (analog);
   the spec said D3: confirm with `bench/hall`. Pan sign and knob counts per click are open.
 - Next: A — network spike, then the single-part benches, then the link benches (plan 07 §2).
+
+## 2026-11-14 05:00 — Claude Code — hub (B) · I5 live context + thinking body
+- Did: plan 06 §4 (T5) on the robot. `hub/kaiku_hub/live/context_events.py` has a fixed vocabulary
+  (`[drumming · lively|steady|gentle]` relative to this ritual's first taps, `[breathing · heart calmer]`,
+  `[second person nearby]`, `[person stepped away]`, `[light · dim|bright]`, `[it's late]`). Events are ≥ 20 s
+  apart, ≤ 8 per ritual and deduped; with no session they are dropped. Added `Voice.send_context`: Gemini Live uses
+  `send_client_content` mid-session (checked in the geminiDocs Live capabilities guide), text mode prints it, off
+  does nothing. Every `executor: cloud` tool (so `ask_mind` once it is in the registry) now runs with
+  `eyes: thinking` + an upward glance and restores the eyes afterwards, but not after a crisis. After 8 s it says
+  "Let me think about that later." and the ritual goes on. The sim head now speeds up its drumming over the step,
+  and in the sim the heart rate drops about 4 bpm during breathing. Spend cap: `live/meter.py` meters Gemini Live
+  and Lyria RealTime on the shared `budget` ledger. Before opening it checks the cost of 5 minutes, then it charges
+  each started minute. Over the cap it doesn't open (or closes politely) and the ritual falls back to scripted lines
+  / the local click.
+- Verified: `hub/tests/test_context_events.py` (19 s vs 20 s, 9th dropped, no-session no-op, digit/state-word
+  property test, thinking set/cleared incl. timeout + crisis). `make check` green. Hub + sims + `KAIKU_VOICE=text`:
+  `[it's late]`, `[light · dim]`, `[drumming · steady]` then `[drumming · lively]` in the log. In one run
+  `[breathing · heart calmer]` was dropped by the 20 s gap after the light event, so light events now fire only
+  during greet/dial. `hub/tests/test_budget.py` uses a temp `KAIKU_SPEND_DB`.
+- Contract changes: none (the `ask_mind` registry entry comes from I4/contracts).
+- Broken/blocked: config (all) — the context thresholds (lux, late hours, drum ±15 %, 20 s / 8) are constants in
+  `context_events.py`; they could move to `config/kaiku.toml`. The hub passes `timeout_s` to
+  `CloudLink.companion_tool` (9 s), so a slow cloud tool now waits up to 8 s instead of 4 s.
+- Next: a real Live smoke test of `send_context` with a key; port the same vocabulary to the iPhone/glasses.
+
+## 2026-11-14 06:00 — Claude Code — cloud (C) · workstream I4 (plan 06 §1–§3, Gemini-first mind)
+- Did: `ask_mind(question, kind)` tool (registry, executor cloud, all surfaces) → `mind/router.py`: memory/graph/today
+  answered by code → Gemini 3.8 Flash JSON {answer, confidence, cites} → Gemini 4 Argon on low confidence / care /
+  emotional / conflicting notes / Flash failure; Argon capped per home per day (`[budget].argon_per_home_day`).
+  Grounding: cite ids verified + stripped, wording linted, conflicts must ask; scripted fallback. Usage ledger
+  `model_calls` (no content) + `GET /v1/health/intelligence`. Graph memory `kg_nodes/kg_edges` (memories, episodes,
+  bandit `helped` edges with effect + event ids), Gemini Embedding 2 vectors (on write + nightly backfill, FTS fallback),
+  1-hop recall used by the context card and ask_mind, `GET /v1/me/constellation`. `POST /v1/admin/nightly-mind`
+  (rebuild, backfill, validated consolidation diffs, pre-render list), `POST /v1/admin/weekly` + `GET
+  /v1/patients/{id}/brief` (Argon, metric-id grounded, template fallback). Walk postcard `POST /v1/companion/postcard`
+  + `GET /v1/me/postcards/{id}` (Nano Banana 2 Lite `gemini-3.1-flash-lite-image`, cached; 503 + hint otherwise).
+  Every new paid call goes through `kaiku_contracts.budget` (rebased onto d2ec847). Modal: nightly also calls
+  nightly-mind, new Monday `weekly` cron, postcards + spend ledger on the Volume.
+- Verified: 34 new edge-case tests (`cloud/tests/test_mind_router.py`, SDK client mocked, temp spend DB); `make check`
+  465 passed; `make smoke` green incl. ask_mind memory route, /v1/health/intelligence, constellation. API shapes checked
+  in the geminiDocs MCP (Interactions `response_format` text/JSON + image, `output_image`; `models.embed_content` with
+  `gemini-embedding-2` + task prefixes).
+- Contract changes: tool `ask_mind`; API `MindAnswer`, `ModelUsageRow`, `IntelligenceHealth`, `Constellation*`,
+  `PostcardRequest/Response`, `BriefSection`, `ClinicianBrief` (additive, no SCHEMA_VERSION bump). `make contracts` run.
+- Broken/blocked: no GEMINI_API_KEY in this env → no real call made on any new path (Flash/Argon JSON, Embedding 2,
+  image). Argon eval-judge sample not run in the cloud (tools/ not importable by cloud; use `make eval-companion`).
+  `config/surfaces.toml` + `persona.md` don't mention `ask_mind` yet (owner: add "ask_mind when unsure"). Hub (I5) and
+  apps: forward `ask_mind` like other cloud tools, show "thinking" while in flight, speak `result.answer`, ask the
+  person when `ask_person`; apps: constellation view, postcard after walks, Intelligence card on /health.
+- Next: one real call per new model path once a key is available; web panels.
+
+## 2026-11-14 01:00 — Claude Code — apple (A3, Mac extras)
+- Did: notch island (borderless panel above the menu bar, top centre of the active screen, notch and non-notch;
+  hidden/click-through → peek → expanded; soft springs, Reduce Motion crossfade). After lead feedback Kaiku is big
+  (136/156 pt), hangs half out of the island, and the sleepy z's draw light on black so they read at 1×
+  (`design/layout.md` + `motion.md` → Mac notch island). Deterministic peek rules in `KaikuKit/Mac/MacPeek.swift`
+  (late night 01:00–05:00 + active, stretch > 90 min, max 3/day, one late peek a night, snooze 1 h/today as
+  wall-clock dates, never paused/full-screen/call app). Usage-rhythm sampler (D26, opt-in): frontmost bundle id →
+  category on the spot + idle seconds + switch count every 30 s → local aggregate → hourly `obs.screen_activity`
+  via the offline queue; "What Kaiku saw today" reads the same aggregate. Daily invitation notification outside
+  quiet hours. Debug "Simulate a late evening" (+ `-kaikuSimulateLate YES`) for the 01:10 peek any time.
+  modules.toml: apple emits `obs.screen_activity` (planned producer removed).
+- Verified: `swift test` 40/40 (15 new: aggregation, payload = numbers + category keys only, 00:59/01:00, 89/91 min,
+  4th peek, snooze across sleep/wake, paused); Mac target builds; against a local cloud + seed (demo-aino) the
+  simulated evening peeked and `obs.screen_activity` (source laptop, sim, late_night_min 60) landed in
+  `/v1/events`; island checked via in-app snapshot at 1× and 2× (screen capture not permitted here).
+  `make check` green, `tools/ui_copy_check.py` clean.
+- Contract changes: none
+- Broken/blocked: design (D) — upstream the new `mac.*`/`saw.mac.*` keys in `copy.apple.json`; config — no
+  `voice_lines.toml` key for the stretch line yet. A2 — swap `DailyInvitation` for the shared scheduler when it lands.
+- Next: nudge peek + breathing slim state on the island; real screen capture of the island on a notch Mac.
+
+## 2026-11-14 01:50 — Claude Code — apple (A3, notch island as part of the menu bar)
+- Did: after user feedback ("overlaps menu bar items") rebuilt the island the way notch apps do it: pure
+  `MacIslandGeometry` (notch from auxiliaryTopLeft/RightArea + safeAreaInsets.top on the notch screen, else main);
+  a collapsed strip at level 26, exactly menu-bar tall, notch + ≤ 60 pt wings (glyphs only while Kaiku is out,
+  mouse-through except the notch hover zone, click → hello); peek/expanded in a level-25 panel that grows
+  downward below the menu bar (pill under the menu bar on non-notch screens), shadow only when expanded.
+- Verified: on this MacBook (1512 × 982, notch 665…850) CGWindowList shows the strip at (605, 0, 305, 32),
+  layer 26, and the drop panel at y ≥ 32, so nothing covers menu titles (end < 605) or status items (start > 910);
+  menu-bar slice snapshots (collapsed/peek/expanded, 1× + 2×) read; a sim `obs.screen_activity` landed again.
+  `swift test` 44/44 (+4 geometry tests), `make check` green, ui copy clean.
+- Contract changes: none
+- Broken/blocked: screencapture is not permitted in this session, so the island is checked by in-app snapshot.
+- Next: nudge peek + breathing slim state; a live check on a second (external) display.
+
+## 2026-11-14 02:20 — Claude Code — apple (A3, one-shape notch island)
+- Did: after two more rounds of user feedback ("the avatar drops below the thing", "not an island, there's a gap")
+  the island is ONE level-26 window from the top of the screen drawing ONE `MacIslandShape`: the menu-bar band is
+  never wider than notch ± 60 pt wings, concave shoulders flare into a compact body (440 × 172 / 460 × 188 content)
+  below the menu bar, one spring morphs collapsed → peek → expanded, pure black, shadow under the bottom only.
+  Kaiku (124/128 pt) and its z's sit inside the body, content clipped to the shape; mouse-through except inside
+  the drawn shape. Pure `MacIslandGeometry` / `MacIslandShape` / `MacIslandLayout` in KaikuKit.
+- Verified: `swift test` 49/49 (shape: band width == collapsed width at every menu-bar row, body width, shoulder
+  > 0; mascot + z's inside the content rect at 1×/2×; geometry for notch / non-notch / external screens).
+  CGWindowList on this MacBook: island window (500, 0, 516, 266), layer 26, top at y = 0, centred on the notch
+  (665…850); band 605…910 so titles (< 605) and status items (> 910) are clear. In-app snapshots of collapsed,
+  mid-morph, peek and expanded at 1× and 2× read; a sim `obs.screen_activity` landed.
+- Contract changes: none
+- Broken/blocked: screencapture not permitted in this session (in-app snapshots instead).
+- Next: nudge peek + breathing slim state; check on an external display live.
+
+## 2026-11-14 01:20 — Claude Code — apple (A2 iPhone extras + glasses)
+- Did: plan 05 MUST items in `apps/apple/`. Deterministic `NudgeScheduler` (quiet hours, windows, one
+  invitation/day, Later once, done on any surface, PHQ-9 once, DST/timezone-safe ids) + `Notifier` (categories
+  Let's go · Later · Not today / Good · Okay · Low, voice-line titles, mascot attachment, chime, ignored after 4 h)
+  + `kaiku://` deep links. Voice: prefetched `/v1/voice` cache with AVSpeechSynthesizer fallback, Talk audio session
+  with Bluetooth HFP, interruption/route handling, reconnect, on-device Speech safety gate + spoken dial parser
+  (en/fi/sv). Walk (Light hunt) with `GlassesAdapter` (`MockGlasses`, `DATGlasses` on MWDAT 1.0.1 via SPM), gait
+  analyzer → `obs.outing{method: dat_imu}`, draft recovery after a kill. Widget extension: Walk + Breathe Live
+  Activities (Dynamic Island + Lock Screen, bigger Kaiku + `KaikuGlyph` for compact/minimal per lead feedback) and
+  the Kaiku widget (small/medium/lock). App Intents + App Shortcuts. HealthKit → `obs.wearable_daily` (idempotent id).
+- Verified: `swift test` 46/46; iOS + Mac builds green; `ExtrasFlowTests` on the iPhone 17 Pro simulator against a
+  seeded local cloud: real compact + expanded Dynamic Island and Lock Screen Live Activity screenshots, notification
+  Low → `obs.self_report{value: 2, channel: phone}`, Not today → `obs.nudge_outcome{accepted: false}`, mock-glasses
+  walk → `obs.outing{dat_imu, cadence 108, regularity 0.97, head_up 0.89}`, Health sample →
+  `obs.wearable_daily{2026-11-14}` (second sync = same id, one row). Surface snapshots at 375/440 pt, en + fi, no
+  overflow (Lock Screen title truncates in fi, as design allows). `ui_copy_check` clean.
+- Contract changes: none (producers only). modules.toml: apple emits obs.outing, obs.wearable_daily,
+  obs.nudge_outcome; `obs.wearable_daily` removed from planned producers.
+- Broken/blocked: DAT with Mock Device Kit → `createSession` = `noEligibleDevice` in the simulator (walk falls back
+  to the phone); not tried on real glasses. iOS deployment raised to 17.2 (MWDAT binaries). Design (D): ~40 more
+  keys in `copy.apple.json` to upstream (notif.*, walk.*, la.*, widget.*); `KaikuGlyph` sizes live in
+  `SurfaceViews.swift` (`SurfaceSize`), not tokens — move to `design/layout.md` if you want them as ground truth.
+- Next: DAT on real Ray-Ban Display (Developer Mode registration), camera brightness → daylight, interactive mood
+  widget (STRETCH), notification content extension (STRETCH).

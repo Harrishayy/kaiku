@@ -40,6 +40,14 @@ public final class AppModel {
     public var celebrateUntil: Date?
     public var selectedTab: KaikuTab = .today
     public var deepLink: KaikuRoute?
+    // A2 (iPhone extras)
+    /// A notification / widget asked for the PHQ-9 (web page): the shell opens `phq9URL`.
+    public var phq9Requested = false
+    /// nil = not asked yet, false = turned off in Settings (You shows a calm "turned off" row).
+    public var notificationsOn: Bool?
+    public var healthState: HealthState = .off
+    /// Which glasses adapter a walk uses (the iOS shell sets DAT or mock; nil = phone only).
+    @ObservationIgnored public var makeGlasses: (() -> GlassesAdapter?)?
 
     // settings
     public var onboarded: Bool { didSet { defaults.set(onboarded, forKey: "kaiku.onboarded") } }
@@ -213,9 +221,9 @@ public final class AppModel {
 
     // MARK: recording (everything goes through the offline queue)
 
-    func emit<P: Codable & Sendable>(_ type: String, _ payload: P) async {
+    func emit<P: Codable & Sendable>(_ type: String, _ payload: P, id: String = UUID7.make(), ts: Date = Date()) async {
         guard let p = pairing else { return }
-        let env = Envelope(home_id: p.homeID, source: KaikuPlatform.source, type: type, payload: payload)
+        let env = Envelope(id: id, ts: ts, home_id: p.homeID, source: KaikuPlatform.source, type: type, payload: payload)
         guard let any = try? AnyEnvelope(env) else { return }
         await queue.enqueue(any)
         await flush()
@@ -236,6 +244,12 @@ public final class AppModel {
             if let v = values[item] { await emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel)) }
         }
         await loadToday()
+    }
+
+    /// Quick mood from a notification button (Good · Okay · Low → 4 · 3 · 2). Queued if offline.
+    public func recordQuickMood(_ value: Int) async {
+        guard allowed(.checkins) else { return }
+        await emit("obs.self_report", SelfReport(item: .mood, value: value, channel: KaikuPlatform.channel, context: "adhoc"))
     }
 
     /// One finished game → obs.play_session. Speech features only with the voice signal on.

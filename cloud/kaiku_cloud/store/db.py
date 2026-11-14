@@ -94,6 +94,52 @@ CREATE TABLE IF NOT EXISTS threads (   -- at most one open per home; continues o
     expires TEXT NOT NULL,
     closed TEXT
 );
+-- usage ledger (plan 06 §2): one row per model call or deterministic answer. NEVER any content.
+CREATE TABLE IF NOT EXISTS model_calls (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    home_id TEXT,
+    model TEXT NOT NULL,
+    task TEXT NOT NULL,
+    route TEXT,
+    latency_ms REAL,
+    ok INTEGER NOT NULL,
+    fallback INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS model_calls_ts ON model_calls(ts);
+-- graph memory (plan 06 §3): built by code from memories, episodes and bandit outcomes. Person-facing only.
+CREATE TABLE IF NOT EXISTS kg_nodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    norm TEXT NOT NULL,
+    origin TEXT NOT NULL,            -- memory:<id> | episode | bandit | self
+    status TEXT NOT NULL DEFAULT 'active',   -- active | merged | expired (consolidation diffs)
+    merged_into INTEGER,
+    updated TEXT NOT NULL,
+    UNIQUE(home_id, type, norm)
+);
+CREATE TABLE IF NOT EXISTS kg_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_id TEXT NOT NULL,
+    src INTEGER NOT NULL,
+    dst INTEGER NOT NULL,
+    rel TEXT NOT NULL,
+    weight REAL NOT NULL,
+    evidence TEXT NOT NULL DEFAULT '[]',   -- ids: mem:<id>, episode ids, event ids (bandit)
+    updated TEXT NOT NULL,
+    UNIQUE(home_id, src, dst, rel)
+);
+-- Gemini Embedding 2 vectors (float32) per memory / graph node; keyed by text hash so edits re-embed.
+CREATE TABLE IF NOT EXISTS embeddings (
+    home_id TEXT NOT NULL,
+    ref TEXT NOT NULL,               -- mem:<id> | kg:<id>
+    model TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY(home_id, ref, model)
+);
 """
 
 FTS = """
@@ -356,6 +402,10 @@ class Store:
                     " ORDER BY created DESC LIMIT ?", (home_id, *[f"%{t.lower()}%" for t in terms], limit)).fetchall()
         return [dict(r) for r in rows]
 
+    def memory_homes(self) -> list[str]:
+        with self._lock:
+            return [r[0] for r in self._db.execute("SELECT DISTINCT home_id FROM memories ORDER BY home_id")]
+
     def memory_touch(self, ids: list[int], ts: str) -> None:
         if ids:
             with self._lock:
@@ -426,3 +476,86 @@ class Store:
                 q += " AND skill=?"
                 args.append(skill)
             return self._db.execute(q, args).rowcount
+
+    # ------------------------------------------------------------------ usage ledger (no content)
+    def model_call_insert(self, row: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO model_calls(ts,home_id,model,task,route,latency_ms,ok,fallback) VALUES (?,?,?,?,?,?,?,?)",
+                (row.get("ts") or _now(), row.get("home_id"), row["model"], row["task"], row.get("route"),
+                 row.get("latency_ms"), int(bool(row.get("ok"))), int(bool(row.get("fallback")))))
+
+    def model_calls(self, since: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(r) for r in self._db.execute("SELECT * FROM model_calls WHERE ts>=? ORDER BY seq", (since,))]
+
+    def model_calls_count(self, home_id: str, model: str, since: str) -> int:
+        with self._lock:
+            return int(self._db.execute("SELECT COUNT(*) FROM model_calls WHERE home_id=? AND model=? AND ts>=?"
+                                        " AND task NOT LIKE '%.route'",
+                                        (home_id, model, since)).fetchone()[0])
+
+    # ------------------------------------------------------------------ graph memory
+    def kg_upsert_node(self, home_id: str, type_: str, label: str, norm: str, origin: str, ts: str) -> int:
+        """Insert or refresh (label/origin) a node; its status (merged/expired) is kept."""
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO kg_nodes(home_id,type,label,norm,origin,updated) VALUES (?,?,?,?,?,?)"
+                " ON CONFLICT(home_id,type,norm) DO UPDATE SET label=excluded.label, origin=excluded.origin,"
+                " updated=excluded.updated", (home_id, type_, label, norm, origin, ts))
+            return int(self._db.execute("SELECT id FROM kg_nodes WHERE home_id=? AND type=? AND norm=?",
+                                        (home_id, type_, norm)).fetchone()[0])
+
+    def kg_upsert_edge(self, home_id: str, src: int, dst: int, rel: str, weight: float, evidence: list[str],
+                       ts: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO kg_edges(home_id,src,dst,rel,weight,evidence,updated) VALUES (?,?,?,?,?,?,?)"
+                " ON CONFLICT(home_id,src,dst,rel) DO UPDATE SET weight=excluded.weight,"
+                " evidence=excluded.evidence, updated=excluded.updated",
+                (home_id, src, dst, rel, weight, json.dumps(evidence), ts))
+
+    def kg_prune(self, home_id: str, keep_nodes: set[int], keep_edges: set[tuple[int, int, str]]) -> None:
+        """Drop code-derived nodes/edges that no longer have a source (deleted memory, gone outcome)."""
+        with self._lock:
+            for e in self._db.execute("SELECT id, src, dst, rel FROM kg_edges WHERE home_id=?", (home_id,)).fetchall():
+                if (e["src"], e["dst"], e["rel"]) not in keep_edges:
+                    self._db.execute("DELETE FROM kg_edges WHERE id=?", (e["id"],))
+            for n in self._db.execute("SELECT id FROM kg_nodes WHERE home_id=?", (home_id,)).fetchall():
+                if n["id"] not in keep_nodes:
+                    self._db.execute("DELETE FROM kg_nodes WHERE id=?", (n["id"],))
+                    self._db.execute("DELETE FROM embeddings WHERE home_id=? AND ref=?", (home_id, f"kg:{n['id']}"))
+
+    def kg_nodes(self, home_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(r) for r in self._db.execute("SELECT * FROM kg_nodes WHERE home_id=? ORDER BY id",
+                                                      (home_id,))]
+
+    def kg_edges(self, home_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM kg_edges WHERE home_id=? ORDER BY id", (home_id,)).fetchall()
+        return [{**dict(r), "evidence": json.loads(r["evidence"])} for r in rows]
+
+    def kg_set_status(self, home_id: str, node_id: int, status: str, merged_into: int | None = None) -> int:
+        with self._lock:
+            return self._db.execute("UPDATE kg_nodes SET status=?, merged_into=? WHERE home_id=? AND id=?",
+                                    (status, merged_into, home_id, node_id)).rowcount
+
+    # ------------------------------------------------------------------ embeddings
+    def embedding_put(self, home_id: str, ref: str, model: str, text_hash: str, vector: bytes) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO embeddings(home_id,ref,model,text_hash,vector) VALUES (?,?,?,?,?)",
+                             (home_id, ref, model, text_hash, vector))
+
+    def embeddings(self, home_id: str, model: str) -> dict[str, tuple[str, bytes]]:
+        """{ref: (text_hash, vector bytes)}"""
+        with self._lock:
+            rows = self._db.execute("SELECT ref, text_hash, vector FROM embeddings WHERE home_id=? AND model=?",
+                                    (home_id, model)).fetchall()
+        return {r["ref"]: (r["text_hash"], r["vector"]) for r in rows}
+
+    def embedding_delete_missing(self, home_id: str, refs: set[str]) -> None:
+        with self._lock:
+            for r in self._db.execute("SELECT DISTINCT ref FROM embeddings WHERE home_id=?", (home_id,)).fetchall():
+                if r["ref"] not in refs:
+                    self._db.execute("DELETE FROM embeddings WHERE home_id=? AND ref=?", (home_id, r["ref"]))

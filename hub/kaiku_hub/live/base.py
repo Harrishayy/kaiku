@@ -31,6 +31,10 @@ class Voice:
     async def interrupt(self) -> None:
         return None
 
+    async def send_context(self, text: str) -> None:
+        """A short bracketed context event (live/context_events.py) for the open conversation. No-op by default."""
+        return None
+
     # A conversation session (Gemini Live) is opened per ritual, never kept open (mic only while consented).
     wants_session = False
 

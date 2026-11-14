@@ -36,3 +36,6 @@ class TextVoice(Voice):
 
     async def say(self, text: str) -> None:
         print(f"\U0001f916 Kaiku: {text}", file=sys.stderr, flush=True)
+
+    async def send_context(self, text: str) -> None:
+        print(f"   \u00b7 context: {text}", file=sys.stderr, flush=True)  # demo: what Live would be told

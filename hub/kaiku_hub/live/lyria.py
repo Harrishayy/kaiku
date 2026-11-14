@@ -9,14 +9,16 @@ Send the FULL generation config on each update, not a partial one (handoff §9.3
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from typing import Any
 
+from kaiku_contracts import genai_client
+from kaiku_contracts.budget import BudgetExceeded
 from kaiku_contracts.jlog import get_logger
 
 from .base import Music
 from .local_audio import LocalMusic
+from .meter import SessionMeter
 
 log = get_logger("hub")
 
@@ -47,8 +49,8 @@ def clamp_bpm(bpm: float, lo: float, hi: float) -> int:
 def available(model_id: str) -> tuple[bool, str]:
     if genai is None or sd is None:
         return False, "google-genai/sounddevice not installed (uv sync --extra live)"
-    if not os.environ.get("GEMINI_API_KEY"):
-        return False, "GEMINI_API_KEY not set"
+    if not genai_client.available():
+        return False, "no Gemini backend (GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT + ADC)"
     if not model_id or model_id.upper().startswith("VERIFY"):
         return False, "config [models].lyria_realtime is a VERIFY placeholder"
     return True, ""
@@ -59,15 +61,22 @@ class LyriaMusic(Music):  # pragma: no cover - needs network, key and audio devi
 
     def __init__(self, model_id: str, bpm_min: float = 60, bpm_max: float = 200):
         self.model_id, self.bpm_min, self.bpm_max = model_id, bpm_min, bpm_max
-        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={"api_version": "v1alpha"})
+        self.client = genai_client.make_client(api_version="v1alpha")
         self._cm: Any = None
         self._session: Any = None
         self._task: asyncio.Task | None = None
         self._bpm: int | None = None
         self._last_update = 0.0
         self._local = LocalMusic()
+        self._meter: SessionMeter | None = None
 
     async def start(self, mood: int | None = None) -> None:
+        meter = SessionMeter("gemini", self.model_id)
+        try:
+            meter.open()  # spend cap: over it = local click only
+        except BudgetExceeded as e:
+            log.warning("lyria_budget", str(e))
+            return
         try:
             self._cm = self.client.aio.live.music.connect(model=self.model_id)
             self._session = await asyncio.wait_for(self._cm.__aenter__(), timeout=10)
@@ -77,6 +86,8 @@ class LyriaMusic(Music):  # pragma: no cover - needs network, key and audio devi
             await self._session.set_music_generation_config(config=types.LiveMusicGenerationConfig(bpm=90))
             await self._session.play()
             self._task = asyncio.create_task(self._play_loop())
+            self._meter = meter
+            meter.start(self.stop)
         except Exception as e:
             log.warning("lyria_unavailable", f"{type(e).__name__}: {e}; local click only")
             self._session = None
@@ -113,6 +124,9 @@ class LyriaMusic(Music):  # pragma: no cover - needs network, key and audio devi
         await self._local.click(force)
 
     async def stop(self) -> None:
+        if self._meter is not None:
+            self._meter.stop()
+            self._meter = None
         session, self._session = self._session, None
         if self._task:
             self._task.cancel()

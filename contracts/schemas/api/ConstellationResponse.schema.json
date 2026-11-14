@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "ConstellationEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "dst": {
+          "title": "Dst",
+          "type": "integer"
+        },
+        "rel": {
+          "enum": [
+            "knows",
+            "goes_to",
+            "likes",
+            "helped_by",
+            "plans",
+            "did",
+            "helped",
+            "about"
+          ],
+          "title": "Rel",
+          "type": "string"
+        },
+        "src": {
+          "title": "Src",
+          "type": "integer"
+        },
+        "weight": {
+          "description": "0..1, for line thickness only",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "rel",
+        "weight"
+      ],
+      "title": "ConstellationEdge",
+      "type": "object"
+    },
+    "ConstellationNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "me",
+            "person",
+            "place",
+            "like",
+            "helper",
+            "plan",
+            "activity"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label"
+      ],
+      "title": "ConstellationNode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/constellation — person-facing \"Your constellation\": people, places, activities, what helps.\nBuilt from what the person told Kaiku and what they did. Never health data, scores or states.",
+  "properties": {
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/ConstellationEdge"
+      },
+      "title": "Edges",
+      "type": "array"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/ConstellationNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "nodes",
+    "edges"
+  ],
+  "title": "ConstellationResponse",
+  "type": "object"
+}

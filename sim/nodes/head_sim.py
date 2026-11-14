@@ -141,11 +141,13 @@ class HeadSim:
 
     async def _auto_drum(self, duration_s: float) -> None:
         await asyncio.sleep(0.5)
-        end = time.monotonic() + max(1.0, duration_s - 1.0)
+        start = time.monotonic()
+        span = max(1.0, duration_s - 1.0)
         interval = 60.0 / self.tempo_bpm
-        while time.monotonic() < end:
-            await self.tap()
-            await asyncio.sleep(max(0.12, self.rng.gauss(interval, interval * 0.06)))
+        while (progress := (time.monotonic() - start) / span) < 1.0:
+            lift = 1.0 + 0.4 * progress  # warms up as it goes (the hub says "[drumming · lively]" to Live)
+            await self.tap(max(0.2, self.rng.gauss(self.force_g * lift, 0.3)))
+            await asyncio.sleep(max(0.12, self.rng.gauss(interval / lift, interval * 0.06)))
 
     async def _pan_loop(self) -> None:
         while True:
