@@ -29,6 +29,22 @@ public enum Haptics {
         #endif
     }
 
+    /// A firefly caught / a right pebble: a crisp little tap.
+    public static func catchFirefly() {
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.6)
+        #elseif os(macOS)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        #endif
+    }
+
+    /// A moth / a wrong pebble: soft and low, never an error buzz.
+    public static func softTap() {
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.45)
+        #endif
+    }
+
     public static func breathTurn() {
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.3)
@@ -47,5 +63,5 @@ public enum KaikuPlatform {
     public static var device: PlayDevice { isPhone ? .phone : .mac }
     public static var surface: CompanionSurface { isPhone ? .iphone : .mac }
     /// Side padding (layout.md → Sizes): 18 pt iPhone, 26 pt Mac pane.
-    public static var sidePadding: CGFloat { isPhone ? 18 : 26 }
+    public static var sidePadding: CGFloat { isPhone ? 22 : 28 }
 }

@@ -88,7 +88,7 @@ uint8_t segN = 0, segI = 0;
 uint32_t segStart = 0, lastMotorTick = 0, nextPan = 0, homeStart = 0;
 int curSpeed = 0, targetSpeed = 0, homeDir = 1, homeTries = 0;
 float deg = 0, targetDeg = 0;
-bool homed = false, atHome = false, bootHomePending = true;
+bool homed = !HAS_HALL, atHome = false, bootHomePending = true;   // no hall: power-on position is home (0 deg)
 
 bool moving() { return mode != IDLE || curSpeed != 0; }
 
@@ -122,7 +122,12 @@ void goTo(float target, float speed01) {
 
 // Home = the turntable magnet over the KY-035 (raw/sensors/hall from the UNO Q). Drive slowly toward where we think
 // the front is; brake on the edge; give up after HOME_TRY_MS and try the other way once.
+// Without a hall sensor (HAS_HALL 0): home = drive back to the dead-reckoned 0 deg (the power-on position).
 void home() {
+#if !HAS_HALL
+  goTo(0, HOME_SPEED / 255.0f);
+  return;
+#endif
   if (atHome) { stopMotor(); deg = 0; homed = true; return; }
   homeDir = deg > 0 ? -1 : 1;
   homeTries = 0;
@@ -132,6 +137,7 @@ void home() {
 }
 
 void onHall(bool home_) {
+  if (!HAS_HALL) return;   // nothing fitted: a floating input must never re-zero or brake the head
   atHome = home_;
   if (home_ && mode == HOMING) { stopMotor(); deg = 0; homed = true; }
   else if (home_ && !moving()) { deg = 0; homed = true; }  // passing the magnet re-zeroes the estimate
@@ -352,7 +358,7 @@ void netTick(uint32_t now) {
   if (mqtt.connect(cid, user, pass, topicFor("health", "head"), 1, true, will)) {
     mqtt.subscribe(topicFor("cmd", "head"), 1);
     mqtt.subscribe(topicFor("health", "hub"), 1);
-    mqtt.subscribe(topicFor("raw", "sensors/hall"), 0);
+    if (HAS_HALL) mqtt.subscribe(topicFor("raw", "sensors/hall"), 0);
     backoff = BACKOFF_MIN_MS;
     reconnects++;
     publishHealth("ok");

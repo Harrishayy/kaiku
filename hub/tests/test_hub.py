@@ -186,7 +186,7 @@ class FakeCloud:
     def __init__(self, reply):
         self.reply, self.calls = reply, []
 
-    async def companion_tool(self, name, args, session_id=None):
+    async def companion_tool(self, name, args, session_id=None, timeout_s=4.0):
         self.calls.append((name, args, session_id))
         return self.reply
 

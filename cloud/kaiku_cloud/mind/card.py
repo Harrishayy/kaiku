@@ -16,7 +16,7 @@ from .. import service
 from ..companion import time_of_day
 from ..settings import TZ, Settings
 from ..store.db import Store
-from . import memory
+from . import graph, memory
 
 TONE_OF_STATE = {"stable": "steady", "watch": "gentle", "needs_call": "extra-gentle", "safety": "extra-gentle"}
 SUGGESTION = {"breathe": "a few slow breaths together", "drum": "a short drum jam with the robot",
@@ -83,8 +83,7 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
     data = service.patient_data(store, home_id, crit)
     events = store.events_for_home(home_id) if known else []
     keep = memory.remembering(store, home_id) and not others_present
-    mems = memory.recall(store, home_id, "", intent=intent, fill=True, exclude=("name", "preference"), now=now,
-                         limit=memory.CARD_MEMORIES) if keep else []
+    mems = graph.card_memories(store, home_id, intent, now) if keep else []
     thread = memory.current_thread(store, home_id, now)
     arm = service.nudge(store, settings, home_id).arm
     lang = language or str(settings_language())

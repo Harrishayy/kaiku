@@ -185,3 +185,44 @@ their defaults are in docs/plans/01-foundation.md §12 — record the actual ans
   `obs.drum_session.force_mean` (a knock switch has no force: `None`, never invented).
 - Every part has a bench test that runs alone (`make bench PART=...`), and integration starts only after they pass.
 - Why: the hub, sims and cloud keep working unchanged; the new hardware is adapters at the edges.
+
+## D33 — Opt-in conversation transcripts for teaching Gemma (2026-11-14, lead)
+- Decision: the lead wants Kaiku's own Gemma to learn from real conversations. Transcripts are stored **only with
+  the person's opt-in** (`transcripts` signal, off by default, explained in onboarding and What Kaiku remembers),
+  person-facing and deletable, never on a clinician route, never logged. A conversation that ends in a crisis or
+  contains a crisis phrase is never stored. Training uses a de-identified export (`kaiku_cloud.jobs.transcripts_export`):
+  the person's name, people and places from their own notebook, emails, phone numbers and URLs are replaced; the home
+  id is hashed. Simulated-persona runs against real Gemini Live (`apps/apple/scripts/live_e2e.sh`) feed the same set.
+- Why opt-in, not everyone: these are people recovering from depression; storing every word by default would break
+  the consent design (docs/privacy.md) and plan 06 §6 ("needs team OK"). Changes the apple and cloud invariants
+  that said "no transcript is stored".
+- Not yet: the robot hub, glasses web app and web /me don't send transcripts (only the Apple apps do); the person can
+  delete all but not yet read each conversation in the app (the API returns them).
+
+## D34 — Dashboard: the week and "What Kaiku has learned", shared with the care team only by the person's choice (2026-11-14)
+- Decision: one deterministic summary (`cloud/kaiku_cloud/week.py`) gives both audiences the same facts: **routines**
+  (from observations; for the person also from conversations), **going well** and **worth a look** (routines kept or
+  slipped, per-metric drift from `config/criteria.toml`, verdicts, the bandit, safety flags, PHQ-9 cadence), and the
+  **knowledge graph** with evidence counts. Person wording is warm and never shows states, scores or z values;
+  the care team sees the numbers. No model decides or phrases any of it; it never changes the consensus.
+- Privacy: the graph was person-only (plan 06). The care team now sees it **only when the person turns on "Share
+  with my care team"** on `/me` (`PUT /v1/me/sharing`, default **off**), and then only activities, what helps and
+  routines. People, places, likes and plans are withheld by design (listed as `withheld`), and the memories list,
+  episodes and transcripts are never shown. Turning sharing off hides it at once (nothing is copied).
+- Why: practitioners asked to see what is going right and wrong and what helps, and the person asked that their
+  care team see it. Default off follows `docs/privacy.md` ("never shown to clinicians") until the person opts in.
+  The demo seed turns it on for Aino only (her choice in the story); `sim-eero` shows the "Not shared" card.
+- Thresholds: `config/kaiku.toml [week]`.
+
+## D35 — Robot sensors after the first bench run: no KY-054, no KY-035 (2026-11-14, Edwin)
+- **No KY-054 light sensor:** room light comes from the camera (`[unoq] light_source = "camera"`, exposure locked,
+  ring light off). The camera bench passed on the board (`/dev/video2`, so `camera_index = 2`).
+- **No KY-035 hall sensor** (no magnet available): home = the head's position at power-on (face it forward before
+  powering up). `HAS_HALL 0` in both firmwares: the Atech `home` drives back to the dead-reckoned 0°, soft limit ±80°
+  (from ±100°); the UNO Q never polls the floating A1. Face tracking is relative (camera in the head), so drift
+  doesn't affect looking at the person. The CAD keeps the magnet pocket and the sensor spot: with a 6×3 mm magnet and
+  a KY-035, set `HAS_HALL 1` and nothing else changes.
+- **KY-039 + KY-053 kept**, pending a retest in the printed finger cradle: the electronics pass, but in open room light
+  no heartbeat was found (the Garmin read 44 bpm; the sensor showed only a ~117 bpm light-flicker artefact). If the
+  cradle doesn't fix it, HR/HRV is "not measured" (or the camera backup), never guessed. The bench now requires a
+  steady 30–220 bpm beat, so noise can't pass again.

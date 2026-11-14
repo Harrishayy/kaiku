@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "GraphEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "dst": {
+          "title": "Dst",
+          "type": "integer"
+        },
+        "evidence": {
+          "minimum": 0,
+          "title": "Evidence",
+          "type": "integer"
+        },
+        "rel": {
+          "enum": [
+            "knows",
+            "goes_to",
+            "likes",
+            "helped_by",
+            "plans",
+            "did",
+            "helped",
+            "about",
+            "keeps",
+            "of"
+          ],
+          "title": "Rel",
+          "type": "string"
+        },
+        "src": {
+          "title": "Src",
+          "type": "integer"
+        },
+        "weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "rel",
+        "weight",
+        "evidence"
+      ],
+      "title": "GraphEdge",
+      "type": "object"
+    },
+    "GraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "evidence": {
+          "description": "how many observations / sessions / memories back this node",
+          "minimum": 0,
+          "title": "Evidence",
+          "type": "integer"
+        },
+        "id": {
+          "description": "graph node id; negative = derived for this view (routines, obs-only activities)",
+          "title": "Id",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "me",
+            "person",
+            "place",
+            "like",
+            "helper",
+            "plan",
+            "activity",
+            "routine"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "evidence"
+      ],
+      "title": "GraphNode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/graph (\"What Kaiku has learned\") · GET /v1/patients/{id}/graph (only when the person shares;\nthen activities, what helps and routines — never people, places, likes or plans: listed in `withheld`).\nNever health data, scores or states.",
+  "properties": {
+    "audience": {
+      "enum": [
+        "person",
+        "care_team"
+      ],
+      "title": "Audience",
+      "type": "string"
+    },
+    "computed_at": {
+      "format": "date-time",
+      "title": "Computed At",
+      "type": "string"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/GraphEdge"
+      },
+      "title": "Edges",
+      "type": "array"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/GraphNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "shared": {
+      "title": "Shared",
+      "type": "boolean"
+    },
+    "withheld": {
+      "items": {
+        "enum": [
+          "me",
+          "person",
+          "place",
+          "like",
+          "helper",
+          "plan",
+          "activity",
+          "routine"
+        ],
+        "type": "string"
+      },
+      "title": "Withheld",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "audience",
+    "shared",
+    "nodes",
+    "edges",
+    "computed_at"
+  ],
+  "title": "KnowledgeGraph",
+  "type": "object"
+}

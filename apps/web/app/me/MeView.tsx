@@ -1,15 +1,25 @@
 'use client';
 
 /**
- * Web /me (design/ia.md "Web /me", look book "Web"): greeting + ambient Kaiku, garden, good & hard days, what helps,
- * this week's suggestion, What Kaiku remembers, What Kaiku saw today, pairing QR, two-weekly questions card.
+ * Web /me (design/ia.md "Web /me", look book "Web"): greeting + ambient Kaiku, garden, good & hard days, your week
+ * (rhythms, going well, worth a gentle look), what helps, this week's suggestion, What Kaiku has learned (graph +
+ * share-with-care-team switch), What Kaiku remembers, What Kaiku saw today, pairing QR, two-weekly questions card.
  * Never shows scores, states or trends (persona hard limits). Copy: design/copy.json via useCopy().
  */
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import specJson from '@design/mascot.spec.json';
-import type { DeletedResponse, LiveEventsResponse, MemoriesResponse, MemorySettings, MeResponse } from '@contracts';
+import type {
+  CareSharing,
+  DeletedResponse,
+  KnowledgeGraph,
+  LiveEventsResponse,
+  MemoriesResponse,
+  MemorySettings,
+  MeResponse,
+  WeekSummary,
+} from '@contracts';
 import { api, useApi } from '@/lib/api';
 import { makeEnvelope } from '@/lib/envelope';
 import { useCopy } from '@/lib/i18n';
@@ -24,6 +34,9 @@ import { Garden } from '@/components/Garden';
 import { QrCode } from '@/components/QrCode';
 import { Icon } from '@/components/Icon';
 import { CrisisScreen, useCrisis } from '@/components/CrisisScreen';
+import { LearnedGraph, type GraphWords } from '@/components/LearnedGraph';
+import { WeekPanels } from '@/components/WeekPanels';
+import { RecordStrip } from '@/components/RecordStrip';
 
 const SPEC = specJson as unknown as MascotSpec;
 type T = (key: string, vars?: Record<string, string | number>) => string;
@@ -137,6 +150,8 @@ export function MeView() {
             <Highlights t={t} lang={lang} items={d?.highlights} loading={!d && !me.error} />
           </section>
 
+          <MyWeek t={t} lang={lang} homeId={pairing.homeId} />
+
           <div className="k-two">
             <section className="k-card" aria-labelledby="garden-h">
               <h2 className="lbl" id="garden-h">
@@ -177,6 +192,7 @@ export function MeView() {
           </div>
 
           <WhatHelps t={t} items={d?.what_helps} />
+          <Learned t={t} homeId={pairing.homeId} />
           <Memories t={t} homeId={pairing.homeId} onToast={setToast} />
           <SawToday t={t} homeId={pairing.homeId} />
         </div>
@@ -240,9 +256,6 @@ function Pairing({ t, homeId, token, onCopied }: { t: T; homeId: string; token: 
         </div>
       </div>
       <p className="xs mut">{t('me.pair.mac')}</p>
-      <div className="k-url" title={url}>
-        {url}
-      </div>
       <button
         type="button"
         className="k-b k-b-soft k-b-small"
@@ -381,7 +394,10 @@ function Memories({ t, homeId, onToast }: { t: T; homeId: string; onToast: (s: s
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
-  const list = mem.data?.memories ?? [];
+  // the name is how Kaiku greets the person, not a "memory" to manage in the list
+  const all = mem.data?.memories ?? [];
+  const list = all.filter((m) => m.category !== 'name');
+  const callName = all.find((m) => m.category === 'name')?.text;
 
   async function act(fn: () => Promise<unknown>, toast?: string) {
     setBusy(true);
@@ -442,6 +458,7 @@ function Memories({ t, homeId, onToast }: { t: T; homeId: string; onToast: (s: s
           </div>
         </div>
       )}
+      {callName && <p className="sm ink2">{t('mem.callname', { name: callName })}</p>}
       {mem.data && list.length === 0 && <div className="k-empty sm">{t('mem.empty')}</div>}
       {list.length > 0 && (
         <ul className="k-list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -525,6 +542,122 @@ function SawToday({ t, homeId }: { t: T; homeId: string }) {
         <div style={{ color: 'var(--k-muted)' }}>{t('saw.never')}</div>
         <hr />
         <div style={{ textAlign: 'center', color: 'var(--k-muted)' }}>{t('saw.share')}</div>
+      </div>
+    </section>
+  );
+}
+
+function MyWeek({ t, lang, homeId }: { t: T; lang: Lang; homeId: string }) {
+  const w = useApi<WeekSummary>(`/v1/me/week?home_id=${encodeURIComponent(homeId)}`, 300_000);
+  return (
+    <section className="stack s8" aria-labelledby="myweek-h">
+      <h2 id="myweek-h">{t('me.wk.t')}</h2>
+      {!w.data ? (
+        <p className="sm mut">{w.error ? t('err.short') : t('common.loading')}</p>
+      ) : (
+        <>
+        <section className="k-card" aria-labelledby="rec-h">
+          <h3 id="rec-h">{t('me.rec.t')}</h3>
+          <p className="sm ink2">{t('me.rec.d')}</p>
+          <RecordStrip
+            week={w.data}
+            words={{
+              source: (s) => t(`me.src.${s}`) || s,
+              days: (n) => t('me.rec.days', { n }),
+              none: t('me.rec.none'),
+              flow: '',
+              dayLetters: lang === 'fi' ? ['S', 'M', 'T', 'K', 'T', 'P', 'L'] : ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
+            }}
+          />
+        </section>
+        <WeekPanels
+          week={w.data}
+          locale={WEEKDAY[lang]}
+          words={{
+            routines: t('me.wk.routines'),
+            well: t('me.wk.well'),
+            look: t('me.wk.look'),
+            routinesEmpty: t('me.wk.routines.empty'),
+            wellEmpty: t('me.wk.well.empty'),
+            lookEmpty: t('me.wk.look.empty'),
+            status: { kept: t('me.wk.st.kept'), partly: t('me.wk.st.partly'), slipped: t('me.wk.st.slipped') },
+            sleepStatus: { kept: t('me.wk.sl.kept'), partly: t('me.wk.sl.partly'), slipped: t('me.wk.sl.slipped') },
+            range: (from, to) => t('me.wk.range', { from, to }),
+          }}
+        />
+        </>
+      )}
+    </section>
+  );
+}
+
+const KG_TYPES = ['me', 'activity', 'routine', 'helper', 'person', 'place', 'like', 'plan'] as const;
+const KG_RELS = ['knows', 'goes_to', 'likes', 'helped_by', 'plans', 'did', 'helped', 'about', 'keeps', 'of'] as const;
+
+function graphWords(t: T): GraphWords {
+  return {
+    types: Object.fromEntries(KG_TYPES.map((k) => [k, t(`me.kg.type.${k}`)])) as GraphWords['types'],
+    rel: Object.fromEntries(KG_RELS.map((k) => [k, t(`me.kg.rel.${k}`)])) as GraphWords['rel'],
+    relIn: Object.fromEntries(KG_RELS.map((k) => [k, t(`me.kg.relin.${k}`)])) as GraphWords['relIn'],
+    evidence: (n) => t('me.kg.ev', { n }),
+    links: t('me.kg.links'),
+    hint: t('me.kg.hint'),
+    none: t('me.kg.none'),
+    me: t('me.kg.type.me'),
+  };
+}
+
+function Learned({ t, homeId }: { t: T; homeId: string }) {
+  const q = encodeURIComponent(homeId);
+  const g = useApi<KnowledgeGraph>(`/v1/me/graph?home_id=${q}`, 300_000);
+  const share = useApi<CareSharing>(`/v1/me/sharing?home_id=${q}`);
+  const [busy, setBusy] = useState(false);
+  const words = useMemo(() => graphWords(t), [t]);
+  const on = Boolean(share.data?.share_with_care_team);
+  const hasAny = (g.data?.nodes.length ?? 0) > 1;
+  return (
+    <section className="k-card" aria-labelledby="kg-h">
+      <h2 id="kg-h">{t('me.kg.t')}</h2>
+      <p className="sm ink2">{t('me.kg.d')}</p>
+      {!g.data ? (
+        <p className="sm mut">{g.error ? t('err.short') : t('common.loading')}</p>
+      ) : hasAny ? (
+        <LearnedGraph graph={g.data} words={words} />
+      ) : (
+        <div className="k-empty sm">{t('me.kg.empty')}</div>
+      )}
+      <div className="k-list">
+        <div className="k-row top">
+          <span className="k-row-ic ic-sky">
+            <Icon name="memory" />
+          </span>
+          <span className="k-row-txt">
+            <b id="kg-share">{t('me.kg.share.t')}</b>
+            <span>{t('me.kg.share.d')}</span>
+          </span>
+          <span className="k-row-end">
+            <button
+              type="button"
+              className="k-sw"
+              role="switch"
+              aria-checked={on}
+              aria-labelledby="kg-share"
+              disabled={!share.data || busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api<CareSharing>(`/v1/me/sharing?home_id=${q}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ share_with_care_team: !on }),
+                  });
+                  share.reload();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </span>
+        </div>
       </div>
     </section>
   );

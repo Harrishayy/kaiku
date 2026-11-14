@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "SourceCount": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "description": "e.g. 'walks', 'minutes outside', 'drum sessions'",
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "title": "SourceCount",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What one source added to the record in the last 7 days (counts only, no content).",
+  "properties": {
+    "counts": {
+      "items": {
+        "$ref": "#/$defs/SourceCount"
+      },
+      "title": "Counts",
+      "type": "array"
+    },
+    "days": {
+      "description": "days with data",
+      "maximum": 7,
+      "minimum": 0,
+      "title": "Days",
+      "type": "integer"
+    },
+    "last_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last At"
+    },
+    "per_day": {
+      "description": "observations per day, oldest first",
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 7,
+      "minItems": 7,
+      "title": "Per Day",
+      "type": "array"
+    },
+    "source": {
+      "enum": [
+        "robot",
+        "glasses",
+        "laptop",
+        "wearable"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "per_day",
+    "days"
+  ],
+  "title": "SourceWeek",
+  "type": "object"
+}

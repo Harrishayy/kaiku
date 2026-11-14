@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .companion_tools import Intent, MemoryCategory, Skill, Surface
+from .companion_tools import Intent, MemoryCategory, MindKind, Skill, Surface
 from .criteria import Criteria
 from .envelope import Envelope
 from .payloads import Health, NudgeArm
@@ -198,12 +198,22 @@ class Highlight(ApiModel):
     source: ConsensusSource
 
 
+class GardenDay(ApiModel):
+    """One plot of the garden: what was done together that local day (kinds: ritual, drum_session, play_session,
+    outing, friend_link, weather_check). A quiet day is an empty plot, never a wilted one."""
+
+    date: date
+    count: int = Field(0, ge=0)
+    kinds: list[str] = Field(default_factory=list)
+
+
 class Garden(ApiModel):
     """Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.
-    It never wilts and there is no streak counter."""
+    It never wilts and there is no streak counter. `days` = the last 14 local days, oldest first (one plot each)."""
 
     plants: int = Field(0, ge=0)
     resting: bool = False
+    days: list[GardenDay] = Field(default_factory=list)
 
 
 class MeResponse(ApiModel):
@@ -232,6 +242,15 @@ class VoiceLinesResponse(ApiModel):
     voice: str = Field(description="Gemini prebuilt voice name (config/kaiku.toml [voice])")
     model: str
     lines: dict[str, str]
+
+
+class VoiceSayRequest(ApiModel):
+    """POST /v1/voice/say — any short line (not in voice_lines.toml) in Kaiku's one voice → audio/wav. Cached by
+    (model, voice, lang, text, style); home token required. A crisis phrase in `text` → 422 (the crisis script is
+    shown verbatim, never voiced from here)."""
+
+    text: str = Field(min_length=1, max_length=400)
+    lang: VoiceLang = "en"
 
 
 class StateScore(ApiModel):
@@ -382,6 +401,10 @@ class CompanionSessionResponse(ApiModel):
     persona_version: str
     safety_phrases_version: str
     live_token: LiveToken | None = None
+    live_setup: dict[str, Any] | None = Field(
+        default=None, description="Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, "
+        "voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame "
+        "{setup: live_setup}; the server uses the token's copy either way.")
 
 
 class CompanionToolCall(ApiModel):
@@ -434,8 +457,18 @@ class ThreadIn(ApiModel):
     topic: str = Field(max_length=80)
 
 
+TranscriptRole = Literal["person", "kaiku"]
+
+
+class TranscriptTurn(ApiModel):
+    role: TranscriptRole
+    text: str = Field(max_length=2000)
+
+
 class EpisodeIn(ApiModel):
-    """POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio."""
+    """POST /v1/companion/episode — one finished session (also for sessions run offline). Never audio.
+    `transcript` only when the person opted in (device consent `transcripts`, off by default); the cloud drops it
+    if the outcome is `crisis` or any turn matches a crisis phrase."""
 
     home_id: str
     surface: Surface
@@ -447,8 +480,250 @@ class EpisodeIn(ApiModel):
     outcome: EpisodeOutcome = "completed"
     open_thread: ThreadIn | None = None
     close_thread: bool = False
+    transcript: list[TranscriptTurn] | None = Field(
+        default=None, max_length=600,
+        description="opt-in only; person-facing + deletable; never on a clinician route; de-identified for training")
 
 
 class EpisodeResult(ApiModel):
     ok: bool
     id: str
+    transcript_stored: bool = False
+
+
+class Transcript(ApiModel):
+    """One stored conversation (opt-in). Person-facing only: no clinician route returns transcripts."""
+
+    episode_id: str
+    surface: Surface
+    intent: Intent
+    start: datetime
+    turns: list[TranscriptTurn]
+
+
+class TranscriptsResponse(ApiModel):
+    """GET /v1/me/transcripts — the person's own stored conversations, newest first."""
+
+    home_id: str
+    transcripts: list[Transcript]
+
+
+# ----------------------------------------------------------------- Gemini-first mind (plan 06 §1–§3)
+MindRoute = Literal["memory", "flash", "argon", "fallback"]
+
+
+class MindAnswer(ApiModel):
+    """`result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are
+    verified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.
+    `route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line."""
+
+    answer: str
+    kind: MindKind
+    route: MindRoute
+    confidence: float = Field(ge=0, le=1)
+    cites: list[str] = Field(default_factory=list, description="verified ids: mem:<id> | kg:<id> | doc:<id>")
+    ask_person: bool = False
+    model: str | None = None
+
+
+class ModelUsageRow(ApiModel):
+    day: date
+    model: str
+    task: str
+    calls: int = Field(ge=0)
+    ok: int = Field(ge=0)
+    fallbacks: int = Field(ge=0)
+    p50_ms: float | None = None
+    p95_ms: float | None = None
+
+
+class IntelligenceHealth(ApiModel):
+    """GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,
+    how fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback)."""
+
+    since: date
+    days: int
+    rows: list[ModelUsageRow]
+    per_model: dict[str, int]
+    routes: dict[str, int]
+    calls: int
+    fallback_rate: float = Field(ge=0, le=1)
+    p50_ms: float | None = None
+    p95_ms: float | None = None
+
+
+ConstellationType = Literal["me", "person", "place", "like", "helper", "plan", "activity"]
+
+
+class ConstellationNode(ApiModel):
+    id: int
+    type: ConstellationType
+    label: str
+
+
+class ConstellationEdge(ApiModel):
+    src: int
+    dst: int
+    rel: Literal["knows", "goes_to", "likes", "helped_by", "plans", "did", "helped", "about"]
+    weight: float = Field(ge=0, le=1, description="0..1, for line thickness only")
+
+
+class ConstellationResponse(ApiModel):
+    """GET /v1/me/constellation — person-facing "Your constellation": people, places, activities, what helps.
+    Built from what the person told Kaiku and what they did. Never health data, scores or states."""
+
+    home_id: str
+    nodes: list[ConstellationNode]
+    edges: list[ConstellationEdge]
+
+
+WeatherWord = Literal["sunny", "cloudy", "rainy", "snowy", "windy", "foggy", "grey", "frosty", "clear"]
+
+
+class PostcardRequest(ApiModel):
+    home_id: str
+    minutes: int = Field(ge=0, le=600)
+    finds: list[str] = Field(default_factory=list, max_length=5,
+                             description="light-hunt finds as short words, e.g. 'green', 'bird'")
+    weather_word: WeatherWord = "cloudy"
+
+
+class PostcardResponse(ApiModel):
+    """POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,
+    hint} when image generation is unavailable: the app shows its own static card."""
+
+    id: str
+    url: str = Field(description="GET this path for the image")
+    cached: bool
+    model: str
+
+
+class BriefSection(ApiModel):
+    text: str = Field(max_length=600)
+    metrics: list[str] = Field(default_factory=list, description="criteria metric names this sentence rests on")
+
+
+class ClinicianBrief(ApiModel):
+    """GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).
+    Explains the consensus; never changes it."""
+
+    patient_id: str
+    week: str = Field(description="ISO week, e.g. 2026-W46")
+    state: State
+    rule_version: str
+    sections: list[BriefSection]
+    by: Literal["model", "template"]
+    model: str | None = None
+    generated_at: datetime
+
+
+# ------------------------------------------------------------------ dashboard: the week + what Kaiku has learned
+Audience = Literal["person", "care_team"]
+
+
+class CareSharing(ApiModel):
+    """GET/PUT /v1/me/sharing — the person's choice to show their care team what Kaiku has learned (the knowledge
+    graph and routines from conversations). Default off (D34). People, places, likes and plans are never shared."""
+
+    share_with_care_team: bool = False
+
+
+class Routine(ApiModel):
+    """A rhythm found BY CODE in the last weeks (obs, and conversations for the person or when shared)."""
+
+    activity: str = Field(description="ritual | walk | drum | breathe | checkin | laptop | play | sleep")
+    label: str
+    cadence: Literal["daily", "most_days", "weekly"]
+    weekday: str | None = Field(default=None, description="for weekly routines, e.g. 'Tuesday'")
+    day_part: Literal["morning", "afternoon", "evening", "night"] | None = None
+    usual_time: str | None = Field(default=None, description="local HH:MM (median of the usual weeks)")
+    usual_per_week: float = Field(ge=0, le=7)
+    this_week: int = Field(ge=0, le=7, description="days with it in the last 7 days")
+    status: Literal["kept", "partly", "slipped"]
+    text: str = Field(max_length=200, description="worded for the audience")
+    basis: list[Literal["obs", "episodes"]] = Field(default_factory=list)
+
+
+class WeekItem(ApiModel):
+    kind: Literal["routine", "helped", "metric", "source", "phq9", "safety", "moments"]
+    text: str = Field(max_length=240)
+    source: ConsensusSource | None = None
+    metric: str | None = Field(default=None, description="criteria metric name this rests on")
+
+
+class SourceCount(ApiModel):
+    label: str = Field(description="e.g. 'walks', 'minutes outside', 'drum sessions'")
+    value: float = Field(ge=0)
+
+
+class SourceWeek(ApiModel):
+    """What one source added to the record in the last 7 days (counts only, no content)."""
+
+    source: ConsensusSource
+    per_day: list[int] = Field(min_length=7, max_length=7, description="observations per day, oldest first")
+    days: int = Field(ge=0, le=7, description="days with data")
+    counts: list[SourceCount] = Field(default_factory=list)
+    last_at: datetime | None = None
+
+
+class NextStep(ApiModel):
+    """A suggested next step for the care team, chosen by fixed rules (never a model). Allowed wording only."""
+
+    text: str = Field(max_length=240)
+    why: str = Field(default="", max_length=240)
+    when: Literal["today", "this_week", "next_contact"]
+    action: ActionName | None = Field(default=None, description="the dashboard action that does it, if any")
+
+
+class WeekSummary(ApiModel):
+    """GET /v1/me/week (person wording) · GET /v1/patients/{id}/week (care team). Derived deterministically from
+    obs, per-metric drift against the person's own usual, the bandit and (person / shared only) conversations.
+    No model decides anything here; it never changes the consensus."""
+
+    home_id: str
+    audience: Audience
+    week_start: date
+    week_end: date
+    routines: list[Routine]
+    going_well: list[WeekItem]
+    worth_a_look: list[WeekItem]
+    shared: bool = Field(description="the person shares what Kaiku learned with the care team")
+    rule_version: str | None = Field(default=None, description="care team only")
+    sources: list[SourceWeek] = Field(default_factory=list, description="the one record: what each source added")
+    next_steps: list[NextStep] = Field(default_factory=list, description="care team only")
+    by: Literal["rule"] = "rule"
+    computed_at: datetime
+
+
+GraphNodeType = Literal["me", "person", "place", "like", "helper", "plan", "activity", "routine"]
+GraphRel = Literal["knows", "goes_to", "likes", "helped_by", "plans", "did", "helped", "about", "keeps", "of"]
+
+
+class GraphNode(ApiModel):
+    id: int = Field(description="graph node id; negative = derived for this view (routines, obs-only activities)")
+    type: GraphNodeType
+    label: str
+    evidence: int = Field(ge=0, description="how many observations / sessions / memories back this node")
+    detail: str | None = Field(default=None, max_length=200)
+
+
+class GraphEdge(ApiModel):
+    src: int
+    dst: int
+    rel: GraphRel
+    weight: float = Field(ge=0, le=1)
+    evidence: int = Field(ge=0)
+
+
+class KnowledgeGraph(ApiModel):
+    """GET /v1/me/graph ("What Kaiku has learned") · GET /v1/patients/{id}/graph (only when the person shares;
+    then activities, what helps and routines — never people, places, likes or plans: listed in `withheld`).
+    Never health data, scores or states."""
+
+    home_id: str
+    audience: Audience
+    shared: bool
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    withheld: list[GraphNodeType] = Field(default_factory=list)
+    computed_at: datetime

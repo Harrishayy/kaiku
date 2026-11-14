@@ -12,6 +12,7 @@
 #define KNOCK_POLL_FALLBACK 0     // 1 = poll at ~1 kHz if D2 has no interrupt on this core
 
 // KY-035 hall sensor (49E linear, analog) under the pan base; magnet in the turntable = head faces front
+#define HAS_HALL 0                // 0 = no KY-035/magnet fitted (D35): never poll A1 (a floating pin would fake edges)
 #define HALL_PIN A1               // analog (the 49E is linear; a digital pin only works if the swing crosses logic)
 #define HALL_MID 8192             // 49E output with no magnet ~ Vcc/2 = mid-scale (bench/hall prints the real value)
 #define HALL_DELTA 600            // |reading - HALL_MID| above this (14-bit counts) = magnet over the sensor
@@ -33,5 +34,5 @@
 // UNO Q LED matrix: hidden in the body, status only (the eyes are the Atech Color Display)
 #define STATUS_LEVEL 3
 
-// Modulino Buzzer (ABX00108) on Qwiic = Wire1, default address 0x3C
+// Modulino Buzzer (ABX00108) on Qwiic = Wire1, default address 0x1E 7-bit (0x3C 8-bit; verified 2026-11-14)
 #define BUZZER_MAX_NOTES 6

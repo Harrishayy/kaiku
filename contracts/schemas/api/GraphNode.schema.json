@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detail"
+    },
+    "evidence": {
+      "description": "how many observations / sessions / memories back this node",
+      "minimum": 0,
+      "title": "Evidence",
+      "type": "integer"
+    },
+    "id": {
+      "description": "graph node id; negative = derived for this view (routines, obs-only activities)",
+      "title": "Id",
+      "type": "integer"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "me",
+        "person",
+        "place",
+        "like",
+        "helper",
+        "plan",
+        "activity",
+        "routine"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "label",
+    "evidence"
+  ],
+  "title": "GraphNode",
+  "type": "object"
+}

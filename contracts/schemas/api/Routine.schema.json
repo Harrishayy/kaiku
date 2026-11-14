@@ -1,0 +1,118 @@
+{
+  "additionalProperties": false,
+  "description": "A rhythm found BY CODE in the last weeks (obs, and conversations for the person or when shared).",
+  "properties": {
+    "activity": {
+      "description": "ritual | walk | drum | breathe | checkin | laptop | play | sleep",
+      "title": "Activity",
+      "type": "string"
+    },
+    "basis": {
+      "items": {
+        "enum": [
+          "obs",
+          "episodes"
+        ],
+        "type": "string"
+      },
+      "title": "Basis",
+      "type": "array"
+    },
+    "cadence": {
+      "enum": [
+        "daily",
+        "most_days",
+        "weekly"
+      ],
+      "title": "Cadence",
+      "type": "string"
+    },
+    "day_part": {
+      "anyOf": [
+        {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening",
+            "night"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Day Part"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "kept",
+        "partly",
+        "slipped"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "text": {
+      "description": "worded for the audience",
+      "maxLength": 200,
+      "title": "Text",
+      "type": "string"
+    },
+    "this_week": {
+      "description": "days with it in the last 7 days",
+      "maximum": 7,
+      "minimum": 0,
+      "title": "This Week",
+      "type": "integer"
+    },
+    "usual_per_week": {
+      "maximum": 7,
+      "minimum": 0,
+      "title": "Usual Per Week",
+      "type": "number"
+    },
+    "usual_time": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "local HH:MM (median of the usual weeks)",
+      "title": "Usual Time"
+    },
+    "weekday": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "for weekly routines, e.g. 'Tuesday'",
+      "title": "Weekday"
+    }
+  },
+  "required": [
+    "activity",
+    "label",
+    "cadence",
+    "usual_per_week",
+    "this_week",
+    "status",
+    "text"
+  ],
+  "title": "Routine",
+  "type": "object"
+}

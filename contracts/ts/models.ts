@@ -25,6 +25,47 @@ export interface ActionResult {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "BriefSection".
+ */
+export interface BriefSection {
+  /**
+   * criteria metric names this sentence rests on
+   */
+  metrics?: string[];
+  text: string;
+}
+/**
+ * GET/PUT /v1/me/sharing — the person's choice to show their care team what Kaiku has learned (the knowledge
+ * graph and routines from conversations). Default off (D34). People, places, likes and plans are never shared.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "CareSharing".
+ */
+export interface CareSharing {
+  share_with_care_team?: boolean;
+}
+/**
+ * GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).
+ * Explains the consensus; never changes it.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ClinicianBrief".
+ */
+export interface ClinicianBrief {
+  by: "model" | "template";
+  generated_at: string;
+  model?: string | null;
+  patient_id: string;
+  rule_version: string;
+  sections: BriefSection[];
+  state: "stable" | "watch" | "needs_call" | "safety";
+  /**
+   * ISO week, e.g. 2026-W46
+   */
+  week: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "ClinicianMessage".
  */
 export interface ClinicianMessage {
@@ -77,6 +118,12 @@ export interface CompanionSessionRequest {
  */
 export interface CompanionSessionResponse {
   context_card: ContextCard;
+  /**
+   * Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; the server uses the token's copy either way.
+   */
+  live_setup?: {
+    [k: string]: unknown;
+  } | null;
   live_token?: LiveToken | null;
   model: string;
   persona_version: string;
@@ -259,6 +306,40 @@ export interface VerdictEvidence {
   metric: string;
   summary?: string;
   z?: number | null;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationEdge".
+ */
+export interface ConstellationEdge {
+  dst: number;
+  rel: "knows" | "goes_to" | "likes" | "helped_by" | "plans" | "did" | "helped" | "about";
+  src: number;
+  /**
+   * 0..1, for line thickness only
+   */
+  weight: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationNode".
+ */
+export interface ConstellationNode {
+  id: number;
+  label: string;
+  type: "me" | "person" | "place" | "like" | "helper" | "plan" | "activity";
+}
+/**
+ * GET /v1/me/constellation — person-facing "Your constellation": people, places, activities, what helps.
+ * Built from what the person told Kaiku and what they did. Never health data, scores or states.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ConstellationResponse".
+ */
+export interface ConstellationResponse {
+  edges: ConstellationEdge[];
+  home_id: string;
+  nodes: ConstellationNode[];
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -553,7 +634,9 @@ export interface DrumSession {
   tempo_bpm: number;
 }
 /**
- * POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.
+ * POST /v1/companion/episode — one finished session (also for sessions run offline). Never audio.
+ * `transcript` only when the person opted in (device consent `transcripts`, off by default); the cloud drops it
+ * if the outcome is `crisis` or any turn matches a crisis phrase.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "EpisodeIn".
@@ -572,6 +655,10 @@ export interface EpisodeIn {
   start: string;
   surface: "robot" | "glasses" | "iphone" | "mac" | "web";
   tools_used?: string[];
+  /**
+   * opt-in only; person-facing + deletable; never on a clinician route; de-identified for training
+   */
+  transcript?: TranscriptTurn[] | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -583,11 +670,20 @@ export interface ThreadIn {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "TranscriptTurn".
+ */
+export interface TranscriptTurn {
+  role: "person" | "kaiku";
+  text: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "EpisodeResult".
  */
 export interface EpisodeResult {
   id: string;
   ok: boolean;
+  transcript_stored?: boolean;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -637,14 +733,55 @@ export interface FriendlinkCmd {
 }
 /**
  * Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.
- * It never wilts and there is no streak counter.
+ * It never wilts and there is no streak counter. `days` = the last 14 local days, oldest first (one plot each).
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "Garden".
  */
 export interface Garden {
+  days?: GardenDay[];
   plants?: number;
   resting?: boolean;
+}
+/**
+ * One plot of the garden: what was done together that local day (kinds: ritual, drum_session, play_session,
+ * outing, friend_link, weather_check). A quiet day is an empty plot, never a wilted one.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "GardenDay".
+ */
+export interface GardenDay {
+  count?: number;
+  date: string;
+  kinds?: string[];
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "GraphEdge".
+ */
+export interface GraphEdge {
+  dst: number;
+  evidence: number;
+  rel: "knows" | "goes_to" | "likes" | "helped_by" | "plans" | "did" | "helped" | "about" | "keeps" | "of";
+  src: number;
+  weight: number;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "GraphNode".
+ */
+export interface GraphNode {
+  detail?: string | null;
+  /**
+   * how many observations / sessions / memories back this node
+   */
+  evidence: number;
+  /**
+   * graph node id; negative = derived for this view (routines, obs-only activities)
+   */
+  id: number;
+  label: string;
+  type: "me" | "person" | "place" | "like" | "helper" | "plan" | "activity" | "routine";
 }
 /**
  * Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),
@@ -806,6 +943,42 @@ export interface SuggestNudge {
   arm: "breathe" | "drum" | "daylight_walk" | "friend_ping" | "icbt_exercise";
 }
 /**
+ * GET /v1/health/intelligence — usage ledger summary (no content is ever logged): which models ran, how often,
+ * how fast, how often we fell back. `routes` counts ask_mind outcomes (memory/flash/argon/fallback).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "IntelligenceHealth".
+ */
+export interface IntelligenceHealth {
+  calls: number;
+  days: number;
+  fallback_rate: number;
+  p50_ms?: number | null;
+  p95_ms?: number | null;
+  per_model: {
+    [k: string]: number;
+  };
+  routes: {
+    [k: string]: number;
+  };
+  rows: ModelUsageRow[];
+  since: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ModelUsageRow".
+ */
+export interface ModelUsageRow {
+  calls: number;
+  day: string;
+  fallbacks: number;
+  model: string;
+  ok: number;
+  p50_ms?: number | null;
+  p95_ms?: number | null;
+  task: string;
+}
+/**
  * Immediate before/after effect of one activity (feeds the bandit learner).
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -836,6 +1009,23 @@ export interface Measures {
   hr_bpm?: number | null;
   mood?: number | null;
   rmssd_ms?: number | null;
+}
+/**
+ * GET /v1/me/graph ("What Kaiku has learned") · GET /v1/patients/{id}/graph (only when the person shares;
+ * then activities, what helps and routines — never people, places, likes or plans: listed in `withheld`).
+ * Never health data, scores or states.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "KnowledgeGraph".
+ */
+export interface KnowledgeGraph {
+  audience: "person" | "care_team";
+  computed_at: string;
+  edges: GraphEdge[];
+  home_id: string;
+  nodes: GraphNode[];
+  shared: boolean;
+  withheld?: ("me" | "person" | "place" | "like" | "helper" | "plan" | "activity" | "routine")[];
 }
 /**
  * 2-minute laptop session. All features computed in the browser; nothing recorded.
@@ -996,6 +1186,26 @@ export interface TimelinePoint {
   value: number | null;
 }
 /**
+ * `result` of the `ask_mind` tool (CompanionToolResult.result). `answer` is ready to say: citation tags are
+ * verified and stripped by code. `ask_person=true`: Kaiku found conflicting notes and should ask, not pick.
+ * `route`: memory = answered by code (no model) · flash · argon · fallback = scripted hand-off line.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "MindAnswer".
+ */
+export interface MindAnswer {
+  answer: string;
+  ask_person?: boolean;
+  /**
+   * verified ids: mem:<id> | kg:<id> | doc:<id>
+   */
+  cites?: string[];
+  confidence: number;
+  kind: "fact" | "care" | "memory" | "plan" | "emotional";
+  model?: string | null;
+  route: "memory" | "flash" | "argon" | "fallback";
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "NextDay".
  */
@@ -1006,6 +1216,21 @@ export interface NextDay {
   activity?: number | null;
   energy?: number | null;
   mood?: number | null;
+}
+/**
+ * A suggested next step for the care team, chosen by fixed rules (never a model). Allowed wording only.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "NextStep".
+ */
+export interface NextStep {
+  /**
+   * the dashboard action that does it, if any
+   */
+  action?: ("flag_booster" | "flag_icbt_referral" | "acknowledge" | "send_message") | null;
+  text: string;
+  when: "today" | "this_week" | "next_contact";
+  why?: string;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -1180,6 +1405,43 @@ export interface PlaySession {
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PostcardRequest".
+ */
+export interface PostcardRequest {
+  /**
+   * light-hunt finds as short words, e.g. 'green', 'bird'
+   *
+   * @maxItems 5
+   */
+  finds?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string];
+  home_id: string;
+  minutes: number;
+  weather_word?: "sunny" | "cloudy" | "rainy" | "snowy" | "windy" | "foggy" | "grey" | "frosty" | "clear";
+}
+/**
+ * POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,
+ * hint} when image generation is unavailable: the app shows its own static card.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "PostcardResponse".
+ */
+export interface PostcardResponse {
+  cached: boolean;
+  id: string;
+  model: string;
+  /**
+   * GET this path for the image
+   */
+  url: string;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "Presence".
  */
 export interface Presence {
@@ -1282,6 +1544,40 @@ export interface Ritual {
   step: "greet" | "dial" | "breathe" | "drum" | "phq9" | "nudge" | "close";
 }
 /**
+ * A rhythm found BY CODE in the last weeks (obs, and conversations for the person or when shared).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Routine".
+ */
+export interface Routine {
+  /**
+   * ritual | walk | drum | breathe | checkin | laptop | play | sleep
+   */
+  activity: string;
+  basis?: ("obs" | "episodes")[];
+  cadence: "daily" | "most_days" | "weekly";
+  day_part?: ("morning" | "afternoon" | "evening" | "night") | null;
+  label: string;
+  status: "kept" | "partly" | "slipped";
+  /**
+   * worded for the audience
+   */
+  text: string;
+  /**
+   * days with it in the last 7 days
+   */
+  this_week: number;
+  usual_per_week: number;
+  /**
+   * local HH:MM (median of the usual weeks)
+   */
+  usual_time?: string | null;
+  /**
+   * for weekly routines, e.g. 'Tuesday'
+   */
+  weekday?: string | null;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "SafetyFlag".
  */
@@ -1369,6 +1665,39 @@ export interface SensorsCmd {
   ppg?: ("start" | "stop") | null;
 }
 /**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "SourceCount".
+ */
+export interface SourceCount {
+  /**
+   * e.g. 'walks', 'minutes outside', 'drum sessions'
+   */
+  label: string;
+  value: number;
+}
+/**
+ * What one source added to the record in the last 7 days (counts only, no content).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "SourceWeek".
+ */
+export interface SourceWeek {
+  counts?: SourceCount[];
+  /**
+   * days with data
+   */
+  days: number;
+  last_at?: string | null;
+  /**
+   * observations per day, oldest first
+   *
+   * @minItems 7
+   * @maxItems 7
+   */
+  per_day: [number, number, number, number, number, number, number];
+  source: "robot" | "glasses" | "laptop" | "wearable";
+}
+/**
  * Robot-side speech features from the local mic. No audio, no transcript.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -1389,6 +1718,29 @@ export interface TimelineResponse {
   series: MetricSeries[];
 }
 /**
+ * One stored conversation (opt-in). Person-facing only: no clinician route returns transcripts.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Transcript".
+ */
+export interface Transcript {
+  episode_id: string;
+  intent: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
+  start: string;
+  surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  turns: TranscriptTurn[];
+}
+/**
+ * GET /v1/me/transcripts — the person's own stored conversations, newest first.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "TranscriptsResponse".
+ */
+export interface TranscriptsResponse {
+  home_id: string;
+  transcripts: Transcript[];
+}
+/**
  * GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.
  * Audio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key).
  *
@@ -1405,6 +1757,18 @@ export interface VoiceLinesResponse {
    * Gemini prebuilt voice name (config/kaiku.toml [voice])
    */
   voice: string;
+}
+/**
+ * POST /v1/voice/say — any short line (not in voice_lines.toml) in Kaiku's one voice → audio/wav. Cached by
+ * (model, voice, lang, text, style); home token required. A crisis phrase in `text` → 422 (the crisis script is
+ * shown verbatim, never voiced from here).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "VoiceSayRequest".
+ */
+export interface VoiceSayRequest {
+  lang?: "en" | "fi" | "sv";
+  text: string;
 }
 /**
  * Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.
@@ -1434,4 +1798,52 @@ export interface WearableDaily {
    */
   sleep_regularity?: number | null;
   steps?: number | null;
+}
+/**
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WeekItem".
+ */
+export interface WeekItem {
+  kind: "routine" | "helped" | "metric" | "source" | "phq9" | "safety" | "moments";
+  /**
+   * criteria metric name this rests on
+   */
+  metric?: string | null;
+  source?: ("robot" | "glasses" | "laptop" | "wearable") | null;
+  text: string;
+}
+/**
+ * GET /v1/me/week (person wording) · GET /v1/patients/{id}/week (care team). Derived deterministically from
+ * obs, per-metric drift against the person's own usual, the bandit and (person / shared only) conversations.
+ * No model decides anything here; it never changes the consensus.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WeekSummary".
+ */
+export interface WeekSummary {
+  audience: "person" | "care_team";
+  by?: "rule";
+  computed_at: string;
+  going_well: WeekItem[];
+  home_id: string;
+  /**
+   * care team only
+   */
+  next_steps?: NextStep[];
+  routines: Routine[];
+  /**
+   * care team only
+   */
+  rule_version?: string | null;
+  /**
+   * the person shares what Kaiku learned with the care team
+   */
+  shared: boolean;
+  /**
+   * the one record: what each source added
+   */
+  sources?: SourceWeek[];
+  week_end: string;
+  week_start: string;
+  worth_a_look: WeekItem[];
 }

@@ -163,10 +163,27 @@ public struct Highlight: Codable, Sendable, Equatable, Hashable {
     public var source: String
 }
 
+public struct GardenDay: Codable, Sendable, Equatable, Hashable {
+    public var date: String          // local day, yyyy-MM-dd
+    public var count: Int
+    public var kinds: [String]       // ritual, drum_session, play_session, outing, friend_link, weather_check
+    public init(date: String, count: Int = 0, kinds: [String] = []) { self.date = date; self.count = count; self.kinds = kinds }
+}
+
 public struct Garden: Codable, Sendable, Equatable {
     public var plants: Int
     public var resting: Bool
-    public init(plants: Int = 0, resting: Bool = false) { self.plants = plants; self.resting = resting }
+    /// The last 14 local days, oldest first (one plot each). Absent from older clouds → [].
+    public var days: [GardenDay]
+    public init(plants: Int = 0, resting: Bool = false, days: [GardenDay] = []) {
+        self.plants = plants; self.resting = resting; self.days = days
+    }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        plants = try c.decodeIfPresent(Int.self, forKey: .plants) ?? 0
+        resting = try c.decodeIfPresent(Bool.self, forKey: .resting) ?? false
+        days = try c.decodeIfPresent([GardenDay].self, forKey: .days) ?? []
+    }
 }
 
 public struct HelpStat: Codable, Sendable, Equatable {
@@ -263,6 +280,8 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var persona_version: String
     public var safety_phrases_version: String
     public var live_token: LiveToken?
+    /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
+    public var live_setup: JSONValue?
 }
 
 public struct CompanionToolCall: Codable, Sendable {
@@ -284,6 +303,12 @@ public struct CompanionToolResult: Codable, Sendable, Equatable {
 
 public enum EpisodeOutcome: String, Codable, Sendable { case completed, skipped, ended_early, crisis, offline }
 
+public enum TranscriptRole: String, Codable, Sendable { case person, kaiku }
+public struct TranscriptTurn: Codable, Sendable, Equatable {
+    public var role: TranscriptRole
+    public var text: String
+}
+
 public struct EpisodeIn: Codable, Sendable {
     public var id: String?
     public var home_id: String
@@ -293,9 +318,24 @@ public struct EpisodeIn: Codable, Sendable {
     public var end: String?
     public var outcome: EpisodeOutcome
     public var tools_used: [String]
+    /// Only with the `transcripts` consent on (contracts: api.EpisodeIn.transcript).
+    public var transcript: [TranscriptTurn]? = nil
 }
 
-public struct EpisodeResult: Codable, Sendable { public var ok: Bool; public var id: String }
+public struct StoredTranscript: Codable, Sendable, Equatable {
+    public var episode_id: String
+    public var surface: CompanionSurface
+    public var intent: CompanionIntent
+    public var start: String
+    public var turns: [TranscriptTurn]
+}
+
+public struct TranscriptsResponse: Codable, Sendable, Equatable {
+    public var home_id: String
+    public var transcripts: [StoredTranscript]
+}
+
+public struct EpisodeResult: Codable, Sendable { public var ok: Bool; public var id: String; public var transcript_stored: Bool? }
 
 /// Tool registry facts the device needs (contracts/schemas/companion_tools.json → `executor`). Device tools are
 /// handled in the app; cloud tools are forwarded to POST /v1/companion/tool.

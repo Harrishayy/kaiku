@@ -3,7 +3,7 @@
 session: persona + surface + context card (+ the surface's tools) -> one system instruction; an episode row is
 opened (no transcript ever). tool: devices forward the model's tool calls; the crisis phrase check runs on every
 string argument FIRST (hit -> nothing stored, obs.safety_flag raised, scripted message returned), then surface +
-schema checks, then the deterministic effect. episode: closes a session (or records one run offline).
+schema checks, then the deterministic effect (`ask_mind` -> mind/router.py). episode: closes a session (or records one run offline).
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from kaiku_contracts.safety import version as safety_version
 from .. import service
 from ..settings import Settings
 from ..store.db import Store
-from . import assemble, live_token, memory
-from .card import SUGGESTION, build_card, card_dict
+from . import assemble, graph, live_token, memory, router
+from .card import SUGGESTION, build_card, card_dict, done_today
 
 log = get_logger("cloud.mind")
 
@@ -59,11 +59,13 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
                           "start": memory.iso(now), "tools": []})
     model, voice = models()
     pv = assemble.persona_version(persona)
-    log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv)
+    setup = live_token.setup(model, voice, instruction, tools)
+    token = mint(model, live_setup=setup)
+    log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv, live=token is not None)
     return CompanionSessionResponse(
         session_id=sid, model=model, voice=voice, system_instruction=instruction,
         tools=[CompanionTool(**t) for t in tools], context_card=card, persona_version=pv,
-        safety_phrases_version=safety_version(), live_token=mint(model))
+        safety_phrases_version=safety_version(), live_token=token, live_setup=setup)
 
 
 def _strings(v: Any) -> list[str]:
@@ -119,8 +121,15 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
     try:
         if name == "remember":
             res = memory.remember(store, home, a["category"], a["text"], now)
+            if res["action"] in ("stored", "forgot"):
+                graph.on_memory_write(store, home)
+        elif name == "ask_mind":
+            today = done_today(store.events_for_home(home), store.episodes(home), now)
+            res = router.ask(store, settings, home, a["question"], a["kind"], done_today=today,
+                             now=now).model_dump(mode="json")
         elif name == "forget":
             res = memory.forget(store, home, a["scope"])
+            graph.on_memory_write(store, home)
         elif name == "recall":
             res = {"memories": [m["text"] for m in memory.recall(store, home, a["topic"], now=now)]}
         elif name == "suggest_nudge":
@@ -149,6 +158,13 @@ def end_session(store: Store, call: CompanionToolCall, a: dict[str, Any], now: d
     return res
 
 
+def transcript_allowed(ep: EpisodeIn) -> bool:
+    """An opt-in transcript is kept unless the conversation touched a crisis: then nothing of it is stored."""
+    if not ep.transcript or ep.outcome == "crisis":
+        return False
+    return not any(_gate().check(t.text) for t in ep.transcript)
+
+
 def record_episode(store: Store, ep: EpisodeIn) -> str:
     eid = ep.id or str(uuid7())
     old = store.episode(eid)
@@ -165,4 +181,9 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
             memory.close_threads_for(store, ep.home_id, ep.intent, end)
     if ep.open_thread:
         memory.open_thread(store, ep.home_id, ep.open_thread.skill, ep.open_thread.topic, end)
+    if transcript_allowed(ep):
+        store.transcript_upsert({"episode_id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
+                                 "start": memory.iso(ep.start),
+                                 "turns": [t.model_dump() for t in ep.transcript or []]})
+        log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
     return eid

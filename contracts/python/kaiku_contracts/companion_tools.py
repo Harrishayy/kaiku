@@ -5,7 +5,7 @@ function-declaration shape) and the surfaces it may be used on. `make contracts`
 `contracts/schemas/companion_tools.json` (+ `COMPANION_TOOLS` in `contracts/ts/index.ts`) for Swift/TS clients.
 
 Who executes what (`executor`):
-    cloud   remember, forget, recall, suggest_nudge, end_session — devices forward the call to
+    cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind — devices forward the call to
             `POST /v1/companion/tool` and hand the result back to the model
     device  record_dial, start_activity, log_walk_moment, send_friend_ping, start_phq9, express, look_at_this —
             the device runs the deterministic effect (it may still forward the call so the episode logs it)
@@ -26,6 +26,7 @@ MemoryCategory = Literal["name", "people", "places", "likes", "what_helps", "pla
 MEMORY_CATEGORIES: tuple[str, ...] = get_args(MemoryCategory)
 Activity = Literal["breathe", "drum", "firefly", "pebbles", "tell", "walk", "light_hunt"]
 Feeling = Literal["happy", "curious", "sleepy", "cozy", "proud"]
+MindKind = Literal["fact", "care", "memory", "plan", "emotional"]
 
 #: which skill an intent runs (talk = free chat, no skill)
 SKILL_OF_INTENT: dict[str, str | None] = {"ritual": "morning_ritual", "checkin": "weather_check",
@@ -70,6 +71,14 @@ TOOLS: dict[str, dict[str, Any]] = {
     "suggest_nudge": {
         "description": "Get today's one small suggestion (phrase it, never change it).",
         "executor": "cloud", "surfaces": _ALL, "parameters": _EMPTY},
+    "ask_mind": {
+        "description": "Ask Kaiku's mind when unsure, when you need a fact the person told you before, or for a care "
+                       "or hard emotional question. Returns an answer to say in your own words (may say to ask the "
+                       "person or the care team). kind: fact | care | memory | plan | emotional.",
+        "executor": "cloud", "surfaces": _ALL,
+        "parameters": {"type": "object", "required": ["question", "kind"], "properties": {
+            "question": {"type": "string", "maxLength": 300},
+            "kind": {"type": "string", "enum": list(get_args(MindKind))}}}},
     "send_friend_ping": {
         "description": "Light the friend's lamp.",
         "executor": "device", "surfaces": ["robot", "iphone"], "parameters": _EMPTY},

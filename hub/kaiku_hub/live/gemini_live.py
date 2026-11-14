@@ -18,13 +18,15 @@ locally instead (fail soft). Input transcripts go to the hub's on_utterance (saf
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Any
 
+from kaiku_contracts import genai_client
+from kaiku_contracts.budget import BudgetExceeded
 from kaiku_contracts.jlog import get_logger
 
 from .base import ToolHandler, UtteranceHandler, Voice
 from .local_audio import LocalVoice
+from .meter import SessionMeter
 
 log = get_logger("hub")
 
@@ -41,6 +43,7 @@ except Exception:  # pragma: no cover
     sd = None
 
 IN_RATE, OUT_RATE, CHUNK = 16000, 24000, 1600
+BUDGET_LINE = "I'll keep it simple from here and use my own little voice."
 
 
 def available(model_id: str) -> tuple[bool, str]:
@@ -48,8 +51,8 @@ def available(model_id: str) -> tuple[bool, str]:
         return False, "google-genai not installed (uv sync --extra live)"
     if sd is None:
         return False, "sounddevice not installed (uv sync --extra live)"
-    if not os.environ.get("GEMINI_API_KEY"):
-        return False, "GEMINI_API_KEY not set"
+    if not genai_client.available():
+        return False, "no Gemini backend (GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT + ADC)"
     if not model_id or model_id.upper().startswith("VERIFY"):
         return False, "config [models].gemini_live is a VERIFY placeholder"
     return True, ""
@@ -87,7 +90,7 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
         self.language = language
         self.voice_name = voice_name
         self.stall_s = stall_s
-        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={"api_version": "v1beta"})
+        self.client = genai_client.make_client(api_version="v1beta")
         self._session: Any = None
         self._tasks: list[asyncio.Task] = []
         self._fallback = LocalVoice()
@@ -95,6 +98,7 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
         self._on_tool: ToolHandler | None = None
         self._cm: Any = None
         self._spoke = asyncio.Event()
+        self._meter: SessionMeter | None = None
 
     async def start(self, on_utterance: UtteranceHandler, on_tool: ToolHandler | None = None) -> None:
         self._on_utterance, self._on_tool = on_utterance, on_tool  # no session until a ritual starts
@@ -104,6 +108,12 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
         await self.close_session()
         model = model or self.model_id
         config = live_config(system_instruction, tools, voice or self.voice_name)
+        meter = SessionMeter("gemini", model)
+        try:
+            meter.open()  # spend cap (kaiku_contracts/budget.py): over it = no session, scripted ritual
+        except BudgetExceeded as e:
+            log.warning("gemini_live_budget", str(e))
+            return False
         try:
             self._cm = self.client.aio.live.connect(model=model, config=config)
             self._session = await asyncio.wait_for(self._cm.__aenter__(), timeout=10)
@@ -112,6 +122,8 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
             self._session = None
             return False
         log.info("gemini_live_open", model, voice=voice or self.voice_name)
+        self._meter = meter
+        meter.start(self._budget_exceeded)
         self._tasks = [asyncio.create_task(self._mic_loop()), asyncio.create_task(self._recv_loop())]
         return True
 
@@ -173,6 +185,21 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
             log.warning("gemini_say_fallback", type(e).__name__)
             await self._fallback.say(text)
 
+    async def send_context(self, text: str) -> None:
+        """Append a context turn mid-session (Live capabilities guide, "Incremental content updates": Gemini 3.8
+        accepts `send_client_content` mid-session to append structured text turns). turn_complete=True lets the
+        model react now; with proactive audio it may also stay silent. No session -> dropped."""
+        if self._session is None:
+            return
+        try:
+            await self._session.send_client_content(
+                turns={"role": "user", "parts": [{"text": f"(context from Kaiku's senses, not said by the person; "
+                                                          f"react briefly only if it feels natural) {text}"}]},
+                turn_complete=True,
+            )
+        except Exception as e:
+            log.warning("gemini_context_failed", type(e).__name__)
+
     async def say_verbatim(self, text: str) -> None:
         await self.interrupt()
         await self._fallback.say(text)  # deterministic: never through the model
@@ -180,7 +207,15 @@ class GeminiLiveVoice(Voice):  # pragma: no cover - needs network, key and audio
     async def interrupt(self) -> None:
         await self.close_session()
 
+    async def _budget_exceeded(self) -> None:
+        """Cap reached mid-session: close politely; the ritual continues with scripted local lines."""
+        await self.close_session()
+        await self._fallback.say(BUDGET_LINE)
+
     async def close_session(self) -> None:
+        if self._meter is not None:
+            self._meter.stop()
+            self._meter = None
         session, self._session = self._session, None
         for t in self._tasks:
             t.cancel()

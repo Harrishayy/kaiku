@@ -57,6 +57,15 @@ public actor APIClient {
         try await send("DELETE", "/v1/me/memories", query: ["home_id": try home()], body: Optional<Int>.none)
     }
 
+    /// Opt-in conversation transcripts (person-facing only).
+    public func transcripts() async throws -> TranscriptsResponse {
+        try await get("/v1/me/transcripts", query: ["home_id": try home()])
+    }
+
+    public func deleteAllTranscripts() async throws -> DeletedResponse {
+        try await send("DELETE", "/v1/me/transcripts", query: ["home_id": try home()], body: Optional<Int>.none)
+    }
+
     public func setRemember(_ on: Bool) async throws -> MemorySettings {
         try await send("PUT", "/v1/me/memory_settings", query: ["home_id": try home()], body: MemorySettings(remember: on))
     }

@@ -70,8 +70,13 @@ class Camera:
         self._thread = threading.Thread(target=self._run, name="camera", daemon=True)
         self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, timeout_s: float = 3.0) -> None:
+        """Stop and wait for the thread to release the camera. Exiting while it is still inside OpenCV aborts the
+        whole process ("terminate called without an active exception"), seen on the UNO Q 2026-11-14."""
         self._stop.set()
+        t = self._thread
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(timeout_s)
 
     def sample_light_now(self) -> None:
         self._light_now.set()

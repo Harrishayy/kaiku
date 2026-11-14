@@ -3,9 +3,10 @@
 import type { MetricSeries, TimelinePoint } from '@contracts';
 import { fmt } from '@/lib/format';
 
-const W = 640;
-const H = 150;
-const PAD = { top: 10, right: 8, bottom: 22, left: 36 };
+const W = 420;
+const H = 170;
+const PAD = { top: 12, right: 10, bottom: 26, left: 46 };
+const shortDate = (d?: string) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 
 const outside = (p: TimelinePoint) =>
   typeof p.value === 'number' &&
@@ -96,9 +97,12 @@ export function TimelineChart({ series }: { series: MetricSeries }) {
           {unit ? <span className="muted"> · {unit}</span> : null}
           <span className="muted small"> · worse when {worse_when === 'down' ? 'lower' : 'higher'}</span>
         </span>
-        <span className={lastWorse ? 'chart-last drift' : 'chart-last'}>
-          {last ? fmt(last.value, digits) : '—'}
-          {lastWorse && <span className="small"> change from usual</span>}
+        <span className="chart-last">
+          <span className="chart-latest">
+            Latest {last ? fmt(last.value, digits) : '—'}
+            {unit && !['count', 'ratio', '0–1', '1–5'].includes(unit) ? ` ${unit}` : ''}
+          </span>
+          {lastWorse && <span className="chart-flag">change from usual</span>}
         </span>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${label}: ${n} days, latest ${last ? fmt(last.value, digits) : 'none'}`}>
@@ -128,13 +132,19 @@ export function TimelineChart({ series }: { series: MetricSeries }) {
             </circle>
           ) : null,
         )}
-        <text x={PAD.left} y={H - 5} className="axis">
-          {points[0]?.date}
+        <text x={PAD.left} y={H - 6} className="axis">
+          {shortDate(points[0]?.date)}
         </text>
-        <text x={W - PAD.right} y={H - 5} className="axis" textAnchor="end">
-          {points[n - 1]?.date}
+        <text x={W - PAD.right} y={H - 6} className="axis" textAnchor="end">
+          {shortDate(points[n - 1]?.date)}
         </text>
       </svg>
+      <div className="chart-key" aria-hidden="true">
+        <span><i className="k-band" />usual range</span>
+        <span><i className="k-median" />usual (median)</span>
+        <span><i className="k-dot" />day</span>
+        <span><i className="k-dot out" />change from usual</span>
+      </div>
     </figure>
   );
 }
@@ -171,10 +181,10 @@ export function Phq9Chart({ entries }: { entries: { ts: string; total: number; i
           </circle>
         ))}
         <text x={PAD.left} y={H - 5} className="axis">
-          {pts[0].ts.slice(0, 10)}
+          {shortDate(pts[0].ts.slice(0, 10))}
         </text>
         <text x={W - PAD.right} y={H - 5} className="axis" textAnchor="end">
-          {pts[n - 1].ts.slice(0, 10)}
+          {shortDate(pts[n - 1].ts.slice(0, 10))}
         </text>
       </svg>
     </figure>

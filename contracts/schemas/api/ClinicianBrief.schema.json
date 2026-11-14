@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "BriefSection": {
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "description": "criteria metric names this sentence rests on",
+          "items": {
+            "type": "string"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 600,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "BriefSection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).\nExplains the consensus; never changes it.",
+  "properties": {
+    "by": {
+      "enum": [
+        "model",
+        "template"
+      ],
+      "title": "By",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "patient_id": {
+      "title": "Patient Id",
+      "type": "string"
+    },
+    "rule_version": {
+      "title": "Rule Version",
+      "type": "string"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/BriefSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "stable",
+        "watch",
+        "needs_call",
+        "safety"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "week": {
+      "description": "ISO week, e.g. 2026-W46",
+      "title": "Week",
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "week",
+    "state",
+    "rule_version",
+    "sections",
+    "by",
+    "generated_at"
+  ],
+  "title": "ClinicianBrief",
+  "type": "object"
+}

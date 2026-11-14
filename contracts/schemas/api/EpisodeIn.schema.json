@@ -25,10 +25,34 @@
       ],
       "title": "ThreadIn",
       "type": "object"
+    },
+    "TranscriptTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "person",
+            "kaiku"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 2000,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "TranscriptTurn",
+      "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.",
+  "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). Never audio.\n`transcript` only when the person opted in (device consent `transcripts`, off by default); the cloud drops it\nif the outcome is `crisis` or any turn matches a crisis phrase.",
   "properties": {
     "close_thread": {
       "default": false,
@@ -123,6 +147,23 @@
       },
       "title": "Tools Used",
       "type": "array"
+    },
+    "transcript": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/TranscriptTurn"
+          },
+          "maxItems": 600,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "opt-in only; person-facing + deletable; never on a clinician route; de-identified for training",
+      "title": "Transcript"
     }
   },
   "required": [

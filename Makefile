@@ -85,6 +85,8 @@ spend: ## paid model spend so far vs the hard cap (config/kaiku.toml [budget])
 	$(RUN) python -m kaiku_contracts.budget
 smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
 	./scripts/smoke.sh
+e2e-intelligence: ## REAL model calls (cents): session + Live token round trip (typed, spoken, barge-in) + TTS + ask_mind + graph [KAIKU_ENV_FILE=]
+	$(RUN) python scripts/e2e_intelligence.py
 test: ## all Python tests (+ web typecheck if installed)
 	$(RUN) pytest
 	@if [ -d apps/web/node_modules ]; then cd apps/web && pnpm -s typecheck; fi

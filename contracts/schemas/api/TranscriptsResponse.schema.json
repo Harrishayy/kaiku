@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "Transcript": {
+      "additionalProperties": false,
+      "description": "One stored conversation (opt-in). Person-facing only: no clinician route returns transcripts.",
+      "properties": {
+        "episode_id": {
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "title": "Surface",
+          "type": "string"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/TranscriptTurn"
+          },
+          "title": "Turns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "episode_id",
+        "surface",
+        "intent",
+        "start",
+        "turns"
+      ],
+      "title": "Transcript",
+      "type": "object"
+    },
+    "TranscriptTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "person",
+            "kaiku"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 2000,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "TranscriptTurn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/transcripts — the person's own stored conversations, newest first.",
+  "properties": {
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "transcripts": {
+      "items": {
+        "$ref": "#/$defs/Transcript"
+      },
+      "title": "Transcripts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "transcripts"
+  ],
+  "title": "TranscriptsResponse",
+  "type": "object"
+}

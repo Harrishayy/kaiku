@@ -23,11 +23,11 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 | Part | Pin | Voltage | Notes | Check |
 |---|---|---|---|---|
 | KY-031 knock S / + / − | D2 / 3V3 / GND | 3.3 V | under the head top, 3 jumpers down the neck; interrupt on CHANGE, idle level calibrated at boot, `INPUT_PULLUP` | `bench/knock` |
-| KY-035 hall out / + / − | **A1** / 3V3 / GND | 3.3 V | 49E linear (analog): magnet in the turntable = head faces front. The spec said D3 (VERIFY): a digital pin only works if the swing crosses the logic threshold | `bench/hall` |
-| KY-054 light S / + / − | A0 / 3V3 / GND | 3.3 V | under the lid window | `bench/light` |
+| ~~KY-035 hall~~ | — | — | **Not fitted** (no magnet; D35). Home = head position at power-on (`HAS_HALL 0` in both firmwares). If one turns up: out → **A1** (analog), magnet 6×3 mm in the turntable pocket, set `HAS_HALL 1` | `bench/hall` |
+| ~~KY-054 light~~ | — | — | **Not fitted** (D35): room light comes from the camera (`[unoq] light_source = "camera"`) | — |
 | KY-053 ADS1115 SDA / SCL / + / − | header SDA / SCL (`Wire`) / 3V3 / GND | 3.3 V | address 0x48; not A4/A5, not Qwiic | `bench/ky039` |
 | KY-039 pulse S / + / − | KY-053 A0 / 3V3 / GND | 3.3 V | under the lid finger cradle | `bench/ky039` |
-| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x3C; ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
+| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x1E 7-bit (0x3C 8-bit, verified 2026-11-14); ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
 | LED matrix | on board | — | hidden in the body: status only | — |
 
 ## Atech board (node `head`, 14-port), in the body; all 12 ports used

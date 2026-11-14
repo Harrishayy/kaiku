@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "calls": {
+      "minimum": 0,
+      "title": "Calls",
+      "type": "integer"
+    },
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "fallbacks": {
+      "minimum": 0,
+      "title": "Fallbacks",
+      "type": "integer"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "ok": {
+      "minimum": 0,
+      "title": "Ok",
+      "type": "integer"
+    },
+    "p50_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P50 Ms"
+    },
+    "p95_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P95 Ms"
+    },
+    "task": {
+      "title": "Task",
+      "type": "string"
+    }
+  },
+  "required": [
+    "day",
+    "model",
+    "task",
+    "calls",
+    "ok",
+    "fallbacks"
+  ],
+  "title": "ModelUsageRow",
+  "type": "object"
+}

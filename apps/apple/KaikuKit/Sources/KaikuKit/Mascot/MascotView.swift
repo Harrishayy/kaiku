@@ -35,10 +35,11 @@ public struct MascotView: View {
     /// Eyes look offset in −1..1 (cursor on Mac, tilt on iPhone).
     public var look: CGSize
     public var tappable: Bool
-    /// Breath guide sync: the cycle starts here (shared start so phone, Mac and robot breathe together).
+    /// Loop anchor: the cycle starts here (breath guide sync so phone, Mac and robot breathe together).
     public var cycleStart: Date?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.kaikuMascotOnDark) private var onDark
     @State private var clock = MascotClock()
     @State private var animatedDial: Double = 0
     @State private var hoverLook: CGSize = .zero
@@ -140,7 +141,7 @@ public struct MascotView: View {
         let motion = !reduceMotion
         if motion {
             var phase: Double
-            if effective == .breathing, let c = cycleStart {
+            if let c = cycleStart, s.loop {   // shared loop start (breath sync; island snapshots)
                 phase = now.timeIntervalSince(c).truncatingRemainder(dividingBy: s.duration) / s.duration
                 if phase < 0 { phase += 1 }
             } else {
@@ -245,6 +246,13 @@ public struct MascotView: View {
         if x.scale != CGSize(width: 1, height: 1) { c.scaleBy(x: x.scale.width, y: x.scale.height) }
         c.translateBy(x: -part.pivot.x, y: -part.pivot.y)
         if part.id == "glow" { c.opacity *= glow.1 }
+        // On a black surface (the Mac notch island) the floating z's are drawn light and larger so they read.
+        let lightInk = onDark && part.id == "z"
+        if lightInk {
+            c.translateBy(x: part.pivot.x, y: part.pivot.y)
+            c.scaleBy(x: MacIslandLayout.onDarkZScale, y: MacIslandLayout.onDarkZScale)
+            c.translateBy(x: -part.pivot.x, y: -part.pivot.y)
+        }
 
         for shape in part.shapes {
             let path: Path
@@ -277,11 +285,21 @@ public struct MascotView: View {
                 }
             }
             if let stroke = shape.stroke, shape.strokeWidth > 0 {
-                sc.stroke(path, with: .color(MascotPalette.color(stroke)),
+                sc.stroke(path, with: .color(lightInk ? KaikuTokens.Colors.mascotBody : MascotPalette.color(stroke)),
                           style: StrokeStyle(lineWidth: shape.strokeWidth, lineCap: shape.lineCap, lineJoin: shape.lineJoin))
             }
         }
         for child in part.children { drawPart(child, ctx: c, xf: xf, glow: glow) }
+    }
+}
+
+private struct MascotOnDarkKey: EnvironmentKey { static let defaultValue = false }
+public extension EnvironmentValues {
+    /// The mascot sits on a black surface (Mac notch island): parts drawn outside the body (the sleepy z's) use a
+    /// light ink and draw larger.
+    var kaikuMascotOnDark: Bool {
+        get { self[MascotOnDarkKey.self] }
+        set { self[MascotOnDarkKey.self] = newValue }
     }
 }
 
@@ -323,7 +341,11 @@ public enum GlowClock {
         return (Color(.sRGB, red: r, green: g, blue: b, opacity: 1), lo.intensity + (hi.intensity - lo.intensity) * t)
     }
 
+    /// Pins the hour (app icon render: the icon must not depend on when it was built). nil = the real clock.
+    nonisolated(unsafe) public static var fixedHour: Double?
+
     public static func current(_ now: Date = Date()) -> (Color, Double) {
+        if let h = fixedHour { return at(hour: h) }
         let c = Calendar.current.dateComponents([.hour, .minute], from: now)
         return at(hour: Double(c.hour ?? 12) + Double(c.minute ?? 0) / 60)
     }

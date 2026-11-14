@@ -4,7 +4,7 @@ name: Kaiku
 options:
   bundleIdPrefix: fi.kaiku
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "17.2"   # MWDAT xcframeworks are built for 17.2
     macOS: "14.0"
   createIntermediateGroups: true
 settings:
@@ -16,36 +16,106 @@ settings:
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
     ENABLE_PREVIEWS: YES
+    # App Group ids are unique across all Apple teams: a device build on another team passes its own, e.g.
+    # `KAIKU_APP_GROUP=group.fi.kaiku.<team>` (scripts/run_on_iphone.sh). Code reads it from Info.plist (KaikuAppGroup).
+    KAIKU_APP_GROUP: group.fi.kaiku
+    KAIKU_ENTITLEMENTS_SUFFIX: ""   # ".nogroup" = device build without the App Group (widget shows a placeholder)
 packages:
   KaikuKit:
     path: KaikuKit
+  # Meta Wearables Device Access Toolkit (binary xcframeworks, iOS only). Motion is a dev/beta-channel capability.
+  MWDAT:
+    url: https://github.com/meta/meta-wearables-dat-ios
+    exactVersion: 1.0.1
 targets:
   Kaiku iOS:
     type: application
     platform: iOS
-    sources: [iOS]
+    attributes:   # lets automatic signing enable these on the App ID (= Xcode's Signing & Capabilities switches)
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS: {enabled: 1}
+        com.apple.HealthKit: {enabled: 1}
+        com.apple.BackgroundModes: {enabled: 1}
+    sources: [iOS, Shared]
     dependencies:
       - package: KaikuKit
+      - package: MWDAT
+        product: MWDATCore
+      - package: MWDAT
+        product: MWDATMotion
+      - package: MWDAT
+        product: MWDATMockDevice
+      - target: Kaiku Widgets
+        embed: true
+        codeSign: false
+    # Entitlements are plain files (iOS/Kaiku.entitlements, *.nogroup.entitlements), picked by CODE_SIGN_ENTITLEMENTS
+    # below so a device build can choose the variant without the App Group.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.app
         PRODUCT_NAME: Kaiku
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon   # iOS/Assets.xcassets (scripts/make_app_icon.sh)
+        CODE_SIGN_ENTITLEMENTS: iOS/Kaiku$(KAIKU_ENTITLEMENTS_SUFFIX).entitlements
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Kaiku
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you hold Kaiku. Your voice stays on this phone."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
         INFOPLIST_KEY_NSCameraUsageDescription: "To scan the pairing code on Kaiku's screen. Nothing is saved."
         INFOPLIST_KEY_LSApplicationQueriesSchemes: tel
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this phone only, to keep you safe. Nothing is saved."
+        INFOPLIST_KEY_NSHealthShareUsageDescription: "Sleep, resting heart rate and steps, as daily totals for your care team. Only if you turn on Watch."
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "Only used to add sample data while testing."
+        INFOPLIST_KEY_NSMotionUsageDescription: "Counts steps on a walk with Kaiku."
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "To walk with your Meta glasses."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "To reach your Kaiku at home on this Wi-Fi."
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
     info:
       path: iOS/Info.plist
       properties:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        UIBackgroundModes: [audio, fetch, bluetooth-central]
+        BGTaskSchedulerPermittedIdentifiers: [fi.kaiku.app.refresh]
+        NSSupportsLiveActivities: true
+        KaikuAppGroup: $(KAIKU_APP_GROUP)
+        ITSAppUsesNonExemptEncryption: false   # HTTPS/TLS only (exempt): no export-compliance question per upload
+        MWDAT:
+          AppLinkURLScheme: "kaiku://"
+          MetaAppID: "0"
+          Analytics:
+            OptOut: true
         CFBundleURLTypes:
           - CFBundleURLName: fi.kaiku.pair
             CFBundleURLSchemes: [kaiku]
+  Kaiku Widgets:
+    type: app-extension
+    platform: iOS
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS: {enabled: 1}
+    sources: [Widgets, Shared]
+    dependencies:
+      - package: KaikuKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.app.widgets
+        PRODUCT_NAME: KaikuWidgets
+        CODE_SIGN_ENTITLEMENTS: Widgets/KaikuWidgets$(KAIKU_ENTITLEMENTS_SUFFIX).entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Kaiku
+        SKIP_INSTALL: YES
+    info:
+      path: Widgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSSupportsLiveActivities: true
+        KaikuAppGroup: $(KAIKU_APP_GROUP)
   Kaiku iOS UITests:
     type: bundle.ui-testing
     platform: iOS
@@ -66,11 +136,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.mac
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon   # Mac/Assets.xcassets (scripts/make_app_icon.sh)
         PRODUCT_NAME: Kaiku
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Kaiku
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.healthcare-fitness
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you hold Kaiku. Your voice stays on this Mac."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this Mac only, to keep you safe. Nothing is saved."
         ENABLE_HARDENED_RUNTIME: NO
     info:
       path: Mac/Info.plist

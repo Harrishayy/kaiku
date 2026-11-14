@@ -1,24 +1,67 @@
-@preconcurrency import AVFoundation
 import Foundation
 
 /// Gemini Live over a raw WebSocket, authenticated only with the cloud-minted ephemeral token (the app never holds
-/// a Gemini key — root rule 5). Protocol per the Gemini docs (geminiDocs MCP, "Get started with Live API using
-/// WebSockets" + Live API reference, checked 2026-11-14):
-///   wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=<token>
-///   first frame {"setup": {model, generationConfig{responseModalities, speechConfig}, systemInstruction, tools,
-///   realtimeInputConfig{automaticActivityDetection{disabled:true}}, inputAudioTranscription, outputAudioTranscription}}
-///   hold-to-talk: realtimeInput.activityStart → realtimeInput.audio {data b64, mimeType audio/pcm;rate=16000} → activityEnd
-///   server: setupComplete · serverContent{modelTurn.parts[].inlineData (24 kHz PCM), input/outputTranscription,
-///   turnComplete, interrupted} · toolCall{functionCalls[{id,name,args}]} → client toolResponse{functionResponses}
-/// Not exercised against the real API here (no key in dev); the cloud returns live_token = null without one.
+/// a Gemini key — root rule 5). This type is the protocol only: it builds the setup frame, sends input, and turns
+/// server frames into `Event`s. Audio I/O lives in `ConversationAudio`; the conversation logic in `Conversation`.
+///
+/// Field names checked in the Gemini docs (geminiDocs MCP, 2026-11-14: Live API reference "BidiGenerateContentSetup",
+/// "RealtimeInputConfig", "AutomaticActivityDetection"; capabilities guide "VAD / interruptions", "Affective dialog",
+/// "Proactive audio" — affective dialog rejected in practice, see setup; session-management guide "Session resumption", "Context window compression"; tools guide
+/// "Asynchronous function calling"; ephemeral-tokens guide; and the installed google-genai `_live_converters.py`,
+/// which puts `enable_affective_dialog` at `setup.generationConfig.enableAffectiveDialog`):
+///   wss://…/v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=<token>
+///   hands-free: server VAD on, `activityHandling: START_OF_ACTIVITY_INTERRUPTS` (barge-in: the person talks over
+///   Kaiku → the server cancels the turn and sends `serverContent.interrupted`; the client must flush playback);
+///   push-to-talk: VAD off + `activityStart` / `activityEnd`.
+///   `sessionResumption` → `sessionResumptionUpdate{newHandle, resumable}`; reconnect with `{handle}` after `goAway`
+///   or a drop — the same ephemeral token works for that even with `uses: 1` (valid until its expireTime).
+///   `contextWindowCompression.slidingWindow` → audio sessions longer than 15 min (a walk).
+///   `behavior: NON_BLOCKING` tools (ask_mind) keep the conversation going; reply with `scheduling: WHEN_IDLE`.
 public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSocketDelegate {
-    public enum Event: Sendable {
+    public enum Event: Sendable, Equatable {
         case ready
         case userText(String)
         case kaikuText(String)
-        case speaking(Bool)
+        /// 24 kHz little-endian PCM16 from the model.
+        case audio(Data)
+        /// The person started talking over Kaiku: the server dropped the rest of the turn. Flush playback now.
+        case interrupted
+        case turnComplete
         case toolCall(id: String, name: String, args: [String: JSONValue])
+        /// The server dropped pending tool calls (after an interruption); their responses must not be sent.
+        case toolCancelled([String])
+        case resumable(handle: String)
+        /// The server will close this connection soon: reconnect with the last handle.
+        case goAway
         case closed
+    }
+
+    /// Voice-activity tuning (server VAD). Start sensitivity per route: the glasses' HFP mics are beamformed to the
+    /// wearer's voice, so HIGH there; on a loudspeaker LOW, so Kaiku's own echo leftovers don't count as an
+    /// interruption. End: LOW + 800 ms silence, so a slow speaker with long pauses isn't cut off mid-thought.
+    public struct Tuning: Sendable, Equatable {
+        public var startOfSpeech: String
+        public var endOfSpeech: String
+        public var prefixPaddingMs: Int
+        public var silenceDurationMs: Int
+
+        public static let headset = Tuning(startOfSpeech: "START_SENSITIVITY_HIGH", endOfSpeech: "END_SENSITIVITY_LOW",
+                                           prefixPaddingMs: 100, silenceDurationMs: 800)
+        public static let loudspeaker = Tuning(startOfSpeech: "START_SENSITIVITY_LOW", endOfSpeech: "END_SENSITIVITY_LOW",
+                                               prefixPaddingMs: 200, silenceDurationMs: 800)
+    }
+
+    public struct Options: Sendable, Equatable {
+        public var handsFree: Bool = true
+        public var tuning: Tuning = .loudspeaker
+        public var resumeHandle: String?
+        /// Tools the model may run in the background while it keeps talking.
+        public var nonBlocking: Set<String> = ["ask_mind"]
+        public init(handsFree: Bool = true, tuning: Tuning = .loudspeaker, resumeHandle: String? = nil) {
+            self.handsFree = handsFree
+            self.tuning = tuning
+            self.resumeHandle = resumeHandle
+        }
     }
 
     static let endpoint = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained"
@@ -26,50 +69,43 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     private var task: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private let onEvent: @Sendable (Event) -> Void
-    private let player = AVAudioPlayerNode()
-    private let engine = AVAudioEngine()
-    private let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
-    private var engineReady = false
+    private let lock = NSLock()
+    private var cancelled: Set<String> = []
+    private var closedReported = false
+    /// Why the server closed the socket (close code + reason text from Gemini), for logs and tests.
+    public private(set) var closeReason: String?
 
     public init(onEvent: @escaping @Sendable (Event) -> Void) {
         self.onEvent = onEvent
     }
 
-    public func connect(token: String, session: CompanionSessionResponse, language: String) {
+    public func connect(token: String, session: CompanionSessionResponse, options: Options) {
         var c = URLComponents(string: Self.endpoint)!
         c.queryItems = [URLQueryItem(name: "access_token", value: token)]
         let s = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         urlSession = s
         let t = s.webSocketTask(with: c.url!)
+        t.maximumMessageSize = 16 * 1024 * 1024
         task = t
         t.resume()
-        let model = session.model.hasPrefix("models/") ? session.model : "models/\(session.model)"
-        let decls: [[String: Any]] = session.tools.map { ["name": $0.name, "description": $0.description, "parameters": $0.parameters.any] }
-        let setup: [String: Any] = ["setup": [
-            "model": model,
-            "generationConfig": [
-                "responseModalities": ["AUDIO"],
-                "speechConfig": ["voiceConfig": ["prebuiltVoiceConfig": ["voiceName": session.voice]]],
-            ],
-            "systemInstruction": ["parts": [["text": session.system_instruction]]],
-            "tools": [["functionDeclarations": decls]],
-            "realtimeInputConfig": ["automaticActivityDetection": ["disabled": true]],
-            "inputAudioTranscription": [String: Any](),
-            "outputAudioTranscription": [String: Any](),
-        ]]
-        send(setup)
+        send(Self.setup(session: session, options: options))
         receive()
     }
 
     public func close() {
+        lock.lock(); closedReported = true; lock.unlock()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
-        player.stop()
-        if engine.isRunning { engine.stop() }
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
     }
+
+    // MARK: input
 
     public func activityStart() { send(["realtimeInput": ["activityStart": [String: Any]()]]) }
     public func activityEnd() { send(["realtimeInput": ["activityEnd": [String: Any]()]]) }
+    /// Mic muted / paused: tells server VAD the stream stopped (no half-finished turn left hanging).
+    public func audioStreamEnd() { send(["realtimeInput": ["audioStreamEnd": true]]) }
 
     public func sendAudio(_ pcm16k: Data) {
         send(["realtimeInput": ["audio": ["data": pcm16k.base64EncodedString(), "mimeType": "audio/pcm;rate=16000"]]])
@@ -77,9 +113,112 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
 
     public func sendText(_ text: String) { send(["realtimeInput": ["text": text]]) }
 
+    /// A context event from Kaiku's senses (`[walk · 10 min]`), appended as a turn the model may react to — or,
+    /// with proactive audio, stay quiet about. Same wording as the hub's `send_context`.
+    public func sendContext(_ text: String) { send(Self.context(text)) }
+
     public func respond(id: String, name: String, result: JSONValue) {
-        send(["toolResponse": ["functionResponses": [["id": id, "name": name, "response": ["result": result.any]]]]])
+        lock.lock(); let skip = cancelled.remove(id) != nil; lock.unlock()
+        if skip { return }
+        send(Self.toolResponse(id: id, name: name, result: result, background: Options().nonBlocking.contains(name)))
     }
+
+    // MARK: pure frames (tested)
+
+    static func setup(session: CompanionSessionResponse, options: Options) -> [String: Any] {
+        let model = session.model.hasPrefix("models/") ? session.model : "models/\(session.model)"
+        let decls: [[String: Any]] = session.tools.map { t in
+            var d: [String: Any] = ["name": t.name, "description": t.description, "parameters": t.parameters.any]
+            if options.nonBlocking.contains(t.name) { d["behavior"] = "NON_BLOCKING" }
+            return d
+        }
+        let realtime: [String: Any]
+        if options.handsFree {
+            let t = options.tuning
+            // On the loudspeaker the cloud's tuning (config/kaiku.toml [live], sent as `live_setup`) wins, so turn
+            // detection is tuned in one place; a headset (glasses, AirPods) keeps its more eager start.
+            let cloudVAD = session.live_setup?["realtimeInputConfig"]?["automaticActivityDetection"]?.any
+            realtime = [
+                "automaticActivityDetection": (t == .loudspeaker ? cloudVAD : nil) ?? [
+                    "disabled": false,
+                    "startOfSpeechSensitivity": t.startOfSpeech,
+                    "endOfSpeechSensitivity": t.endOfSpeech,
+                    "prefixPaddingMs": t.prefixPaddingMs,
+                    "silenceDurationMs": t.silenceDurationMs,
+                ],
+                "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
+            ]
+        } else {
+            realtime = ["automaticActivityDetection": ["disabled": true]]
+        }
+        var resumption: [String: Any] = [:]
+        if let h = options.resumeHandle { resumption["handle"] = h }
+        return ["setup": [
+            "model": model,
+            "generationConfig": [
+                "responseModalities": ["AUDIO"],
+                "speechConfig": ["voiceConfig": ["prebuiltVoiceConfig": ["voiceName": session.voice]]],
+                // No `enableAffectiveDialog`: tried live 2026-11-14, gemini-3.8-live closes the socket with
+                // 1007 "invalid argument" on the first turn when it is true (SDK + raw key, and token endpoint).
+            ] as [String: Any],
+            "systemInstruction": ["parts": [["text": session.system_instruction]]],
+            "tools": [["functionDeclarations": decls]],
+            "realtimeInputConfig": realtime,
+            "sessionResumption": resumption,
+            "contextWindowCompression": ["slidingWindow": [String: Any]()],
+            "proactivity": ["proactiveAudio": true],
+            "inputAudioTranscription": [String: Any](),
+            "outputAudioTranscription": [String: Any](),
+        ] as [String: Any]]
+    }
+
+    static func context(_ text: String) -> [String: Any] {
+        ["clientContent": [
+            "turns": [["role": "user", "parts": [["text":
+                "(context from Kaiku's senses, not said by the person; react briefly only if it feels natural) \(text)"]]]],
+            "turnComplete": true,
+        ] as [String: Any]]
+    }
+
+    static func toolResponse(id: String, name: String, result: JSONValue, background: Bool) -> [String: Any] {
+        var response: [String: Any] = ["result": result.any]
+        if background { response["scheduling"] = "WHEN_IDLE" }
+        return ["toolResponse": ["functionResponses": [["id": id, "name": name, "response": response]]]]
+    }
+
+    /// One server frame → events, in the order a client must act on them (interrupted before more audio).
+    static func parse(_ m: [String: Any]) -> [Event] {
+        var out: [Event] = []
+        if m["setupComplete"] != nil { out.append(.ready) }
+        if let sc = m["serverContent"] as? [String: Any] {
+            if sc["interrupted"] as? Bool == true { out.append(.interrupted) }
+            if let it = (sc["inputTranscription"] as? [String: Any])?["text"] as? String, !it.isEmpty { out.append(.userText(it)) }
+            if let ot = (sc["outputTranscription"] as? [String: Any])?["text"] as? String, !ot.isEmpty { out.append(.kaikuText(ot)) }
+            if let parts = (sc["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] {
+                for p in parts {
+                    if let inline = p["inlineData"] as? [String: Any], let b64 = inline["data"] as? String,
+                       let d = Data(base64Encoded: b64) { out.append(.audio(d)) }
+                }
+            }
+            if sc["turnComplete"] as? Bool == true { out.append(.turnComplete) }
+        }
+        if let tc = m["toolCall"] as? [String: Any], let calls = tc["functionCalls"] as? [[String: Any]] {
+            for c in calls {
+                var dict: [String: JSONValue] = [:]
+                if case .object(let o) = JSONValue(any: c["args"]) { dict = o }
+                out.append(.toolCall(id: c["id"] as? String ?? "", name: c["name"] as? String ?? "", args: dict))
+            }
+        }
+        if let ids = (m["toolCallCancellation"] as? [String: Any])?["ids"] as? [String], !ids.isEmpty {
+            out.append(.toolCancelled(ids))
+        }
+        if let u = m["sessionResumptionUpdate"] as? [String: Any], u["resumable"] as? Bool == true,
+           let h = u["newHandle"] as? String, !h.isEmpty { out.append(.resumable(handle: h)) }
+        if m["goAway"] != nil { out.append(.goAway) }
+        return out
+    }
+
+    // MARK: transport
 
     private func send(_ obj: [String: Any]) {
         guard let task, let data = try? JSONSerialization.data(withJSONObject: obj),
@@ -91,8 +230,9 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         task?.receive { [weak self] result in
             guard let self else { return }
             switch result {
-            case .failure:
-                self.onEvent(.closed)
+            case .failure(let e):
+                if self.closeReason == nil { self.closeReason = "receive failed: \(e.localizedDescription)" }
+                self.reportClosed()
             case .success(let msg):
                 var data: Data?
                 switch msg {
@@ -100,59 +240,30 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
                 case .data(let d): data = d
                 @unknown default: break
                 }
-                if let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { self.handle(obj) }
+                if let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    for ev in Self.parse(obj) {
+                        if case .toolCancelled(let ids) = ev { self.lock.lock(); self.cancelled.formUnion(ids); self.lock.unlock() }
+                        self.onEvent(ev)
+                    }
+                }
                 self.receive()
             }
         }
     }
 
-    private func handle(_ m: [String: Any]) {
-        if m["setupComplete"] != nil { onEvent(.ready) }
-        if let sc = m["serverContent"] as? [String: Any] {
-            if let it = (sc["inputTranscription"] as? [String: Any])?["text"] as? String, !it.isEmpty { onEvent(.userText(it)) }
-            if let ot = (sc["outputTranscription"] as? [String: Any])?["text"] as? String, !ot.isEmpty { onEvent(.kaikuText(ot)) }
-            if let parts = (sc["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] {
-                for p in parts {
-                    if let inline = p["inlineData"] as? [String: Any], let b64 = inline["data"] as? String, let d = Data(base64Encoded: b64) {
-                        play(d)
-                    }
-                }
-            }
-            if sc["interrupted"] as? Bool == true { player.stop(); onEvent(.speaking(false)) }
-            if sc["turnComplete"] as? Bool == true { onEvent(.speaking(false)) }
-        }
-        if let tc = m["toolCall"] as? [String: Any], let calls = tc["functionCalls"] as? [[String: Any]] {
-            for c in calls {
-                let args = (JSONValue(any: c["args"]))
-                var dict: [String: JSONValue] = [:]
-                if case .object(let o) = args { dict = o }
-                onEvent(.toolCall(id: c["id"] as? String ?? "", name: c["name"] as? String ?? "", args: dict))
-            }
-        }
+    private func reportClosed() {
+        lock.lock()
+        let first = !closedReported
+        closedReported = true
+        lock.unlock()
+        if first { onEvent(.closed) }
     }
 
-    /// 24 kHz little-endian PCM16 → Float32 buffer → player.
-    private func play(_ pcm: Data) {
-        if !engineReady {
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: playFormat)
-            try? engine.start()
-            engineReady = true
-        }
-        let count = pcm.count / 2
-        guard count > 0, let buf = AVAudioPCMBuffer(pcmFormat: playFormat, frameCapacity: AVAudioFrameCount(count)) else { return }
-        buf.frameLength = AVAudioFrameCount(count)
-        pcm.withUnsafeBytes { raw in
-            let src = raw.bindMemory(to: Int16.self)
-            let dst = buf.floatChannelData![0]
-            for i in 0..<count { dst[i] = Float(Int16(littleEndian: src[i])) / 32768 }
-        }
-        onEvent(.speaking(true))
-        player.scheduleBuffer(buf, completionHandler: nil)
-        if !player.isPlaying { player.play() }
-    }
-
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        onEvent(.closed)
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                           didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let text = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        closeReason = "\(closeCode.rawValue) \(text)"
+        kaikuLog.notice("live_closed \(closeCode.rawValue) \(text, privacy: .public)")
+        reportClosed()
     }
 }

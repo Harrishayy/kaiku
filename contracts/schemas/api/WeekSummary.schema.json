@@ -1,0 +1,419 @@
+{
+  "$defs": {
+    "NextStep": {
+      "additionalProperties": false,
+      "description": "A suggested next step for the care team, chosen by fixed rules (never a model). Allowed wording only.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "flag_booster",
+                "flag_icbt_referral",
+                "acknowledge",
+                "send_message"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the dashboard action that does it, if any",
+          "title": "Action"
+        },
+        "text": {
+          "maxLength": 240,
+          "title": "Text",
+          "type": "string"
+        },
+        "when": {
+          "enum": [
+            "today",
+            "this_week",
+            "next_contact"
+          ],
+          "title": "When",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "maxLength": 240,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "when"
+      ],
+      "title": "NextStep",
+      "type": "object"
+    },
+    "Routine": {
+      "additionalProperties": false,
+      "description": "A rhythm found BY CODE in the last weeks (obs, and conversations for the person or when shared).",
+      "properties": {
+        "activity": {
+          "description": "ritual | walk | drum | breathe | checkin | laptop | play | sleep",
+          "title": "Activity",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "enum": [
+              "obs",
+              "episodes"
+            ],
+            "type": "string"
+          },
+          "title": "Basis",
+          "type": "array"
+        },
+        "cadence": {
+          "enum": [
+            "daily",
+            "most_days",
+            "weekly"
+          ],
+          "title": "Cadence",
+          "type": "string"
+        },
+        "day_part": {
+          "anyOf": [
+            {
+              "enum": [
+                "morning",
+                "afternoon",
+                "evening",
+                "night"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Day Part"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "kept",
+            "partly",
+            "slipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "description": "worded for the audience",
+          "maxLength": 200,
+          "title": "Text",
+          "type": "string"
+        },
+        "this_week": {
+          "description": "days with it in the last 7 days",
+          "maximum": 7,
+          "minimum": 0,
+          "title": "This Week",
+          "type": "integer"
+        },
+        "usual_per_week": {
+          "maximum": 7,
+          "minimum": 0,
+          "title": "Usual Per Week",
+          "type": "number"
+        },
+        "usual_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "local HH:MM (median of the usual weeks)",
+          "title": "Usual Time"
+        },
+        "weekday": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for weekly routines, e.g. 'Tuesday'",
+          "title": "Weekday"
+        }
+      },
+      "required": [
+        "activity",
+        "label",
+        "cadence",
+        "usual_per_week",
+        "this_week",
+        "status",
+        "text"
+      ],
+      "title": "Routine",
+      "type": "object"
+    },
+    "SourceCount": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "description": "e.g. 'walks', 'minutes outside', 'drum sessions'",
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "title": "SourceCount",
+      "type": "object"
+    },
+    "SourceWeek": {
+      "additionalProperties": false,
+      "description": "What one source added to the record in the last 7 days (counts only, no content).",
+      "properties": {
+        "counts": {
+          "items": {
+            "$ref": "#/$defs/SourceCount"
+          },
+          "title": "Counts",
+          "type": "array"
+        },
+        "days": {
+          "description": "days with data",
+          "maximum": 7,
+          "minimum": 0,
+          "title": "Days",
+          "type": "integer"
+        },
+        "last_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last At"
+        },
+        "per_day": {
+          "description": "observations per day, oldest first",
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 7,
+          "minItems": 7,
+          "title": "Per Day",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "per_day",
+        "days"
+      ],
+      "title": "SourceWeek",
+      "type": "object"
+    },
+    "WeekItem": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "routine",
+            "helped",
+            "metric",
+            "source",
+            "phq9",
+            "safety",
+            "moments"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "criteria metric name this rests on",
+          "title": "Metric"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "robot",
+                "glasses",
+                "laptop",
+                "wearable"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "text": {
+          "maxLength": 240,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "WeekItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/week (person wording) · GET /v1/patients/{id}/week (care team). Derived deterministically from\nobs, per-metric drift against the person's own usual, the bandit and (person / shared only) conversations.\nNo model decides anything here; it never changes the consensus.",
+  "properties": {
+    "audience": {
+      "enum": [
+        "person",
+        "care_team"
+      ],
+      "title": "Audience",
+      "type": "string"
+    },
+    "by": {
+      "const": "rule",
+      "default": "rule",
+      "title": "By",
+      "type": "string"
+    },
+    "computed_at": {
+      "format": "date-time",
+      "title": "Computed At",
+      "type": "string"
+    },
+    "going_well": {
+      "items": {
+        "$ref": "#/$defs/WeekItem"
+      },
+      "title": "Going Well",
+      "type": "array"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "next_steps": {
+      "description": "care team only",
+      "items": {
+        "$ref": "#/$defs/NextStep"
+      },
+      "title": "Next Steps",
+      "type": "array"
+    },
+    "routines": {
+      "items": {
+        "$ref": "#/$defs/Routine"
+      },
+      "title": "Routines",
+      "type": "array"
+    },
+    "rule_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "care team only",
+      "title": "Rule Version"
+    },
+    "shared": {
+      "description": "the person shares what Kaiku learned with the care team",
+      "title": "Shared",
+      "type": "boolean"
+    },
+    "sources": {
+      "description": "the one record: what each source added",
+      "items": {
+        "$ref": "#/$defs/SourceWeek"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "week_end": {
+      "format": "date",
+      "title": "Week End",
+      "type": "string"
+    },
+    "week_start": {
+      "format": "date",
+      "title": "Week Start",
+      "type": "string"
+    },
+    "worth_a_look": {
+      "items": {
+        "$ref": "#/$defs/WeekItem"
+      },
+      "title": "Worth A Look",
+      "type": "array"
+    }
+  },
+  "required": [
+    "home_id",
+    "audience",
+    "week_start",
+    "week_end",
+    "routines",
+    "going_well",
+    "worth_a_look",
+    "shared",
+    "computed_at"
+  ],
+  "title": "WeekSummary",
+  "type": "object"
+}

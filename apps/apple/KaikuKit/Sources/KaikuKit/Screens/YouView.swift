@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// You: grouped rows (remembers, saw today, voice & language, quiet hours, devices, help) + "Pause everything".
 public struct YouView: View {
@@ -8,34 +11,44 @@ public struct YouView: View {
 
     public var body: some View {
         @Bindable var app = app
-        KScreen(T("tab.you")) {
-            KSection {
-                KToggleRow(icon: "pause.circle.fill", title: T("you.pauseall"), detail: T("you.pauseall.d"), isOn: $app.pausedAll)
-            }
-            KSection {
-                link(.memories, "brain.head.profile", KaikuTokens.Colors.clay, "you.remembers")
-                KDivider()
-                link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
-            }
-            KSection {
-                link(.voice, "globe", KaikuTokens.Colors.sky, "you.voice")
-                KDivider()
-                link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
-                KDivider()
-                link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
-            }
-            KSection {
-                link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
-            }
-            KSection {
-                KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
-                     detail: app.queued > 0 ? T("you.queued", n: app.queued) : nil, accessory: .none)
-                if app.isPaired {
+        KScreen(T("tab.you"), subtitle: T("you.sub"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
+                KSection(T("you.sec.privacy"), icon: "hand.raised.fill", tone: .honey) {
+                    KToggleRow(icon: "pause.fill", tint: KaikuTokens.Colors.honey, title: T("you.pauseall"),
+                               detail: T("you.pauseall.d"), isOn: $app.pausedAll)
+                }
+                KSection(T("you.sec.kaiku"), subtitle: T("you.sec.kaiku.d"), icon: "sparkles", tone: .clay) {
+                    link(.memories, "sparkles", KaikuTokens.Colors.clay, "you.remembers")
                     KDivider()
-                    Button { confirmUnpair = true } label: {
-                        KRow(title: T("you.unpair"), accessory: .none)
+                    link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
+                    KDivider()
+                    link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
+                }
+            } trailing: {
+                KSection(T("you.sec.settings"), icon: "slider.horizontal.3", tone: .sky) {
+                    link(.voice, "globe", KaikuTokens.Colors.sky, "you.voice")
+                    KDivider()
+                    link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
+                    KDivider()
+                    link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
+                    KDivider()
+                    KToggleRow(icon: "speaker.wave.2.fill", tint: KaikuTokens.Colors.sage, title: T("you.sounds"), isOn: $app.sounds)
+                    if app.notificationsOn == false {
+                        KDivider()
+                        NotificationsOffRow()
                     }
-                    .buttonStyle(.plain)
+                }
+                KSection(T("you.sec.connection"), icon: "link", tone: .sage) {
+                    HStack(spacing: 0) {
+                        KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
+                             detail: app.queued > 0 ? T("you.queued", n: app.queued) : nil, accessory: .none)
+                        if app.isPaired {
+                            Button(T("you.unpair.short")) { confirmUnpair = true }
+                                .buttonStyle(KButtonStyle(.ghost, fullWidth: false))
+                                .fixedSize()
+                                .padding(.trailing, KaikuTokens.Space.s1)
+                        }
+                    }
                 }
             }
         }
@@ -48,7 +61,7 @@ public struct YouView: View {
     }
 
     private func link(_ r: KaikuRoute, _ icon: String, _ tint: Color, _ key: String) -> some View {
-        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.plain)
+        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.kPressRow())
     }
 }
 
@@ -57,6 +70,7 @@ public struct MemoriesView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var confirmAll = false
+    @State private var confirmConversations = false
     public init() {}
 
     public var body: some View {
@@ -87,8 +101,21 @@ public struct MemoriesView: View {
                 }
                 Button(T("mem.forgetall")) { confirmAll = true }.buttonStyle(.kSecondary)
             }
+            // Opt-in conversation words (`transcripts` signal): the switch + how many are kept + delete them all.
+            KSection {
+                KToggleRow(title: T("sig.transcripts.t"), detail: T("sig.transcripts.d"),
+                           isOn: Binding(get: { app.consents[.transcripts] ?? false }, set: { app.consents[.transcripts] = $0 }))
+            }
+            if let n = app.conversationsKept, n > 0 {
+                Text(T("conv.kept", n: n)).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                Button(T("conv.forgetall")) { confirmConversations = true }.buttonStyle(.kSecondary)
+            }
         }
-        .task { await app.loadMemories() }
+        .task { await app.loadMemories(); await app.loadConversations() }
+        .confirmationDialog(T("conv.forgetall.confirm"), isPresented: $confirmConversations, titleVisibility: .visible) {
+            Button(T("conv.forgetall"), role: .destructive) { Task { await app.forgetConversations() } }
+            Button(T("common.back"), role: .cancel) {}
+        }
         .confirmationDialog(T("mem.forgetall.confirm"), isPresented: $confirmAll, titleVisibility: .visible) {
             Button(T("mem.forgetall"), role: .destructive) { Task { await app.forgetAll() } }
             Button(T("common.back"), role: .cancel) {}
@@ -118,8 +145,14 @@ public struct SawTodayView: View {
         let walk = of("obs.outing").compactMap { $0.payload["minutes"]?.double }.reduce(0, +)
         out.append(Line(id: "walk", text: walk > 0 ? T("saw.walk.n", n: Int(walk.rounded())) : T("saw.walk.none"), signal: .walks))
         out.append(Line(id: "voice", text: T("saw.voice"), signal: .voice))
+        #if os(macOS)
+        // The same local aggregate the hourly usage-rhythm numbers come from (numbers + app types only).
+        out.append(Line(id: "mac", text: MacUsageStore.shared.receiptLines().joined(separator: "\n"), signal: .mac))
+        #else
         out.append(Line(id: "mac", text: T("saw.mac"), signal: .mac))
+        #endif
         out.append(Line(id: "watch", text: T("saw.watch"), signal: .watch))
+        out.append(Line(id: "transcripts", text: T("saw.transcripts"), signal: .transcripts))
         return out
     }
 
@@ -252,7 +285,7 @@ public struct DevicesView: View {
     @State private var setupInfo: String?
     public init() {}
 
-    enum Status { case connected, connecting, off, attention }
+    enum Status { case connected, connecting, off, attention, ready }
 
     var robotStatus: Status {
         // The robot is "connected" when the cloud has heard from this home today (any robot-source event).
@@ -265,17 +298,58 @@ public struct DevicesView: View {
             KSection {
                 row("dev.robot", "circle.hexagongrid.fill", app.isPaired ? robotStatus : .off)
                 KDivider()
-                row("dev.glasses", "eyeglasses", .off)
+                row("dev.glasses", "eyeglasses", glassesStatus, setup: {
+                    // Glasses are used on a walk: start one (the adapter connects then).
+                    app.deepLink = .walk
+                })
                 KDivider()
-                row("dev.watch", "applewatch", .off)
+                row("dev.watch", "applewatch", watchStatus, setup: { Task { await setUpWatch() } })
                 KDivider()
                 row("dev.mac", "laptopcomputer", KaikuPlatform.isPhone ? .off : .connected)
             }
             if let setupInfo { OfflineBanner(setupInfo) }
+            #if DEBUG
+            DebugTools()
+            #endif
         }
     }
 
-    private func row(_ key: String, _ icon: String, _ s: Status) -> some View {
+    var glassesStatus: Status {
+        let w = WalkModel.shared
+        if w.active {
+            switch w.glasses {
+            case .connected: return .connected
+            case .searching: return .connecting
+            case .batteryLow, .disconnected: return .attention
+            case .off: return .off
+            }
+        }
+        return app.makeGlasses == nil ? .off : .ready
+    }
+
+    var watchStatus: Status {
+        switch app.healthState {
+        case .connected: return .connected
+        case .denied: return .attention
+        case .off, .unavailable: return app.allowed(.watch) ? .ready : .off
+        }
+    }
+
+    private func setUpWatch() async {
+        #if os(iOS)
+        app.consents[.watch] = true
+        if await HealthSync.shared.authorize() {
+            await HealthSync.shared.sync(app: app)
+            if app.healthState != .connected { setupInfo = T("dev.watch.nodata") }
+        } else {
+            app.healthState = .denied
+        }
+        #else
+        setupInfo = T("dev.setup.later")
+        #endif
+    }
+
+    private func row(_ key: String, _ icon: String, _ s: Status, setup: (() -> Void)? = nil) -> some View {
         HStack(spacing: KaikuTokens.Space.s3) {
             RowIcon(symbol: icon, tint: s == .connected ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted)
             VStack(alignment: .leading, spacing: 2) {
@@ -287,7 +361,7 @@ public struct DevicesView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if s == .off {
-                Button(T("dev.setup")) { setupInfo = T("dev.setup.later") }
+                Button(T("dev.setup")) { if let setup { setup() } else { setupInfo = T("dev.setup.later") } }
                     .buttonStyle(KButtonStyle(.secondary, fullWidth: false))
                     .fixedSize()
             }
@@ -304,6 +378,7 @@ public struct DevicesView: View {
         case .connecting: return T("dev.connecting")
         case .off: return T("dev.off")
         case .attention: return T("dev.attn")
+        case .ready: return T("dev.ready")
         }
     }
 
@@ -313,6 +388,7 @@ public struct DevicesView: View {
         case .connecting: return KaikuTokens.Colors.honey
         case .off: return KaikuTokens.Colors.line
         case .attention: return KaikuTokens.Colors.honey
+        case .ready: return KaikuTokens.Colors.sage
         }
     }
 }
@@ -354,3 +430,52 @@ struct CallButtons: View {
         .buttonStyle(KButtonStyle(style))
     }
 }
+
+/// "Notifications are off" + a link to Settings (the app works fully without them).
+struct NotificationsOffRow: View {
+    @Environment(\.openURL) private var openURL
+    var body: some View {
+        Button {
+            #if os(iOS)
+            if let u = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(u) }
+            #endif
+        } label: {
+            KRow(icon: "bell.slash", tint: KaikuTokens.Colors.muted, title: T("you.notif.off"), detail: T("you.notif.off.d"))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+#if DEBUG
+/// Debug builds only: make the A2 paths demo-able in the simulator.
+struct DebugTools: View {
+    @Environment(AppModel.self) private var app
+    @State private var note: String?
+    var body: some View {
+        KSection(T("debug.title")) {
+            #if os(iOS)
+            Button {
+                Task {
+                    app.consents[.watch] = true
+                    let ok = await HealthSync.shared.addSampleData()
+                    if ok { await HealthSync.shared.sync(app: app) }
+                    note = ok ? T("debug.done") : T("debug.failed")
+                }
+            } label: { KRow(icon: "heart.text.square", tint: KaikuTokens.Colors.clay, title: T("debug.health"), accessory: .none) }
+            .buttonStyle(.plain)
+            KDivider()
+            #endif
+            Button { Task { await Notifier.shared.fireTest(.checkin, app: app); note = T("debug.done") } } label: {
+                KRow(icon: "bell", tint: KaikuTokens.Colors.honey, title: T("debug.notif.checkin"), accessory: .none)
+            }
+            .buttonStyle(.plain)
+            KDivider()
+            Button { Task { await Notifier.shared.fireTest(.invitation, app: app); note = T("debug.done") } } label: {
+                KRow(icon: "bell.badge", tint: KaikuTokens.Colors.honey, title: T("debug.notif.invite"), accessory: .none)
+            }
+            .buttonStyle(.plain)
+        }
+        if let note { Text(note).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
+    }
+}
+#endif

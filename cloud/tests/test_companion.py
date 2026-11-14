@@ -62,6 +62,11 @@ def test_garden_counts_and_rests():
     assert g.plants == 2 and g.resting is True
     assert companion.garden_for(ev, today - timedelta(days=4)).resting is False
     assert companion.garden_for([], today).resting is False
+    days = g.days
+    assert len(days) == 14 and days[-1].date == today and days[0].date == today - timedelta(days=13)
+    by = {d.date: d for d in days}
+    assert by[today - timedelta(days=4)].kinds == ["outing"] and by[today - timedelta(days=5)].count == 1
+    assert sum(d.count for d in days) == g.plants
 
 
 def test_me_has_companion_fields_for_seeded_patients(client):
@@ -78,7 +83,7 @@ def test_me_has_companion_fields_for_seeded_patients(client):
     assert eero["mascot"]["mood"] in ("idle", "happy")
     assert not any(h["source"] == "wearable" for h in eero["highlights"])  # no watch, nothing missing
     empty = client.get("/v1/me", params={"home_id": "nobody"}).json()
-    assert empty["garden"] == {"plants": 0, "resting": False} and empty["highlights"] == []
+    assert {k: empty["garden"][k] for k in ("plants", "resting")} == {"plants": 0, "resting": False} and empty["highlights"] == []
 
 
 def test_voice_lines_and_fail_soft_audio(client, monkeypatch, tmp_path):
@@ -97,3 +102,29 @@ def test_voice_lines_and_fail_soft_audio(client, monkeypatch, tmp_path):
     path.write_bytes(b"RIFF....WAVE")
     r = client.get("/v1/voice/greet.morning", params={"lang": "en"})
     assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content.startswith(b"RIFF")
+
+
+def test_voice_say_dynamic_line_cached_and_never_crisis(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("KAIKU_VOICE_CACHE", str(tmp_path))
+    calls = []
+
+    def fake(text, style, lang):
+        calls.append((text, lang))
+        return b"RIFF" + text.encode()
+
+    monkeypatch.setattr(voice, "synthesize", fake)
+    r = client.post("/v1/voice/say", json={"text": "I'm  back.\nShall we carry on?", "lang": "fi"})
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+    assert client.post("/v1/voice/say", json={"text": "I'm back. Shall we carry on?", "lang": "fi"}).content == r.content
+    assert calls == [("I'm back. Shall we carry on?", "fi")]  # whitespace-normalised, rendered once, then cached
+    assert client.post("/v1/voice/say", json={"text": "", "lang": "en"}).status_code == 422
+    assert client.post("/v1/voice/say", json={"text": "x" * 401}).status_code == 422
+    assert client.post("/v1/voice/say", json={"text": "I want to kill myself"}).status_code == 422
+    assert len(calls) == 1
+
+    def down(*a):
+        raise voice.VoiceUnavailable("no key")
+
+    monkeypatch.setattr(voice, "synthesize", down)
+    r = client.post("/v1/voice/say", json={"text": "Something new"})
+    assert r.status_code == 503 and "hint" in r.json()

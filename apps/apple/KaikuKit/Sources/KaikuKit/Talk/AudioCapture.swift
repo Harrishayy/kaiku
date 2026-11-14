@@ -14,6 +14,8 @@ public final class AudioCapture: @unchecked Sendable {
     private var pending: [Float] = []
     public var onPCM: ((Data) -> Void)?
     public var onLevel: ((Float) -> Void)?
+    /// Raw input buffers for the on-device listener (safety gate + spoken dial), in memory only.
+    public var onBuffer: ((AVAudioPCMBuffer) -> Void)?
     public private(set) var running = false
 
     public init() {}
@@ -32,11 +34,7 @@ public final class AudioCapture: @unchecked Sendable {
 
     public func start() throws {
         guard !running else { return }
-        #if os(iOS)
-        let s = AVAudioSession.sharedInstance()
-        try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker])
-        try s.setActive(true)
-        #endif
+        try TalkAudio.activate()   // playAndRecord + voiceChat + Bluetooth HFP (glasses as mic + speaker)
         lock.lock(); frames = []; pending = []; lock.unlock()
         let input = engine.inputNode
         let fmt = input.outputFormat(forBus: 0)
@@ -64,6 +62,7 @@ public final class AudioCapture: @unchecked Sendable {
     }
 
     private func handle(_ buf: AVAudioPCMBuffer, frameLen: Int) {
+        onBuffer?(buf)
         guard let ch = buf.floatChannelData?[0] else { return }
         let n = Int(buf.frameLength)
         lock.lock()

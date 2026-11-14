@@ -67,6 +67,19 @@ if aino:
           card_text[:300])
     mems = get(f"/v1/me/memories?home_id={pid}")
     check("/v1/me/memories lists Aino's notebook", len(mems.get("memories", [])) >= 4)
+    req = urllib.request.Request(base + "/v1/companion/tool", method="POST", headers={"content-type": "application/json"},
+                                 data=json.dumps({"home_id": pid, "surface": "robot", "name": "ask_mind",
+                                                  "args": {"question": "What's my sister's name?", "kind": "memory"}}).encode())
+    with urllib.request.urlopen(req, timeout=20) as r:
+        mind = json.loads(r.read()).get("result", {})
+    check("ask_mind answers from memory (no model)", mind.get("route") == "memory" and "Maija" in mind.get("answer", ""),
+          json.dumps(mind)[:200])
+    intel = get("/v1/health/intelligence?days=1")
+    check("/v1/health/intelligence counts the ask_mind route", intel.get("routes", {}).get("memory", 0) >= 1,
+          json.dumps(intel)[:300])
+    const = get(f"/v1/me/constellation?home_id={pid}")
+    check("/v1/me/constellation has Aino's people/places", any("Maija" in n["label"] for n in const.get("nodes", []))
+          and "phq" not in json.dumps(const).lower(), json.dumps(const)[:200])
 if fails:
     print(f"\n{len(fails)} smoke check(s) failed"); sys.exit(1)
 print("\nsmoke OK")

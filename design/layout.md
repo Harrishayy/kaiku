@@ -38,8 +38,12 @@ applies all four at once. Check it before you call a screen done.
 - Composer: the text field takes the width, and actions are 40 pt icon buttons (send, mic) with accessible labels.
 
 ## Scrolling
-- The screen body scrolls vertically (`ScrollView`). Children never shrink to fit (`flex-shrink: 0`, the
-  `.scr > *` rule). Shrinking clipped the consent list in testing.
+- **One viewport first.** Every app screen and game fits without scrolling at the default Mac window (980 × 720)
+  and on a 6.1–6.3″ iPhone at default text size: compact headers (title + pill on one row), two columns on the
+  Mac pane (≥ 600 pt), section gaps of 16–24 pt, no giant empty areas. Scrolling is the fallback only (accessibility
+  text sizes, iPhone SE, the 720 × 480 minimum window) and never bounces when the content fits.
+- The screen body is still a vertical `ScrollView` for that fallback. Children never shrink to fit (`flex-shrink: 0`,
+  the `.scr > *` rule). Shrinking clipped the consent list in testing.
 - Fixed elements: the tab bar, game fields and the crisis screen. Game screens fit their field into what's left
   between the header and the bottom bar. Crisis scrolls if it must, and its buttons stay full width.
 - Horizontal scrolling only in content rails (postcards) and the dense clinician table. Never on the page.
@@ -47,7 +51,31 @@ applies all four at once. Check it before you call a screen done.
 
 ## Colour and theme
 - Only token colours. Light and dark are both designed. The Dynamic Island and the glasses card are black in both.
+- Colour roles: `bg` paper behind everything, `surface` cards with a `line` hairline, `clay` = the one primary
+  action, soft fills by category (`sky-soft` check-ins/calm, `sage-soft` breath/garden/going well, `honey-soft`
+  fireflies/sun/warmth, `clay-soft` Kaiku's ear/voice and "me"). Icon tiles are the tone's ink on its soft fill;
+  tinted cards are borderless. Game scenes: `night-*` + `firefly` + `moth` (Firefly, dark in both themes, text
+  `night-ink`), `pond-*` + `pebble*` (Pebble path).
 - Text-colour pairs meet 4.5:1 (enforced by `design/tests`). The crisis button uses `crisis` + `crisis-ink`.
+
+## Mac notch island
+ONE black shape that grows out of the notch, part of the menu bar, never on top of it (geometry:
+`MacIslandGeometry` from `NSScreen.auxiliaryTopLeftArea` / `auxiliaryTopRightArea` + `safeAreaInsets.top` on the
+screen with the notch, else the main screen; silhouette: `MacIslandShape`; inner layout: `MacIslandLayout`).
+- **Window**: one panel at level statusBar + 1, top edge at the top of the screen, centred on the notch.
+  Mouse-through except inside the drawn shape (collapsed: only the notch, a click → hello).
+- **Menu bar band** (top of screen → menu-bar height): never wider than the notch + a wing of at most 60 pt each
+  side (clamped to the free gap), so it never covers menu titles or status items. Collapsed idle = exactly the
+  notch (invisible); while Kaiku is out the wings show tiny glyphs (Kaiku left, the time right).
+- **Body**: just below the menu bar the shape flares out through concave shoulders (12 pt) into the wide body
+  (10 pt convex top corners, 30 pt bottom corners). Content rect: peek 440 × 172 pt, expanded 460 × 188 pt. Pure
+  black, no stroke or border; a soft shadow under the bottom edge only. Without a notch: no band, the body is a
+  pill 6 pt below the menu bar at the top centre.
+- **Content lives inside the body** (clipped to the shape), two columns with 18 pt padding: Kaiku left, vertically
+  centred, **124 pt** (peek) / **128 pt** (expanded), its floating z's (light `mascot-body` ink at 1.6× on black)
+  inside; text + buttons right. Line `body` (17 pt) semibold, wraps; buttons capsules, `footnote` semibold, ≥ 34 pt
+  tall, wrap to a new row; first = primary.
+- Text uses the dark-mode tokens in both appearances.
 
 ## Motion
 See [`motion.md`](motion.md). Layout changes never animate width or height except the notch island (it mirrors the

@@ -29,6 +29,8 @@ class SensorsSim:
         self.dwell_s = dwell_s
         self.rng = random.Random(seed)
         self.ppg = PpgSynth(hr_bpm=hr_bpm, seed=seed)
+        self._hr_rest = hr_bpm
+        self._breathe_t0: float | None = None
         self.ppg_on = False
         self.camera = False
         self.faces = faces
@@ -89,6 +91,9 @@ class SensorsSim:
         if env.payload.step == "breathe":
             started = env.payload.status == "started"
             self.ppg.breath_bpm, self.ppg.rsa_ms = (6.0, 70.0) if started else (12.0, 40.0)
+            self._breathe_t0 = time.monotonic() if started else None
+            if not started:
+                self.ppg.hr_bpm = self._hr_rest
 
     # ------------------------------------------------------------ loops
     def distance_cm(self, now: float) -> float:
@@ -117,6 +122,8 @@ class SensorsSim:
         next_t = time.monotonic()
         while True:
             if self.ppg_on:
+                if self._breathe_t0 is not None:  # heart settles ~4 bpm over 30 s of slow breathing
+                    self.ppg.hr_bpm = self._hr_rest - min(4.0, 4.0 * (time.monotonic() - self._breathe_t0) / 30.0)
                 t0 = int((time.monotonic() - self._t0) * 1000)
                 samples = self.ppg.samples(PPG_BATCH)
                 await self.bus.publish("raw.sensors.ppg", {"t0_ms": t0, "fs_hz": self.ppg.fs_hz, "samples": samples},

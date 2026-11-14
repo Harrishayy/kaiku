@@ -6,7 +6,7 @@
 ## Purpose
 The robot's face, ears and movement on the Atech 14-port board (ESP32-S3). The board sits in the body, and the head
 modules are cabled up the neck. It drives the Color Display eyes, the Knob ear dial, the lid Button, two chest LED
-grids, the pan motor (open loop, homed on the KY-035 hall edge) and the Speaker (purr tone and cues). The Mic is
+grids, the pan motor (open loop; home = power-on position, or the KY-035 hall edge when `HAS_HALL 1`) and the Speaker (purr tone and cues). The Mic is
 fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech's cloud gateway or
 `atech.Board.connect()` at runtime; those are for flashing and debugging only.
 
@@ -18,7 +18,7 @@ the custom module `kaiku_link/` (plain C++). The Atech module C++ API is touched
 ## Consumes (topics/endpoints)
 `cmd/head`: `eyes` · `look{x,y}` · `chest: off|breathe|glow|pulse` + `bpm` + `color` · `pan{target_deg, speed}` ·
 `home` · `gesture: look_left|look_right|shake` · `purr{ms}` · `pan_mode: still`. Ignored: `pan_mode: sway|track`
-(tracking arrives as `pan` targets). `raw/sensors/hall` (homing brake). `health/hub` (watchdog).
+(tracking arrives as `pan` targets). `raw/sensors/hall` (homing brake; only subscribed when `HAS_HALL 1`). `health/hub` (watchdog).
 
 ## Emits (topics/endpoints)
 `raw/head/ear` `{value 1–5, delta, pressed}` (Knob turns + presses) · `raw/head/button` `{id: "head", pressed}` ·
@@ -88,7 +88,9 @@ and the newest (8.x) breaks its own `dc_motor` driver (`ledcSetup`), hence the 6
 validates and compiles: an SDK module must sit on a real port, so `kaiku_link` is a plain PlatformIO library linked in
 place (`libraries: kaiku_link=symlink://../kaiku_link` + `kaiku_link/library.json`, which carries the MQTT/JSON deps).
 Still to run on hardware: the full firmware and the link bench. Tune `KNOB_COUNTS_PER_STEP`, `MOTOR_DEG_PER_S_FULL`, the
-eye shapes and the pan sign on the real robot. The hall edge arrives over Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
+eye shapes and the pan sign on the real robot. This build has no hall sensor (D35, `HAS_HALL 0`): face the head forward before
+powering on; `home` drives back to the dead-reckoned 0° and the soft limit is ±80°. With `HAS_HALL 1` the edge arrives over
+Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
 
 Found on the first builds (2026-11-14, espressif32 6.9.0 / Arduino core 2.0.17; benches built, mic verified on
 hardware): stops use `motor.stop()` (both lines LOW, off on any H-bridge); `brake()` is untested on this motor (the

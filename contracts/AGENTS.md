@@ -45,12 +45,26 @@ Companion mind (plan 03 §3–§6, workstream I1): `companion_tools.py` = the to
 `SKILL_OF_INTENT`) → `schemas/companion_tools.json` + `COMPANION_TOOLS` in `ts/index.ts` (Swift/TS read these).
 `wording.py` = the deterministic wording linter (stdlib only, port verbatim to Swift). `safety.py` = the crisis
 phrase matcher (same as the hub gate, reads `config/safety_phrases.toml`). API: `CompanionSessionRequest/Response`,
-`ContextCard` (no state/score/wearable fields by construction; `tone` is the only consensus cue), `LiveToken`,
+`ContextCard` (no state/score/wearable fields by construction; `tone` is the only consensus cue), `LiveToken`
+(+ `CompanionSessionResponse.live_setup`: the Live setup locked into it), `VoiceSayRequest` (`POST /v1/voice/say`),
 `CompanionToolCall/Result`, `Memory`, `MemoriesResponse`, `MemorySettings`, `DeletedResponse`, `EpisodeIn/Result`,
 `ThreadIn`. `obs.play_session.game` adds `pebbles` (`span_max`, `accuracy`).
 Robot electronics (plan 07, D32; additive): `raw.head.button` (`RawButton`, `id: "head"`) · `cmd.head.gesture`
 (`look_left|look_right|shake`; the head only pans) · `cmd.sensors.chime` (`wake|ok|start_drum|end_drum|alert`) · `raw.head.tap.force` and
 `obs.drum_session.force_mean` optional (`None` for a knock switch, never invented).
+Gemini-first mind (plan 06, workstream I4): tool `ask_mind {question ≤ 300, kind: fact|care|memory|plan|emotional}`
+(executor cloud, all surfaces; 13 tools) → result = `MindAnswer {answer, kind, route: memory|flash|argon|fallback,
+confidence, cites[], ask_person, model}`. API: `IntelligenceHealth` + `ModelUsageRow` (`GET /v1/health/intelligence`),
+`ConstellationResponse/Node/Edge` (`GET /v1/me/constellation`, no health fields by construction),
+`PostcardRequest/Response` (`WeatherWord`), `ClinicianBrief` + `BriefSection` (`GET /v1/patients/{id}/brief`).
+Dashboard (D34, additive): `CareSharing {share_with_care_team=false}`, `WeekSummary {audience: person|care_team,
+week_start/end, routines: Routine[], going_well/worth_a_look: WeekItem[], shared, rule_version?, by: rule}`, `Routine`
+(`cadence daily|most_days|weekly`, `weekday`, `day_part`, `usual_time`, `usual_per_week`, `this_week`,
+`status kept|partly|slipped`, `text`, `basis obs|episodes`), `WeekItem {kind, text, source?, metric?}`,
+`WeekSummary.sources: SourceWeek[]` (the one record: per source `per_day[7]`, `days`, `counts: SourceCount[]
+{label, value}`, `last_at`) and `WeekSummary.next_steps: NextStep[]` (care team: `{text, why, when: today|this_week|
+next_contact, action: ActionName?}`), `KnowledgeGraph {audience, shared, nodes: GraphNode[], edges: GraphEdge[], withheld}` (`GraphNode.type` adds
+`routine`; `GraphEdge.rel` adds `keeps`, `of`; both carry `evidence` counts; negative node ids = derived for the view).
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 

@@ -29,12 +29,16 @@ API_MODELS = [
     api.SourceNote, api.Explanation, api.Consensus, api.SourceBadge, api.PatientSummary, api.PatientsResponse,
     api.TimelinePoint, api.MetricSeries, api.TimelineResponse, api.Phq9Entry, api.Phq9History,
     api.ActionRequest, api.ActionResult, api.NudgeResponse, api.HelpStat, api.Mascot, api.Highlight, api.Garden,
-    api.MeResponse, api.VoiceLinesResponse, api.StateScore,
+    api.MeResponse, api.VoiceLinesResponse, api.VoiceSayRequest, api.StateScore,
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
     api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
     api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
-    api.DeletedResponse, api.ThreadIn, api.EpisodeIn, api.EpisodeResult,
+    api.DeletedResponse, api.ThreadIn, api.TranscriptTurn, api.EpisodeIn, api.EpisodeResult,
+    api.Transcript, api.TranscriptsResponse,
+    api.MindAnswer, api.ModelUsageRow, api.IntelligenceHealth, api.ConstellationNode, api.ConstellationEdge,
+    api.ConstellationResponse, api.PostcardRequest, api.PostcardResponse, api.BriefSection, api.ClinicianBrief,
+    api.CareSharing, api.SourceCount, api.SourceWeek, api.NextStep, api.Routine, api.WeekItem, api.WeekSummary, api.GraphNode, api.GraphEdge, api.KnowledgeGraph,
 ]
 
 

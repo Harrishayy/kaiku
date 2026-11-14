@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "finds": {
+      "description": "light-hunt finds as short words, e.g. 'green', 'bird'",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 5,
+      "title": "Finds",
+      "type": "array"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "minutes": {
+      "maximum": 600,
+      "minimum": 0,
+      "title": "Minutes",
+      "type": "integer"
+    },
+    "weather_word": {
+      "default": "cloudy",
+      "enum": [
+        "sunny",
+        "cloudy",
+        "rainy",
+        "snowy",
+        "windy",
+        "foggy",
+        "grey",
+        "frosty",
+        "clear"
+      ],
+      "title": "Weather Word",
+      "type": "string"
+    }
+  },
+  "required": [
+    "home_id",
+    "minutes"
+  ],
+  "title": "PostcardRequest",
+  "type": "object"
+}

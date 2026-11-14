@@ -98,14 +98,14 @@ struct OnbPage<Content: View, Actions: View>: View {
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
             VStack(spacing: KaikuTokens.Space.s2) { actions }
                 .padding(.horizontal, KaikuPlatform.sidePadding)
                 .padding(.vertical, KaikuTokens.Space.s4)
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
-                .background(KaikuTokens.Colors.bg)
         }
-        .background(KaikuTokens.Colors.bg.ignoresSafeArea())
+        .background(KBackdrop())
     }
 }
 
@@ -113,7 +113,7 @@ struct WelcomeStep: View {
     let next: () -> Void
     var body: some View {
         OnbPage(back: nil) {
-            MascotView(state: .happy, size: 190).frame(maxWidth: .infinity).padding(.top, KaikuTokens.Space.s5)
+            GlowingMascot(state: .happy, size: 190).frame(maxWidth: .infinity).padding(.top, KaikuTokens.Space.s5)
             Text(T("onb.welcome.title")).kText(.title1).foregroundStyle(KaikuTokens.Colors.ink).wraps()
             Text(T("onb.welcome.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
         } actions: {
@@ -276,11 +276,11 @@ struct MeetStep: View {
     @State private var value = 3
     var body: some View {
         OnbPage(back: back) {
-            MascotView(state: .listening, size: 170, dial: Double(value)).frame(maxWidth: .infinity)
+            GlowingMascot(state: .listening, size: 160, dial: Double(value)).frame(maxWidth: .infinity)
             Text(T("onb.meet.title")).kText(.title1).foregroundStyle(KaikuTokens.Colors.ink).wraps()
             Text(T("onb.meet.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             // Practice dial: not recorded.
-            KCard { WeatherDial(item: .mood, value: $value) }
+            WeatherDial(item: .mood, value: $value, active: true)
         } actions: {
             Button(T("onb.meet.cta"), action: done).buttonStyle(.kPrimary)
         }

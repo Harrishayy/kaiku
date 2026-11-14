@@ -167,11 +167,12 @@ def _sim_tool_result(name: str, args: dict[str, Any], card: dict[str, Any]) -> d
 
 class RealRunner:
     def __init__(self, models: dict[str, str]):
-        from google import genai
         from google.genai import types
 
         self.types = types
-        self.client = genai.Client()  # reads GEMINI_API_KEY from the environment
+        from kaiku_contracts import genai_client
+
+        self.client = genai_client.make_client()  # GEMINI_API_KEY, or GOOGLE_CLOUD_PROJECT + ADC
         self.models = models
 
     def _text(self, resp) -> str:
@@ -359,7 +360,9 @@ def main(argv: list[str] | None = None) -> int:
         from kaiku_contracts.config import load_dotenv
 
         load_dotenv()  # GEMINI_API_KEY from the repo .env for real passes only
-    if not a.dry and not os.environ.get("GEMINI_API_KEY"):
+    from kaiku_contracts import genai_client
+
+    if not a.dry and not genai_client.available():
         print("GEMINI_API_KEY not set — use --dry (or `make eval-companion DRY=1`).", file=sys.stderr)
         return 2
     models = {r: getattr(a, f"{r}_model") for r in DEFAULT_MODELS}

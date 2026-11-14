@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "dst": {
+      "title": "Dst",
+      "type": "integer"
+    },
+    "rel": {
+      "enum": [
+        "knows",
+        "goes_to",
+        "likes",
+        "helped_by",
+        "plans",
+        "did",
+        "helped",
+        "about"
+      ],
+      "title": "Rel",
+      "type": "string"
+    },
+    "src": {
+      "title": "Src",
+      "type": "integer"
+    },
+    "weight": {
+      "description": "0..1, for line thickness only",
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "src",
+    "dst",
+    "rel",
+    "weight"
+  ],
+  "title": "ConstellationEdge",
+  "type": "object"
+}

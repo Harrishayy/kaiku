@@ -48,6 +48,8 @@ ENV = {
     "KAIKU_CRITERIA": "/root/config/criteria.toml",
     "KAIKU_WEB_DIR": "/root/web",  # Next.js static export; API serves a JSON root if it wasn't built
     "KAIKU_VOICE_CACHE": f"{DATA}/voice_cache",  # rendered TTS audio survives restarts (Volume)
+    "KAIKU_MIND_POSTCARD_DIR": f"{DATA}/postcards",  # walk postcards (Nano Banana 2 Lite), cached on the Volume
+    "KAIKU_SPEND_DB": f"{DATA}/spend.sqlite",  # hard spend cap ledger survives restarts
     "KAIKU_LLM": LLM,
     "KAIKU_MODAL_APP": APP_NAME,
     "KAIKU_HAS_SECRET": "1" if SECRETS else "0",
@@ -114,6 +116,22 @@ def nightly():
     """Recompute + refresh the simulation shown on /eval, then the daily reflection (flagship; rule without a key)."""
     _call_recompute(with_eval=True)
     _call_reflect()
+    _call_admin("nightly-mind")  # graph rebuild, Embedding 2 backfill, validated consolidation, pre-render list
+
+
+@app.function(image=image, secrets=SECRETS, schedule=modal.Cron("0 6 * * 1", timezone="Europe/Helsinki"))
+def weekly():
+    """Monday 06:00: clinician briefs (flagship, grounded in metric ids; template fallback)."""
+    _call_admin("weekly")
+
+
+def _call_admin(path: str) -> None:
+    import httpx
+
+    headers = {"Authorization": f"Bearer {os.environ['KAIKU_ADMIN_TOKEN']}"} if os.environ.get("KAIKU_ADMIN_TOKEN") else {}
+    r = httpx.post(f"{web.get_web_url()}/v1/admin/{path}", headers=headers, timeout=900)
+    r.raise_for_status()
+    print(path, "ok")
 
 
 def _call_reflect() -> None:

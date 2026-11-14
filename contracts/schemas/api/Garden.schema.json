@@ -1,7 +1,45 @@
 {
+  "$defs": {
+    "GardenDay": {
+      "additionalProperties": false,
+      "description": "One plot of the garden: what was done together that local day (kinds: ritual, drum_session, play_session,\nouting, friend_link, weather_check). A quiet day is an empty plot, never a wilted one.",
+      "properties": {
+        "count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "kinds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Kinds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "GardenDay",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
-  "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter.",
+  "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter. `days` = the last 14 local days, oldest first (one plot each).",
   "properties": {
+    "days": {
+      "items": {
+        "$ref": "#/$defs/GardenDay"
+      },
+      "title": "Days",
+      "type": "array"
+    },
     "plants": {
       "default": 0,
       "minimum": 0,

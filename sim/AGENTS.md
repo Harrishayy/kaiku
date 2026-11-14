@@ -34,8 +34,8 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 
 **Auto mode** acts like a user, following the hub's dial protocol (`hub/AGENTS.md` → Invariants):
 someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn the
-ear knob, then press (`[robot] dial_input`; `--dial button` = press the button n times) · `drum started` → tap at `--tempo` · `obs/drum_session` → stop, answer the post-activity
-mood · `phq9 started` → nine presses (item 9 always 0) · during `breathe` the PPG's RSA grows (RMSSD rises) ·
+ear knob, then press (`[robot] dial_input`; `--dial button` = press the button n times) · `drum started` → tap at `--tempo`, warming up to ~1.4× tempo + force by the end (so the hub's live context says `[drumming · lively]`) · `obs/drum_session` → stop, answer the post-activity
+mood · `phq9 started` → nine presses (item 9 always 0) · during `breathe` the PPG's RSA grows (RMSSD rises) and the heart rate settles ~4 bpm over 30 s ·
 glasses walk, laptop session + Mac hour, phone morning (watch summary + weather check) + firefly once at start,
 then every `--every` s.
 

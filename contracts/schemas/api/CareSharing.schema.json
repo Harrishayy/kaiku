@@ -1,0 +1,13 @@
+{
+  "additionalProperties": false,
+  "description": "GET/PUT /v1/me/sharing — the person's choice to show their care team what Kaiku has learned (the knowledge\ngraph and routines from conversations). Default off (D34). People, places, likes and plans are never shared.",
+  "properties": {
+    "share_with_care_team": {
+      "default": false,
+      "title": "Share With Care Team",
+      "type": "boolean"
+    }
+  },
+  "title": "CareSharing",
+  "type": "object"
+}

@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "description": "POST /v1/voice/say — any short line (not in voice_lines.toml) in Kaiku's one voice → audio/wav. Cached by\n(model, voice, lang, text, style); home token required. A crisis phrase in `text` → 422 (the crisis script is\nshown verbatim, never voiced from here).",
+  "properties": {
+    "lang": {
+      "default": "en",
+      "enum": [
+        "en",
+        "fi",
+        "sv"
+      ],
+      "title": "Lang",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 400,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "VoiceSayRequest",
+  "type": "object"
+}

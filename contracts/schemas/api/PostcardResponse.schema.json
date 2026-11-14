@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "description": "POST /v1/companion/postcard — an illustrated walk postcard (no photos, no faces). 503 + {detail, reason,\nhint} when image generation is unavailable: the app shows its own static card.",
+  "properties": {
+    "cached": {
+      "title": "Cached",
+      "type": "boolean"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "url": {
+      "description": "GET this path for the image",
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "url",
+    "cached",
+    "model"
+  ],
+  "title": "PostcardResponse",
+  "type": "object"
+}
