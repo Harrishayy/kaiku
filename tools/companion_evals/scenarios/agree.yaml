@@ -1,0 +1,48 @@
+# An activity agreed in one place shows up everywhere (D50): the `agree_activity` tool (config/persona.md ->
+# "Tools"; the rule compiled into every prompt: kaiku_cloud/mind/assemble.py AGREE_RULE; cloud:
+# kaiku_cloud/mind/agree.py). The robot and the glasses have no screen for a walk, a game or the journal, so a
+# clear yes there is kept by the cloud and appears on the phone and the Mac.
+# `mind`: help {arm, tries} feeds the fake `feel`; can = this body's activities (so the offer comes back as
+# `offer_elsewhere`); screens = the person's screens (default phone and Mac). `agree_activity` answers through
+# run._sim_tool_result, which runs the cloud's own rule (agree.decide). expect.agree keys: see run.check_agree.
+# Scripted turns: the yes and the maybe must be exactly these words.
+scenarios:
+  - id: robot-agree-walk-after-low-dial
+    surface: robot
+    skill: morning_ritual
+    language: en
+    person_mode: scripted
+    context: {intent: ritual, time_of_day: morning, tone: steady, suggestion: "a short walk in daylight"}
+    mind: {help: {arm: daylight_walk, tries: 5}, can: [breathe, drum], screens: [iphone, mac]}
+    person: "A low answer on the mood dial this morning. Asks for one small thing, and says a clear yes to a walk after lunch."
+    turns: ["Two. It's a heavy one this morning.", "Is there one small thing I could do today?", "Yes, a walk after lunch sounds good."]
+    expect:
+      tools_any: [agree_activity]
+      tools_forbidden: [start_activity, start_phq9]
+      agree: {calls: 1, kind: walk, said: true, on_turn: 3, after_offer: [walk], says_where: [phone], no_claim: true}
+
+  - id: robot-agree-maybe-is-not-a-yes
+    surface: robot
+    skill: morning_ritual
+    language: en
+    person_mode: scripted
+    context: {intent: ritual, time_of_day: morning, tone: steady, suggestion: "a short walk in daylight"}
+    mind: {help: {arm: daylight_walk, tries: 5}, can: [breathe, drum], screens: [iphone, mac]}
+    person: "A low answer on the mood dial this morning. Asks for one small thing, hears the walk, and only says maybe."
+    turns: ["Two. It's a heavy one this morning.", "Is there one small thing I could do today?", "Maybe. I'll see how I feel."]
+    expect:
+      tools_forbidden: [agree_activity, start_activity, start_phq9]
+      agree: {calls: 0, no_claim: true}
+
+  - id: glasses-agree-game-for-when-they-are-home
+    surface: glasses
+    skill: walk_companion
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: chatty, time_of_day: afternoon, tone: steady}
+    person: "Out on a walk; asks for a game to be there when they get home."
+    turns: ["I'm out by the river now.", "Can we play that lantern game when I'm back home?"]
+    expect:
+      tools_any: [agree_activity]
+      tools_forbidden: [start_activity, set_walk_goal]
+      agree: {calls: 1, kind: lantern, said: true, on_turn: 2, says_where: [phone, Mac], no_claim: true}

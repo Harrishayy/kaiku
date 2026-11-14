@@ -15,7 +15,9 @@ from typing import Any
 from kaiku_contracts.payloads import DIAL_ITEMS
 
 from ..perception.hrv import HrvResult, PpgBuffer
+from ..perception.tap_back import TapBackConfig
 from ..perception.taps import TapAnalyzer
+from . import tap_back
 from .machine import Event, RitualContext, Status, Step
 
 YES = re.compile(r"\b(yes|yeah|yep|sure|ok|okay|kyllä|joo|juu|ja|gärna)\b", re.I)
@@ -289,14 +291,20 @@ class Breathe(Step):
 
 
 class Drum(Step):
-    """Two phases. 1) drumming: taps -> music + sway; ends after idle_end_s without taps (or timeout_s);
-    emits obs.drum_session at that moment. 2) post-activity mood: "how do you feel now?" -> one ear press ->
-    obs.self_report{context: post_activity} + obs.intervention_response{activity: drum, pre/post mood}."""
+    """The drum step, in one of two shapes (config [tap_back] mode):
+
+    Free drumming (as always, and whenever no song can play): 1) taps -> music + sway; ends after idle_end_s without
+    taps (or timeout_s); emits obs.drum_session at that moment. 2) post-activity mood: "how do you feel now?" -> one
+    ear press -> obs.self_report{context: post_activity} + obs.intervention_response{activity: drum, pre/post mood}.
+
+    Tap it back (`tap_back.Game`, D51): Kaiku plays a song at a tempo, it goes quiet, she taps it back; three levels.
+    Emits obs.tap_back (never obs.drum_session: the tempo was given to her), then the same post-activity mood."""
 
     name = "drum"
 
     def __init__(self, timeout_s: float | None = None, idle_end_s: float = 6.0, refractory_ms: float = 80,
-                 force_max_g: float = 4.0, min_taps: int = 4, post_s: float = 15.0, sway: bool = True):
+                 force_max_g: float = 4.0, min_taps: int = 4, post_s: float = 15.0, sway: bool = True,
+                 tap_back_cfg: TapBackConfig | None = None):
         super().__init__(timeout_s)
         self.sway = sway  # off when the drum is a knock switch: motor vibration would trigger it
         self.idle_end_s = idle_end_s
@@ -304,33 +312,66 @@ class Drum(Step):
         self.force_max_g = force_max_g
         self.min_taps = min_taps
         self.post_s = post_s
+        self.tap_back_cfg = tap_back_cfg  # None = this step never plays the game (free drumming only)
+        self.game: tap_back.Game | None = None
         self._reset()
 
     def _reset(self) -> None:
         self.taps = TapAnalyzer(self.refractory_ms, self.force_max_g)
         self._last_tap = 0.0
         self._last_sway = 0.0
-        self.phase = "drum"
+        self.phase = "drum"  # drum (free) | game (Tap it back) | post
         self._post_t0 = 0.0
+        self._free_t0: float | None = None
         self.pre_mood: int | None = None
         self.post_mood: int | None = None
         self.drum_emitted = False
+        self.game = None
+        self.game_emitted = False
+
+    @property
+    def playing_game(self) -> bool:
+        return self.phase == "game"
 
     def deadline(self) -> float:
         if self.phase == "post":
             return self._post_t0 + self.post_s
-        d = self.t0 + self.timeout_s
+        if self.phase == "game" and self.game is not None:
+            return self.game.next_deadline()
+        d = (self._free_t0 if self._free_t0 is not None else self.t0) + self.timeout_s
         if self.taps.count >= self.min_taps:
             d = min(d, self._last_tap + self.idle_end_s)
         return d
+
+    def hard_cap_s(self, default: float) -> float:
+        if self.game is None:
+            return default
+        # the game has its own end ([tap_back] max_s); a fall back to free drumming and the mood question follow it
+        return max(default, self.tap_back_cfg.max_s + self.timeout_s + self.post_s + 10)  # type: ignore[union-attr]
 
     async def enter(self, ctx: RitualContext) -> None:
         self._reset()
         self.pre_mood = ctx.state.today_mood(_today())
         await ctx.head(eyes="happy")
         await ctx.music.start(self.pre_mood)
+        cfg = self.tap_back_cfg
+        if cfg is not None and (cfg.mode == "tap_back" or (cfg.mode == "auto" and ctx.music.can_play_songs)):
+            # The head sways while the SONG plays, also on the knock build: she is not drumming then, and it is
+            # still again before her turn (`[robot] drum_sway` is about swaying while she drums).
+            self.game = tap_back.Game(cfg, sway=True, refractory_ms=self.refractory_ms, force_max_g=self.force_max_g)
+            self.phase = "game"
+            await self.game.begin(ctx)
+            return
         await _chime(ctx, "start_drum")
         await ctx.say("Now drum on my head. Any rhythm you like. I'll follow you.")
+
+    async def _free(self, ctx: RitualContext) -> None:
+        """The song did not come: today's free drumming from here, with its own full time."""
+        self.phase, self._free_t0 = "drum", time.monotonic()
+        self.taps = TapAnalyzer(self.refractory_ms, self.force_max_g)
+        await ctx.head(eyes="happy", pan_mode="still", chest="glow")
+        await _chime(ctx, "start_drum")
+        await ctx.say(tap_back.FALLBACK_LINE)
 
     async def _emit_drum(self, ctx: RitualContext) -> None:
         if self.drum_emitted or self.taps.count < self.min_taps:
@@ -340,22 +381,59 @@ class Drum(Step):
         payload = {k: v for k, v in self.taps.summary(duration).items() if v is not None or k == "force_mean"}
         await ctx.emit("obs.drum_session", payload, quality=self.taps.quality())
 
+    async def _emit_game(self, ctx: RitualContext) -> bool:
+        """obs.tap_back for the levels played (once). False = nothing was measured, nothing is recorded."""
+        if self.game is None:
+            return False
+        if self.game_emitted:
+            return True
+        out = self.game.payload()
+        if out is None:
+            return False
+        self.game_emitted = True
+        await ctx.emit("obs.tap_back", out[0], quality=out[1])
+        return True
+
     async def _stop_music(self, ctx: RitualContext) -> None:
         await ctx.music.stop()
         await ctx.head(pan_mode="still")
 
-    async def on_deadline(self, ctx: RitualContext) -> Status | None:
-        if self.phase == "post":
-            return "completed"
-        if self.taps.count < self.min_taps:
-            return "skipped"
-        await self._stop_music(ctx)
-        await _chime(ctx, "end_drum")
-        await self._emit_drum(ctx)
+    async def _ask_mood(self, ctx: RitualContext) -> None:
         self.phase, self._post_t0 = "post", time.monotonic()
         await ctx.head(eyes="listening")
         await ctx.say(POST_MOOD_LINE["button" if _button(ctx) else "ear"])
+
+    async def on_deadline(self, ctx: RitualContext) -> Status | None:
+        if self.phase == "post":
+            return "completed"
+        if self.phase == "game" and self.game is not None:
+            state = await self.game.tick(ctx)
+            for _ in range(8):  # a wait of no length (no spoken line to leave room for) is over at once
+                if state != "running" or self.game.next_deadline() > time.monotonic():
+                    break
+                state = await self.game.tick(ctx)
+            if state == "fallback":
+                await self._free(ctx)
+            elif state == "done":
+                await self._stop_music(ctx)
+                if not await self._emit_game(ctx):
+                    return "skipped"  # she did not tap at all: like a drum step nobody drummed in
+                await self._ask_mood(ctx)
+            return None
+        if self.taps.count < self.min_taps and not self.game_played:
+            return "skipped"
+        await self._stop_music(ctx)
+        if self.taps.count >= self.min_taps:
+            await _chime(ctx, "end_drum")
+        await self._emit_drum(ctx)
+        await self._emit_game(ctx)
+        await self._ask_mood(ctx)
         return None
+
+    @property
+    def game_played(self) -> bool:
+        """At least one level has a measured try (so the step counts, whatever came after)."""
+        return self.game is not None and self.game.payload() is not None
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
         if self.phase == "post":
@@ -375,6 +453,9 @@ class Drum(Step):
             return None
         if event.kind != "tap":
             return None
+        if self.phase == "game" and self.game is not None:
+            await self.game.on_tap(event.data, ctx)
+            return None
         force = event.data.get("force")
         if not self.taps.add(int(event.data["t_ms"]), None if force is None else float(force)):
             return None
@@ -382,7 +463,7 @@ class Drum(Step):
         await ctx.music.click(KNOCK_CLICK if force is None else min(1.0, force / self.force_max_g))
         if self.taps.count >= self.min_taps and self._last_tap - self._last_sway > 1.0:
             self._last_sway = self._last_tap
-            bpm = self.taps.tempo_bpm()
+            bpm = self.taps.recent_tempo_bpm()  # follow what she is doing now, not the session's median
             if bpm > 0:
                 fm = self.taps.force_mean()
                 await ctx.music.set_tempo(bpm, KNOCK_CLICK if fm is None else fm)
@@ -391,13 +472,18 @@ class Drum(Step):
         return None
 
     def on_timeout(self) -> Status:
+        if self.game_played:
+            return "completed"
         return "completed" if self.taps.count >= self.min_taps else "skipped"
 
     async def exit(self, ctx: RitualContext, status: Status) -> None:
         await self._stop_music(ctx)
+        if self.game is not None:
+            await self.game.leave(ctx)  # a microphone the game closed is open again however the step ended
         if status != "completed":
             return
         await self._emit_drum(ctx)
+        await self._emit_game(ctx)
         if self.post_mood is None:
             return
         await ctx.emit("obs.self_report", {"item": "mood", "value": self.post_mood, "context": "post_activity"})
@@ -514,7 +600,7 @@ def default_steps(settings: Any) -> list[Step]:
         Dial(s.dial_s),
         Breathe(s.breathe_s, bpm=s.breathe_bpm, window_s=s.hrv_window_s),
         Drum(s.drum_s, idle_end_s=s.drum_idle_end_s, refractory_ms=s.tap_refractory_ms, force_max_g=s.tap_force_max_g,
-             post_s=s.post_mood_s, sway=getattr(s, "drum_sway", True)),
+             post_s=s.post_mood_s, sway=getattr(s, "drum_sway", True), tap_back_cfg=getattr(s, "tap_back", None)),
         Phq9(s.step_timeout_s),
         Nudge(s.nudge_s),
         Close(),

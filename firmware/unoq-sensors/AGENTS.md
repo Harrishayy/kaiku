@@ -6,7 +6,7 @@
 ## Purpose
 The robot's sensors on the Arduino UNO Q (in the body), as one App Lab app with two halves.
 - **STM32 sketch:** reads the KY-035 hall sensor (pan home; not fitted, `HAS_HALL 0`, D39), the KY-054 (not fitted)
-  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D48**: the
+  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D54**: the
   pulse comes from the camera, `ppg_source = "camera"`). It plays the Modulino Buzzer chimes and
   shows a status icon on the hidden LED matrix.
 - **Linux app:** bridges the sketch to MQTT and turns the USB camera (in the head) into numbers: face boxes,
@@ -19,7 +19,7 @@ and the ritual. The eyes, knob, LEDs and motor belong to the Atech board. Camera
 
 ## Consumes (topics/endpoints)
 `cmd/sensors`: `chime: wake|ok|start_drum|end_drum|alert` · `ppg: start|stop` · `camera_enable`.
-Taps are not this node's any more (D49): the KY-031 knock switch is removed; the Atech head publishes `raw/head/tap`.
+Taps are not this node's any more (D55): the KY-031 knock switch is removed; the Atech head publishes `raw/head/tap`.
 
 ## Emits (topics/endpoints)
 `raw/sensors/hall` `{at_home}` on each edge ·
@@ -41,13 +41,16 @@ python/kaiku_unoq/
   camera.py           camera thread: Haar faces, forehead-green pulse, optional locked-exposure light; frames in memory
   vision.py           pure maths (face payload, distance, light, forehead box, PPG signal check)
 python/tests/         node on a real broker with FakeBridge, pulse fallback, vision maths (in `make test`)
-bench/<part>/         one-part tests: knock (part not fitted, D49), hall, light, ky039, buzzer (sketches), camera (python), link (MQTT)
+bench/<part>/         one-part tests: knock (part not fitted, D55), hall, light, ky039, buzzer (sketches), camera (python), link (MQTT)
 ```
 
 ## Extension points
 - New sensor: a bench part first, then a sketch handler + `Bridge.notify`, a `provide` in `node.py`, and its message.
 - Pulse source: `[unoq] ppg_source = auto|ky039|camera`. Light source: `[unoq] light_source = ky054|camera`.
-- Hub + broker on this board later: run them here and set `MQTT_HOST=localhost` (plan 07 §4).
+- **The robot on its own** (no laptop in its path): this board's Linux side also runs the broker (mosquitto, a
+  system service) and the hub (a system service, outside App Lab), next to this app. Runbook and
+  `scripts/unoq_robot_setup.sh`: docs/robot-network-handover.md → "The robot on its own". This app's code does not
+  change; only `MQTT_HOST` in its `.env` does, and App Lab's "run at startup" starts it at boot.
 
 ## Invariants
 - Same topics + payloads as `sensors_sim`: the hub can't tell them apart.
@@ -67,11 +70,14 @@ Without hardware: `make sim NODES=sensors`.
 
 ## Config & env
 `config/kaiku.toml [unoq]` (camera, distance, light and pulse routing), `sketch/config.h` (MCU numbers). Env:
-`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`, `KAIKU_HOME_ID`.
+`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`, `KAIKU_HOME_ID` (on the board: `~/ArduinoApps/kaiku-sensors/.env`).
+With the broker on this board, `MQTT_HOST` is the board itself **as the app's container sees it**: the Docker bridge
+address (`ip -4 addr show docker0`) or the board's Wi-Fi address; inside a container `localhost` is the container
+itself, unless App Lab puts it on the host's network. Which one it is has not been tried on the board.
 
 ## Health signal
 `health/sensors` every 5 s. `mcu_ok` false = the sketch doesn't answer `ping` (its version string names a missing
-ADS1115 or buzzer; `ads-missing` is expected in this build, D48). `camera_ok` false = no camera (check the PD hub).
+ADS1115 or buzzer; `ads-missing` is expected in this build, D54). `camera_ok` false = no camera (check the PD hub).
 
 ## Tests
 `make test` runs `python/tests`. Bench: `make bench PART=firmware/unoq-sensors/bench/<knock|hall|light|ky039|buzzer|camera>`
@@ -90,6 +96,14 @@ Board setup that is **not in the repo** (redo it on a fresh board):
 - Wi-Fi (NetworkManager): the hotspot is saved with `autoconnect-priority 10` and `autoconnect-retries 0` (retry
   forever); the venue `Junction2026` is saved with autoconnect off. iPhone hotspots stop broadcasting when nobody
   is connected: keep the phone on Settings → Personal Hotspot while the UNO Q boots (~1-1.5 min to app running).
+
+**Not on the board yet (2026-11-14 evening): sketch `unoq-sketch-0.3.0` and the app without the knock code (D55).**
+The board was off the network when they were written, so it still runs the app copied over earlier that day, which
+reads a knock switch that is no longer fitted: a `raw/head/tap` with `"src":"knock"` on the broker comes from that
+old app, not from a person. Deploying, as it was done before: `make unoq-app` on the laptop, copy `python/` and
+`sketch/` into `~/ArduinoApps/kaiku-sensors/` over ssh (the board's `.env` stays), start the app (it rebuilds and
+flashes the sketch), and check `health/sensors` `details.mcu_fw`. A new broker address is one line in that `.env`
+(`MQTT_HOST`) and an app restart: commands in docs/robot-network-handover.md → "UNO Q".
 
 Traps:
 - `python/requirements.txt` must not list OpenCV/numpy: App Lab's container ships its own OpenCV (4.13), asking for

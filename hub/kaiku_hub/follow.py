@@ -56,6 +56,20 @@ CHIMES: dict[str, tuple[str, tuple[str | None, ...]]] = {
     "start_drum": ("drum", ("breathe", "drum")),
     "end_drum": ("done", ("drum", "done")),
 }
+# What Kaiku says when the head enters one of its own steps while a conversation is open (D51). True for the
+# standalone head: its dial is the ear, 1 to 10, shown on its screen; its chest light paces the breath; a press moves
+# on. `drum` is for free drumming only (Tap it back has its own lines); `done` is the goodbye.
+# This robot's head has no screen and no light (D54, D55): the dial starts in the middle (5 of 10) and she cannot
+# see its number, so the lines give a direction, not a number (main.cpp: clockwise is higher), and the breathing is
+# paced by Kaiku's words, not by a light.
+STEP_LINES: dict[str, str] = {
+    "mood": "How are you today? Turn my ear clockwise for lighter, the other way for heavier, then press it.",
+    "energy": "And your energy? Clockwise for more, the other way for less, then press.",
+    "sleep": "How did you sleep last night? Clockwise for better, the other way for worse.",
+    "breathe": "Now let's breathe slowly together. In through your nose, and a long breath out.",
+    "drum": "Now drum on my head. Any rhythm you like.",
+    "done": "See you tomorrow. Kiitos!",
+}
 HEAD_BREATH_BPM = 6.0  # main.cpp: 4 s in + 6 s out
 HEALTH_MAX_AGE_S = 60.0  # an older health/head is a retained leftover, not the head's present step
 
@@ -63,6 +77,9 @@ Action = tuple[Any, ...]
 # ("begin", reason) · ("end", outcome, consented, dial{item: 1-5}) · ("emit", type, payload, quality, when)
 #   when = None (now) | datetime (the head's own timestamp) | float (seconds ago)
 # ("sensors", {cmd}) · ("note", event, {fields})
+# ("drum_open",)  the head entered its drum step: the hub may run Tap it back there (D51; `cmd.head {drum: hold}`)
+# ("game_end", record)  the head left its drum step while the hub's game was on: the hub ends it and, when the
+#                 step ended forward (`record`), emits what was played
 
 
 def scale_5(value_10: int) -> int:
@@ -94,6 +111,8 @@ class HeadFollower:
     last_health: float | None = None
     pan_moving: bool = False
     muted_taps: int = 0
+    game: bool = False               # the hub is running Tap it back in the head's drum step: its taps are the game's
+    game_levels: int = 0             # levels of that game with a measured try (the hub keeps this current)
     unanswered: int = 0              # greetings nobody answered since the hub started
     _greet_at: float | None = None   # the head is greeting; not a record until the person answers
     _last_unanswered: float | None = None
@@ -147,12 +166,18 @@ class HeadFollower:
 
     def on_tap(self, t_ms: int, force: float | None = None) -> bool:
         """A UNO Q knock. Counted only while the head is in drum and its motor is still."""
-        if self.step != "drum" or not self.active:
+        if self.step != "drum" or not self.active or self.game:
             return False
         if self.pan_moving:
             self.muted_taps += 1
             return False
         return self._taps.add(int(t_ms), force)
+
+    def game_started(self) -> None:
+        """The hub runs Tap it back in this drum step from now: taps are the game's, and what she tapped before
+        the first song is not kept as a drum session of a few seconds."""
+        self.game = True
+        self._taps = TapAnalyzer(self.refractory_ms, self.force_max_g)
 
     def on_pan(self, moving: bool) -> None:
         self.pan_moving = bool(moving)
@@ -217,10 +242,16 @@ class HeadFollower:
             elif forward:
                 out += self._pulse(now)
         elif old == "drum":
+            if self.game or self.game_levels:
+                # first: its obs.tap_back comes before the step's own closing line; an aborted step records nothing
+                out.append(("game_end", forward))
+            self.game = False
             if forward and self._taps.count >= self.min_taps:
                 dur = (self._taps.times[-1] - self._taps.times[0]) / 1000 if self._taps.count > 1 else 0.0
                 payload = {k: v for k, v in self._taps.summary(dur).items() if v is not None or k == "force_mean"}
                 out.append(("emit", "obs.drum_session", payload, self._taps.quality(), None))
+            elif forward and self.game_levels:
+                pass  # Tap it back was played: the step is done, and her given tempo is never a drum session
             elif forward:
                 status = "skipped"
                 out.append(("note", "drum_not_recorded", {"reason": f"{self._taps.count} knocks reached the hub "
@@ -254,6 +285,8 @@ class HeadFollower:
         elif new == "drum":
             self._taps = TapAnalyzer(self.refractory_ms, self.force_max_g)
             self.muted_taps = 0
+            self.game, self.game_levels = False, 0
+            out.append(("drum_open",))
         return out
 
     def _end(self, outcome: str) -> Action:

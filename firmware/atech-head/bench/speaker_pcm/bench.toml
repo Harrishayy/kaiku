@@ -1,0 +1,58 @@
+# The head's speaker and microphone as PCM over MQTT: no hub, no model, no display (the robot has none, D54).
+# The computer end is ./audio_test.py. The pan motor (port 14) is held still by the program: nothing to unplug.
+part = "speaker-pcm"
+board = "atech"
+program = "project.yaml"
+flash = "make atech-bench PART=firmware/atech-head/bench/speaker_pcm FLASH=1 (kaiku_link/secrets.h: Wi-Fi + the broker's address as MQTT_HOST_IP), then atech monitor | make bench PART=firmware/atech-head/bench/speaker_pcm FROM=-"
+steps = ["Boot: two short notes from the head and a `net` line with mqtt 1 (no notes = amplifier or ports 1-2; no net line = Wi-Fi or broker address in secrets.h)",
+         "Within a minute, on a computer on the same network: make head-audio ARGS='bench --host <broker ip>'",
+         "Listen: 10 s of a click and a short note on every beat (100 a minute), even, no gaps or crackle; then one very short blip (a sound dropped on purpose)",
+         "When the tool says `speak now`: talk towards the head for 5 s (the tool saves a WAV and prints frames, gaps and level)"]
+duration_s = 120
+
+[[check]]
+name = "on Wi-Fi and the broker"
+event = "net"
+field = "mqtt"
+any_min = 1
+[[check]]
+name = "frames arrive at 50 a second"
+event = "pcm"
+field = "frames"
+min_count = 8
+any_min = 45
+[[check]]
+name = "the 10 s sound played whole (500 frames)"
+event = "sound"
+field = "frames"
+any_min = 495
+[[check]]
+name = "no gaps inside a sound"
+event = "sound"
+field = "gaps"
+min_count = 2
+all_max = 0
+[[check]]
+name = "no frame dropped"
+event = "sound"
+field = "dropped"
+all_max = 0
+[[check]]
+name = "the main loop kept up (longest pass under 100 ms)"
+event = "pcm"
+field = "loop_max_ms"
+all_max = 100
+[[check]]
+name = "a zero-length message empties the ring"
+event = "flush"
+field = "dropped_ms"
+any_min = 100
+[[check]]
+name = "microphone frames while it is held open"
+event = "mic"
+field = "frames"
+min_count = 4
+any_min = 40
+[[check]]
+name = "heard and recorded"
+ask = "Even clicks and notes, clear and loud enough to tap along to, no crackle or reset; and the tool reported microphone frames with a level?"

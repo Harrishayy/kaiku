@@ -74,8 +74,11 @@ def main() -> int:
     server = announcement = None
     try:
         if not args.advertise_only:
+            # The apps keep GET /v1/me/stream open (D50). Without a limit a stop or a --reload restart would wait
+            # for every open stream to end by itself; with it they are cut and the apps reconnect.
             command = [sys.executable, "-m", "uvicorn", "kaiku_cloud.api.local:app", "--host", args.host,
-                       "--port", str(args.port)]
+                       "--port", str(args.port), "--timeout-graceful-shutdown",
+                       str(int(get("local_api", "graceful_shutdown_s", 3)))]
             if args.reload:
                 command.append("--reload")
             server = subprocess.Popen(command)

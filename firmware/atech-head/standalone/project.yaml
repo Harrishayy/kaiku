@@ -1,7 +1,7 @@
 # Standalone head firmware (from the Atech website agent, 2026-11-14): runs the check-in ritual on the head itself
-# and talks JSON lines over USB serial. No Wi-Fi/MQTT, no contracts, no hub safety stop.
-# This file only tells the Atech toolchain which drivers to fetch; the program is src/ (the website agent's
-# code; our only change: the drum clock starts at the first tap).
+# and talks JSON lines over USB serial; src/kaiku_net.* adds Wi-Fi + MQTT (contracts), the hub's sound on the head's
+# speaker, the microphone stream and the hub-led drum step (../AGENTS.md).
+# This file only tells the Atech toolchain which drivers to fetch; the program is src/.
 # Build + flash: `make atech-standalone` (then `PORT=... make atech-standalone-upload`).
 # Back to the MQTT robot firmware: flash ../ (`make atech-mqtt-upload`).
 name: kaiku-head-standalone

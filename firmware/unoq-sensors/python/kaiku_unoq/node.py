@@ -7,7 +7,7 @@ Emits     raw/sensors/ppg {t0_ms, fs_hz, samples} (KY-039 100 Hz, quality 0.9 | 
           raw/sensors/light {raw, lux_est} every light_every_s (KY-054; camera backup per [unoq] light_source)
           raw/hub/face (one per face, 5 Hz) · raw/sensors/distance (from face size)
           health/sensors {camera_ok, mcu_ok, mcu_fw, ppg}
-Taps are the Atech head's (its orientation sensor, raw/head/tap src imu): the KY-031 knock switch is gone (D49).
+Taps are the Atech head's (its orientation sensor, raw/head/tap src imu): the KY-031 knock switch is gone (D55).
 The eyes, knob, LED grids and motor are the Atech head's (cmd/head). The UNO Q LED matrix is a hidden status display.
 Hub and broker run on the laptop today; set MQTT_HOST=localhost later to run them on this board (D32).
 """

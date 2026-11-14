@@ -49,6 +49,12 @@ class TapAnalyzer:
         iv = self.intervals()
         return float(min(400.0, 60000.0 / np.median(iv))) if iv.size else 0.0
 
+    def recent_tempo_bpm(self, taps: int = 8) -> float:
+        """Tempo of the last few taps: what the music and the sway follow. The session's own tempo (`tempo_bpm`,
+        the median of every interval) moves only once half the session is at the new speed: in a real run on
+        2026-11-14 the music changed 10 s after she sped up. 0.0 until two intervals exist."""
+        return self._tempo_of(self.times[-taps:]) or 0.0
+
     def regularity(self) -> float:
         iv = self.intervals()
         if iv.size < 2:

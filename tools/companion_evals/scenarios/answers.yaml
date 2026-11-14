@@ -1,0 +1,33 @@
+# Kaiku always answers the person's own words (config/persona.md -> "How Kaiku speaks", "Passing chat"; D49).
+# On a hard day people speak in plain statements: no question, no "Kaiku". In a real check-in the Live model left
+# two such lines unanswered while proactive audio was on for every purpose; it is now on for a walk only
+# (config/kaiku.toml [live].proactive_audio_purposes). These scenarios hold the wording side:
+# expect.answers_every_turn fails when any line the person says gets no words back (run.check_answers).
+# The text stand-in cannot decline a turn the way the Live model can: the proof on the real Live model is D49.
+scenarios:
+  - id: iphone-answers-checkin-plain-statements-hard-day
+    surface: iphone
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: check_in, chat_depth: stay, open_items: [sleep, mood, energy], time_of_day: evening, tone: extra-gentle}
+    person: "A hard day. Short plain statements; asks nothing and never says Kaiku's name."
+    turns: ["It has been a hard day.", "I did not sleep much last night.", "I have not been outside at all."]
+    expect:
+      answers_every_turn: true
+      tools_forbidden: [start_activity, start_phq9, suggest_nudge, record_dial]
+      stays: true
+      no_scale: true
+
+  - id: iphone-answers-talk-plain-statements-hard-day
+    surface: iphone
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: talk, time_of_day: evening, tone: extra-gentle}
+    person: "A long, heavy day. Says how it is in plain sentences; asks nothing and never says Kaiku's name."
+    turns: ["Today was a lot.", "The flat is very quiet tonight.", "I am worn out."]
+    expect:
+      answers_every_turn: true
+      tools_forbidden: [start_activity, start_phq9, suggest_nudge, record_dial]
+      stays: true

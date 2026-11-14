@@ -12,6 +12,8 @@
 #include <time.h>
 
 #include "config.h"
+#include "head_audio.h"
+#include "help_screen.h"
 #include "secrets.h"  // gitignored; copy secrets.example.h
 
 namespace kaiku {
@@ -20,9 +22,15 @@ namespace {
 HeadIO io;
 WiFiClient net;
 PubSubClient mqtt(net);
-char topicBuf[96];
+char topicBuf[96], spkTopic[112], micTopic[112];
+uint8_t micBuf[head_audio::FRAME_BYTES];
 uint32_t bootMs = 0, nextNetTry = 0, backoff = BACKOFF_MIN_MS, nextHealth = 0, lastHubSeen = 0, reconnects = 0;
-bool hubSilent = true;
+uint32_t lastTick = 0, loopMaxMs = 0;   // longest gap between two tick() calls since the last health message
+bool hubSilent = true, micShown = false;
+bool helpOn = false;                    // the help screen (helpline numbers) is up instead of the eyes
+uint32_t helpAt = 0;
+
+void pcmOut(const int16_t* samples, int count) { io.pcmWrite(samples, count, SPEAKER_PCM_VOLUME); }
 
 // ---------------------------------------------------------------- envelope (contracts/python/kaiku_contracts/envelope.py)
 bool timeOk() { return time(nullptr) > 1700000000; }
@@ -72,7 +80,7 @@ bool publish(const char* type, const char* kind, const char* name, JsonDocument&
   env["type"] = type;
   env["payload"] = payload;
   env["sim"] = false;
-  static char buf[512];
+  static char buf[768];
   size_t n = serializeJson(env, buf, sizeof(buf));
   bool ok = mqtt.publish(topicFor(kind, name), (const uint8_t*)buf, n, retain);
   Serial.println(buf);  // one JSON object per line: tools/ can record it over USB too
@@ -253,7 +261,20 @@ void drawEye(int cx, int cy, bool blink) {
   if (eyes == "happy") io.displayRect(cx - w / 2, cy, w, h / 2 + 1, EYE_BG);  // ^ : cut the bottom half
 }
 
+void helpText(const char* text, int x, int y, int size, uint16_t color) {
+  io.displayText(text, (int16_t)x, (int16_t)y, (uint8_t)size, color);
+}
+
 void eyesTick(uint32_t now) {
+  if (helpOn) {                                        // the help screen replaces the face; nothing blinks under it
+    if (!eyesDirty) return;
+    eyesDirty = false;
+    io.displayFill(EYE_BG);
+    if (io.displayText) help_screen::draw(DISPLAY_W, DISPLAY_H, helpText);
+    if (micShown) io.displayRect(DISPLAY_W - 10, 3, 7, 7, MIC_DOT_COLOR);   // the hub opened the microphone again: show it
+    io.knobRing(micShown);
+    return;
+  }
   bool breathing = chest == "breathe";
   if (!breathing && now >= nextBlink && !blinking) { blinking = true; blinkUntil = now + BLINK_MS; eyesDirty = true; }
   if (blinking && now >= blinkUntil) {
@@ -267,7 +288,8 @@ void eyesTick(uint32_t now) {
   int cx = DISPLAY_W / 2 + (int)(lookX * EYE_LOOK_PX), cy = DISPLAY_H / 2 + (int)(lookY * EYE_LOOK_PX / 3);
   drawEye(cx - EYE_GAP / 2, cy, blinking);
   drawEye(cx + EYE_GAP / 2, cy, blinking);
-  io.knobRing(eyes == "listening");                    // the ear lights while a question is open
+  if (micShown) io.displayRect(DISPLAY_W - 10, 3, 7, 7, MIC_DOT_COLOR);   // the microphone is streaming to the hub
+  io.knobRing(eyes == "listening" || micShown);        // the ear lights while a question is open or the microphone streams
 }
 
 void ledTick(uint32_t now) {
@@ -283,6 +305,10 @@ void ledTick(uint32_t now) {
 
 // ---------------------------------------------------------------- commands
 void onMessage(char* topic, uint8_t* data, unsigned int len) {
+  if (!strcmp(topic, spkTopic)) {   // binary PCM, never an envelope: straight into the speaker ring (0 bytes = drop)
+    head_audio::speakerPush(data, len);
+    return;
+  }
   JsonDocument env;
   if (deserializeJson(env, data, len)) return;
   const char* type = env["type"] | "";
@@ -300,13 +326,33 @@ void onMessage(char* topic, uint8_t* data, unsigned int len) {
   if (c["chest"].is<const char*>()) chest = (const char*)c["chest"];
   if (c["bpm"].is<float>()) bpm = c["bpm"];
   if (c["color"].is<const char*>()) ledRgb = strtoul(((const char*)c["color"]) + 1, nullptr, 16);
-  if (hubSilent) return;  // never move without a live hub
+  const char* mic = c["mic"] | "";                      // the hub re-sends open every 3 s while it listens
+  if (!strcmp(mic, "open") && !hubSilent) head_audio::micHold(true);
+  else if (!strcmp(mic, "close")) head_audio::micHold(false);
+  // The hub's crisis path: the helpline numbers on the head's own screen. Honoured without a live hub (the hub
+  // sending it may be going down). Motor still, no tone, microphone shut; it stays until {show: none} or 10 minutes.
+  const char* show = c["show"] | "";
+  if (!strcmp(show, "help")) {
+    helpOn = true;
+    helpAt = millis();
+    stopMotor();
+    io.speakerStop();
+    head_audio::micHold(false);
+    eyesDirty = true;
+    nextHealth = 0;
+  } else if (!strcmp(show, "none") && helpOn) {
+    helpOn = false;
+    eyesDirty = true;
+    nextHealth = 0;
+  }
+  if (hubSilent || helpOn) return;  // never move without a live hub; never move or purr under the help screen
   bool busy = mode == GESTURE || mode == HOMING;       // ignore new moves mid-gesture / homing
   if (c["home"] | false) { if (!busy) home(); }
   else if (c["gesture"].is<const char*>()) { if (!busy) gesture(c["gesture"]); }
   else if (c["pan"].is<JsonObject>()) { if (!busy) goTo(c["pan"]["target_deg"] | 0.0f, c["pan"]["speed"] | 0.5f); }
   if (!strcmp(c["pan_mode"] | "", "still") && !busy) stopMotor();
-  if (c["purr"].is<JsonObject>() && !moving()) io.tone(PURR_HZ, c["purr"]["ms"] | 500, PURR_VOLUME);
+  if (c["purr"].is<JsonObject>() && !moving() && !head_audio::speakerBusy())   // never a tone over the hub's PCM
+    io.tone(PURR_HZ, c["purr"]["ms"] | 500, PURR_VOLUME);
 }
 
 // ---------------------------------------------------------------- network
@@ -321,6 +367,18 @@ void publishHealth(const char* status) {
   d["at_home"] = atHome;
   d["hub_silent"] = hubSilent;
   d["reconnects"] = reconnects;
+  d["help_shown"] = helpOn;
+  d["loop_max_ms"] = loopMaxMs;       // > 100 here means the main loop stalled: audio frames then arrive in bursts
+  loopMaxMs = 0;
+  head_audio::Stats s = head_audio::stats();
+  JsonObject a = d["audio"].to<JsonObject>();   // counters since boot (head_audio.h)
+  a["rx"] = s.spkFrames;
+  a["drop"] = s.spkDropped;
+  a["dry"] = s.spkDry;
+  a["mic_open"] = head_audio::micOpen();
+  a["mic_tx"] = s.micFrames;
+  a["mic_drop"] = s.micDropped;
+  a["mic_peak"] = s.micPeak;
   publish("health", "health", "head", p, true);
 }
 
@@ -360,6 +418,8 @@ void netTick(uint32_t now) {
     mqtt.subscribe(topicFor("cmd", "head"), 1);
     mqtt.subscribe(topicFor("health", "hub"), 1);
     if (HAS_HALL) mqtt.subscribe(topicFor("raw", "sensors/hall"), 0);
+    if (io.pcmWrite) mqtt.subscribe(spkTopic, 0);
+    net.setNoDelay(true);             // microphone frames leave one by one, not held back for the last one's ACK
     backoff = BACKOFF_MIN_MS;
     reconnects++;
     publishHealth("ok");
@@ -377,9 +437,14 @@ void begin(const HeadIO& headIo) {
   bootMs = millis();
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);  // never block on USB: with no host reading, println stalled the loop (bench 2026-11-14)
+  snprintf(spkTopic, sizeof(spkTopic), "kaiku/v1/%s/audio/head/speaker", KAIKU_HOME_ID);
+  snprintf(micTopic, sizeof(micTopic), "kaiku/v1/%s/audio/head/mic", KAIKU_HOME_ID);
+  head_audio::begin({io.pcmWrite ? pcmOut : nullptr, io.toneBusy, io.micTap});
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);          // modem sleep holds incoming packets until the next beacon (100 ms and more):
+                                 // 50 audio frames a second need the radio awake
   configTime(0, 0, NTP_SERVER);  // envelope ts is UTC
-  mqtt.setBufferSize(1024);
+  mqtt.setBufferSize(1024);      // one audio message = 640 bytes + its topic; PubSubClient's default is 256
   mqtt.setKeepAlive(15);
   mqtt.setCallback(onMessage);
   lastMotorTick = millis();
@@ -389,18 +454,32 @@ void begin(const HeadIO& headIo) {
 }
 
 void tick() {
-  netTick(millis());
-  mqtt.loop();
+  uint32_t t0 = millis();
+  if (lastTick && t0 - lastTick > loopMaxMs) loopMaxMs = t0 - lastTick;
+  lastTick = t0;
+  netTick(t0);
+  mqtt.loop();                        // PubSubClient handles ONE message a call:
+  for (int i = 0; i < 3 && net.available(); i++) mqtt.loop();   // after a slow pass take up to 4 in a row
+  if (!mqtt.connected()) {
+    head_audio::micHold(false);       // no broker, no hub holding the microphone
+  } else {
+    for (int i = 0; i < 4 && head_audio::micFrame(micBuf); i++)   // only ever true while the hub holds it open
+      mqtt.publish(micTopic, micBuf, head_audio::FRAME_BYTES, false);
+  }
   // Read the clock AFTER mqtt.loop(): messages handled in there stamp lastHubSeen / segStart with millis(), and an
   // older `now` made the unsigned `now - stamp` wrap to ~49 days -> "hub silent" after every heartbeat and every
   // motor segment "already finished" before it ran (bench 2026-11-14: head never moved).
   uint32_t now = millis();
-  if (!hubSilent && bootHomePending) { bootHomePending = false; home(); }  // first live hub: find the front
+  if (!hubSilent && bootHomePending && !helpOn) { bootHomePending = false; home(); }  // first live hub: find the front
   if (!hubSilent && now - lastHubSeen > HUB_SILENCE_STOP_MS) {  // safety: hub gone -> stop everything
     hubSilent = true;
     stopMotor();
     io.speakerStop();
+    head_audio::speakerDrop();        // and whatever PCM was still queued
+    head_audio::micHold(false);       // no hub, no open microphone
   }
+  if (head_audio::micOpen() != micShown) { micShown = !micShown; eyesDirty = true; }   // show it: ear ring + dot
+  if (helpOn && now - helpAt >= HELP_SHOW_MS) { helpOn = false; eyesDirty = true; nextHealth = 0; }   // 10 minutes
   if (!mqtt.connected()) stopMotor();                  // homing needs the hall messages too
   buttonTick(now);
   knobTick(now);

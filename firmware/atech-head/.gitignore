@@ -3,3 +3,4 @@ kaiku_link/secrets.h
 build/
 **/secrets.h
 bench/mic_record/recordings/
+bench/speaker_pcm/recordings/

@@ -195,6 +195,15 @@ async def test_mac_and_phone_twins_post_plan02_obs():
     wear = [e for e in envs if e.type == "obs.wearable_daily"]
     assert {e.source for e in wear} == {"phone"} and {w.payload.device for w in wear} == {"apple_watch", "phone_only"}
     assert next(w for w in wear if w.payload.device == "phone_only").payload.sleep_min is None
+    # more of the day from Apple Health (D53): a watch sends all of it, the three stages together and inside the
+    # night's sleep; a phone alone counts distance and nothing that needs a watch
+    more = ("distance_km", "daylight_min", "walking_hr_bpm", "sleep_deep_min", "sleep_rem_min", "sleep_core_min",
+            "sleep_awake_min")
+    watch, alone = (next(w.payload for w in wear if w.payload.device == d) for d in ("apple_watch", "phone_only"))
+    assert all(getattr(watch, f) is not None for f in more)
+    assert watch.sleep_deep_min + watch.sleep_rem_min + watch.sleep_core_min == watch.sleep_min
+    assert watch.walking_hr_bpm > watch.resting_hr_bpm
+    assert alone.distance_km is not None and all(getattr(alone, f) is None for f in more[1:])
     dial = [e for e in envs if e.type == "obs.self_report"]
     assert len(dial) == 6 and all(e.payload.channel == "phone" for e in dial)
     assert {e.payload.device for e in envs if e.type == "obs.play_session"} == {"mac", "phone"}
@@ -226,8 +235,63 @@ async def test_default_laptop_round_omits_retired_browser_features():
     lap = LaptopSim(seed=3, transport=_mock(reqs), url="http://cloud")
     await lap.run(once=True)
     events = [e for r in reqs for e in json.loads(r.content)["events"]]
-    assert {e["type"] for e in events} == {"obs.screen_activity", "obs.play_session"}
+    assert {e["type"] for e in events} == {"obs.screen_activity", "obs.play_session", "obs.face_signs"}
     assert all(e["sim"] for e in events)
+    reqs.clear()
+    await LaptopSim(seed=3, transport=_mock(reqs), url="http://cloud", camera=False).run(once=True)
+    off = [e for r in reqs for e in json.loads(r.content)["events"]]
+    assert {e["type"] for e in off} == {"obs.screen_activity", "obs.play_session"}  # the camera switch left off
+
+
+async def test_phone_and_mac_twins_send_face_signs_beside_each_game_and_nothing_a_picture_could_ride_in():
+    """D52: one obs.face_signs per game, tied to it by the game's envelope id, with the method of the device, the
+    envelope quality = share of frames with a face, and numbers only."""
+    import json
+
+    from kaiku_contracts import validate
+    from kaiku_contracts.payloads import FACE_SIGNS
+
+    from sim.nodes.laptop_sim import LaptopSim
+    from sim.nodes.phone_sim import PhoneSim
+
+    reqs = []
+    phone = PhoneSim(seed=3, transport=_mock(reqs), url="http://cloud")
+    assert await phone.play()
+    assert await LaptopSim(seed=3, transport=_mock(reqs), url="http://cloud").mac_hour(hour=14)
+    envs = [validate(e) for r in reqs for e in json.loads(r.content)["events"]]
+    games = {str(e.id): e for e in envs if e.type == "obs.play_session"}
+    faces = [e for e in envs if e.type == "obs.face_signs"]
+    assert len(faces) == len(games) == 6 and all(e.sim for e in faces)
+    for e in faces:
+        p, game = e.payload, games[e.payload.ref]
+        assert p.task == game.payload.game and p.device == game.payload.device and e.source == game.source
+        assert e.quality == p.coverage and p.duration_s >= 20
+        assert p.samples == round(p.duration_s * (30 if p.device == "phone" else 15))  # the real looks a second
+        assert all(isinstance(v, int | float) for k, v in p.model_dump(exclude_none=True).items()
+                   if k not in ("task", "device", "method", "ref"))
+    on_phone = [e.payload for e in faces if e.payload.device == "phone"]
+    assert {p.method for p in on_phone} == {"arkit_blendshapes"}
+    assert all(getattr(p, name) is not None for p in on_phone for name in FACE_SIGNS)
+    mac = next(e.payload for e in faces if e.payload.device == "mac")
+    assert mac.method == "vision_landmarks"  # the landmark method: no smile, brow or gaze sign, never a zero
+    assert all(getattr(mac, n) is None for n in ("smile_share", "smiles", "brow_raise_share", "brow_furrow_share",
+                                                 "gaze_on_share"))
+    assert all(getattr(mac, n) is not None for n in ("blinks_per_min", "head_movement", "expression_range"))
+    # the knobs tests use: a quiet face, and no face in view (provenance only)
+    usual, quiet = (PhoneSim(seed=6, url="http://cloud").face_signs("lantern", 90, quiet=q)[1] for q in (0.0, 1.0))
+    assert quiet["smile_share"] < usual["smile_share"] and quiet["expression_range"] < usual["expression_range"]
+    assert quiet["blinks_per_min"] > usual["blinks_per_min"]
+    # as the app: nothing is sent when no face was in view; a sign needs enough face time to be sent
+    assert PhoneSim(seed=6, url="http://cloud").face_signs("lantern", 90, coverage=0.0) is None
+    assert PhoneSim(seed=6, url="http://cloud").face_signs("lantern", 90, coverage=0.004) is None  # rounds to 0
+    _type, brief, quality = PhoneSim(seed=6, url="http://cloud").face_signs("lantern", 30, coverage=0.05)
+    assert quality == 0.05 and "blinks_per_min" not in brief and "head_movement" not in brief  # 1.5 s of face
+    assert brief["expression_range"] is not None and brief["smile_share"] is not None        # 22 face frames
+    assert validate({"home_id": "demo-aino", "source": "phone", "type": "obs.face_signs", "payload": brief,
+                     "quality": quality, "sim": True})
+    reqs.clear()
+    assert await PhoneSim(seed=3, transport=_mock(reqs), url="http://cloud", camera=False).play()
+    assert "obs.face_signs" not in {e["type"] for r in reqs for e in json.loads(r.content)["events"]}
 
 
 async def test_legacy_sensors_require_explicit_bench_opt_in():
@@ -382,6 +446,7 @@ async def test_head_pan_moves_only_on_targets_and_knocks_are_muted_while_moving(
 # ---------------------------------------------------------------- twin of the STANDALONE head firmware (D44)
 def _standalone(**kw):
     from sim.nodes.head_sim import StandaloneHeadSim
+    kw.setdefault("drum", "knock")   # these check the twin against a build with the UNO Q's knock switch
     head = StandaloneHeadSim(auto=False, time_scale=100.0, **kw)   # 10 real ms = 1 firmware second
     head.bus = _Capture()
     head.bus.node = "head"
@@ -529,7 +594,7 @@ async def test_follow_loop_on_a_real_broker_standalone_head_to_observations(brok
     dial = {e.payload.item: (e.payload.value, e.payload.scale_10) for e in seen if e.type == "obs.self_report"}
     assert dial == {"mood": (4, 7), "energy": (2, 4), "sleep": (3, 5)}
     drum = next(e for e in seen if e.type == "obs.drum_session")
-    assert drum.payload.taps >= 4 and drum.payload.force_mean is None
+    assert drum.payload.taps >= 4 and drum.payload.force_mean is not None   # this robot: the head's own sensor, with force
     assert not cmds                                          # the hub sent the head nothing
     assert all(e.sim and e.home_id == "demo-aino" for e in seen)          # on the robot's bus ...
     assert {e.home_id for e in hub.emitted} == {"aino"}                    # ... and "aino" towards the cloud

@@ -87,3 +87,79 @@ def test_session_tool_rederives_and_exports_a_stored_ritual(tmp_path, capsys):
     assert tool.main(["--store", str(path), "list"]) == 0 and "ritual-1" in capsys.readouterr().out
     assert tool.main(["--store", str(path), "show", "nope"]) == 1
     assert tool.main(["--store", str(tmp_path / "missing.sqlite"), "list"]) == 1
+
+
+# ------------------------------------------------------------------ the head's audio topics are never stored or shown
+async def test_record_never_writes_the_heads_audio_whatever_the_filter(broker, tmp_path):
+    """`kaiku/v1/<home>/audio/head/{speaker,mic}` carry PCM (the microphone: a person's voice). A recording holds
+    messages only, even when someone asks for exactly the audio topic."""
+    frame = bytes(range(256)) * 2 + bytes(128)
+    for i, topic in enumerate(("kaiku/v1/#", "kaiku/v1/t1/audio/#")):
+        out = tmp_path / f"rec{i}.jsonl"
+        rec = asyncio.create_task(record(topic, out, seconds=1.2))
+        await asyncio.sleep(0.3)
+        async with Bus("head", home_id="t1", heartbeat=False, sim=True) as b:
+            for _ in range(5):
+                assert await b.publish_audio(frame, stream="mic")
+                assert await b.publish_audio(frame, stream="speaker")
+            await b.publish_audio(b"")
+            await b.publish("raw.head.tap", {"t_ms": 1, "force": 1.0})
+        assert await rec == (1 if i == 0 else 0)
+        text = out.read_text() if out.exists() else ""
+        assert "audio" not in text and text.count("\n") == (1 if i == 0 else 0)
+
+
+def test_tail_counts_audio_frames_and_never_prints_what_is_in_them():
+    from tools.bus_tail import AudioCount
+
+    count = AudioCount()
+    count.t0 = 100.0
+    assert count.add("kaiku/v1/t1/audio/head/mic", 640, 100.2) is None
+    assert count.add("kaiku/v1/t1/audio/head/speaker", 0, 100.4) is None
+    line = count.add("kaiku/v1/t1/audio/head/mic", 640, 101.3)
+    assert "audio (not shown)" in line and "t1/audio/head/mic 2 frames 1280 bytes" in line
+    assert "t1/audio/head/speaker 1 frames 0 bytes 1 flush" in line and count.frames == {}
+
+
+async def test_replay_skips_an_audio_row_even_in_a_hand_made_file(broker, tmp_path):
+    tap = example("raw.head.tap", home_id="t1")
+    rows = [{"t": 0.0, "topic": "kaiku/v1/t1/audio/head/mic", "msg": "AAAA"},
+            {"t": 0.01, "topic": "kaiku/v1/t1/raw/head/tap", "msg": json.loads(to_json(tap))}]
+    path = tmp_path / "hand.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert await replay(path, speed=10, only=None, keep_ids=True, home=None, verbatim=False, loop=False) == 1
+
+
+# ------------------------------------------------------------------ what Kaiku said (raw.hub.trace) is never stored
+async def test_record_keeps_that_kaiku_spoke_but_never_what_it_said(broker, tmp_path):
+    """`raw.hub.trace` is live, for the "Kaiku bot" tab of the apps. A recording keeps its kind and machine words
+    (enough to debug the flow) and never the line itself."""
+    out = tmp_path / "rec.jsonl"
+    rec = asyncio.create_task(record("kaiku/v1/#", out, seconds=1.2))
+    await asyncio.sleep(0.3)
+    async with Bus("hub", home_id="t1", heartbeat=False, sim=True) as b:
+        await b.publish("raw.hub.trace", {"kind": "said", "text": "How are you today, Aino?", "by": "live"})
+        await b.publish("raw.hub.trace", {"kind": "tool", "tool": "feel", "ms": 40, "ok": True, "by": "rule"})
+        await b.publish("raw.hub.trace", {"kind": "heard"})
+    assert await rec == 3
+    text = out.read_text()
+    assert "Aino" not in text and "How are you" not in text and '"text"' not in text
+    rows = [json.loads(line)["msg"]["payload"] for line in text.splitlines()]
+    assert rows == [{"kind": "said", "by": "live"}, {"kind": "tool", "tool": "feel", "ms": 40, "ok": True, "by": "rule"},
+                    {"kind": "heard"}]
+    assert await replay(out, speed=10, only=None, keep_ids=True, home=None, verbatim=False, loop=False) == 3
+
+
+def test_replay_drops_the_words_of_a_trace_in_a_hand_made_file_and_tail_may_show_them(tmp_path):
+    said = example("raw.hub.trace", home_id="t1")
+    rows = [{"t": 0.0, "topic": "kaiku/v1/t1/raw/hub/trace", "msg": json.loads(to_json(said))},
+            {"t": 0.1, "topic": "kaiku/v1/t1/raw/hub/trace", "msg": "not a message: someone's words"},
+            {"t": 0.2, "topic": "kaiku/v1/t1/raw/head/tap", "msg": json.loads(to_json(example("raw.head.tap")))}]
+    path = tmp_path / "hand.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    loaded = load(path)
+    assert [r["topic"].rsplit("/", 1)[-1] for r in loaded] == ["trace", "tap"]
+    assert loaded[0]["msg"]["payload"] == {"kind": "said", "by": "live"} and said.payload.text   # the words are gone
+    assert prepare(loaded[0], keep_ids=True, home=None) is not None                  # and what is left still fits
+    line = fmt("kaiku/v1/t1/raw/hub/trace", to_json(said).encode(), color=False)     # the live tail is not a store
+    assert said.payload.text in line

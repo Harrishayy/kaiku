@@ -3,7 +3,12 @@
 // (gitignored; copy secrets.example.h).
 #pragma once
 
-#define KAIKU_FW_VERSION "atech-head-0.2.0"
+#define KAIKU_FW_VERSION "atech-head-0.4.0"
+
+// --- the help screen (cmd.head {show: help}): HELPLINE_NAME, HELPLINE_NUMBER, EMERGENCY_NUMBER, HELP_SHOW_MS.
+// A file of its own because the standalone firmware and bench/speaker_pcm compile the same three lines; its values
+// must equal config/kaiku.toml [safety] (firmware/atech-head/tests/test_helpline.py checks). Layout: help_screen.h.
+#include "helpline.h"
 
 // --- network
 #define MQTT_PORT_DEFAULT 1883
@@ -57,6 +62,10 @@
 #define PAN_PUBLISH_MOVING_MS 200    // raw.head.pan while moving (the UNO Q mutes knocks on `moving`)
 #define PAN_PUBLISH_IDLE_MS 2000
 
-// --- speaker (MAX98357A). Voice is on the laptop in v1; the speaker does purr + cues.
+// --- speaker (MAX98357A): purr + cues from the tone driver, and the hub's song / cues / voice as PCM frames on
+// audio/head/speaker. The stream numbers (ring, prebuffer, PCM gain, microphone gain, half-duplex tail) are in
+// head_audio.h, because the standalone firmware and bench/speaker_pcm share them.
 #define PURR_HZ 90                   // cmd.head purr {ms}: a low soft tone (no purr motor on this build)
 #define PURR_VOLUME 0.25f            // keep low: never motor + loud speaker together
+#define SPEAKER_PCM_VOLUME 0.4f      // the driver's volume while PCM plays: its own safe ceiling (1.0 clips the amp)
+#define MIC_DOT_COLOR 0xFD20         // orange dot, top right of the eyes display, while the microphone is streaming

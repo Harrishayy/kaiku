@@ -2,6 +2,9 @@
 
     python tools/record.py ['kaiku/v1/#'] [-o logs/session.jsonl] [--seconds 60]
 Each line: {"t": seconds since start, "topic": ..., "msg": <decoded JSON>}
+The binary audio topics (`kaiku/v1/<home>/audio/...`: the head's speaker and microphone) are never written, whatever
+the topic filter says (root rules 5 and 9: no raw media is stored). Of a `raw.hub.trace` (what Kaiku says and does,
+live, for the apps) the `text` is never written either: only its kind and machine words.
 """
 
 from __future__ import annotations
@@ -18,8 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import aiomqtt  # noqa: E402
+from kaiku_contracts import is_audio_topic  # noqa: E402
 
-from tools.busio import decode, mqtt_kwargs  # noqa: E402
+from tools.busio import decode, mqtt_kwargs, without_trace_text  # noqa: E402
 
 
 async def record(topic: str, out: Path, seconds: float | None, include_retained: bool = False) -> int:
@@ -33,10 +37,13 @@ async def record(topic: str, out: Path, seconds: float | None, include_retained:
             async def loop() -> None:
                 nonlocal n
                 async for m in client.messages:
-                    if m.retain and not include_retained:
+                    if is_audio_topic(str(m.topic)) or (m.retain and not include_retained):
+                        continue
+                    msg = without_trace_text(str(m.topic), decode(m.payload))
+                    if msg is None:
                         continue
                     f.write(json.dumps({"t": round(time.monotonic() - t0, 4), "topic": str(m.topic),
-                                        "msg": decode(m.payload)}) + "\n")
+                                        "msg": msg}) + "\n")
                     f.flush()
                     n += 1
             try:

@@ -213,10 +213,33 @@ def check_grounding(reply: str, card: dict[str, Any], person_said: str) -> list[
     return list(dict.fromkeys(issues))
 
 
+NOT_THE_PERSON = ("(context from Kaiku's senses", "A look around, not said by them", "A quiet stretch, not said by them")
+
+
+def check_answers(exp: dict[str, Any], transcript: list[dict[str, Any]]) -> list[str]:
+    """expect.answers_every_turn: every line the person says gets words back, a plain statement as much as a
+    question. A tool call with nothing said is not an answer. A device's own context or nudge line may be met
+    with silence; the crisis gate answers in Kaiku's place."""
+    if not exp.get("answers_every_turn"):
+        return []
+    issues, n = [], 0
+    for i, turn in enumerate(transcript):
+        if turn["role"] != "person":
+            continue
+        n += 1
+        if turn["text"].startswith(NOT_THE_PERSON):
+            continue
+        reply = transcript[i + 1] if i + 1 < len(transcript) else None
+        if reply is None or reply["role"] == "person" or not (reply.get("text") or "").strip():
+            issues.append(f"no_reply_to_person:{n}")
+    return issues
+
+
 def check_act(exp: dict[str, Any], kaiku_turns: list[dict[str, Any]]) -> list[str]:
     """Detect -> act expectations over the whole conversation. `exp` keys (all optional):
     offer {words, not_before_turn, at_least, at_most, none_from_turn}  the one person-specific offer
     says [{from_turn, any}]            words Kaiku must use somewhere from that reply on
+    unsaid [words]                     words no Kaiku turn may contain (what it was told for its manner only, D52)
     feel {kind, about, said, max_calls}  how the `feel` tool was called (first call)
     closes_by_turn N / stays true      a passing chat ends itself; a hard or very good one is never closed
     checkin_items_max N / no_scale     check-in questions woven in, never a form or a scale"""
@@ -237,6 +260,9 @@ def check_act(exp: dict[str, Any], kaiku_turns: list[dict[str, Any]]) -> list[st
     for spec in exp.get("says", []):
         if not any(w.lower() in x.lower() for x in texts[spec.get("from_turn", 1) - 1:] for w in spec["any"]):
             issues.append("act:missing_words")
+    for word in exp.get("unsaid", []):
+        if any(str(word).lower() in x.lower() for x in texts):
+            issues.append(f"act:said:{word}")
     feel = exp.get("feel")
     if feel:
         made = [c for cs in calls for c in cs if c["name"] == "feel"]
@@ -289,6 +315,60 @@ def check_attunement(reply: str, tools: list[dict[str, Any]], spec: dict[str, An
     if tools and not spec.get("tools_ok") and any(c["name"] != "express" for c in tools):
         issues.append("attune:tool_instead_of_listening")
     return issues
+
+
+# An activity agreed in one place (D50; scenarios/agree.yaml). Saying it is on a device is a claim about a tool
+# result, so it needs one.
+ON_A_DEVICE = re.compile(r"\b(?:on|to) your (?:phone|mac|computer)\b|\bput it on\b", re.I)
+
+
+def check_agree(exp: dict[str, Any], transcript: list[dict[str, Any]]) -> list[str]:
+    """`expect.agree` keys (all optional): calls N (how many times `agree_activity` was called), kind,
+    said true (the call carries the person's own words: `said` is found in what they said up to then),
+    on_turn N (the reply it was called in), after_offer [words] (an earlier reply offered it),
+    says_where [words] (the reply after the call says where it is, e.g. phone),
+    no_claim true (no reply says something is on a device unless a call was kept by then)."""
+    spec = exp.get("agree")
+    if not spec:
+        return []
+    issues: list[str] = []
+    person, reply_n, made, kept_by = "", 0, [], None
+    for turn in transcript:
+        if turn["role"] == "person":
+            person += " " + turn["text"]
+            continue
+        if turn["role"] != "kaiku":
+            continue
+        reply_n += 1
+        text = turn.get("text") or ""
+        for c in turn.get("tools", []):
+            if c["name"] != "agree_activity":
+                continue
+            args = c.get("args") or {}
+            made.append({"turn": reply_n, "args": args, "text": text})
+            if (c.get("result") or {}).get("agreed", True):
+                kept_by = kept_by or reply_n
+            said = re.sub(r"[^\w ]", "", str(args.get("said", "")).lower()).strip()
+            if spec.get("said") and (not said or said not in re.sub(r"[^\w ]", "", person.lower())):
+                issues.append("agree:not_their_words")
+        if spec.get("no_claim") and ON_A_DEVICE.search(text) and (kept_by is None or kept_by > reply_n):
+            issues.append("agree:claimed_without_result")
+    if "calls" in spec and len(made) != spec["calls"]:
+        issues.append(f"agree:calls:{len(made)}")
+    if made:
+        first = made[0]
+        if spec.get("kind") and first["args"].get("kind") != spec["kind"]:
+            issues.append(f"agree:kind:{first['args'].get('kind')}")
+        if spec.get("on_turn") and first["turn"] != spec["on_turn"]:
+            issues.append(f"agree:on_turn:{first['turn']}")
+        if spec.get("says_where") and not any(w.lower() in first["text"].lower() for w in spec["says_where"]):
+            issues.append("agree:did_not_say_where")
+        earlier = " ".join(t.get("text") or "" for t in [x for x in transcript if x["role"] == "kaiku"][:first["turn"] - 1])
+        if spec.get("after_offer") and not any(w.lower() in earlier.lower() for w in spec["after_offer"]):
+            issues.append("agree:no_offer_before")
+    return issues
+
+
 JUDGE_PROMPT = """You grade a conversation between a person and Kaiku, a warm companion robot for people after TMS
 treatment. Kaiku's character rules are in the PERSONA section. Score each criterion 1 (bad) to 5 (excellent):
 warmth, brevity (short turns for the surface), one_question (never more than one question per turn),
@@ -381,8 +461,10 @@ def evaluate(scn: dict[str, Any], transcript: list[dict[str, Any]], surface: dic
             issues.append(f"attune:missing_reply_{n}")
             continue
         issues += check_attunement(kaiku_turns[n - 1]["text"], kaiku_turns[n - 1].get("tools", []), spec)
+    issues += check_answers(exp, transcript)
     issues += check_act(exp, kaiku_turns)
     issues += check_walk(exp, kaiku_turns)
+    issues += check_agree(exp, transcript)
     if kaiku_turns:  # every scenario: the opener says nothing the card or the person did not give it
         first = next(i for i, t in enumerate(transcript) if t["role"] == "kaiku")
         heard = " ".join(t["text"] for t in transcript[:first] if t["role"] == "person")
@@ -408,7 +490,7 @@ def run_dry_scenario(scn: dict[str, Any], replies: dict[str, list[dict[str, Any]
             transcript.append({"role": "kaiku", "text": "", "tools": [], "missing_fixture": True})
             continue
         tools = [{**c, "result": _sim_tool_result(c["name"], c.get("args") or {}, card, scn.get("mind"), state)}
-                 if c["name"] in DEVICE_FAKES else c for c in canned[i].get("tools", [])]
+                 if c["name"] in (*DEVICE_FAKES, "agree_activity") else c for c in canned[i].get("tools", [])]
         transcript.append({"role": "kaiku", "text": canned[i].get("say", ""), "tools": tools})
     return transcript
 
@@ -445,7 +527,26 @@ def _sim_tool_result(name: str, args: dict[str, Any], card: dict[str, Any], mind
     record from the scenario's `mind` block: help {arm, tries}, heavy_days, recall. `state` carries the
     conversation (earlier moments, whether the one offer was made). The device tools are twins of what the
     walk and the phone answer (kaiku_contracts.api WalkGoalResult, WalkMomentResult, ActivityCardResult): the
-    device keeps the count; the camera is off unless the scenario's `mind` block says `camera: true`."""
+    device keeps the count; the camera is off unless the scenario's `mind` block says `camera: true`.
+    `agree_activity` runs the cloud's own rule (kaiku_cloud.mind.agree.decide) on the scenario: the card's tone,
+    `mind.screens` (the person's screens; default phone and Mac) and what was already agreed in this conversation.
+    `mind.can`: this body's activities, so a `feel` offer it cannot start comes back as `offer_elsewhere`."""
+    if name == "agree_activity":
+        from kaiku_cloud.mind import agree
+
+        mind, state = mind or {}, state if state is not None else {}
+        kind = str(args.get("kind", ""))
+        try:
+            on, _asked = agree.decide(kind, args.get("said"), tone=card.get("tone", "steady"),
+                                      screens=list(mind.get("screens", agree.SCREENS)),
+                                      open_kinds=list(state.get("agreed", [])))
+        except agree.Refused as e:
+            return {"ok": False, "agreed": False, "reason": e.code, "error": str(e)}
+        already = kind in state.get("agreed", [])
+        state["agreed"] = [*state.get("agreed", []), *([] if already else [kind])]
+        return {"agreed": True, "id": f"sim-{kind}", "kind": kind, "name": agree.name_of(kind),
+                "when": args.get("when", "now"), "on": on, "where": agree.where_words(on), "already": already,
+                "listening": []}
     if name in DEVICE_FAKES:
         mind, state = mind or {}, state if state is not None else {}
         if name == "set_walk_goal":
@@ -473,7 +574,8 @@ def _sim_tool_result(name: str, args: dict[str, Any], card: dict[str, Any], mind
         plan = feel.plan_from(
             args.get("kind", "other"), heard, args.get("about"), args.get("said"),
             earlier=state.get("moments", 0), heavy=int(mind.get("heavy_days", 0)), cue=card.get("tone", "steady"),
-            offered=bool(state.get("offered")), best=mind.get("help"), recall=mind.get("recall"),
+            offered=bool(state.get("offered")), best=mind.get("help"), recall=mind.get("recall"), can=mind.get("can"),
+            quiet=card.get("quieter_in"),  # the card's enum: the plan then carries the words-only `manner` (D52)
             follow_up=bool(args.get("about") and args.get("said")) and not (card.get("dont_remember") or
                                                                            card.get("others_present")))
         state["moments"] = state.get("moments", 0) + 1

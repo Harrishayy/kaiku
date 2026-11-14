@@ -95,6 +95,27 @@ async def test_drum_session_then_post_activity_mood(ctx):
     assert order.index("obs.drum_session") < order.index("obs.self_report")
 
 
+async def test_drum_music_follows_the_recent_tempo(ctx):
+    """She drums at 100 bpm and speeds up to 130: the music is told the new tempo while the session's own
+    tempo is still the old one (a real run on 2026-11-14 changed the music 10 s late)."""
+    told: list[float] = []
+
+    class Follows(type(ctx.music)):
+        async def set_tempo(self, bpm: float, force: float) -> None:
+            told.append(round(bpm))
+
+    ctx.music = Follows()
+    step = Drum(10, idle_end_s=0.2, post_s=0.1)
+    await step.enter(ctx)
+    t = 1000
+    for gap in [600] * 12 + [460] * 5:
+        await step.handle(Event("tap", {"t_ms": t}), ctx)
+        step._last_sway = 0.0  # the test taps faster than the one-a-second follow limit
+        t += gap
+    assert told[0] == 100 and told[-1] == 130
+    assert step.taps.tempo_bpm() == pytest.approx(100)
+
+
 async def test_drum_post_mood_timeout_keeps_drum_session(ctx):
     taps = [Event("tap", {"t_ms": 1000 + i * 400, "force": 1.0}) for i in range(6)]
     res = await run_with(ctx, [Drum(10, idle_end_s=0.1, post_s=0.2)], taps)

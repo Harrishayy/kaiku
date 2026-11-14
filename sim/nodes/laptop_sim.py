@@ -1,9 +1,11 @@
 """Sim twin of the laptop / "Apps" source (3): web /session + /phq9, and the Mac app (hourly obs.screen_activity
-usage rhythm, obs.play_session firefly games). HTTPS only.
+usage rhythm, obs.play_session firefly games and, beside each game, what the Mac camera counted while it ran:
+obs.face_signs with method vision_landmarks, D52). HTTPS only.
 
-    uv run python -m sim.nodes.laptop_sim [--every 300] [--once] [--phq9] [--phq9-item9]
+    uv run python -m sim.nodes.laptop_sim [--every 300] [--once] [--phq9] [--phq9-item9] [--no-camera]
 
-Each default round posts Mac activity plus Firefly. The retired browser session remains available only
+Each default round posts Mac activity plus Firefly and its face signs (`--no-camera`: "Camera during activities"
+left off, as the app ships). The retired browser session remains available only
 through an explicit legacy fixture invocation; it does not populate ordinary demo rounds.
 
 --phq9-item9 sends a PHQ-9 with item 9 > 0 AND the obs.safety_flag the web app sends alongside it
@@ -25,8 +27,9 @@ from .http_source import HttpSource
 
 class LaptopSim:
     def __init__(self, *, every_s: float = 300.0, seed: int | None = None,
-                 transport: httpx.AsyncBaseTransport | None = None, url: str | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None, url: str | None = None, camera: bool = True):
         self.every_s = every_s
+        self.camera = camera
         self.rng = random.Random(seed)
         self.http = HttpSource("laptop", transport=transport, url=url)
 
@@ -62,10 +65,28 @@ class LaptopSim:
                 "reaction_ms_iqr": round(max(10.0, g(55, 10)), 1),
                 "lapses": max(0, int(round(g(1, 1)))), "false_taps": max(0, int(round(g(0.5, 0.7))))}
 
+    def face_signs_payload(self, seconds: float, ref: str | None = None) -> dict:
+        """What the Mac camera counted during the game (D52): the landmark method, 15 looks a second.
+        It sends no smile, brow or gaze sign (absent, never 0); its blink rate, head movement (face widths a
+        second) and range (landmark spread) are on other scales than the phone's face tracking."""
+        g = self.rng.gauss
+        seconds = float(round(seconds))
+        payload = {"task": "firefly", "device": "mac", "method": "vision_landmarks", "duration_s": seconds,
+                   "samples": max(1, round(seconds * 15)), "coverage": round(min(0.99, max(0.05, g(0.88, 0.04))), 2),
+                   "mouth_open_share": round(min(1.0, max(0.0, g(0.04, 0.01))), 3),
+                   "blinks_per_min": round(max(0.0, g(12.5, 1.0)), 1),
+                   "head_movement": round(max(0.0, g(0.031, 0.006)), 3),
+                   "expression_range": round(min(1.0, max(0.0, g(0.27, 0.02))), 3)}
+        return payload | ({"ref": ref} if ref else {})
+
     async def mac_hour(self, hour: int | None = None) -> bool:
         h = datetime.now().hour if hour is None else hour
-        return await self.http.post([("obs.screen_activity", self.screen_payload(h)),
-                                     ("obs.play_session", self.firefly_payload())])
+        game = self.http.envelope("obs.play_session", self.firefly_payload())
+        batch = [self.http.envelope("obs.screen_activity", self.screen_payload(h)), game]
+        if self.camera:
+            face = self.face_signs_payload(game.payload.duration_s, ref=str(game.id))
+            batch.append(self.http.envelope("obs.face_signs", face, face["coverage"]))
+        return await self.http.post(batch)
 
     def phq9_items(self, item9: bool = False) -> list[int]:
         items = [self.rng.choice([0, 0, 1, 1, 2]) for _ in range(8)]
@@ -109,9 +130,10 @@ def main() -> None:
     ap.add_argument("--phq9", action="store_true", help="also send a PHQ-9 at start")
     ap.add_argument("--phq9-item9", action="store_true", help="PHQ-9 with item 9 > 0 (+ safety_flag)")
     ap.add_argument("--legacy-session", action="store_true", help="explicit retired browser-task fixture")
+    ap.add_argument("--no-camera", action="store_true", help="Camera during activities off: no obs.face_signs")
     a = ap.parse_args()
-    asyncio.run(LaptopSim(every_s=a.every).run(once=a.once, phq9=a.phq9, item9=a.phq9_item9,
-                                            legacy_session=a.legacy_session))
+    asyncio.run(LaptopSim(every_s=a.every, camera=not a.no_camera).run(
+        once=a.once, phq9=a.phq9, item9=a.phq9_item9, legacy_session=a.legacy_session))
 
 
 if __name__ == "__main__":

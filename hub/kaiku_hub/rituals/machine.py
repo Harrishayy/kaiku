@@ -61,6 +61,11 @@ class Step:
     def deadline(self) -> float:
         return self.t0 + self.timeout_s
 
+    def hard_cap_s(self, default: float) -> float:
+        """The latest this step may run, in seconds from its start. `default` is the ritual's cap
+        ([ritual] step_timeout_s); a step with several rounds (Tap it back) may ask for more."""
+        return default
+
     async def enter(self, ctx: RitualContext) -> None:
         return None
 
@@ -149,13 +154,13 @@ class RitualMachine:
         self.state = step.name
         self._queue = q = asyncio.Queue()
         step.t0 = time.monotonic()
-        hard_deadline = step.t0 + self.step_timeout_s
         await self.ctx.emit("obs.ritual", {"step": step.name, "status": "started"})
         status: Status
         try:
             await step.enter(self.ctx)
             while True:
                 now = time.monotonic()
+                hard_deadline = step.t0 + step.hard_cap_s(self.step_timeout_s)
                 if now >= hard_deadline:
                     status = step.on_timeout()
                     break

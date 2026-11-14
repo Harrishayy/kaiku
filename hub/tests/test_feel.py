@@ -139,7 +139,7 @@ async def test_crisis_words_in_feel_arguments_never_reach_the_cloud(settings):
     assert seen == []                                          # the local gate ran before anything was forwarded
     assert not hub.machine.running and hub.voice.verbatim
     assert [e.type for e in hub.emitted].count("obs.safety_flag") == 1
-    assert hub.heads[-1]["eyes"] == "soft"
+    assert hub.heads[-2]["eyes"] == "soft" and hub.heads[-1] == {"show": "help"}   # calm, then the help screen
 
 
 async def test_cloud_gate_on_feel_also_runs_the_crisis_path(settings):

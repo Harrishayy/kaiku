@@ -17,6 +17,24 @@ def from_registry(name: str) -> dict:
             **({"behavior": t["behavior"]} if t.get("behavior") else {})}
 
 
+# A head that runs its own ritual (standalone firmware, follow mode) moves through its steps by itself and takes its
+# dial answers from its own knob: these tools would promise the model something the hub cannot do there.
+HEAD_RUNS_ITS_STEPS = frozenset({"record_dial", "start_activity", "start_breathing", "start_drum", "start_phq9"})
+
+
+def without(tools: list[dict], names: frozenset[str] | set[str]) -> list[dict]:
+    """The tool list minus some names, in either shape (plain declarations, or Gemini `function_declarations` blocks)."""
+    out: list[dict] = []
+    for t in tools:
+        if isinstance(t, dict) and "function_declarations" in t:
+            kept = [d for d in t["function_declarations"] if d.get("name") not in names]
+            if kept:
+                out.append({**t, "function_declarations": kept})
+        elif not (isinstance(t, dict) and t.get("name") in names):
+            out.append(t)
+    return out
+
+
 TOOLS: list[dict] = [
     {"name": "record_dial", "description": "Record the person's 1-5 answer to a dial question (mood, energy, "
      "or last night's sleep).",
@@ -38,6 +56,9 @@ TOOLS: list[dict] = [
     # Notice and act (cloud `feel`): the companion reports a clear feeling or news and gets back how to meet it.
     # Declared from the shared registry, NON_BLOCKING: Kaiku keeps listening and talking while it runs.
     from_registry("feel"),
+    # An activity agreed with the robot shows up on the phone and Mac at once (cloud `agree_activity`, D50): the
+    # robot has no screen for games, the journal or a walk, so a clear yes is forwarded and the cloud keeps it.
+    from_registry("agree_activity"),
 ]
 
 SYSTEM_PROMPT = (

@@ -32,6 +32,9 @@ cp src/*.cpp src/*.h build/src/
 # kaiku_net (Wi-Fi + MQTT): the one gitignored secrets file shared with the MQTT firmware, plus its two libraries
 [ -f ../kaiku_link/secrets.h ] || { echo "missing ../kaiku_link/secrets.h: cp ../kaiku_link/secrets.example.h ../kaiku_link/secrets.h and fill it in" >&2; exit 1; }
 cp ../kaiku_link/secrets.h build/src/secrets.h
+# head_audio (speaker + microphone PCM streams): one implementation, shared with the MQTT firmware and bench/speaker_pcm
+cp ../kaiku_link/head_audio.h ../kaiku_link/head_audio.cpp build/src/
+# no display on this head: the help screen files (helpline.h, help_screen.h) are not part of this build
 python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text()
 if "PubSubClient" not in s: p.write_text(s.replace("lib_deps =\n", "lib_deps =\n    knolleary/PubSubClient@^2.8\n    bblanchon/ArduinoJson@^7.2\n", 1))'
 for m in shared/atech_helpers input/rotary_encoder audio/speaker audio/microphone \

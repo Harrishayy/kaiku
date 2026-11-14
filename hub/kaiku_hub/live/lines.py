@@ -5,16 +5,22 @@
                                   3. cloud 404/503/offline/slow -> visible text only
 
 Audio plays only when `play_audio` (voice gemini/local or KAIKU_LOCAL_TTS=1); text mode and tests stay silent.
+Where it is heard: the robot head's own speaker (`head` = the hub's `HeadSpeaker`, when `on_head()` says so:
+`[voice] audio`), as 20 ms PCM frames on the bus like the music and the Live voice; otherwise this machine's
+player (`afplay` / `aplay`). A hub on the robot's own computer has neither a sound card nor a player.
 Not for the crisis script: that is CrisisScript + Voice.say_verbatim (deterministic, never a cache miss).
 """
 
 from __future__ import annotations
 
 import asyncio
+import io
 import shutil
 import sys
 import tempfile
 import tomllib
+import wave
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -54,7 +60,9 @@ def load_lines() -> dict[str, dict[str, str]]:
 
 class LinePlayer:
     def __init__(self, *, cloud_url: str | None, token: str | None = None, play_audio: bool = False,
-                 timeout_s: float = 3.0, transport: httpx.AsyncBaseTransport | None = None):
+                 timeout_s: float = 3.0, transport: httpx.AsyncBaseTransport | None = None,
+                 head: Any = None, on_head: Callable[[], bool] | None = None):
+        self.head, self.on_head = head, on_head or (lambda: head is not None)
         self.cloud_url = cloud_url.rstrip("/") if cloud_url else None
         self.token = token
         self.play_audio = play_audio
@@ -95,7 +103,7 @@ class LinePlayer:
         if audio is not None:
             self.last_source = "cache" if cached else "cloud"
             if self.play_audio:
-                await _play_wav(audio)
+                await self._play(audio)
         else:
             self.last_source = "text"
         log.info("voice_line", key, lang=lang, source=self.last_source)
@@ -117,9 +125,31 @@ class LinePlayer:
                                          transport=self.transport) as c:
                 r = await c.post("/v1/voice/say", json={"text": text[:400], "lang": lang})
             if r.status_code == 200 and r.headers.get("content-type", "").startswith("audio/"):
-                await _play_wav(r.content)
+                await self._play(r.content)
         except Exception as e:
             log.info("voice_text_unavailable", type(e).__name__)
+
+    async def _play(self, data: bytes) -> None:
+        """One spoken line, heard to its end: through the head's speaker when the robot is its own body."""
+        if self.head is None or not self.on_head():
+            await _play_wav(data)
+            return
+        try:
+            with wave.open(io.BytesIO(data)) as w:
+                if w.getsampwidth() != 2:
+                    raise ValueError("the head plays 16-bit PCM")
+                rate, channels, pcm = w.getframerate(), w.getnchannels(), w.readframes(w.getnframes())
+            out = self.head.RawOutputStream(samplerate=rate, channels=channels, dtype="int16")
+            out.priority = 1  # Kaiku's words never wait behind the music
+
+            def play() -> None:
+                out.start()
+                out.write(pcm)
+                out.flush()
+
+            await asyncio.wait_for(asyncio.to_thread(play), timeout=40)
+        except Exception as e:
+            log.warning("voice_play_failed", f"{type(e).__name__}: {e}")
 
 
 async def _play_wav(data: bytes) -> None:

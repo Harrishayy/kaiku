@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import contextlib
 import re
+import shutil
 import signal
 import sys
 import time
@@ -28,7 +29,7 @@ from kaiku_contracts.companion_tools import validate_args
 from kaiku_contracts.config import load_dotenv
 from kaiku_contracts.jlog import get_logger
 
-from . import __version__
+from . import __version__, follow
 from .attention import Attention, AttentionConfig
 from .bus import Bus
 from .cloudlink import CloudLink, local_nudge
@@ -39,14 +40,16 @@ from .episodes import EpisodeOutbox
 from .follow import HeadFollower
 from .live import Music, Voice, make_music, make_voice
 from .live.context_events import ContextEvents, DrumFeel, breathing_calmer, late_key, light_key
+from .live.head_audio import HeadAudio, HeadSpeaker
 from .live.lines import LinePlayer
-from .live.tools import TOOLS
+from .live.tools import HEAD_RUNS_ITS_STEPS, TOOLS, without
 from .perception import face
 from .perception.engagement import EngagementTracker
 from .perception.light import LightAggregator
 from .perception.presence import PresenceTracker
 from .perception.presses import PressCounter
-from .rituals import Event, RitualMachine, default_steps
+from .perception.tap_back import OneTapSource
+from .rituals import Event, RitualMachine, default_steps, steps, tap_back
 from .safety import ButtonLongPress, CrisisScript, SafetyGate, Trigger
 from .settings import Settings
 from .state import HubState
@@ -61,10 +64,21 @@ BACKGROUND_TOOLS = frozenset(n for n in CLOUD_TOOLS if REGISTRY[n].get("behavior
 
 SIM_WINDOW_S = 60.0
 CRISIS_DEDUPE_S = 60.0
+HELP_S = 600.0  # the head takes its help screen down by itself after this long (firmware HELP_SHOW_MS)
+HELP_RESEND_AFTER_S = 2.0  # a health message already on its way when the help screen was sent says nothing yet
 ATTENTION_HZ = 5.0
 THINK_TIMEOUT_S = 8.0  # a cloud tool (ask_mind, recall, ...) slower than this -> scripted line, ritual goes on
 THINK_LATER = "Let me think about that later."
 QUIET = re.compile(r"\b(not now|quiet|be quiet|hiljaa|ei nyt|tyst|inte nu)\b", re.I)
+
+
+def _answered_by(who: Any) -> str | None:
+    """Who answered a tool, in the trace's few words, from what the cloud's result says (a rule, or a model's name).
+    Anything else = not known."""
+    if not isinstance(who, str):
+        return None
+    w = who.lower()
+    return next((k for k in ("rule", "notebook", "gemma", "flash", "argon") if k in w), None)
 
 
 class Hub:
@@ -79,13 +93,19 @@ class Hub:
     ):
         self.settings = s = settings or Settings.load()
         self.state = HubState(s.state_path)
-        self.voice = voice or make_voice(s.voice, model_id=s.gemini_live_model, language=s.language,
-                                         read_stdin=read_stdin, voice_name=s.voice_name)
-        self.music = music or make_music(s.music, model_id=s.lyria_model, bpm_min=s.bpm_min, bpm_max=s.bpm_max)
         # The bus home is the robot's (what the boards were flashed with); observations are stamped with the
         # person's record id (settings.home_id). They are usually the same; `[hub] robot_home_id` splits them.
         self.bus_home = s.robot_home_id or s.home_id
         self.bus = Bus("hub", home_id=self.bus_home, version=__version__, details=self._details)
+        # The robot's own body for sound (plan 07 section 4): the head's speaker and microphone over the bus. The
+        # one HeadSpeaker is shared by the music, its cues and Kaiku's voice, so their frames can never interleave.
+        self.speaker = HeadSpeaker(self.bus.publish_audio, lead_ms=s.head_lead_ms, gain=s.head_gain)
+        self.head_audio = HeadAudio(self.speaker, self._head_audio_cmd)
+        self.voice = voice or make_voice(s.voice, model_id=s.gemini_live_model, language=s.language,
+                                         read_stdin=read_stdin, voice_name=s.voice_name, audio=s.voice_audio,
+                                         head=self.head_audio, head_alive=self._head_alive)
+        self.music = music or make_music(s.music, model_id=s.lyria_model, bpm_min=s.bpm_min, bpm_max=s.bpm_max,
+                                         out=s.music_out, head=self.speaker)
         self.uplink = Uplink(url=s.cloud_url, token=s.home_token, queue_path=s.queue_path,
                              batch_s=s.uplink_batch_s, max_batch=s.uplink_max_batch, timeout_s=s.uplink_timeout_s,
                              transport=transport)
@@ -116,11 +136,16 @@ class Hub:
         self._last_face: tuple[float, dict] | None = None
         self.light = LightAggregator(s.light_window_min)
         self.machine = RitualMachine(self, default_steps(s), step_timeout_s=s.step_timeout_s)
+        self._drum_step = next((st for st in self.machine.steps if st.name == "drum"), None)
+        self.tap_source = OneTapSource()  # the knock switch and the head's motion sensor can both feel one tap
+        self._game: tap_back.Game | None = None  # Tap it back run by the hub inside a standalone head's drum step
+        self._game_task: asyncio.Task | None = None
         self.lora = LoraSerialAdapter(self.emit)
         self.atech = AtechAdapter() if s.head == "atech" else None
         self.attention = Attention(AttentionConfig.from_dict(s.attention))
         self.lines = LinePlayer(cloud_url=s.cloud_url, token=s.home_token, timeout_s=s.voice_timeout_s,
-                                play_audio=s.voice in ("gemini", "local") or s.local_tts, transport=transport)
+                                play_audio=s.voice in ("gemini", "local") or s.local_tts, transport=transport,
+                                head=self.speaker, on_head=self._lines_on_head)
         if self.voice.wants_session:
             self.voice.fallback_say = lambda text: self.lines.say_text(text, s.language)
             self.voice.keep_transcript = s.hub_transcripts
@@ -145,9 +170,27 @@ class Hub:
         self.thinking = 0  # cloud tool calls in flight (body shows "thinking")
         self._eyes = "neutral"  # last eyes the ritual/attention asked for (restored after thinking)
         self._crisis_n = 0
+        # raw.hub.trace: what Kaiku says and does, live, for the apps' "Kaiku bot" tab (home network only)
+        self._trace_tasks: set[asyncio.Task] = set()
+        self._trace_quiet = False  # after a crisis nothing is traced but the script line, until the next ritual
+        self._music_on = False
+        self._trace_music()
+        if hasattr(self.voice, "on_reply"):
+            self.voice.on_reply = lambda text: self.trace("said", text=text, by="live")
+            self.voice.on_session = lambda opened: self.trace("session", detail="open" if opened else "close")
+        self._help_shown = False  # the crisis path asked the head for its help screen; cleared when a ritual starts
+        self._help_at = -1e9       # ... when; the head takes it down by itself HELP_S later
+        self._help_seen = False    # ... and the head's health has said `help_shown: true` since
+        self._help_resent = False  # ... or it was sent once more, to a head that was off the broker the first time
+        self._follow_step_seen: str | None = None  # the head's own step Kaiku last spoke for (follow mode)
+        self._follow_offer_at = -1e9
+        self._talk_n = 0  # conversations opened while following (a late goodbye never closes a newer one)
 
     # ================================================================ RitualContext
     async def say(self, text: str) -> None:
+        # In an open Live conversation the voice says the line in its own words: its reply is traced as spoken.
+        if not getattr(self.voice, "in_session", False):
+            self.trace("said", text=text, by="cached_voice" if self.voice_audible else "script")
         try:
             if self.settings.voice == "local":
                 await self.lines.say_text(text, self.settings.language)
@@ -159,7 +202,152 @@ class Hub:
     async def head(self, **cmd: Any) -> None:
         if cmd.get("eyes"):
             self._eyes = cmd["eyes"]
-        await self._cmd("cmd.head", cmd)
+        # `drum: hold|end` is the one family of commands a head that runs its own ritual takes from the hub (D51)
+        if "drum" in cmd:
+            await self._cmd("cmd.head", cmd, force=True)
+        else:
+            await self._cmd("cmd.head", cmd)
+
+    @property
+    def voice_audible(self) -> bool:
+        """Kaiku's lines are really spoken (Live, or the cached Gemini voice): the game leaves room for them."""
+        return self.settings.voice in ("gemini", "local") or self.settings.local_tts
+
+    def trace(self, kind: str, *, crisis_script: bool = False, **fields: Any) -> None:
+        """One `raw.hub.trace` on the home broker (QoS 0, never uplinked, never stored): Kaiku's own lines, the name
+        of a tool the voice called, a game cue, music, a session opening or closing. NEVER the person's words, a
+        tool's arguments or its result. Returns at once and never raises: the ritual does not wait for it."""
+        if not self.settings.trace or (self._trace_quiet and not crisis_script):
+            return
+        payload = {"kind": kind, **{k: v for k, v in fields.items() if v is not None}}
+        if isinstance(payload.get("text"), str):
+            payload["text"] = payload["text"][:300]
+        try:
+            task = asyncio.get_running_loop().create_task(self._trace_send(payload), name="trace")
+        except RuntimeError:
+            return  # no loop (a unit test of a step): nothing to tell
+        self._trace_tasks.add(task)
+        task.add_done_callback(self._trace_tasks.discard)
+
+    async def _trace_send(self, payload: dict[str, Any]) -> None:
+        try:
+            await asyncio.wait_for(self.bus.publish("raw.hub.trace", payload), timeout=2.0)
+        except Exception as e:  # never the payload in a log
+            log.debug("trace_not_sent", type(e).__name__)
+
+    def _trace_music(self) -> None:
+        """Music start / song / hush / stop go on the trace too. The adapter's own methods are wrapped on this one
+        instance, whichever adapter it is; `hush` and `stop` are only told when something was playing."""
+        def wrap(name: str) -> None:
+            inner = getattr(self.music, name, None)
+            if inner is None:
+                return
+
+            async def traced(*args: Any, **kwargs: Any) -> Any:
+                out = await inner(*args, **kwargs)
+                with contextlib.suppress(Exception):
+                    if name == "song":
+                        if out:  # "" = no song could play
+                            self._music_on = True
+                            self.trace("music", detail="song", bpm=float(args[0]) if args else None)
+                    elif name == "start":
+                        self._music_on = True
+                        self.trace("music", detail="start")
+                    elif self._music_on:
+                        self._music_on = name == "hush"  # a hush keeps the adapter running; stop ends it
+                        self.trace("music", detail=name)
+                return out
+
+            with contextlib.suppress(Exception):
+                setattr(self.music, name, traced)
+
+        for name in ("start", "song", "hush", "stop"):
+            wrap(name)
+
+    async def listening(self, on: bool) -> None:
+        """Close (False) or reopen (True) the microphone of the open conversation, without ending it. Tap it back
+        closes it for the whole game: the song and her taps are not speech. No conversation = nothing to do."""
+        if on and not self.conversation_consented:
+            return  # the conversation is over (a crisis, or she asked to stop): nothing opens the microphone again
+        listen = getattr(self.voice, "listen", None)
+        if listen is not None:
+            listen(on)
+
+    def _ritual_open(self) -> bool:
+        """A ritual is running: the hub's own, or the head's own that the hub follows."""
+        return self.machine.running or (self.following and self.follower.active)
+
+    def _clear_help(self) -> None:
+        """A new ritual starts: the head's help screen (crisis path) is taken down. The head also clears it by
+        itself on its own new ritual and after 10 minutes."""
+        self._trace_quiet = False
+        if self._help_shown:
+            self._help_shown = self._help_seen = False
+            self._tasks.append(asyncio.create_task(self._cmd("cmd.head", {"show": "none"}, force=True),
+                                                   name="help-clear"))
+
+    async def _show_help(self, **also: Any) -> bool:
+        """The crisis path's one command to the head's screen: `cmd.head {show: help}` (plus `also`, in the same
+        message). Never raises; the script and the safety flag follow whatever happens here."""
+        try:
+            await self._cmd("cmd.head", {**also, "show": "help"}, force=True)
+        except Exception as e:
+            log.warning("help_screen_not_sent", type(e).__name__)
+            return False
+        self._help_shown, self._help_at = True, time.monotonic()
+        self._help_seen = self._help_resent = False
+        return True
+
+    async def _help_health(self, details: dict) -> None:
+        """`cmd.head` is not retained: a head that was off the broker at the crisis missed the help screen. Its
+        health says so (`details.help_shown`). Sent ONCE more, and only to a head that never showed it: one that
+        showed it and took it down (she pressed its ear, `show: none`, its own ten minutes) is left alone."""
+        shown = details.get("help_shown")
+        if not self._help_shown or shown is None or time.monotonic() - self._help_at >= HELP_S:
+            return
+        if details.get("help_screen") == "none":
+            return  # a head with no screen (this robot): it has nothing to show, and it took the command as "stop"
+        if shown:
+            self._help_seen = True
+        elif not self._help_seen and not self._help_resent and time.monotonic() - self._help_at >= HELP_RESEND_AFTER_S:
+            self._help_resent = True
+            log.info("help_screen_resent", "the head's health says it is not showing the help screen")
+            with contextlib.suppress(Exception):
+                await self._cmd("cmd.head", {"show": "help"}, force=True)
+
+    @property
+    def speaker_busy(self) -> bool | None:
+        """The head's speaker still has sound of ours to play (music, a chime, Kaiku's voice). The head sends no tap
+        then, so Tap it back opens her turn only after it. None = nothing was ever sent to the head's speaker (the
+        sound goes to a sound card or nowhere): not known."""
+        return self.speaker.playing if self.speaker.frames else None
+
+    def _lines_on_head(self) -> bool:
+        """Scripted lines in Kaiku's cached voice go where the Live voice goes (`[voice] audio`): the head's own
+        speaker, or this machine's player. auto = the head when one is alive, or when this machine has no player."""
+        choice = self.settings.voice_audio
+        if choice == "auto":
+            return self._head_alive() or not (shutil.which("afplay") or shutil.which("aplay"))
+        return choice == "head"
+
+    def _head_alive(self) -> bool:
+        """A real head that can sound is on the bus and not down (its last heartbeat says so): its `health/head`
+        carries the `audio` block of the sound firmware. A head still on the firmware without sound is not a body
+        to speak through, and neither is a simulated one: with `auto`, the voice then stays on this machine."""
+        health = self.node_health.get("head") or {}
+        details = health.get("details") or {}
+        return (health.get("status") not in (None, "down") and not details.get("sim")
+                and isinstance(details.get("audio"), dict))
+
+    def _head_can_hold(self) -> bool:
+        """The head's firmware can lend the hub its drum step (`cmd.head {drum: hold}`): its `health/head` then
+        reports `drum_held`. A head that cannot would leave its drum step on its own timer in the middle of a game
+        and sound its own tap tones over it, so no game is started on it."""
+        return "drum_held" in ((self.node_health.get("head") or {}).get("details") or {})
+
+    async def _head_audio_cmd(self, **cmd: Any) -> None:
+        """`cmd.head {mic: open|close}`: also for a head that runs its own ritual (it only opens its microphone)."""
+        await self._cmd("cmd.head", cmd, force=True)
 
     async def _send_context(self, text: str) -> None:
         if self.conversation_consented:
@@ -250,6 +438,7 @@ class Hub:
         if self.machine.running:
             return False
         log.info("ritual_start", reason)
+        self._clear_help()
         self._episode = {"id": str(uuid4()), "start": datetime.now(UTC), "outcome": "completed", "tools_used": []}
         self.ritual_reason = reason
         self.conversation_consented = reason in ("text", "button", "cli", "test")
@@ -300,8 +489,12 @@ class Hub:
         else:
             log.warning("live_session_unavailable", "cloud bootstrap required")
             return
-        if not self.machine.running or not self.conversation_consented:
+        if not self._ritual_open() or not self.conversation_consented:
             return
+        if self.following:
+            # the head moves through its own steps and takes the dial from its own knob: the model is not offered
+            # tools the hub cannot honour there (`on_tool` refuses them too)
+            tools = without(tools, HEAD_RUNS_ITS_STEPS)
         if sess.get("max_session_seconds"):
             self.voice.max_seconds = float(sess["max_session_seconds"])
         ok = await self.voice.open_session(instruction, tools, model=model, voice=voice)
@@ -384,14 +577,28 @@ class Hub:
         if hasattr(self.voice, "transcript"):
             self.voice.transcript = []
         self._crisis_n += 1
+        self._trace_quiet = True  # nothing but the script line goes on the trace from here
         self.conversation_consented = False
         if self._live_open_task and not self._live_open_task.done():
             self._live_open_task.cancel()
+        # The microphone is shut before anything else and nothing reopens it (`listening(True)` needs a conversation
+        # that is still wanted): a `mic: open` after the head's help screen would open it under that screen.
+        with contextlib.suppress(Exception):
+            await self.listening(False)
         self.context.close_session()  # nothing but the script after a crisis
         log.warning("safety_trigger", trigger.kind, matched=trigger.detail, lang=trigger.language)
         # 1. stop the ritual and any generated audio
         await self.machine.abort()
+        helped = False
         if self.following:  # stop recording; the head itself has no "stop" over MQTT, so only its eyes are calmed
+            if self._game is not None:  # nothing of a game is recorded after a crisis; the head gets its step back
+                self._game = None
+                if self._game_task is not None:
+                    self._game_task.cancel()
+                # ONE message with the help screen: the standalone firmware then drops the drum end silently (no
+                # end chime, no "done" screen before the helpline's numbers). A firmware that does not know `show`
+                # still gets its step back.
+                helped = await self._show_help(drum="end", pan_mode="still")
             await self._follow_do(self.follower.abort(now, "crisis", "safety trigger"))
             await self._cmd("cmd.head", {"eyes": "soft"}, force=True)
         with contextlib.suppress(Exception):
@@ -400,8 +607,13 @@ class Hub:
             await self.voice.interrupt()
         # 2. calm body language
         await self.head(eyes="soft", chest="off", pan_mode="still")
+        # 2b. the helpline's name and numbers on the head's own screen (constants compiled into its firmware;
+        # never a sound). Both firmwares, so forced through in follow mode too. Already sent when a game was ended.
+        if not helped:
+            await self._show_help()
         # 3. scripted message, verbatim (+ helpline numbers always visible in logs/terminal)
         text = self.script.text(self.settings.language)
+        self.trace("said", text=text, by="script", crisis_script=True)
         try:
             await self.voice.say_verbatim(text)
         except Exception:
@@ -433,6 +645,8 @@ class Hub:
         """Completed user speech/text enters here. Safety gate runs FIRST."""
         if await self.check_utterance_safety(text):
             return
+        if live:
+            self.trace("heard")  # she spoke: only that. Her words never travel on the bus
         cmd = text.strip().lower()
         now = datetime.now().astimezone()
         if not self.machine.running or self.machine.state == "greet":
@@ -451,6 +665,19 @@ class Hub:
             self.machine.feed(Event("utterance", {"text": text, "live": live}))
 
     async def on_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Every tool the voice calls: run it, then one trace with its NAME, how long it took, whether it worked and
+        (only when the cloud's result says so) who answered. Never its arguments or its result."""
+        t0 = time.monotonic()
+        out: dict[str, Any] = {"ok": False}
+        try:
+            out = await self._run_tool(name, args)
+            return out
+        finally:
+            who = out.get("by") if isinstance(out, dict) else None
+            self.trace("tool", tool=str(name)[:40], ms=int((time.monotonic() - t0) * 1000),
+                       ok=bool(out.get("ok")) if isinstance(out, dict) else False, by=_answered_by(who))
+
+    async def _run_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Model requests; the hub decides. Cloud tools forward; end_session uses durable episode completion."""
         if self._episode and name not in self._episode["tools_used"]:
             self._episode["tools_used"].append(name)
@@ -469,6 +696,9 @@ class Hub:
         if name == "end_ritual":
             await self.end_ritual()
             return {"ok": True}
+        if self.following and name in HEAD_RUNS_ITS_STEPS:
+            return {"ok": False, "error": "this head runs its own steps: she answers by turning the ear and pressing "
+                                          "it, and a press moves on"}
         if name == "express":
             problems = validate_args(REGISTRY[name]["parameters"], args)
             if problems:
@@ -570,10 +800,18 @@ class Hub:
             log.warning("topic_type_mismatch", f"{env.type} on {t.kind}/{t.name}", source=env.source)
             return
         self._mark_sim(env)
-        if self._in_session:
-            self.store.add_raw(env)
         p = env.payload.model_dump()
         name = t.name
+        if name == "head/tap" and not self.tap_source.accept(f"{env.source}/{p.get('src')}", time.monotonic()):
+            return  # the other board's report of a tap already counted (their clocks cannot be compared)
+        if name == "head/ear" and p.get("pressed"):
+            # The robot's microphone is closed while its speaker plays, so she cannot talk over Kaiku there: a
+            # press of the ear is how she stops what Kaiku is saying. The conversation stays open.
+            quiet = getattr(self.voice, "quiet", None)
+            if quiet is not None:
+                quiet()
+        if self._in_session:
+            self.store.add_raw(env)
         if self.following and name in ("head/ear", "head/tap", "head/pan", "sensors/ppg"):
             # The head owns the ritual: these feed the follower, never the hub's own steps or the ad-hoc mood
             # (a press outside a dial step carries a stale 1-10 value).
@@ -585,7 +823,11 @@ class Hub:
                 if self._in_session and not stored:
                     self.store.add_raw(env)  # the press that started the ritual belongs to its record
             elif name == "head/tap":
-                f.on_tap(int(p["t_ms"]), p.get("force"))
+                if self._game is not None and f.game:
+                    if not f.pan_moving:  # the sway motor shakes both tap sensors
+                        await self._game.on_tap(p, self)
+                else:
+                    f.on_tap(int(p["t_ms"]), p.get("force"))
             elif name == "head/pan":
                 f.on_pan(bool(p["moving"]))
                 self.attention.set_head_pan(p["deg"])
@@ -594,7 +836,8 @@ class Hub:
             return
         if name == "head/tap":
             self.machine.feed(Event("tap", p))
-            if self.machine.state == "drum":
+            if self.machine.state == "drum" and not getattr(self._drum_step, "playing_game", False):
+                # only her own drumming says something about her energy; in Tap it back the tempo is given
                 await self.notice(self.drum_feel.add(int(p["t_ms"]), p.get("force")))
         elif name == "head/ear":
             if self.machine.running:
@@ -711,7 +954,8 @@ class Hub:
             if kind == "head":
                 await self.head(**arg)
             elif kind == "say":
-                await self.lines.say_line(arg, self.settings.greeting_language)
+                line = await self.lines.say_line(arg, self.settings.greeting_language)
+                self.trace("said", text=line, by="script" if self.lines.last_source == "text" else "cached_voice")
             elif kind == "offer":
                 if time.monotonic() - self._last_ritual_end >= self.settings.ritual_cooldown_s:
                     self.start_ritual("attention")
@@ -773,6 +1017,7 @@ class Hub:
         details = env.payload.details or {}
         if env.payload.status != "down":
             self.head_firmware = "standalone" if details.get("firmware") == "standalone" else "mqtt"
+            await self._help_health(details)
         now = time.monotonic()
         if self.following and not was:
             log.info("head_mode", "follow: the head runs the ritual (standalone firmware); the hub records it")
@@ -804,6 +1049,15 @@ class Hub:
             kind = a[0]
             if kind == "begin":
                 self._follow_begin(a[1])
+                if a[1] == "follow" and self.follower.consented:
+                    # The consent rule of drive mode, nothing new: the person started this ritual themselves and
+                    # the hub saw the press. Never for a ritual joined mid-way or a start the hub did not see.
+                    self._talk_n += 1
+                    self.accept_conversation()
+                    log.info("follow_conversation", "opening: she pressed the ear at the head's greeting")
+                else:
+                    log.info("follow_conversation", "not opened: the ritual was joined mid-way" if a[1] != "follow"
+                             else "not opened: the hub did not see her press at the greeting")
             elif kind == "end":
                 await self._follow_end(a[1], a[2], a[3])
             elif kind == "emit":
@@ -817,9 +1071,120 @@ class Hub:
                 await self.sensors(**a[1])
             elif kind == "note":
                 self.note(a[1], **a[2])
+            elif kind == "drum_open":
+                self._game_task = asyncio.create_task(self._follow_game(), name="tap-back")
+                self._tasks.append(self._game_task)
+            elif kind == "game_end":
+                await self._end_follow_game(tell_head=False, record=bool(a[1]))
+        step = self.follower.step
+        if step != self._follow_step_seen:
+            self._follow_step_seen = step
+            self._follow_step(step)
+
+    def _follow_step(self, step: str | None) -> None:
+        """The head entered a step of its own ritual. At its greeting Kaiku says the invitation (what a press will
+        turn on), in the cached voice, at most every `[hub] follow_offer_every_s`. While a conversation the person
+        started is open, Kaiku says the usual short line for the step through the head, and she can answer.
+        The drum step's words belong to `_follow_game`; the goodbye to `_follow_end`."""
+        f = self.follower
+        if step == "greet" and not f.active:
+            now = time.monotonic()
+            if self.voice.wants_session and now - self._follow_offer_at >= self.settings.follow_offer_every_s:
+                self._follow_offer_at = now
+                self._tasks.append(asyncio.create_task(self.say(steps.OFFER_LINE), name="follow-offer"))
+            return
+        line = follow.STEP_LINES.get(step or "")
+        if line and step not in ("drum", "done") and f.active and self.conversation_consented:
+            self._tasks.append(asyncio.create_task(self._follow_say(step, line), name="follow-say"))
+
+    async def _follow_say(self, step: str | None, line: str) -> None:
+        """One step line, once the conversation is open (the press that opens it also moves the head on), and only
+        if the head is still in that step."""
+        opening = self._live_open_task
+        if opening is not None and not opening.done():
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(asyncio.shield(opening), 6.0)
+        with contextlib.suppress(Exception):
+            await self.voice.after_speech()  # a line is checked when it can be said, not when it was thought of:
+        if self.follower.step == step and self.follower.active and self.conversation_consented:   # she may have
+            await self.say(line)                                                                  # moved on
+
+    async def _follow_game(self) -> None:
+        """Tap it back while FOLLOWING a head that runs its own ritual (D51). The head is in its drum step; when a
+        song can play, the hub holds it there (`cmd.head {drum: hold}`), runs the game with the head's taps, and
+        lets it go (`drum: end`). No song (music off, over the spend cap, no key): nothing is sent and the hub
+        simply follows the head's own free drumming, as before."""
+        cfg, f = self.settings.tap_back, self.follower
+
+        async def free() -> None:  # the head's own free drumming: Kaiku only says so, in an open conversation
+            if f.step == "drum" and f.active and self.conversation_consented:
+                await self.say(follow.STEP_LINES["drum"])
+
+        if cfg.mode == "free":
+            await free()
+            return
+        if not self._head_can_hold():
+            log.warning("tap_back", "this head's firmware cannot lend its drum step (no drum_held in health/head): "
+                        "its own free drumming is followed, no game")
+            await free()
+            return
+        try:
+            await self.music.start(f._dial.get("mood"))
+            if not (cfg.mode == "tap_back" or self.music.can_play_songs) or f.step != "drum" or not f.active:
+                await self.music.stop()
+                await free()
+                return
+            game = tap_back.Game(cfg, sway=True, refractory_ms=self.settings.tap_refractory_ms,
+                                 force_max_g=self.settings.tap_force_max_g, hold=True)
+            self._game = game
+            f.game_started()
+            log.info("tap_back", "the hub runs the drum phase of the head's ritual", levels=[lv.bpm for lv in game.levels])
+            await game.begin(self)
+            while f.step == "drum" and f.active and self._game is game:
+                await asyncio.sleep(max(0.01, min(0.05, game.next_deadline() - time.monotonic())))
+                state = await game.tick(self)
+                f.game_levels = sum(any(t.measured for t in r.tries) for r in game.results)
+                if state == "fallback":  # the song never came: her free drumming on the head's own timer from here
+                    f.game = False       # (no `hold` is sent any more; the head takes its timer back by itself)
+                    self._game = None
+                    await self.music.stop()
+                    await game.leave(self)
+                    log.info("tap_back", "no song: following the head's free drumming")
+                    await self.say(tap_back.FALLBACK_LINE)  # she was promised a song: the same words as drive mode
+                    return
+                if state == "done":
+                    break
+            if self._game is game:
+                await self._end_follow_game(tell_head=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # the game must never break the recording of the head's ritual
+            log.error("tap_back_failed", f"{type(e).__name__}: {e}", exc_info=True)
+            await self._end_follow_game(tell_head=True)
+
+    async def _end_follow_game(self, *, tell_head: bool, record: bool = True) -> None:
+        """The game is over (it finished, the head left its drum step, a crisis, the hub stops): quiet, record what
+        was played, and give the head its ritual back."""
+        game, self._game = self._game, None
+        task, self._game_task = self._game_task, None
+        if task is not None and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+        if game is None:
+            return
+        with contextlib.suppress(Exception):
+            await self.music.stop()
+        with contextlib.suppress(Exception):
+            await game.leave(self)  # a microphone the game closed is open again however it ended
+        out = game.payload()
+        if out is not None and record:
+            await self.emit("obs.tap_back", out[0], quality=out[1])
+            self.follower.game_levels = max(1, self.follower.game_levels)
+        if tell_head:
+            await self._cmd("cmd.head", {"drum": "end", "pan_mode": "still"}, force=True)
 
     def _follow_begin(self, reason: str) -> None:
         log.info("ritual_start", reason, head_step=self.follower.step)
+        self._clear_help()
         self._episode = {"id": str(uuid4()), "start": datetime.now(UTC), "outcome": "completed", "tools_used": []}
         self.ritual_reason = reason
         self.engagement.reset()
@@ -834,18 +1199,48 @@ class Hub:
                                            energy=dial.get("energy"), sleep=dial.get("sleep"))
             if nudge:
                 await self.emit("obs.nudge_outcome", nudge)
+        talked, self.conversation_consented = self.conversation_consented, False
+        if self._live_open_task and not self._live_open_task.done():
+            self._live_open_task.cancel()
         if episode:
             episode.pop("_explicit_outcome", None)
             episode["outcome"] = "crisis" if episode["outcome"] == "crisis" else outcome
+            if episode["outcome"] == "crisis":
+                episode.pop("open_thread", None)
+            transcript = getattr(self.voice, "transcript", None)
+            keep = self.settings.hub_transcripts and consented and episode["outcome"] != "crisis"
             self.episodes.enqueue(EpisodeIn(home_id=self.settings.home_id, surface="robot", intent="ritual",
-                                            end=datetime.now(UTC), transcript=None, **episode))
+                                            end=datetime.now(UTC), transcript=transcript if keep else None, **episode))
             outcome = episode["outcome"]
+        if hasattr(self.voice, "transcript"):
+            self.voice.transcript = []
+        if self.voice.wants_session:  # the conversation ends with the head's ritual, whatever ended it
+            self._tasks.append(asyncio.create_task(self._follow_close_talk(talked and outcome == "completed"),
+                                                   name="follow-talk-close"))
         self._close_session(episode["id"] if episode else None, outcome, consented)
         self.ritual_reason = ""
         self._last_ritual_end = time.monotonic()
         log.info("ritual_done", outcome, mode="follow")
         if outcome == "completed":
             self.state.mark_ritual_done(datetime.now().astimezone().date())
+
+    async def _follow_close_talk(self, goodbye: bool) -> None:
+        """Close the conversation of a followed ritual. After a whole ritual Kaiku says goodbye first: the
+        microphone is closed at once, the session when the words have been heard (a few seconds at most)."""
+        n = self._talk_n
+        try:
+            if goodbye and self.voice.in_session:
+                self.voice.listen(False)
+                line = follow.STEP_LINES["done"]
+                await self.say(line)
+                t0 = time.monotonic()
+                await asyncio.sleep(max(1.0, tap_back.words(line) * self.settings.tap_back.word_s))
+                while self.speaker_busy and time.monotonic() - t0 < 8.0:
+                    await asyncio.sleep(0.1)
+        except Exception as e:
+            log.warning("follow_goodbye_failed", f"{type(e).__name__}: {e}")
+        if self._talk_n == n and not self.conversation_consented:  # never a newer conversation
+            await self.voice.close_session()
 
     # ================================================================ lifecycle
     def _details(self) -> dict[str, Any]:
@@ -858,6 +1253,8 @@ class Hub:
             "uplink_error": self.uplink.last_error,
             "voice": self.voice.name,
             "music": self.music.name,
+            "music_out": self.settings.music_out,
+            "voice_audio": getattr(self.voice, "audio_name", "none"),
             "cloud": bool(self.settings.cloud_url),
             "episodes_queue": self.episodes.size(),
             "store": "off" if self.settings.store_path is None else ("error" if self.store.error else "ok"),
@@ -892,6 +1289,7 @@ class Hub:
         b.on("health/+", self.on_health)
         b.on("cmd/sensors", self.on_sensors_cmd)
         b.on("health/head", self.on_any_head, home_id="+")
+        b.on_audio("mic", self.head_audio.on_mic_frame)  # PCM, only while a conversation holds the microphone open
         await b.__aenter__()
         await self.voice.start(self.on_utterance, self.on_tool)
         await self.lora.start()
@@ -912,6 +1310,8 @@ class Hub:
 
     async def stop(self) -> None:
         await self.end_ritual()
+        if self._game is not None:  # stopped mid-game: keep what was played and give the head its step back
+            await self._end_follow_game(tell_head=True)
         if self.follower.active:  # stopped while the head is mid-ritual: close the record honestly
             await self._follow_do(self.follower.abort(time.monotonic(), "ended_early", "hub stopped"))
         for t in self._tasks:

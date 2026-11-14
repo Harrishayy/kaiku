@@ -1,0 +1,126 @@
+# Bench: the head's speaker AND microphone as PCM streams over MQTT, with no hub and no model (plan 07 §4).
+# For the robot as it is (D54/D55: no display): speaker on ports 1-2 (MAX98357A), microphone on ports 9-10, and the
+# pan motor on port 14 declared only to hold it still (a motor on a port the program does not declare may spin), so
+# nothing has to be unplugged on the assembled robot. Wi-Fi + broker from ../../kaiku_link/secrets.h.
+# It runs the same audio code as both firmwares (../../kaiku_link/head_audio.*: ring, audio task, microphone gate)
+# and nothing else, so a fault here is the audio path and a pass here with a fault in the firmware is the ritual loop.
+#   hears   kaiku/v1/<home>/audio/head/speaker   640-byte frames (s16le mono 16 kHz, 20 ms); 0 bytes = drop
+#           kaiku/v1/<home>/cmd/head             {mic: open | close} in the usual envelope ({show: help} only shuts
+#                                                the microphone: there is no display to show anything on)
+#   sends   kaiku/v1/<home>/audio/head/mic       640-byte frames, ONLY while the microphone is held open
+# The other end is ./audio_test.py (`make head-audio ARGS='bench --host <broker ip>'`).
+# Build / flash: `make atech-bench PART=firmware/atech-head/bench/speaker_pcm [FLASH=1]`.
+name: bench-speaker-pcm
+board: 14port
+libraries:
+  - kaiku_link=symlink://../../../kaiku_link
+modules:
+  - {id: speaker,    instance: spk, ports: [1, 2]}
+  - {id: microphone, instance: mic, ports: [9, 10]}
+  - {id: dc_motor,   instance: motor, port: 14}   # held still; the standalone firmware has it on the same port
+code:
+  globals: |
+    #include <ArduinoJson.h>
+    #include <PubSubClient.h>
+    #include <WiFi.h>
+    #include <esp_random.h>
+    #include "head_audio.h"
+    #include "secrets.h"
+    static WiFiClient benchNet;
+    static PubSubClient benchMqtt(benchNet);
+    static char spkTopic[112], micTopic[112], cmdTopic[112];
+    static uint8_t micOut[head_audio::FRAME_BYTES];
+    static uint32_t nextTry = 0, nextStat = 0, lastLoop = 0, loopMax = 0;
+    static uint32_t rx = 0, rxSeen = 0, rxSound = 0, lastRxAt = 0, micSeen = 0;
+    static bool inSound = false;
+    // A line goes out only when the USB buffer has room for all of it: with nobody reading the port, a blocked
+    // write stalls the loop and the audio with it (seen on the standalone firmware, bench 2026-11-14).
+    static void benchLine(const char* fmt, ...) {
+      static char line[256];
+      va_list ap;
+      va_start(ap, fmt);
+      int n = vsnprintf(line, sizeof line, fmt, ap);
+      va_end(ap);
+      if (n <= 0 || n >= (int)sizeof line || Serial.availableForWrite() < n) return;
+      Serial.write((const uint8_t*)line, n);
+    }
+    static head_audio::Stats atSoundStart;
+    static void benchOnMessage(char* topic, uint8_t* data, unsigned int len) {
+      if (!strcmp(topic, spkTopic)) {
+        if (len == 0) {
+          benchLine("{\"event\":\"flush\",\"dropped_ms\":%d}\n", head_audio::speakerBufferedMs());
+        } else {
+          if (!inSound) { inSound = true; atSoundStart = head_audio::stats(); rxSound = rx; }
+          rx++;
+          lastRxAt = millis();
+        }
+        head_audio::speakerPush(data, len);
+        return;
+      }
+      JsonDocument env;   // cmd.head {mic: open | close}, in the envelope the hub sends
+      if (deserializeJson(env, data, len)) return;
+      const char* m = env["payload"]["mic"] | "";
+      if (!strcmp(m, "open")) head_audio::micHold(true);
+      else if (!strcmp(m, "close")) head_audio::micHold(false);
+      if (!strcmp(env["payload"]["show"] | "", "help")) head_audio::micHold(false);   // the crisis path shuts the microphone
+    }
+  setup: |
+    snprintf(spkTopic, sizeof spkTopic, "kaiku/v1/%s/audio/head/speaker", KAIKU_HOME_ID);
+    snprintf(micTopic, sizeof micTopic, "kaiku/v1/%s/audio/head/mic", KAIKU_HOME_ID);
+    snprintf(cmdTopic, sizeof cmdTopic, "kaiku/v1/%s/cmd/head", KAIKU_HOME_ID);
+    head_audio::begin({
+        [](const int16_t* s, int n) { spk.writeSamples(s, n); },   // blocking, at the driver's volume (0.4, set above)
+        []() { return spk.isPlaying(); },
+        [](void (*cb)(const int16_t*, int, void*), void* ctx) { mic.onAudio(cb, ctx); }});
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);            // as in the firmwares: modem sleep delays incoming frames by a beacon or more
+    benchMqtt.setBufferSize(1024);   // 640 bytes + topic; PubSubClient's default is 256
+    benchMqtt.setKeepAlive(15);
+    benchMqtt.setCallback(benchOnMessage);
+    motor.brake();                   // the pan motor stands still, as the standalone firmware holds it when idle
+    spk.playNote(NOTE_C5, 120);      // two notes at boot: the amplifier and the tone driver work without any network
+    spk.playNote(NOTE_G5, 160);
+    benchLine("{\"event\":\"ready\",\"fw\":\"bench-speaker-pcm\"}\n");
+  loop: |
+    uint32_t now = millis();
+    if (lastLoop && now - lastLoop > loopMax) loopMax = now - lastLoop;
+    lastLoop = now;
+    if (WiFi.status() != WL_CONNECTED) {
+      if (now >= nextTry) { nextTry = now + 8000; WiFi.begin(WIFI_SSID, WIFI_PASS); }
+    } else if (!benchMqtt.connected() && now >= nextTry) {
+      nextTry = now + 3000;
+      IPAddress ip;
+      ip.fromString(MQTT_HOST_IP);
+      benchMqtt.setServer(ip, 1883);
+      char cid[24];
+      snprintf(cid, sizeof cid, "kaiku-bench-%04x", (unsigned)(esp_random() & 0xFFFF));
+      bool ok = benchMqtt.connect(cid, strlen(MQTT_USER) ? MQTT_USER : nullptr, strlen(MQTT_PASS) ? MQTT_PASS : nullptr);
+      if (ok) { benchMqtt.subscribe(spkTopic, 0); benchMqtt.subscribe(cmdTopic, 1); benchNet.setNoDelay(true); }
+      benchLine("{\"event\":\"net\",\"wifi\":1,\"mqtt\":%d,\"broker\":\"%s\",\"ip\":\"%s\",\"rssi\":%d}\n", ok ? 1 : 0,
+                    MQTT_HOST_IP, WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
+    }
+    benchMqtt.loop();                // PubSubClient handles ONE message a call: take up to 4 a pass
+    for (int i = 0; i < 3 && benchNet.available(); i++) benchMqtt.loop();
+    if (!benchMqtt.connected()) head_audio::micHold(false);
+    else for (int i = 0; i < 4 && head_audio::micFrame(micOut); i++) benchMqtt.publish(micTopic, micOut, head_audio::FRAME_BYTES, false);
+    now = millis();
+    if (inSound && now - lastRxAt > 400) {    // a sound is over 0.4 s after its last frame: one summary line
+      inSound = false;
+      head_audio::Stats s = head_audio::stats();
+      uint32_t dry = s.spkDry - atSoundStart.spkDry;   // the end of the sound is one dry event; any more were gaps
+      benchLine("{\"event\":\"sound\",\"frames\":%u,\"gaps\":%u,\"dropped\":%u}\n", (unsigned)(rx - rxSound),
+                    (unsigned)(dry > 0 ? dry - 1 : 0), (unsigned)(s.spkDropped - atSoundStart.spkDropped));
+    }
+    if (now >= nextStat) {
+      nextStat = now + 1000;
+      head_audio::Stats s = head_audio::stats();
+      if (rx != rxSeen || head_audio::speakerBusy())
+        benchLine("{\"event\":\"pcm\",\"frames\":%u,\"buffered_ms\":%d,\"dry\":%u,\"dropped\":%u,\"loop_max_ms\":%u}\n",
+                      (unsigned)(rx - rxSeen), head_audio::speakerBufferedMs(), (unsigned)s.spkDry, (unsigned)s.spkDropped, (unsigned)loopMax);
+      if (head_audio::micOpen() || s.micFrames != micSeen)
+        benchLine("{\"event\":\"mic\",\"frames\":%u,\"dropped\":%u,\"peak\":%u,\"open\":%d}\n",
+                      (unsigned)(s.micFrames - micSeen), (unsigned)s.micDropped, (unsigned)s.micPeak, head_audio::micOpen() ? 1 : 0);
+      rxSeen = rx;
+      micSeen = s.micFrames;
+      loopMax = 0;
+    }

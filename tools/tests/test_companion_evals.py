@@ -530,3 +530,88 @@ def test_a_card_comes_with_the_suggestion_and_a_no_is_final():
         "A walk?", [{"name": "suggest_activity", "args": {"kind": "walk"}}], SURFACES["glasses"], reg)
     assert any(i.startswith("tool_args:suggest_activity") for i in run.check_turn(
         "A game?", [{"name": "suggest_activity", "args": {"kind": "chess"}}], SURFACES["iphone"], reg))
+
+
+# ---------------------------------------------------------------- always answers (scenarios/answers.yaml, D49)
+def test_plain_statements_on_a_hard_day_each_get_an_answer():
+    scns = [s for s in SCENARIOS if s["file"] == "answers.yaml"]
+    assert {s["context"]["purpose"] for s in scns} == {"check_in", "talk"}
+    for s in scns:
+        assert s["expect"]["answers_every_turn"] and len(s["turns"]) == 3
+        assert not any("?" in t or "kaiku" in t.lower() for t in s["turns"])  # statements, not addressed to it
+        issues, transcript = _dry(s["id"])
+        assert issues == [], s["id"]
+        # the same conversation with one line left unanswered fails, whether Kaiku said nothing or only called a tool
+        for silent in ({"text": ""}, {"text": "", "tools": [{"name": "feel", "args": {"kind": "other", "heard": {"valence": "low"}}}]}):
+            broken = [dict(t) for t in transcript]
+            second = [i for i, t in enumerate(broken) if t["role"] == "kaiku"][1]
+            broken[second] = {"role": "kaiku", "tools": [], **silent}
+            assert "no_reply_to_person:2" in run.check_answers(s["expect"], broken), s["id"]
+
+
+def test_silence_is_only_an_answer_to_a_line_the_person_did_not_say():
+    exp = {"answers_every_turn": True}
+    nudge = "A look around, not said by them. Only if something plainly worth it is in view, say one short remark."
+    sense = "(context from Kaiku's senses, not said by the person; react briefly only if it feels natural) Card put aside."
+    quiet = [{"role": "person", "text": nudge}, _k(""), {"role": "person", "text": sense}, _k(""),
+             {"role": "person", "text": "Nice out here."}, _k("It is. Lovely light.")]
+    assert run.check_answers(exp, quiet) == []
+    assert run.check_answers(exp, [*quiet, {"role": "person", "text": "My knee hurts a bit."}, _k("")]) == ["no_reply_to_person:4"]
+    assert run.check_answers(exp, [{"role": "person", "text": "Hello."}]) == ["no_reply_to_person:1"]  # nothing came back
+    assert run.check_answers({}, [{"role": "person", "text": "Hello."}, _k("")]) == []  # only where a scenario asks
+    gate = [{"role": "person", "text": "x"}, {"role": "gate", "text": "The scripted message.", "model_calls": 0}]
+    assert run.check_answers(exp, gate) == []
+
+
+# ------------------------------------------------- the camera's numbers never reach the voice (D52, scenarios/face.yaml)
+FACE = [s for s in run.load_scenarios() if s["id"].startswith(("iphone-face-cue", "mac-face-cue"))]
+
+
+def _kaiku(*lines):
+    return [{"text": line, "tool_calls": []} for line in lines]
+
+
+def test_face_scenarios_carry_the_cue_and_forbid_saying_it():
+    assert len(FACE) == 3
+    for s in FACE:
+        assert s["context"]["quieter_in"] and s["context"]["tone"] == "gentle", s["id"]
+        assert "noticed" in s["expect"]["unsaid"], s["id"]
+        today = assemble.render_card(s["context"])
+        assert "For your manner only" in today and "never mention their face or a camera" in today, s["id"]
+        assert not any(ch.isdigit() for ch in today.split("For your manner only")[1]), s["id"]  # no number crosses
+
+
+@pytest.mark.parametrize("line", [
+    "You looked a bit flat in the lantern game.", "I noticed you were quieter today.", "The camera showed me.",
+    "You seem tired tonight.", "Not much smiling today, I think.", "I'll go gently, you were quieter in the games.",
+])
+def test_a_reply_that_says_or_hints_at_the_face_fails_the_scenario(line):
+    quiet = next(s for s in FACE if s["id"] == "iphone-face-cue-goes-gently-and-says-nothing")
+    issues = run.check_act(quiet["expect"], _kaiku("Hi. Good to hear you.", line, "I'm here."))
+    assert any(i.startswith("act:said:") for i in issues), issues
+
+
+def test_the_gentle_replies_pass_and_the_plain_answer_about_the_camera_is_required():
+    quiet = next(s for s in FACE if s["id"] == "iphone-face-cue-goes-gently-and-says-nothing")
+    assert run.check_act(quiet["expect"], _kaiku("Hi. Good to hear you.", "A bit of a nothing day. Those happen.",
+                                                 "No need to talk. I'm here.")) == []
+    asked = next(s for s in FACE if s["id"] == "iphone-face-cue-asked-about-the-camera-answers-plainly")
+    honest = ("I can't see you. If Camera during activities is on, your phone counts how the face moves: numbers "
+              "only, never pictures, and you can switch it off.")
+    assert run.check_act(asked["expect"], _kaiku(honest)) == []
+    assert wording.lint_for_surface(honest, SURFACES["iphone"]) == [] == wording.lint_for_surface(honest, SURFACES["robot"])
+    assert "act:missing_words" in run.check_act(asked["expect"], _kaiku("Let's not worry about that. How was the game?"))
+
+
+def test_the_practice_feel_tool_returns_the_manner_only_when_the_card_says_quieter():
+    said = {"kind": "flat", "heard": {"valence": "neutral", "energy": "low", "tone": ["flat"], "via": "voice"},
+            "said": "A bit of a nothing day."}
+    with_cue = run._sim_tool_result("feel", said, {"tone": "gentle", "quieter_in": ["games"]}, {})
+    without = run._sim_tool_result("feel", said, {"tone": "gentle"}, {})
+    from kaiku_cloud.mind.feel import MANNER
+
+    assert with_cue["manner"] == MANNER and not without.get("manner")  # the one fixed sentence, or nothing
+    # the same plan otherwise: the cue changes how Kaiku carries itself, never what it may do
+    assert {k: v for k, v in with_cue.items() if k != "manner"} == {k: v for k, v in without.items() if k != "manner"}
+    assert "games" not in MANNER and not any(ch.isdigit() for ch in MANNER)  # not which task, never a number
+    assert not any(word in MANNER.lower() for word in ("smil", "blink", "brow", "gaze", "quieter"))

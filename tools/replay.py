@@ -20,9 +20,18 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import aiomqtt  # noqa: E402
-from kaiku_contracts import ContractError, qos_for, to_json, topic_for, utcnow, uuid7, validate  # noqa: E402
+from kaiku_contracts import (  # noqa: E402
+    ContractError,
+    is_audio_topic,
+    qos_for,
+    to_json,
+    topic_for,
+    utcnow,
+    uuid7,
+    validate,
+)
 
-from tools.busio import mqtt_kwargs  # noqa: E402
+from tools.busio import mqtt_kwargs, without_trace_text  # noqa: E402
 
 
 def load(path: Path, only: str | None = None) -> list[dict[str, Any]]:
@@ -37,7 +46,12 @@ def load(path: Path, only: str | None = None) -> list[dict[str, Any]]:
             continue
         if only and only not in row.get("topic", ""):
             continue
-        rows.append(row)
+        if is_audio_topic(str(row.get("topic", ""))):
+            continue  # a recording never holds audio; a hand-made file that does is not replayed either
+        msg = without_trace_text(str(row.get("topic", "")), row.get("msg"))
+        if msg is None:
+            continue  # nor what Kaiku said (raw.hub.trace text): a hand-made file's words are not replayed
+        rows.append({**row, "msg": msg})
     return rows
 
 

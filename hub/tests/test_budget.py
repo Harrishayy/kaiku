@@ -79,3 +79,19 @@ async def test_gemini_live_does_not_open_over_budget(monkeypatch):
     monkeypatch.setattr(voice.client.aio.live, "connect", connect)
     assert await voice.open_session("hi", []) is False
     assert voice._session is None and budget.spent() == 0
+
+
+def test_lyria_needs_the_developer_api_key(monkeypatch):
+    """Live music is refused on the platform backend ("not supported in Vertex AI", seen 2026-11-14), so a home
+    with only a Cloud project gets the local click instead of a failed session."""
+    from kaiku_hub.live import lyria
+
+    monkeypatch.setattr(lyria, "genai", object())
+    monkeypatch.setattr(lyria, "sd", object())
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "some-project")
+    ok, why = lyria.available("lyria-realtime-exp")
+    assert not ok and "GEMINI_API_KEY" in why
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    assert lyria.available("lyria-realtime-exp") == (True, "")
+    assert lyria.available("VERIFY-lyria")[0] is False

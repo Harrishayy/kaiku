@@ -1,10 +1,28 @@
-"""Consented Gemini Live PCM adapter with nonblocking playback, barge-in and bounded resumption."""
+"""Consented Gemini Live PCM adapter with nonblocking playback, barge-in and bounded resumption.
+
+Where it speaks and listens is `audio` (config `[voice] audio`): this machine's sound card (`sounddevice`), or the
+robot head's own speaker and microphone over the bus (`head_audio.HeadAudio`, no sound device here at all). Both
+have sounddevice's two callback streams, so there is one code path. What the head changes:
+- It is half-duplex: no microphone frames while its speaker plays and about 250 ms after. So there is no voice
+  barge-in on the robot (Kaiku cannot hear over itself, and never hears itself either); a press of the ear cuts
+  what Kaiku is saying (`quiet`).
+- A gap in the microphone frames is a gap. Nothing is sent for it: made-up silence would look like the end of her
+  turn. Once the frames have been missing for `[live] mic_gap_end_s` the server is told the stream paused
+  (`audio_stream_end`, as the Live API asks for a paused microphone); the next frame resumes it.
+- Cutting playback (barge-in on a sound card, `quiet`, the end of a session) also empties the head's buffer.
+
+`listen(False)` closes the microphone inside an open conversation (Tap it back: the song and her taps are not
+speech): nothing is forwarded, the head is told `mic: close` and shows it, the server hears once that the stream
+paused. `listen(True)` reopens it. Kaiku can still speak (`say`) while it is closed.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
+from collections.abc import Callable
 from threading import Lock
 from typing import Any
 
@@ -34,13 +52,20 @@ except Exception:  # pragma: no cover
 
 IN_RATE, OUT_RATE, CHUNK = 16000, 24000, 1600
 BUDGET_LINE = "Our voice connection is unavailable. Your check-in can continue on screen."
+# A line asked for while Kaiku still speaks waits for those words: to the Live server a new request is an
+# interruption, which cuts the reply being played. Seen with the real model: a line sent right at the end of the
+# one before lost that one's last syllables, and a line sent just after another never came out at all.
+SAY_GAP_S = 0.25        # this long after the last word before the next line is asked for
+SAY_TURN_GRACE_S = 0.8  # ... and at most this much longer for the server to close the turn it was speaking
+SAY_WAIT_MAX_S = 12.0   # never hold a ritual line back longer than this
 
 
-def available(model_id: str) -> tuple[bool, str]:
+def available(model_id: str, audio: Any = None) -> tuple[bool, str]:
+    """`audio` = the device the adapter would use (the head's audio, or None for this machine's sound card)."""
     if genai is None:
         return False, "google-genai not installed (uv sync --extra live)"
-    if sd is None:
-        return False, "sounddevice not installed (uv sync --extra live)"
+    if audio is None and sd is None:
+        return False, "no sound device here (uv sync --extra live) and no head audio ([voice] audio = \"head\")"
     if not genai_client.available():
         return False, "no Gemini backend (GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT + ADC)"
     if not model_id or model_id.upper().startswith("VERIFY"):
@@ -119,6 +144,14 @@ class GeminiLiveVoice(Voice):
         self.fallback_say = None
         self.keep_transcript = False
         self.transcript: list[dict[str, Any]] = []
+        # Kaiku's own finished replies (the output transcription) and the session's open/close, for the hub's local
+        # trace (`raw.hub.trace`). Never the person's words. Both must return at once and never raise.
+        self.on_reply: Callable[[str], None] | None = None
+        self.on_session: Callable[[bool], None] | None = None
+        self._reply_text = ""
+        self._speak_until = 0.0  # when the words received so far will have been played (monotonic)
+        self._say_lock = asyncio.Lock()  # one line at a time: a second request would interrupt the first
+        self._say_pending = False  # a line has been asked for and its first sound has not come yet
         self._transcript_pending: dict[str, dict[str, Any]] = {}
         self._pcm = bytearray()
         self._pcm_lock = Lock()
@@ -140,6 +173,47 @@ class GeminiLiveVoice(Voice):
         self._cm: Any = None
         self._spoke = asyncio.Event()
         self._meter: SessionMeter | None = None
+        self._out: Any = None  # the open output stream (the head's has `cut`: empty the head's buffer too)
+        self._in: Any = None  # the open input stream (the head's has `hold`: tell the head to close its microphone)
+        self._listening = True  # False: the microphone is closed inside the open conversation (`listen`)
+        self._turn_open = False  # the model is in the middle of an answer
+        self._skip_turn = False  # `quiet` came during it: the rest of this answer is not played
+        self.mic_gap_end_s = float(load_config().get("live", {}).get("mic_gap_end_s", 1.0))
+
+    @property
+    def audio_name(self) -> str:
+        """Where this voice speaks and listens: "head" | "local" | "auto" (not decided yet) | "none"."""
+        if self.audio is None:
+            return "none"
+        return str(getattr(self.audio, "name", "local" if self.audio is sd else "injected"))
+
+    def quiet(self) -> None:
+        """Stop what Kaiku is saying, now (the ear was pressed). The conversation stays open: what is left of this
+        answer is dropped as it arrives, the next one is heard again."""
+        if self._turn_open or self._say_pending:  # also a line that is on its way and has not sounded yet
+            self._skip_turn = True
+        self._clear_audio()
+
+    def listen(self, on: bool) -> None:
+        if on == self._listening:
+            return
+        self._listening = on
+        self._speech_window.invalid = True  # a window cut by a closed microphone is not a measure of her speech
+        if not on:
+            self._input_text = ""
+        hold = getattr(self._in, "hold", None)
+        if hold is not None:
+            hold(on)  # the head closes (or reopens) its microphone and shows it
+        log.info("gemini_live_listening", "open" if on else "closed")
+
+    @property
+    def in_session(self) -> bool:  # type: ignore[override]
+        return self._session is not None
+
+    @property
+    def listening(self) -> bool:
+        """The microphone of the open conversation is open (False: closed by `listen`, or no conversation)."""
+        return self._session is not None and self._listening
 
     async def start(self, on_utterance: UtteranceHandler, on_tool: ToolHandler | None = None) -> None:
         self._on_utterance, self._on_tool = on_utterance, on_tool  # no session until a ritual starts
@@ -147,6 +221,7 @@ class GeminiLiveVoice(Voice):
     async def open_session(self, system_instruction: str, tools: list[dict[str, Any]],
                            model: str | None = None, voice: str | None = None) -> bool:
         await self.close_session()
+        self._listening = True
         model = model or self.model_id
         # Asynchronous function calling is a Gemini Developer API Live feature. On the platform backend the
         # declaration's `behavior` is dropped and such a tool (feel) is forwarded as an ordinary blocking call.
@@ -176,6 +251,7 @@ class GeminiLiveVoice(Voice):
         self._meter = meter
         meter.start(self._budget_exceeded)
         self._start_io()
+        self._tell(self.on_session, True)
         return True
 
     async def _mic_loop(self) -> None:
@@ -193,9 +269,33 @@ class GeminiLiveVoice(Voice):
                     q.put_nowait(chunk)
             loop.call_soon_threadsafe(enqueue)
 
-        with self.audio.RawInputStream(samplerate=IN_RATE, channels=1, dtype="int16", blocksize=CHUNK, callback=cb):
+        with self.audio.RawInputStream(samplerate=IN_RATE, channels=1, dtype="int16", blocksize=CHUNK,
+                                       callback=cb) as stream:
+            self._in = stream
+            if not self._listening and getattr(stream, "hold", None) is not None:
+                stream.hold(False)  # closed before this stream existed (a reconnect inside a game)
+            paused = False
+
+            async def pause() -> None:
+                # Never fill a gap with silence. Tell the server once that the stream paused, so it does not
+                # wait on half a window.
+                nonlocal paused
+                if not paused and self._session is not None:
+                    paused = True
+                    self._speech_window.invalid = True
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(self._session.send_realtime_input(audio_stream_end=True), timeout=10)
+
             while self._session is not None:
-                data = await q.get()
+                try:
+                    data = await asyncio.wait_for(q.get(), self.mic_gap_end_s) if self.mic_gap_end_s > 0 else await q.get()
+                except TimeoutError:  # no frames: the head is speaking, or its microphone is closed
+                    await pause()
+                    continue
+                if not self._listening:  # closed by `listen(False)`: what a sound card still hears is not forwarded
+                    await pause()
+                    continue
+                paused = False
                 with self._pcm_lock:
                     quiet = not self._pcm and time.monotonic() >= self._playback_until
                 self._speech_window.add(data, usable=quiet)
@@ -246,8 +346,12 @@ class GeminiLiveVoice(Voice):
             await handler(text)
 
     def _clear_audio(self) -> None:
+        self._speak_until = 0.0
         with self._pcm_lock:
             self._pcm.clear()
+        cut = getattr(self._out, "cut", None)
+        if cut is not None:
+            cut()  # the head's speaker: what it has buffered goes too
 
     async def _recv_loop(self) -> None:
         session = self._session
@@ -264,7 +368,8 @@ class GeminiLiveVoice(Voice):
                     self._speech_window.invalid = True
 
         try:
-            with self.audio.RawOutputStream(samplerate=OUT_RATE, channels=1, dtype="int16", callback=playback):
+            with self.audio.RawOutputStream(samplerate=OUT_RATE, channels=1, dtype="int16", callback=playback) as out:
+                self._out = out
                 while session is self._session:
                     async for msg in session.receive():
                         update = getattr(msg, "session_resumption_update", None)
@@ -276,6 +381,8 @@ class GeminiLiveVoice(Voice):
                         if sc is not None:
                             if getattr(sc, "interrupted", False):
                                 self._clear_audio()
+                                self._turn_open = self._skip_turn = False
+                                self._reply_text = ""  # cut short: not reported as said
                             interim = getattr(sc, "interim_input_transcription", None)
                             if interim is not None and interim.text and self.on_partial_utterance:
                                 await self.on_partial_utterance(interim.text)
@@ -304,6 +411,7 @@ class GeminiLiveVoice(Voice):
                             ot = getattr(sc, "output_transcription", None)
                             if ot is not None and ot.text:
                                 self._remember("kaiku", ot.text)
+                                self._reply_text = (self._reply_text + ot.text)[:2000]
                             if getattr(sc, "interrupted", False):
                                 self._finish_transcript("kaiku", False)
                             elif ot is not None and getattr(ot, "finished", False):
@@ -312,9 +420,19 @@ class GeminiLiveVoice(Voice):
                             for part in getattr(turn, "parts", None) or []:
                                 if getattr(part, "inline_data", None) and part.inline_data.data:
                                     self._spoke.set()
+                                    self._turn_open = True
+                                    if self._skip_turn:
+                                        continue
+                                    self._speak_until = (max(self._speak_until, time.monotonic())
+                                                         + len(part.inline_data.data) / (OUT_RATE * 2))
                                     with self._pcm_lock:
                                         self._pcm.extend(part.inline_data.data)
                                         del self._pcm[:max(0, len(self._pcm) - OUT_RATE * 2 * 30)]
+                            if getattr(sc, "turn_complete", False):
+                                reply, self._reply_text = self._reply_text.strip(), ""
+                                if reply and not self._skip_turn:  # a reply the ear press cut off was not heard
+                                    self._tell(self.on_reply, reply)
+                                self._turn_open = self._skip_turn = False
                         tc = getattr(msg, "tool_call", None)
                         if tc is not None and self._on_tool:
                             self._tasks.append(asyncio.create_task(self._handle_tools(session, tc)))
@@ -387,6 +505,7 @@ class GeminiLiveVoice(Voice):
             self._cm, self._session = cm, session
             self._meter = meter
             self._start_io()
+            self._tell(self.on_session, True)
         except Exception as e:
             if meter:
                 meter.stop()
@@ -398,21 +517,51 @@ class GeminiLiveVoice(Voice):
         else:
             await self._fallback.say(text)
 
+    async def _after_own_words(self) -> None:
+        """Wait until what Kaiku is saying has been played (and, a moment longer, for the server to close that
+        turn), so that the next line does not cut it. Bounded: a ritual line is never held back for long."""
+        give_up = time.monotonic() + SAY_WAIT_MAX_S
+        while self._session is not None:
+            now = time.monotonic()
+            played = self._speak_until + SAY_GAP_S
+            if now >= give_up or now >= played + (SAY_TURN_GRACE_S if self._turn_open else 0.0):
+                return
+            await asyncio.sleep(min(0.05, max(0.005, played - now)))
+
+    async def after_speech(self) -> None:
+        """Once no line is waiting to start and Kaiku's words so far have been played (bounded like `say`)."""
+        async with self._say_lock:
+            await self._after_own_words()
+
     async def say(self, text: str) -> None:
-        if self._session is None:
-            await self._say_fallback(text)
-            return
-        self._spoke.clear()
-        try:
-            await self._session.send_client_content(
-                turns={"role": "user", "parts": [{"text": f"(Kaiku, say this to the person, naturally and briefly: "
-                                                          f"{text})"}]},
-                turn_complete=True,
-            )
-            await asyncio.wait_for(self._spoke.wait(), timeout=self.stall_s)
-        except Exception as e:  # stall or send failure -> the scripted line, locally
-            log.warning("gemini_say_fallback", type(e).__name__)
-            await self._say_fallback(text)
+        # One line at a time: a line asked for while another has been requested and not started yet would
+        # interrupt it after a syllable (seen with the real model when she pressed through the dials quickly).
+        async with self._say_lock:
+            if self._session is None:
+                await self._say_fallback(text)
+                return
+            await self._after_own_words()
+            if self._session is None:
+                await self._say_fallback(text)
+                return
+            self._spoke.clear()
+            if not self._turn_open:
+                self._skip_turn = False  # a press before this line was asked for does not silence it (a turn she
+            self._say_pending = True     # silenced that is still arriving stays silenced until the server ends it)
+            try:
+                await self._session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": f"(Kaiku, say this to the person, naturally and "
+                                                              f"briefly, once: {text})"}]},
+                    turn_complete=True,
+                )
+                await asyncio.wait_for(self._spoke.wait(), timeout=self.stall_s)
+            except Exception as e:  # stall or send failure -> the scripted line, locally
+                log.warning("gemini_say_fallback", type(e).__name__)
+                self._say_pending = False
+                if not self._skip_turn:  # she pressed the ear while it was on its way: not said another way either
+                    await self._say_fallback(text)
+            finally:
+                self._say_pending = False
 
     async def send_context(self, text: str) -> None:
         """Append a context turn mid-session (Live capabilities guide, "Incremental content updates": Gemini 3.8
@@ -441,9 +590,19 @@ class GeminiLiveVoice(Voice):
         await self.close_session()
         await self._say_fallback(BUDGET_LINE)
 
+    @staticmethod
+    def _tell(hook: Callable[..., None] | None, *args: Any) -> None:
+        if hook is not None:
+            try:
+                hook(*args)
+            except Exception as e:  # a listener never breaks the conversation
+                log.warning("gemini_live_hook_failed", type(e).__name__)
+
     async def close_session(self) -> None:
         self._generation += 1
-        self._input_text = ""
+        self._turn_open = self._skip_turn = False
+        self._in = None
+        self._input_text = self._reply_text = ""
         self._speech_window.reset()
         self._clear_audio()
         if self._meter is not None:
@@ -463,6 +622,7 @@ class GeminiLiveVoice(Voice):
             except Exception:
                 pass
             log.info("gemini_live_closed", "")
+            self._tell(self.on_session, False)
 
     async def stop(self) -> None:
         await self.close_session()

@@ -72,6 +72,7 @@ static bool dirty = true;
 static bool pressedLatch = false;
 static int knobSteps = 0;
 static bool tapLatch = false;
+static bool micShown = false;        // kaiku_net: the ear ring is blue while the microphone streams to the hub
 
 // kaiku: a line goes out only when the USB buffer has room for all of it. Plugged into a computer with nobody
 // reading the port, writes stalled the loop and the head fell off the broker after ~15 s (bench 2026-11-14).
@@ -98,7 +99,9 @@ static void setMode(Mode m) {
   if (m == DONE) eyes = EYES_HAPPY;
 }
 
-static void chirp() { speaker.playNote(NOTE_C5, 70); speaker.playNote(NOTE_G5, 110); }
+// kaiku_net: no sound of the head's own while the hub's song, cue or voice is on the speaker (same I2S port)
+static bool quiet() { return kaiku_net::speakerBusy(); }
+static void chirp() { if (quiet()) return; speaker.playNote(NOTE_C5, 70); speaker.playNote(NOTE_G5, 110); }
 static void purr(unsigned long ms) { purrUntil = millis() + ms; }
 
 static void startGreeting() {
@@ -108,13 +111,19 @@ static void startGreeting() {
   emit("greet", "{\"offer\":\"ritual\"}");
 }
 
-static void startRitual() { mood = energy = sleepQ = -1; setMode(DIAL_MOOD); speaker.playNote(NOTE_E5, 80); }
+static void startRitual() { mood = energy = sleepQ = -1; setMode(DIAL_MOOD); if (!quiet()) speaker.playNote(NOTE_E5, 80); }
 
 static void finishDrum() {
-  float bpm = (taps > 1 && lastTap > firstTap) ? 60000.0f * (taps - 1) / (lastTap - firstTap) : 0;
   char b[160];
-  snprintf(b, sizeof b, "{\"taps\":%d,\"tempo_bpm\":%.1f,\"force_avg_g\":%.2f,\"force_max_g\":%.2f}",
-           taps, bpm, taps ? forceSum / taps : 0.0f, forceMax);
+  if (kaiku_net::drumByHub()) {
+    // kaiku_net: the hub ran this drum step (tap it back: songs, turns, levels). The head did not measure a session,
+    // so it gives no tempo or average: only how many taps its own sensor felt. The hub has the result.
+    snprintf(b, sizeof b, "{\"run_by\":\"hub\",\"imu_taps\":%d}", kaiku_net::drumTapsFelt());
+  } else {
+    float bpm = (taps > 1 && lastTap > firstTap) ? 60000.0f * (taps - 1) / (lastTap - firstTap) : 0;
+    snprintf(b, sizeof b, "{\"taps\":%d,\"tempo_bpm\":%.1f,\"force_avg_g\":%.2f,\"force_max_g\":%.2f}",
+             taps, bpm, taps ? forceSum / taps : 0.0f, forceMax);
+  }
   emit("drum", b);
   kaiku_net::chime("end_drum");   // kaiku_net
 }
@@ -145,7 +154,7 @@ static void confirmDial() {
   if (mode == DIAL_MOOD) mood = dialValue;
   else if (mode == DIAL_ENERGY) energy = dialValue;
   else sleepQ = dialValue;
-  speaker.playNote(NOTE_A5, 60);
+  if (!quiet()) speaker.playNote(NOTE_A5, 60);
   advance();
 }
 
@@ -157,6 +166,8 @@ static void applyMotor() {
   } else if (now < purrUntil) {
     // purr: short alternating nudges that buzz rather than turn
     dc_motor.setSpeed(((now / 40) % 2) ? 110 : -110);
+  } else if (int s = kaiku_net::sway()) {   // kaiku_net: the hub's sway on the beat while it holds the drum step
+    dc_motor.setSpeed((int16_t)(s * 255 / 100));
   } else {
     if (panUntil && now >= panUntil) { panUntil = 0; panSpeed = 0; emit("pan", "{\"done\":true}"); }
     dc_motor.brake();
@@ -253,7 +264,10 @@ void setup() {
   rotary_encoder_knob.setRingBrightness(40);
   lastKnobPos = rotary_encoder_knob.getPosition();
   setMode(IDLE);
-  kaiku_net::begin();   // kaiku_net
+  kaiku_net::begin({   // kaiku_net: Wi-Fi + MQTT, and the speaker / microphone as PCM streams for the hub
+      [](const int16_t* s, int n) { speaker.writeSamples(s, n); },   // at the driver's volume (0.4, set above)
+      []() { return speaker.isPlaying(); },
+      [](void (*cb)(const int16_t*, int, void*), void* ctx) { microphone.onAudio(cb, ctx); }});
 
   static char boot[1200];
   int bn = snprintf(boot, sizeof boot, "{\"type\":\"boot\",\"payload\":{\"reset_reason\":\"%s\",\"free_heap\":%u,\"modules\":["
@@ -270,6 +284,12 @@ void setup() {
 void loop() {
   p2p_transport_loop();
   kaiku_net::tick();   // kaiku_net
+  if (kaiku_net::takeHelp()) {   // kaiku_net: cmd.head {show: help} (the hub's crisis path). No display on this head,
+    panUntil = purrUntil = 0; panSpeed = 0;   // so nothing is shown: whatever runs ends quietly (no chime, no done
+    speaker.stop();                           // step), the motor stands still, no tone; the head stays calm (calm())
+    emit("help_screen", "{\"shown\":false,\"display\":\"none\"}");
+    setMode(IDLE);
+  }
 
   // ---- commands from the hub ----
   P2PCommand cmd;
@@ -307,7 +327,7 @@ void loop() {
 
   applyMotor();
   kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: raw.head.pan
-  if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera
+  if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera (never while calm)
 
   // knob
   if (knobSteps) {
@@ -325,12 +345,13 @@ void loop() {
     else advance();   // skip breathing or end drumming early
   }
 
-  // taps: felt by the orientation sensor (the only tap source; the KY-031 knock switch is gone, D49).
+  // taps: felt by the orientation sensor (the only tap source; the KY-031 knock switch is gone, D55).
   // kaiku: the motor (pan and purr nudges) shakes the sensor, so nothing counts while it runs or just after;
   // one tap = one message (the jolt rings for a few readings).
   static unsigned long motorQuietAt = 0, tapAgainAt = 0;
   if (dc_motor.getSpeed() != 0) motorQuietAt = millis() + 400;
   if (tapLatch && (millis() < motorQuietAt || millis() < tapAgainAt)) tapLatch = false;
+  if (tapLatch && kaiku_net::speakerBusy()) tapLatch = false;   // kaiku_net: the hub's sound on the speaker shakes the sensor too (and 150 ms after)
   if (tapLatch) {
     tapLatch = false;
     tapAgainAt = millis() + 120;
@@ -341,11 +362,11 @@ void loop() {
       if (!taps) firstTap = now;
       lastTap = now; taps++;
       forceSum += curForce; if (curForce > forceMax) forceMax = curForce;
-      speaker.playTone(180 + curForce * 120, 40);
+      if (!kaiku_net::drumHeld() && !quiet()) speaker.playTone(180 + curForce * 120, 40);   // kaiku_net: no tap tone while the hub leads or its sound plays
       char b[80]; snprintf(b, sizeof b, "{\"n\":%d,\"force_g\":%.2f}", taps, curForce);
       emit("tap", b);
       dirty = true;
-    } else if (mode == IDLE && millis() > quietUntil) {
+    } else if (mode == IDLE && millis() > quietUntil && !kaiku_net::calm()) {   // kaiku_net: not after {show: help}
       startGreeting();   // a pat on the head wakes Kaiku
     }
   }
@@ -353,11 +374,14 @@ void loop() {
   // timed steps
   if (mode == BREATHE && millis() - modeStart >= breathCycles * (IN_MS + OUT_MS)) {
     char b[48]; snprintf(b, sizeof b, "{\"completed\":true,\"cycles\":%d}", breathCycles);
-    emit("breathe", b); setMode(DRUM); speaker.playNote(NOTE_E5, 80);
+    emit("breathe", b); setMode(DRUM); if (!quiet()) speaker.playNote(NOTE_E5, 80);
   }
   // drumming time counts from the first tap; with no tap at all, give up after DRUM_WAIT_MS
   static const unsigned long DRUM_WAIT_MS = 60000;
-  if (mode == DRUM && (taps ? millis() - firstTap >= drumMs : millis() - modeStart >= DRUM_WAIT_MS)) {
+  // kaiku_net: cmd.head {drum: end} ends the step now; while {drum: hold} is fresh the head's own clock does not
+  // (10 s without a hold and it does again: a silent hub never strands the head)
+  bool hubEnd = kaiku_net::takeDrumEnd(), hubHold = kaiku_net::drumHeld();
+  if (mode == DRUM && (hubEnd || (!hubHold && (taps ? millis() - firstTap >= drumMs : millis() - modeStart >= DRUM_WAIT_MS)))) {
     finishDrum(); finishRitual();
   }
   if (mode == GREET && millis() - modeStart > 60000) setMode(IDLE);
@@ -366,7 +390,12 @@ void loop() {
   // microphone: someone speaks or claps nearby while idle
   if (micTimer.ready(30)) {
     lastPeak = microphone.getPeakAmplitude();
-    if (mode == IDLE && millis() > quietUntil && lastPeak > soundThreshold) startGreeting();
+    if (mode == IDLE && millis() > quietUntil && lastPeak > soundThreshold && !quiet() && !kaiku_net::calm()) startGreeting();   // kaiku_net: not woken by its own speaker, nor after {show: help}
+  }
+
+  if (kaiku_net::micOpen() != micShown) {   // kaiku_net: the ear ring turns blue while the microphone streams to the hub
+    micShown = !micShown;                   // (the only light on this head: there is no display)
+    if (micShown) rotary_encoder_knob.setRingColor(40, 160, 255); else rotary_encoder_knob.setRingColor(255, 140, 40);
   }
 
   if (ledTimer.ready(40)) { updateChest(); curForce *= 0.85f; }

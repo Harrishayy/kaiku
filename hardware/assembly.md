@@ -35,8 +35,8 @@ So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on t
 stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
 module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
 
-The UNO Q side (D39: no KY-035 hall, no KY-054 light; D48: no KY-053, so no KY-039): no KY-031 knock (D49: taps come from the Atech orientation sensor); the
-Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D48). Pin ground truth: `hardware/wiring.md`.
+The UNO Q side (D39: no KY-035 hall, no KY-054 light; D54: no KY-053, so no KY-039): no KY-031 knock (D55: taps come from the Atech orientation sensor); the
+Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D54). Pin ground truth: `hardware/wiring.md`.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
 
@@ -65,7 +65,7 @@ Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D48). 
    glue if it's loose). Optional: drill the ear hole out to Ø26 to show the module's light ring.
 5. *Optional:* glue the **Microphone** module against the right inner wall behind the hole pattern, then glue the
    **right ear** grille on the outside.
-6. (No KY-031 knock sensor in this build, D49: taps are felt by the Atech orientation sensor.)
+6. (No KY-031 knock sensor in this build, D55: taps are felt by the Atech orientation sensor.)
 7. Push the skewer into the antenna socket on top and glue on the **antenna ball**.
 8. Plug every head cable in now (display ×2, knob ×2, mic ×2, no KY-031 wires in this build), and route them all
    down through the floor
@@ -94,7 +94,7 @@ panels directly from this table (4 mm board; the generator recomputes for other 
      rear top. Line the USB-C up with the back hole.
    - Tape the **UNO Q** to the floor at the rear, with its USB-C facing the cable slot.
    - Tape the **speaker** to the right wall, behind the grille.
-   - (No LED grids in this build, D48.)
+   - (No LED grids in this build, D54.)
    - *Optional, only if it has a port:* glue the **purr_sleeve** to the floor at the front-left, shaft pointing
      left, slide a second motor in and press the **purr weight** onto its shaft.
    - Glue the **Modulino Buzzer** to the right wall above the speaker and run its Qwiic cable to the UNO Q.
@@ -102,7 +102,7 @@ panels directly from this table (4 mm board; the generator recomputes for other 
    - Glue **four cardboard strips** (10 mm wide) under the lid, 4 mm in from each edge, so it drops in and
      stays put.
    - Glue the neck's **pan base** on top, with the motor sleeve through the pan hole.
-   - Glue the **finger cradle** over the Ø9 hole (cosmetic now: no KY-039 in this build, D48).
+   - Glue the **finger cradle** over the Ø9 hole (cosmetic now: no KY-039 in this build, D54).
    - Drop the **button** module into its square hole.
 4. Pass all the cables to the board and the UNO Q, put the lid on, and plug the power and USB cables in through
    the back.

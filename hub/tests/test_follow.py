@@ -389,7 +389,9 @@ async def test_crisis_in_follow_mode_stops_the_record_and_only_calms_the_eyes(se
     await r.press()
     await hub.on_utterance("I want to die")
     assert r.types().count("obs.safety_flag") == 1 and "obs.engagement" not in r.types()
-    assert r.cmds() == [{"eyes": "soft"}]               # the one command a standalone head can take without fighting
+    # the two commands a standalone head takes without fighting: calm eyes, then its help screen (the helpline's
+    # numbers from its own firmware; never a sound)
+    assert r.cmds() == [{"eyes": "soft"}, {"show": "help"}]
     await r.press(6)                                    # the head goes on by itself: nothing more is recorded
     await r.health("energy")
     assert "obs.self_report" not in r.types() and not hub.follower.active

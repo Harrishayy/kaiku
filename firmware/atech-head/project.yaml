@@ -17,7 +17,7 @@ modules:
   - {id: st7735_tft,          instance: tft,   ports: [3, 4]}    # 3-4, eyes (head, tuning window)
   - {id: rotary_encoder, instance: knob,  ports: [5, 6]}    # 5-6, left ear dial
   - {id: dc_motor,            instance: motor, port: 13}   # pan, 12:40 gear
-  - {id: microphone,          instance: mic,   ports: [9, 10]}    # 9-10, right ear (v1: unused by the firmware)
+  - {id: microphone,          instance: mic,   ports: [9, 10]}    # 9-10, right ear: PCM frames to the hub only while it holds the mic open
   - {id: button,       instance: btn,   port: 7}    # lid; long press = "I'm not OK" (hub decides, >= 2 s)
   # no LED grids in this build (2026-11-14): ports 11 and 14 free
 code:
@@ -36,6 +36,11 @@ code:
     io.motorBrake   = []() { motor.stop(); };   // coast; the motor needs a power module on the 12 V rail (USB-C alone leaves it dead, bench 2026-11-14)
     io.tone         = [](uint16_t hz, uint16_t ms, float v) { spk.setVolume(v); spk.playNote(hz, ms); };
     io.speakerStop  = []() { spk.stop(); };
+    // Audio streams (kaiku_link/head_audio.h): the hub's song, cues and voice out, the microphone in.
+    io.pcmWrite     = [](const int16_t* s, int n, float v) { spk.setVolume(v); spk.writeSamples(s, n); };   // blocking; audio task only
+    io.toneBusy     = []() { return spk.isPlaying(); };
+    io.micTap       = [](void (*cb)(const int16_t*, int, void*), void* ctx) { mic.onAudio(cb, ctx); };
+    io.displayText  = [](const char* t, int16_t x, int16_t y, uint8_t s, uint16_t c) { tft.displayText(t, x, y, s, c); };   // the help screen's lines
     knob.setAcceleration(false);   // one count per click; the driver accelerates fast turns (up to 5x) by default
     tft.setDirectMode(true);   // draws go straight to the screen; canvas mode would need tft.display() after every change
     kaiku::begin(io);

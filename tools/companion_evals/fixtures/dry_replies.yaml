@@ -254,3 +254,38 @@ iphone-card-put-aside-is-a-no:
 mac-card-only-for-what-the-mac-has:
   - say: "A walk sounds good. Anywhere in mind?"
   - say: "Round the block it is. I'll be here after."
+iphone-answers-checkin-plain-statements-hard-day:
+  - say: "A hard day. I'm glad you said so."
+    tools: [{name: feel, args: {kind: other, heard: {valence: low, energy: low, via: voice}, about: "a hard day", said: "It has been a hard day."}}]
+  - say: "Not much sleep on top of it. That makes everything heavier."
+  - say: "A whole day indoors. I'm here with you now."
+iphone-answers-talk-plain-statements-hard-day:
+  - say: "A lot today. I'm listening."
+    tools: [{name: feel, args: {kind: other, heard: {valence: low, energy: low, via: voice}, about: "today", said: "Today was a lot."}}]
+  - say: "A very quiet flat tonight. I'm here in it with you."
+  - say: "Worn out. No need to do anything more tonight."
+robot-agree-walk-after-low-dial:
+  - say: "A two, and a heavy morning. I'm here with you."
+    tools: [{name: record_dial, args: {item: mood, value: 2}}, {name: feel, args: {kind: other, heard: {valence: low, energy: low, via: voice}, about: "a heavy morning", said: "Two. It's a heavy one this morning."}}]
+  - say: "One small thing could be a short walk in daylight. Would that suit today?"
+  - say: "A walk after lunch, then. It's on your phone."
+    tools: [{name: agree_activity, args: {kind: walk, said: "Yes, a walk after lunch sounds good.", when: later, line: "A walk after lunch"}}]
+robot-agree-maybe-is-not-a-yes:
+  - say: "A two, and a heavy morning. I'm here with you."
+    tools: [{name: record_dial, args: {item: mood, value: 2}}, {name: feel, args: {kind: other, heard: {valence: low, energy: low, via: voice}, about: "a heavy morning", said: "Two. It's a heavy one this morning."}}]
+  - say: "One small thing could be a short walk in daylight. Would that suit today?"
+  - say: "Maybe is fine. No need to decide now."
+glasses-agree-game-for-when-they-are-home:
+  - say: "By the river. Good to be walking with you."
+  - say: "Gladly. It'll be on your phone and your Mac when you're back."
+    tools: [{name: agree_activity, args: {kind: lantern, said: "Can we play that lantern game when I'm back home?", when: later}}]
+iphone-face-cue-goes-gently-and-says-nothing:
+  - say: "Hi. Good to hear you."
+  - say: "The lantern one, and a bit of a nothing day. Those happen."
+    tools: [{name: feel, args: {kind: flat, heard: {valence: neutral, energy: low, tone: [flat], via: voice}, said: "Did the lantern one. A bit of a nothing day."}}]
+  - say: "No need to talk. I'm here."
+iphone-face-cue-asked-about-the-camera-answers-plainly:
+  - say: "I can't see you. If Camera during activities is on, your phone counts how the face moves: numbers only, never pictures, and you can switch it off."
+mac-face-cue-check-in-stays-small-and-kind:
+  - say: "Afternoon. Nice that you stopped by."
+  - say: "I can't see you, so I couldn't say. How does the afternoon feel from where you sit?"

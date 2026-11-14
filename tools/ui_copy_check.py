@@ -1,7 +1,7 @@
 """User-facing copy must never contain build notes (config paths, obs types, TODO/VERIFY, file names...).
 
 Scans app source (web .tsx/.ts, Swift, glasses web app) with comments stripped and reports any developer-only
-phrase that would reach a person's screen. Internal team pages (/tune, /eval, /health) are exempt.
+phrase that would reach a person's screen. Internal team pages (/tune, /eval, /health, /debug) are exempt.
 Run: `uv run python tools/ui_copy_check.py` (also enforced by tools/tests/test_ui_copy_check.py in `make test`).
 """
 
@@ -18,7 +18,7 @@ SCAN = [
     ("apps/glasses-webapp", "*.tsx"),
     ("apps/apple", "*.swift"),
 ]
-EXEMPT_PARTS = {"tune", "eval", "health", "node_modules", "out", ".next", "tests", "Tests", "Preview Content"}
+EXEMPT_PARTS = {"tune", "eval", "health", "debug", "node_modules", "out", ".next", "tests", "Tests", "Preview Content"}
 BANNED = re.compile(
     r"config/|\.toml\b|never generated|\bobs\.[a-z_]+|\bcmd\.[a-z_]+|\bVERIFY\b|\bTODO\b|\bFIXME\b|lorem ipsum|"
     r"workstream|kaiku_contracts|\bmake [a-z-]+\b|\bbandit\b|\bpayload\b|\bendpoint\b",

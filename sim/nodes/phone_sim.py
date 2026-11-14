@@ -1,11 +1,15 @@
 """Sim twin of the iPhone app (source `phone`). HTTPS only, like KaikuKit: POSTs the morning Apple Health summary
-(obs.wearable_daily -> the optional "wearable" consensus source), the weather check (obs.self_report x3 with
+(obs.wearable_daily -> the optional "wearable" consensus source; since D53 also the day's distance, time in daylight,
+walking heart rate, sleep stages and time awake, all optional), the weather check (obs.self_report x3 with
 channel "phone" -> robot source, it is the daily dial) and the games played on the phone (obs.play_session:
-firefly, pebbles, and the measured lantern / seeds / watering with their trial record and envelope quality).
+firefly, pebbles, and the measured lantern / seeds / watering with their trial record and envelope quality) and,
+beside each game, what the front camera counted while it ran (obs.face_signs, D52: movements of the face as
+numbers, method arkit_blendshapes, `ref` = the game's envelope id, envelope quality = share of frames with a face).
 
-    uv run python -m sim.nodes.phone_sim [--every 300] [--once] [--no-watch]
+    uv run python -m sim.nodes.phone_sim [--every 300] [--once] [--no-watch] [--no-camera]
 
 --no-watch: a person without a watch (device phone_only: steps only, no sleep/HR/HRV).
+--no-camera: "Camera during activities" left off, as the app ships: games only, no obs.face_signs.
 """
 
 from __future__ import annotations
@@ -23,21 +27,31 @@ from .http_source import HttpSource
 
 class PhoneSim:
     def __init__(self, *, every_s: float = 300.0, seed: int | None = None, watch: bool = True,
-                 transport: httpx.AsyncBaseTransport | None = None, url: str | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None, url: str | None = None, camera: bool = True):
         self.every_s = every_s
         self.watch = watch
+        self.camera = camera
         self.rng = random.Random(seed)
         self.http = HttpSource("phone", transport=transport, url=url)
 
     def wearable_payload(self) -> dict:
         g = self.rng.gauss
         today = datetime.now().date().isoformat()
-        if not self.watch:
-            return {"date": today, "steps": max(0, int(g(5200, 1200))), "device": "phone_only"}
-        return {"date": today, "sleep_min": round(max(120.0, g(440, 30))), "sleep_midpoint_min": round(g(195, 20)),
+        if not self.watch:  # the phone counts steps and distance by itself; daylight, heart and stages need a watch
+            steps = max(0, int(g(5200, 1200)))
+            return {"date": today, "steps": steps, "distance_km": round(steps * 0.00068, 2), "device": "phone_only"}
+        asleep, steps = round(max(120.0, g(440, 30))), max(0, int(g(7000, 1500)))
+        resting = round(max(40.0, g(62, 2)), 1)
+        deep, rem = round(asleep * min(0.25, max(0.08, g(0.17, 0.02)))), round(asleep * min(0.30, max(0.12, g(0.22, 0.02))))
+        return {"date": today, "sleep_min": asleep, "sleep_midpoint_min": round(g(195, 20)),
                 "sleep_regularity": round(min(1.0, max(0.0, g(0.8, 0.05))), 2),
-                "resting_hr_bpm": round(max(40.0, g(62, 2)), 1), "hrv_sdnn_ms": round(max(10.0, g(45, 5)), 1),
-                "steps": max(0, int(g(7000, 1500))), "exercise_min": round(max(0.0, g(25, 8))),
+                "resting_hr_bpm": resting, "hrv_sdnn_ms": round(max(10.0, g(45, 5)), 1),
+                "steps": steps, "exercise_min": round(max(0.0, g(25, 8))),
+                # more of the day from Apple Health (D53): daily totals, three sleep stages together, never a score
+                "distance_km": round(steps * 0.00068, 2), "daylight_min": float(round(max(0.0, g(48, 12)))),
+                "walking_hr_bpm": round(resting + max(20.0, g(37, 2)), 1),
+                "sleep_deep_min": float(deep), "sleep_rem_min": float(rem), "sleep_core_min": float(asleep - deep - rem),
+                "sleep_awake_min": float(round(max(0.0, g(35, 8)))),
                 "device": "apple_watch"}
 
     def weather_check(self) -> list[tuple[str, dict]]:
@@ -122,13 +136,49 @@ class PhoneSim:
             return 0.2
         return round(max(0.6, min(1.0, payload["valid_n"] / payload["trials_n"])), 2)
 
+    def face_signs(self, task: str, seconds: float, ref: str | None = None, quiet: float = 0.0,
+                   coverage: float | None = None) -> tuple[str, dict, float] | None:
+        """What the front camera counted during one task (ARKit face tracking, 30 looks a second):
+        numbers only, there is no field a picture could travel in. `quiet` 0..1 = less smiling and movement and
+        more blinking than this person's usual. As the app does: None (nothing is sent) when the coverage rounds
+        to 0; no blink rate under 20 s of face time, no head movement under 2 s, no range under 10 face frames."""
+        g = self.rng.gauss
+        cover = round(min(0.99, max(0.0, g(0.93, 0.03))), 2) if coverage is None else round(coverage, 2)
+        if cover <= 0:
+            return None
+        seconds = float(round(seconds))
+        samples = max(1, round(seconds * 30))
+        payload: dict = {"task": task, "device": "phone", "method": "arkit_blendshapes",
+                         "duration_s": seconds, "samples": samples, "coverage": cover}
+        if ref:
+            payload["ref"] = ref
+        smile = min(1.0, max(0.0, g(0.14 - 0.12 * quiet, 0.012)))
+        payload |= {"smile_share": round(smile, 3), "smiles": round(smile * seconds / 3.5),
+                    "brow_raise_share": round(min(1.0, max(0.0, g(0.05 - 0.03 * quiet, 0.008))), 3),
+                    "brow_furrow_share": round(min(1.0, max(0.0, g(0.06 + 0.05 * quiet, 0.008))), 3),
+                    "mouth_open_share": round(min(1.0, max(0.0, g(0.03, 0.01))), 3),
+                    "gaze_on_share": round(min(1.0, max(0.0, g(0.92 - 0.06 * quiet, 0.015))), 3)}
+        blinks, head, spread = g(14.0 + 9.0 * quiet, 0.8), g(0.22 - 0.09 * quiet, 0.015), g(0.34 - 0.16 * quiet, 0.015)
+        if cover * seconds >= 20:
+            payload["blinks_per_min"] = round(max(0.0, blinks), 1)
+        if cover * seconds >= 2:
+            payload["head_movement"] = round(max(0.0, head), 3)
+        if cover * samples >= 10:  # 10 face frames
+            payload["expression_range"] = round(min(1.0, max(0.0, spread)), 3)
+        return ("obs.face_signs", payload, cover)
+
     async def morning(self) -> bool:
         """What the app sends when opened in the morning: Health summary + weather check."""
         return await self.http.post([("obs.wearable_daily", self.wearable_payload()), *self.weather_check()])
 
     async def play(self) -> bool:
         games = [self.lantern(), self.seeds(), self.watering()]
-        return await self.http.post([self.firefly(), self.pebbles(), *((t, p, self.game_quality(p)) for t, p in games)])
+        batch = [self.http.envelope(*item)
+                 for item in (self.firefly(), self.pebbles(), *((t, p, self.game_quality(p)) for t, p in games))]
+        if self.camera:  # one face record beside each game, tied to it by the game's envelope id
+            faces = [self.face_signs(e.payload.game, e.payload.duration_s, ref=str(e.id)) for e in list(batch)]
+            batch += [self.http.envelope(*face) for face in faces if face]
+        return await self.http.post(batch)
 
     async def run(self, stop: asyncio.Event | None = None, once: bool = False) -> None:
         stop = stop or asyncio.Event()
@@ -149,8 +199,9 @@ def main() -> None:
     ap.add_argument("--every", type=float, default=300.0, help="seconds between rounds")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--no-watch", action="store_true", help="phone only: steps, no sleep/HR/HRV")
+    ap.add_argument("--no-camera", action="store_true", help="Camera during activities off: no obs.face_signs")
     a = ap.parse_args()
-    asyncio.run(PhoneSim(every_s=a.every, watch=not a.no_watch).run(once=a.once))
+    asyncio.run(PhoneSim(every_s=a.every, watch=not a.no_watch, camera=not a.no_camera).run(once=a.once))
 
 
 if __name__ == "__main__":

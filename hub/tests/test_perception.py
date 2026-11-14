@@ -38,6 +38,24 @@ def test_tap_pauses_excluded_from_tempo():
     assert a.tempo_bpm() == pytest.approx(120)
 
 
+def test_recent_tempo_follows_a_change_the_session_tempo_hides():
+    """20 taps at 100 bpm, then she speeds up to 130: after four fast taps the recent tempo is the new one,
+    while the session's tempo (the observation) still says 100."""
+    a = TapAnalyzer()
+    t = 0
+    for _ in range(20):
+        a.add(t, None)
+        t += 600
+    assert a.recent_tempo_bpm() == pytest.approx(100) and a.tempo_bpm() == pytest.approx(100)
+    t = a.times[-1]
+    for _ in range(4):
+        t += 460
+        a.add(t, None)
+    assert a.recent_tempo_bpm() == pytest.approx(60000 / 460, abs=0.1)
+    assert a.tempo_bpm() == pytest.approx(100)
+    assert TapAnalyzer().recent_tempo_bpm() == 0.0
+
+
 # ---------------------------------------------------------------- hrv
 def test_hrv_rmssd_known_ibis(ppg):
     ibis = [800, 850] * 30  # successive differences all 50 ms -> RMSSD 50

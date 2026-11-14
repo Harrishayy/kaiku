@@ -10,18 +10,41 @@ import asyncio
 import contextlib
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import aiomqtt  # noqa: E402
-from kaiku_contracts import ContractError, validate  # noqa: E402
+from kaiku_contracts import ContractError, is_audio_topic, validate  # noqa: E402
 
 from tools.busio import decode, mqtt_kwargs  # noqa: E402
 
 COLORS = {"raw": "\033[90m", "obs": "\033[32m", "cmd": "\033[36m", "health": "\033[35m", "log": "\033[33m"}
 RED, RESET, BOLD = "\033[31m", "\033[0m", "\033[1m"
+
+
+class AudioCount:
+    """The audio topics carry PCM, not messages: their content is never printed. One line a second says that
+    frames are flowing and how many (a zero-length frame is the "drop the buffer" message)."""
+
+    def __init__(self) -> None:
+        self.frames: dict[str, list[int]] = {}
+        self.t0 = 0.0
+
+    def add(self, topic: str, size: int, now: float) -> str | None:
+        row = self.frames.setdefault(topic, [0, 0, 0])
+        row[0] += 1
+        row[1] += size
+        row[2] += size == 0
+        if now - self.t0 < 1.0:
+            return None
+        self.t0 = now
+        out = " · ".join(f"{'/'.join(t.split('/')[2:])} {n} frames {b} bytes" + (f" {z} flush" if z else "")
+                         for t, (n, b, z) in self.frames.items())
+        self.frames = {}
+        return f"{datetime.now().strftime('%H:%M:%S')} audio (not shown) {out}"
 
 
 def fmt(topic: str, payload: bytes, color: bool = True) -> str:
@@ -48,8 +71,14 @@ async def tail(topic: str, show_raw: bool, as_json: bool) -> None:
             async with aiomqtt.Client(**mqtt_kwargs()) as client:
                 await client.subscribe(topic)
                 print(f"# tailing {topic}", file=sys.stderr)
+                audio = AudioCount()
                 async for m in client.messages:
                     t = str(m.topic)
+                    if is_audio_topic(t):  # PCM: counted, never decoded or printed
+                        line = audio.add(t, len(m.payload or b""), time.monotonic())
+                        if line and not as_json:
+                            print(line, flush=True)
+                        continue
                     if not show_raw and "/raw/" in t:
                         continue
                     if as_json:

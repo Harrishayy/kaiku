@@ -8,6 +8,8 @@ from pathlib import Path
 
 from kaiku_contracts.config import find_repo_file, load_config
 
+from .perception.tap_back import TapBackConfig
+
 
 def repo_root() -> Path:
     cfg = find_repo_file("config/kaiku.toml")
@@ -53,6 +55,8 @@ class Settings:
     head_mode: str = "auto"  # auto | follow | drive ([hub]; follow = the standalone head runs the ritual, D44)
     robot_home_id: str | None = None  # the home the robot boards publish on, when it is not the person's record id
     head_stale_s: float = 15.0
+    follow_offer_every_s: float = 300.0  # follow mode: the spoken invitation at the head's greeting, at most this often
+    trace: bool = True  # raw.hub.trace on the home broker: Kaiku's own lines and tool names, for the apps' Kaiku bot tab
     # ritual timings (s)
     greet_s: float = 20
     dial_s: float = 45
@@ -86,6 +90,11 @@ class Settings:
     # music
     bpm_min: float = 60
     bpm_max: float = 200
+    music_out: str = "head"  # head | speaker | file ([music] out): where the drum music and its cues are heard
+    head_lead_ms: float = 80  # how far ahead of real time the hub sends audio to the head's speaker
+    head_gain: float = 0.8  # headroom for the head's small speaker
+    voice_audio: str = "auto"  # auto | head | local ([voice] audio): Kaiku's Live voice and the microphone
+    tap_back: TapBackConfig = field(default_factory=TapBackConfig)  # [tap_back]: the drum step as a rhythm game
     # models (VERIFY in docs; never hard-code in code)
     gemini_live_model: str = ""
     lyria_model: str = ""
@@ -134,6 +143,8 @@ class Settings:
                        if str(h.get("head_mode", "auto")).lower() in ("auto", "follow", "drive") else "auto"),
             robot_home_id=str(h.get("robot_home_id") or "").strip() or None,
             head_stale_s=_f(c, "hub", "head_stale_s", 15),
+            follow_offer_every_s=_f(c, "hub", "follow_offer_every_s", 300),
+            trace=bool(h.get("trace", True)),
             presence_leave_s=_f(c, "hub", "presence_leave_s", 6),
             presence_stale_s=_f(c, "hub", "presence_stale_s", 5),
             quality_min=_f(c, "perception", "quality_min", 0.5),
@@ -163,6 +174,14 @@ class Settings:
             light_window_min=_f(c, "perception", "light_window_min", 60),
             bpm_min=_f(c, "music", "bpm_min", 60),
             bpm_max=_f(c, "music", "bpm_max", 200),
+            music_out=(str(c.get("music", {}).get("out", "head")).lower()
+                       if str(c.get("music", {}).get("out", "head")).lower() in ("head", "speaker", "file") else "head"),
+            head_lead_ms=_f(c, "music", "head_lead_ms", 80),
+            head_gain=_f(c, "music", "head_gain", 0.8),
+            voice_audio=(str(c.get("voice", {}).get("audio", "auto")).lower()
+                         if str(c.get("voice", {}).get("audio", "auto")).lower() in ("auto", "head", "local") else "auto"),
+            tap_back=TapBackConfig.from_dict(c.get("tap_back", {}), bpm_min=_f(c, "music", "bpm_min", 60),
+                                             bpm_max=_f(c, "music", "bpm_max", 200)),
             gemini_live_model=str(c.get("models", {}).get("gemini_live", "")),
             lyria_model=str(c.get("models", {}).get("lyria_realtime", "")),
             attention=dict(c.get("attention", {})),
