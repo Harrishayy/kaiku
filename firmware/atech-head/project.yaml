@@ -30,9 +30,10 @@ code:
     io.displayRect  = [](int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) { tft.fillRect(x, y, w, h, c); };
     io.ledsFill     = [](uint8_t r, uint8_t g, uint8_t b) { ledL.setAll(r, g, b); ledL.show(); ledR.setAll(r, g, b); ledR.show(); };
     io.motorSpeed   = [](int s) { motor.setSpeed(s); };
-    io.motorBrake   = []() { motor.brake(); };
+    io.motorBrake   = []() { motor.stop(); };   // NOT motor.brake(): both lines HIGH ran the real motor (bench 2026-11-14)
     io.tone         = [](uint16_t hz, uint16_t ms, float v) { spk.setVolume(v); spk.playNote(hz, ms); };
     io.speakerStop  = []() { spk.stop(); };
+    tft.setDirectMode(true);   // draws go straight to the screen; canvas mode would need tft.display() after every change
     kaiku::begin(io);
   loop: |
     knob.update();

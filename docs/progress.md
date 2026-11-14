@@ -250,3 +250,15 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: nothing compiled for the boards (VERIFY lists in both firmware AGENTS.md). A — the KY-035 is on A1 (analog);
   the spec said D3: confirm with `bench/hall`. Pan sign and knob counts per click are open.
 - Next: A — network spike, then the single-part benches, then the link benches (plan 07 §2).
+
+## 2026-11-14 — Xavier — firmware/atech-head [first builds on the real Atech board, Windows]
+- Did: built the single-part benches with espressif32 6.9.0 and fixed what the first runs showed. Motor: `brake()`
+  (both lines HIGH) kept the real motor spinning, so the bench and `HeadIO.motorBrake` use `stop()`. Display: the
+  driver draws to a canvas until `display()`, so the bench calls it and the firmware uses direct mode. Speaker:
+  `playTone`/`playRTTTL` interrupt, so the bench queues the ladder with `playNote`. New `bench/mic_record`: 3 s
+  recording over USB to a local .wav (recordings gitignored).
+- Verified: mic bench on hardware (levels rise with sound). Motor, display, speaker, mic_record benches build;
+  their fixes still need a run on the board.
+- Contract changes: none.
+- Broken/blocked: `make` is not on Windows; atech-setup done by hand (see module AGENTS.md).
+- Next: run the motor/display/speaker/mic_record benches on the board, then the link bench.

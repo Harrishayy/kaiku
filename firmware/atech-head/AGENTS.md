@@ -37,6 +37,8 @@ kaiku_link/
   module.yaml           custom-module declaration + lib_deps (PubSubClient, ArduinoJson 7)
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
+bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over USB; record_wav.py saves a .wav
+                        in bench/mic_record/recordings/ (gitignored; never commit or upload recordings)
 ```
 
 ## Extension points
@@ -90,3 +92,8 @@ Not compiled yet (no Atech toolchain on the authoring machine). VERIFY with `ate
 `enableRing`, `fillScreen`/`fillRect`, `setAll`/`show`, `setSpeed`, `brake`, `playNote`, `setVolume`, `stop`); the
 `module.yaml` shape; the port id for a non-hardware module. Tune `KNOB_COUNTS_PER_STEP`, `MOTOR_DEG_PER_S_FULL`, the
 eye shapes and the pan sign on the real robot. The hall edge arrives over Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
+
+Found on the first builds (2026-11-14, espressif32 6.9.0 / Arduino core 2.0.17; benches built, mic verified on
+hardware): **never call `motor.brake()`**: on the real motor both lines HIGH kept it spinning, so stops use `stop()`
+(coast). The display is in canvas mode by default (nothing shows until `tft.display()`), so the firmware sets
+`tft.setDirectMode(true)`. Speaker calls return at once: `playNote` queues, `playTone`/`playRTTTL` interrupt.

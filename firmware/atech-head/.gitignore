@@ -2,3 +2,4 @@ kaiku_link/secrets.h
 .pio/
 build/
 **/secrets.h
+bench/mic_record/recordings/

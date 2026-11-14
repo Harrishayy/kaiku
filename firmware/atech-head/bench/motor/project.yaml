@@ -11,7 +11,7 @@ code:
     const char* nm[] = {"slow_right", "brake", "slow_left", "brake", "right", "brake", "left", "brake"};
     if (step < 8 && millis() >= next) {
       for (int s = 0; s <= abs(sp[step]); s += 20) { motor.setSpeed(sp[step] > 0 ? s : -s); delay(12); }  // ~100 ms ramp
-      if (sp[step] == 0) motor.brake();
+      if (sp[step] == 0) motor.stop();  // NOT brake(): both lines HIGH ran the real motor at full speed (bench 2026-11-14)
       Serial.printf("{\"event\":\"pulse\",\"name\":\"%s\",\"speed\":%d}\n", nm[step], sp[step]);
       next = millis() + (sp[step] == 0 ? 700 : 300);
       step++;
