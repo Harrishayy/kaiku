@@ -3,7 +3,7 @@
 name: bench-display
 board: 14port
 modules:
-  - {id: st7735_tft, instance: tft, port: 3}
+  - {id: st7735_tft, instance: tft, ports: [3, 4]}
 code:
   loop: |
     static int step = 0; static uint32_t next = 1500;

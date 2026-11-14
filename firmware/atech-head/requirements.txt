@@ -1,0 +1,3 @@
+# Atech SDK for flashing the Kaiku head board. Installed into firmware/atech-head/.venv by `make atech-setup`
+# (kept out of the uv workspace). The ESP32 platform is pinned separately in that target (espressif32 6.9.0).
+atech==1.0.0a12

@@ -104,6 +104,15 @@ unoq-app: ## copy kaiku_contracts + config into the UNO Q App Lab app (python/ve
 	cp config/kaiku.toml firmware/unoq-sensors/python/vendor/config/
 	find firmware/unoq-sensors/python/vendor -name __pycache__ -prune -exec rm -rf {} +
 	@echo "now open firmware/unoq-sensors in App Lab (python/ + sketch/) and Run"
+.PHONY: atech-setup
+ATECH_VENV := firmware/atech-head/.venv
+atech-setup: ## Atech SDK venv + pinned ESP32 toolchain, all inside firmware/atech-head/.venv (then: source it, atech build)
+	@test -x $(ATECH_VENV)/bin/python || $(UV) venv --python 3.12 $(ATECH_VENV)
+	$(UV) pip install --python $(ATECH_VENV)/bin/python -r firmware/atech-head/requirements.txt
+	@grep -q PLATFORMIO_CORE_DIR $(ATECH_VENV)/bin/activate || printf '\n# Kaiku: keep PlatformIO (ESP32 toolchain, ~3 GB) inside this venv\nexport PLATFORMIO_CORE_DIR="$$VIRTUAL_ENV/platformio"\n' >> $(ATECH_VENV)/bin/activate
+	@# Atech's drivers target Arduino core 2.0 (espressif32 6.x); the SDK leaves the platform unpinned and 8.x breaks dc_motor
+	PLATFORMIO_CORE_DIR=$(CURDIR)/$(ATECH_VENV)/platformio $(ATECH_VENV)/bin/pio pkg install -g -p "platformio/espressif32@6.9.0"
+	@echo "done: source $(ATECH_VENV)/bin/activate, then atech build . in a bench/<part> folder (first build compiles the core)"
 eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
 	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing

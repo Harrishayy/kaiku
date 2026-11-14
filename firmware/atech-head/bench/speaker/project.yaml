@@ -1,9 +1,9 @@
 # Bench: Atech speaker alone on ports 1-2 (MAX98357A). Plays a tone ladder and an RTTTL tune at low volume.
-# VERIFY method names with `atech info speaker` (camelCase: setVolume / playTone / playRtttl).
+# VERIFY method names with `atech info speaker` (camelCase: setVolume / playTone / playRTTTL).
 name: bench-speaker
 board: 14port
 modules:
-  - {id: speaker, instance: spk, port: 1}
+  - {id: speaker, instance: spk, ports: [1, 2]}
 code:
   loop: |
     static bool done = false;
@@ -12,6 +12,6 @@ code:
       spk.setVolume(0.3);
       const int hz[] = {262, 330, 392, 523};
       for (int i = 0; i < 4; i++) { spk.playTone(hz[i], 250); Serial.printf("{\"event\":\"tone\",\"hz\":%d}\n", hz[i]); }
-      spk.playRtttl("kaiku:d=8,o=5,b=140:c,e,g,c6");
+      spk.playRTTTL("kaiku:d=8,o=5,b=140:c,e,g,c6");
       Serial.println("{\"event\":\"rtttl\"}");
     }

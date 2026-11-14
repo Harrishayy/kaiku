@@ -3,7 +3,7 @@
 name: bench-mic
 board: 14port
 modules:
-  - {id: microphone, instance: mic, port: 9}
+  - {id: microphone, instance: mic, ports: [9, 10]}
 code:
   loop: |
     static uint32_t next = 0;

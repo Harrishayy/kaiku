@@ -3,7 +3,7 @@
 name: bench-knob
 board: 14port
 modules:
-  - {id: rotary_encoder_knob, instance: knob, port: 5}
+  - {id: rotary_encoder, instance: knob, ports: [5, 6]}
 code:
   loop: |
     static int32_t last = 0; static bool down = false; static bool ring = false;
