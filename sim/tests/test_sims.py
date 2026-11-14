@@ -48,7 +48,7 @@ async def test_head_sim_dial_drum_and_post_mood(broker, monkeypatch):
         (taps if env.type == "raw.head.tap" else ears).append(env)
 
     stop = asyncio.Event()
-    head = HeadSim(tempo_bpm=120, mood=4, seed=3)
+    head = HeadSim(tempo_bpm=120, mood=4, seed=3, dial="ear", drum="imu")
     task = asyncio.create_task(head.run(stop))
     obs = Bus("hub", heartbeat=False)
     obs.on("raw/head/tap", on_raw)
@@ -74,6 +74,35 @@ async def test_head_sim_dial_drum_and_post_mood(broker, monkeypatch):
     assert presses[3] == 5  # post-activity: mood + 1
     assert n_taps >= 3
     assert len(taps) <= n_taps + 1  # drumming stopped on obs.drum_session
+
+
+async def test_head_sim_button_build_presses_and_knocks(broker, monkeypatch):
+    """Button build: a dial answer is n short presses on raw/head/button; drum taps are knocks without force."""
+    monkeypatch.setenv("KAIKU_ROBOT_PRESS_WINDOW_S", "0.3")
+    from kaiku_contracts.config import load_config
+    load_config.cache_clear()
+    buttons, taps = [], []
+
+    async def on_raw(t, env):
+        (taps if env.type == "raw.head.tap" else buttons).append(env)
+
+    stop = asyncio.Event()
+    head = HeadSim(tempo_bpm=150, mood=3, seed=1, dial="button", drum="knock")
+    task = asyncio.create_task(head.run(stop))
+    obs = Bus("hub", heartbeat=False)
+    obs.on("raw/head/button", on_raw)
+    obs.on("raw/head/tap", on_raw)
+    async with obs:
+        await head.bus.connected.wait()
+        await head._answer(3, first_delay=0)
+        await head.tap()
+        await asyncio.sleep(0.3)
+    stop.set()
+    await task
+    load_config.cache_clear()
+    downs = [e for e in buttons if e.payload.pressed]
+    assert len(downs) == 3 and all(e.payload.id == "head" for e in downs)
+    assert taps and taps[0].payload.src == "knock" and taps[0].payload.force is None
 
 
 async def test_sensors_sim_ppg_only_when_started(broker):

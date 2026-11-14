@@ -80,7 +80,9 @@ web-build: ## static-export the Next.js app to apps/web/out (served by the cloud
 	@if [ -f apps/web/package.json ]; then cd apps/web && pnpm install --silent && pnpm build; fi
 
 # ---------------------------------------------------------------- quality
-.PHONY: test lint fmt doctor demo-reset check smoke eval-companion
+.PHONY: test lint fmt doctor demo-reset check smoke eval-companion spend
+spend: ## paid model spend so far vs the hard cap (config/kaiku.toml [budget])
+	$(RUN) python -m kaiku_contracts.budget
 smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
 	./scripts/smoke.sh
 test: ## all Python tests (+ web typecheck if installed)
@@ -92,6 +94,16 @@ fmt: ## ruff format + fix
 	$(RUN) ruff check --fix . && $(RUN) ruff format .
 doctor: ## environment + live system health report
 	$(RUN) python tools/doctor.py
+bench-list: ## list the electronics bench tests (one per part; tools/bench.py)
+	$(RUN) python tools/bench.py --list
+bench: ## test ONE part alone: make bench PART=firmware/unoq-sensors/bench/knock [FROM=serial:/dev/tty.x | - | mqtt | file.log]
+	$(RUN) $(if $(findstring serial:,$(FROM)),--with pyserial,) python tools/bench.py $(PART) $(if $(FROM),--from '$(FROM)',)
+unoq-app: ## copy kaiku_contracts + config into the UNO Q App Lab app (python/vendor, gitignored)
+	rm -rf firmware/unoq-sensors/python/vendor && mkdir -p firmware/unoq-sensors/python/vendor/config
+	cp -a contracts/python/kaiku_contracts firmware/unoq-sensors/python/vendor/
+	cp config/kaiku.toml firmware/unoq-sensors/python/vendor/config/
+	find firmware/unoq-sensors/python/vendor -name __pycache__ -prune -exec rm -rf {} +
+	@echo "now open firmware/unoq-sensors in App Lab (python/ + sketch/) and Run"
 eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
 	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing

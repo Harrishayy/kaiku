@@ -37,7 +37,9 @@ approach_size = 0.12     # face width / frame width: "coming closer"
 at_desk_size = 0.22      # ... "at the desk"
 frame_s = 0.3            # detections this close in time are one camera frame (two faces = two messages)
 two_face_min_sep = 0.25  # x_norm distance that makes two detections two people
-camera_hfov_deg = 60     # fixed camera; face x_norm -1..1 -> pan -30..+30 deg
+camera_hfov_deg = 60     # face x_norm -1..1 spans -30..+30 deg
+camera_on_head = true    # the USB camera sits in the head and pans with it (D32): targets are relative to raw.head.pan
+pan_limit_deg = 100      # head travel either side of front (12:40 gear, cable bundle through the neck)
 pan_deadband_deg = 4
 pan_smoothing = 0.4
 pan_speed = 0.4
@@ -47,6 +49,37 @@ night_start = "23:00"    # no greeting in [night_start, night_end) unless the pe
 night_end = "07:00"
 quiet_h = 2              # "not now" / "quiet" keeps Kaiku quiet this long
 voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
+
+[robot]
+# Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
+# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, KY-054 light, KY-035 hall,
+# Modulino Buzzer, USB camera).
+dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
+press_window_s = 4.0     # button mode only: presses closer than this make one answer
+drum_input = "knock"     # knock (KY-031: timing, no force) | imu (force in g) — what the sims send
+drum_sway = false        # no head sway while drumming: knocks are ignored while the pan motor moves
+# Head-firmware numbers (motor pulses, homing, hub-silence stop, debounce): firmware/atech-head/kaiku_link/config.h
+
+[unoq]
+# UNO Q Linux app (firmware/unoq-sensors/python/): camera -> derived numbers only, frames never stored or sent.
+camera_index = 0
+frame_w = 640
+frame_h = 480
+fps = 15
+face_hz = 5              # face boxes on raw/hub/face (attention ladder, presence)
+face_detector = "haar"   # haar (OpenCV bundled) | yunet (needs the model file, VERIFY path on the board)
+distance_k_cm = 9.0      # distance_cm ~= k / face_width_ratio (60 deg hfov, ~15 cm face); tune on the real head
+far_cm = 300             # published when no face is seen
+light_source = "ky054"   # ky054 (lid window) | camera (backup: exposure locked, ring light off)
+light_every_s = 10       # room light sample period
+ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
+exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
+lux_per_unit = 2.0       # camera light backup: lux_est = mean Y * this
+ppg_source = "auto"      # auto (KY-039, camera pulse if it stays flat/silent) | ky039 | camera
+ppg_fallback_s = 4       # auto: switch to the camera after this long without a clean KY-039 batch
+ppg_min_range = 30       # KY-039 batch peak-to-peak (KY-053 16-bit counts) below this = flat / unwired
+ppg_max_value = 26000    # ... above this = pinned at the rail (3.3 V on the +-4.096 V range ~ 26400)
+# MCU-side numbers (pins, debounce, ADS1115 rate): firmware/unoq-sensors/sketch/config.h
 
 [mqtt]
 host = "localhost"
@@ -100,3 +133,25 @@ emergency_number = "112"
 gpu = "H100"          # 26B-A4B in bf16 needs ~52 GB; use "L40S" with google/gemma-4-12B-it to save credits
 scaledown_s = 60      # container stops 60 s after the last call (raise to keep it warm during the demo)
 max_model_len = 8192
+
+[budget]
+# HARD caps for all paid model calls (Gemini API / Vertex / Modal GPU), enforced by kaiku_contracts/budget.py.
+# Team rule (2026-11-14): stay under $10 overall while testing. Over the cap every caller uses its fallback.
+total_usd = 10.0
+daily_usd = 4.0
+argon_per_home_day = 20
+
+[budget.prices]
+# Conservative USD estimates (rounded UP on purpose so the ledger over-counts). VERIFY against current pricing pages.
+"gemini-4-argon" = { in_per_m = 6.0, out_per_m = 30.0 }
+"gemini-3.8-flash-tts" = { in_per_m = 1.0, out_per_m = 25.0 }
+"gemini-3.8-flash-lite-tts" = { in_per_m = 0.5, out_per_m = 12.0 }
+"gemini-3.8-flash" = { in_per_m = 0.6, out_per_m = 4.0 }
+"gemini-3.8-live" = { per_min = 0.12 }
+"gemini-embedding" = { in_per_m = 0.3 }
+"gemini-3.1-flash-lite-image" = { per_image = 0.06 }
+"lyria-realtime" = { per_min = 0.10 }
+"gemma-4" = { in_per_m = 0.3, out_per_m = 1.2 }
+"modal-H100" = { per_hour = 4.5 }
+"modal-L40S" = { per_hour = 2.2 }
+default = { in_per_m = 6.0, out_per_m = 30.0 }

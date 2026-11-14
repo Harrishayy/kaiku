@@ -1,0 +1,18 @@
+part = "leds"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Watch the chest louvres: both grids red, green, blue, off, then one slow warm breath"]
+duration_s = 15
+
+[[check]]
+name = "four colour steps"
+event = "color"
+min_count = 4
+[[check]]
+name = "breath ran"
+event = "done"
+min_count = 1
+[[check]]
+name = "both grids, all pixels"
+ask = "Did both grids light every pixel in each colour, and fade up and down smoothly?"

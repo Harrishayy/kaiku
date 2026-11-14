@@ -1,0 +1,41 @@
+# Whole UNO Q node (sketch + python app) over the broker, one part at a time. Run after every single-part bench passed.
+part = "unoq-link"
+board = "mqtt"
+program = ""
+flash = "App Lab: run the full app (make unoq-app first); hub laptop: make broker. No hub needed for this bench."
+steps = ["Within 20 s: tap the head top 3 times",
+         "Rest a finger in the lid cradle (the bench sends ppg start)",
+         "Turn the head by hand past the front once (hall)", "Listen for the 'ok' chime"]
+duration_s = 20
+topic = "kaiku/v1/+/#"
+send = [{type = "cmd.sensors", payload = {chime = "ok"}},
+        {type = "cmd.sensors", payload = {ppg = "start"}, wait_s = 0.2}]
+
+[[check]]
+name = "health/sensors ok with the sketch answering"
+event = "health"
+source = "sensors"
+min_count = 1
+[[check]]
+name = "knocks arrive as raw.head.tap"
+event = "raw.head.tap"
+min_count = 3
+[[check]]
+name = "pulse batches arrive"
+event = "raw.sensors.ppg"
+min_count = 4
+[[check]]
+name = "hall edge arrives"
+event = "raw.sensors.hall"
+min_count = 1
+[[check]]
+name = "KY-054 light arrives"
+event = "raw.sensors.light"
+min_count = 1
+[[check]]
+name = "camera numbers arrive"
+event = "raw.sensors.distance"
+min_count = 1
+[[check]]
+name = "outputs"
+ask = "Did you hear the 'ok' chime?"

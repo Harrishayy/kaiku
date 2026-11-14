@@ -1,0 +1,19 @@
+part = "knock"
+board = "unoq-mcu"
+program = "knock.ino"
+flash = "App Lab: new app, paste knock.ino into sketch/sketch.ino, Run; open the serial monitor (copy its output to a file for FROM=<file>)"
+steps = ["Keep the head still for the first second (idle calibration)",
+         "Tap the drum exactly 5 times, about one per second", "Wait 3 s"]
+duration_s = 20
+
+[[check]]
+name = "boot reports a stable idle level"
+event = "boot"
+field = "high_ratio"
+min_count = 1
+any_min = 0.0
+[[check]]
+name = "exactly 5 knocks (no bounce doubles, no misses)"
+event = "knock"
+min_count = 5
+max_count = 5

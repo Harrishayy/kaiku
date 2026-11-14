@@ -1,0 +1,8 @@
+{"event": "i2c", "addr": 72}
+{"event": "ads", "ok": 1}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}
+{"event": "batch", "fs_hz": 100.0, "min": 12000, "max": 12150, "range": 150, "bpm_rough": 66}

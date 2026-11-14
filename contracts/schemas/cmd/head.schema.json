@@ -2,6 +2,7 @@
   "$defs": {
     "HeadCmd": {
       "additionalProperties": false,
+      "description": "Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),\npan/home/gesture (pan motor, hall homing), purr (speaker tone; no purr motor on the current build).",
       "properties": {
         "bpm": {
           "anyOf": [
@@ -69,6 +70,24 @@
           ],
           "default": null,
           "title": "Eyes"
+        },
+        "gesture": {
+          "anyOf": [
+            {
+              "enum": [
+                "look_left",
+                "look_right",
+                "shake"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "timed motor pulse, then home (no position feedback)",
+          "title": "Gesture"
         },
         "home": {
           "anyOf": [

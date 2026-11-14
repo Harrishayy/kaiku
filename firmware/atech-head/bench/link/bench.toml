@@ -1,0 +1,37 @@
+# Whole Atech firmware (kaiku_link) over the broker. Run after every single-part bench passed.
+part = "head-link"
+board = "mqtt"
+program = ""
+flash = "Flash ../../ (project.yaml + kaiku_link, secrets.h filled); hub laptop: make broker && make hub (motion needs a live hub); UNO Q app running for hall homing"
+steps = ["Within 25 s: turn the ear knob two clicks and press it",
+         "Press the lid button twice (short)",
+         "Watch: eyes turn happy, the chest breathes, the head looks left and comes back to the front"]
+duration_s = 25
+topic = "kaiku/v1/+/#"
+send = [{type = "cmd.head", payload = {eyes = "happy", chest = "breathe", bpm = 12}, wait_s = 1.0},
+        {type = "cmd.head", payload = {gesture = "look_left"}, wait_s = 3.0}]
+
+[[check]]
+name = "health/head heartbeat"
+event = "health"
+source = "head"
+min_count = 1
+[[check]]
+name = "knob -> raw.head.ear with a press"
+event = "raw.head.ear"
+min_count = 3
+[[check]]
+name = "button events"
+event = "raw.head.button"
+min_count = 4
+[[check]]
+name = "pan reports"
+event = "raw.head.pan"
+min_count = 2
+[[check]]
+name = "hall edge from the UNO Q while homing"
+event = "raw.sensors.hall"
+min_count = 1
+[[check]]
+name = "face, chest, gesture"
+ask = "Happy eyes, a breathing chest, and the head looked left then came back to the front?"

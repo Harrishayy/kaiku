@@ -1,0 +1,6 @@
+# App Lab installs these on the board (VERIFY: App Lab reads python/requirements.txt).
+# kaiku_contracts comes from ./vendor (make unoq-app), not from PyPI.
+pydantic>=2.7
+aiomqtt>=2.3
+opencv-python-headless>=4.10
+numpy>=1.26

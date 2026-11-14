@@ -20,7 +20,11 @@ def generate(prompt: str, timeout_s: float = 20.0) -> str:
     key = os.environ.get("GEMINI_API_KEY")
     if not model or model.startswith("VERIFY") or not key:
         raise LlmUnavailable("gemma_hosted not configured (models.gemma_hosted / GEMINI_API_KEY)")
+    from kaiku_contracts import budget
+
     try:
+        budget.guard("gemini", model, budget.text_estimate(model, len(prompt)))
+        budget.charge("gemini", model, budget.text_estimate(model, len(prompt)), task="explain", component="cloud")
         r = httpx.post(ENDPOINT.format(model=model), headers={"x-goog-api-key": key}, timeout=timeout_s,
                        json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
                              "generationConfig": {"temperature": 0.2, "maxOutputTokens": 800}})

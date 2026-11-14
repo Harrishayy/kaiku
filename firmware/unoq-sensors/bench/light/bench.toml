@@ -1,0 +1,22 @@
+part = "light"
+board = "unoq-mcu"
+program = "light.ino"
+flash = "App Lab: new app, paste light.ino into sketch/sketch.ino, Run"
+steps = ["Leave the lid window open to the room for 5 s", "Cover it with a finger for 5 s",
+         "Shine a phone torch on it for 3 s"]
+duration_s = 18
+
+[[check]]
+name = "readings arrive at ~2 Hz"
+event = "light"
+min_count = 20
+[[check]]
+name = "covered reads dark"
+event = "light"
+field = "raw"
+all_min = 0
+[[check]]
+name = "torch reads bright (wide swing, not stuck)"
+event = "light"
+field = "raw"
+any_min = 4000

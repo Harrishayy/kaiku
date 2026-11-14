@@ -128,3 +128,29 @@ def test_speech_features_shape():
     f = speech_features(audio, sr)
     assert f is not None and 0.2 < f["pause_ratio"] < 0.8 and f["duration_s"] == 3.0
     assert speech_features(np.zeros(100), sr) is None
+
+
+def test_knock_taps_have_no_force_mean():
+    from kaiku_hub.perception.taps import TapAnalyzer
+
+    t = TapAnalyzer()
+    for i in range(6):
+        t.add(1000 + i * 500)
+    s = t.summary(2.5)
+    assert s["force_mean"] is None and s["taps"] == 6 and s["tempo_bpm"] == 120
+
+
+def test_press_counter_one_answer_per_run():
+    from kaiku_hub.perception.presses import PressCounter
+
+    c = PressCounter(window_s=4.0)
+    for t in (0.0, 0.4, 0.8):
+        c.add(t)
+    assert not c.due(3.0) and c.due(4.9)
+    assert c.ear_event() == {"value": 3, "delta": 0, "pressed": True}
+    for t in range(7):
+        c.add(10.0 + t * 0.3)
+    assert c.take() == 5  # capped at 5
+    c.add(20.0)
+    c.add(30.0)  # gap longer than the window starts a new answer
+    assert c.take() == 1

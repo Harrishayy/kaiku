@@ -1,0 +1,15 @@
+# Bench: Atech button alone on port 11. `atech build . && atech upload .`, then `atech monitor` (or FROM=serial:<port>).
+# VERIFY method names with `atech info button_module` (C++ camelCase per the docs example: isPressed).
+name: bench-button
+board: 14port
+modules:
+  - {id: button_module, instance: btn, port: 11}   # lid
+code:
+  loop: |
+    static bool down = false; static uint32_t at = 0, n = 0;
+    bool d = btn.isPressed();
+    if (d != down && millis() - at > 20) {
+      down = d; at = millis(); if (d) n++;
+      Serial.printf("{\"event\":\"%s\",\"t_ms\":%lu,\"n\":%lu}\n", d ? "press" : "release", (unsigned long)at,
+                    (unsigned long)n);
+    }

@@ -59,7 +59,8 @@ class HrvSession(Strict):
 
 class DrumSession(Strict):
     tempo_bpm: float = Field(ge=0, le=400)
-    force_mean: float = Field(ge=0, le=1)
+    force_mean: float | None = Field(default=None, ge=0, le=1,
+                                     description="None when the drum can't sense force (KY-031 knock switch)")
     duration_s: float = Field(ge=0)
     regularity: float = Field(ge=0, le=1)
     taps: int = Field(ge=0)
@@ -266,7 +267,7 @@ class SafetyFlag(Strict):
 # --------------------------------------------------------------------------- raw/* (local only)
 class RawTap(Strict):
     t_ms: int = Field(ge=0)
-    force: float = Field(ge=0, description="peak acceleration, g")
+    force: float | None = Field(default=None, ge=0, description="peak acceleration, g; None for a knock switch")
     src: Literal["imu", "knock"] = "imu"
 
 
@@ -338,7 +339,14 @@ class _AtLeastOne(Strict):
         return self
 
 
+Gesture = Literal["look_left", "look_right", "shake"]  # the head only pans: no nod
+Chime = Literal["wake", "ok", "start_drum", "end_drum", "alert"]
+
+
 class HeadCmd(_AtLeastOne):
+    """Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),
+    pan/home/gesture (pan motor, hall homing), purr (speaker tone; no purr motor on the current build)."""
+
     eyes: Eyes | None = None
     look: LookAt | None = None
     pan: PanTarget | None = None
@@ -348,11 +356,13 @@ class HeadCmd(_AtLeastOne):
     bpm: float | None = Field(default=None, gt=0, le=300, description="for pan_mode=sway or chest=breathe")
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     purr: Purr | None = None
+    gesture: Gesture | None = Field(default=None, description="timed motor pulse, then home (no position feedback)")
 
 
 class SensorsCmd(_AtLeastOne):
     ppg: Literal["start", "stop"] | None = None
     camera_enable: bool | None = None
+    chime: Chime | None = Field(default=None, description="short cue on the Modulino Buzzer; alert = device fault only")
 
 
 class FriendPing(Strict):

@@ -18,12 +18,12 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 ## Consumes (topics/endpoints)
 | Topic / endpoint | Used for |
 |---|---|
-| `kaiku/v1/<home>/raw/head/tap` | drum step (tempo, force, regularity) |
+| `kaiku/v1/<home>/raw/head/tap` | drum step (tempo, force, regularity); `force` absent for the KY-031 knock switch → `force_mean: null` |
 | `kaiku/v1/<home>/raw/head/ear` | dial answers (`value` = dial position 1–5, each `pressed` answers the current question: mood → energy → sleep); post-drum mood; spoken PHQ-9 (dial 1→0 … 4–5→3); press when idle → ad-hoc mood |
 | `kaiku/v1/<home>/raw/sensors/ppg` | breathe step HRV (only streamed between `cmd/sensors {ppg:start/stop}`) |
 | `kaiku/v1/<home>/raw/sensors/distance` | presence → `obs/presence` + the attention ladder (no camera = presence alone means "at desk") |
 | `kaiku/v1/<home>/raw/sensors/light` | `obs/light_level` (hourly mean) |
-| `kaiku/v1/<home>/raw/sensors/button` (`id: "top"`) | short press → start ritual; hold ≥ 2 s → crisis (manual) |
+| `kaiku/v1/<home>/raw/sensors/button` (`id: "top"`), `raw/head/button` (`id: "head"`) | short press idle → start ritual; hold ≥ 2 s → crisis (manual); button build (`[robot] dial_input = "button"`): short presses during a ritual → one dial answer per run (`perception/presses.py`, `press_window_s`), fed as the ear event below |
 | `kaiku/v1/<home>/raw/hub/face` (source ≠ `hub`) | attention ladder (one message per face per frame; UNO Q YOLO or sim) + greet step looks at the face |
 | `kaiku/v1/<home>/cmd/hub` | `start_ritual`, `say` (text utterance, safety-gated), `suggest_nudge`, `set_ritual_time`, `clinician_message`, `phq9_due` |
 | `kaiku/v1/<home>/cmd/friendlink` | `ping` → LoRa gateway |
@@ -106,6 +106,12 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   against the contracts registry.
 - **Never block the event loop**; network calls have timeouts; a dead broker/cloud/voice never crashes the hub.
 - **Raw never leaves the home:** the uplink sends `obs.*` only.
+- **Robot build** (D31/D32, plan 07): the dial is the Atech Knob (`raw.head.ear`, `dial_input = "ear"`). If the knob
+  is out, `dial_input = "button"` takes 1–5 short presses within `press_window_s` as one ear press with `value` =
+  count; a long press never counts (safety). Chimes on `cmd.sensors` (`wake` greet, `ok` each dial answer,
+  `start_drum` / `end_drum`). `drum_sway = false` keeps the head still while drumming (knocks are muted while the motor
+  moves). The camera sits in the head: `[attention] camera_on_head = true` makes pan targets relative to the last
+  `raw.head.pan` (clamped to `pan_limit_deg`).
 - **Dial protocol** (head firmware + `sim/nodes/head_sim.py` depend on it): each ear *press* answers the current
   question with the dial position at that moment (order mood → energy → sleep); the post-activity mood is
   asked right AFTER `obs.drum_session` is emitted; spoken PHQ-9 accepts presses (dial 1→0, 2→1, 3→2, 4–5→3).
@@ -150,6 +156,8 @@ Attention log lines: `attention` (state changes + face count), `voice_line` (key
 - `config/kaiku.toml [attention]`: `face_source = laptop|unoq_yolo|off`, ladder sizes, `lost_s`, `frame_s`,
   `two_face_min_sep`, `camera_hfov_deg`, pan deadband/smoothing/speed, `track_hz`, `regreet_h`, night window,
   `quiet_h`, `voice_timeout_s`. `[voice] name` (one voice) is passed to Gemini Live.
+- `config/kaiku.toml [robot]`: `dial_input = ear|button` (prompts + press counting), `press_window_s`, `drum_sway`
+  (`drum_input` is for the sims). `[attention] camera_on_head`, `pan_limit_deg`.
 - `config/kaiku.toml`: `[ritual]` timings (`greet_s`, `dial_s`, `breathe_s`, `drum_s`, `drum_idle_end_s`,
   `post_mood_s`, `hrv_window_s`, `nudge_s`, `cooldown_s`, `phq9_mode`, `phq9_every_days`), `[perception]`
   thresholds (incl. `tap_force_max_g`, `light_window_min`), `[uplink]`, `[music]` BPM clamp, `[models]` IDs

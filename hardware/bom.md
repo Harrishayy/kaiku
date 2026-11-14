@@ -1,12 +1,18 @@
-# Bill of materials
+# Bill of materials (D31 + D32)
 
 | Item | Qty | Source | Used for |
 |---|---|---|---|
-| Atech ESP32 modules (display, IMU, encoder, motor driver, LEDs) | — | Atech kit | head |
-| Arduino UNO Q | 1 | venue | sensor node |
-| Joy-IT KY sensor kit (KY-039, -053, -054, -050, -051, -035) | 1 | venue | sensors |
-| DC motor (geared?) | 1–2 | venue | pan, purr |
-| USB camera | 1 | venue | face position (local only) |
-| LilyGo ESP32 LoRa | 2 | venue | friend link |
-| USB mic + speaker | 1 | team | Gemini Live voice (D1) |
-| PLA (Bambu P1S) | — | venue | head shell, yoke, turntable gear, top plate |
+| Atech board + USB-C module, Color Display, Knob, Button, Speaker, Microphone, 2× LED Grid | 1 each | Atech kit | eyes, ear dial, lid button, cues (+ future voice), speech (STRETCH), chest glow; all 12 ports used (`assembly.md`) |
+| Atech DC Motor V2.3 | 1 of 4 (+1 optional purr, needs a free port) | Atech kit | pan |
+| Arduino UNO Q 2 GB | 1 | venue | sensor node + camera app (hub stays on the laptop, D32) |
+| Modulino Buzzer ABX00108 + Qwiic cable | 1 | venue | chimes, on the UNO Q Qwiic |
+| Joy-IT KY-031 knock sensor | 1 | KY kit | taps / drum, under the head top |
+| Joy-IT KY-039 pulse + KY-053 ADC, KY-054 light, KY-035 hall | 1 each | KY kit | HR/HRV, room light, pan homing (KY-050 ultrasonic + KY-051 dropped: presence comes from vision) |
+| Arduino USB Camera TPX00246 | 1 | venue | presence, face tracking, backup pulse / light (local only) |
+| Powered USB-C hub with PD input | 1 | team | UNO Q power + USB host for the camera, behind the robot |
+| Arduino power supply TPX00242 | 1 | venue | power (VERIFY 5 V / 3 A PD) |
+| 6 × 3 mm magnet, 3 mm skewer, foam tape, hot glue, Dupont jumpers | — | team | pan homing, antenna, mounting, KY wiring |
+| Corrugated cardboard ≥ 500 × 300 mm | 1 | team | MVP body (`assembly.md` §3a) |
+| LilyGo ESP32 LoRa | 2 | venue | friend link (separate module) |
+| Laptop USB mic + speaker | 1 | team | Gemini Live voice in v1 (D1, D32) |
+| PLA (Bambu P1S / P2S) | ~165 g MVP, ~320 g full | venue | plates in `cad/README.md` |

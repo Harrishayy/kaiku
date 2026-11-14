@@ -30,6 +30,14 @@ DIAL_QUESTIONS = {
     "energy": "And your energy? One is empty, five is full. Turn and press.",
     "sleep": "How did you sleep last night? One is badly, five is well.",
 }
+# Same questions for the button build (config [robot] dial_input = "button"): presses within a few seconds = the value.
+DIAL_QUESTIONS_BUTTON = {
+    "mood": "How are you today? Press my button once for heavy, up to five times for light. Or just say a number.",
+    "energy": "And your energy? Once is empty, five times is full.",
+    "sleep": "How did you sleep last night? Once is badly, five times is well.",
+}
+POST_MOOD_LINE = {"ear": "That was great. How do you feel now? Turn my ear and press.",
+                  "button": "That was great. How do you feel now? Press my button, one to five times."}
 
 NUDGE_LINES = {
     "breathe": "Maybe one more slow breathing minute later today?",
@@ -63,6 +71,21 @@ PHQ9_WORDS = (
 )
 
 
+def _button(ctx: RitualContext) -> bool:
+    """True on the button build (config [robot] dial_input = "button"): answers are press counts, not ear turns."""
+    return getattr(getattr(ctx, "settings", None), "dial_input", "ear") == "button"
+
+
+async def _chime(ctx: RitualContext, name: str) -> None:
+    """Short cue on the UNO Q buzzer (cmd.sensors chime). Nodes without a buzzer ignore it."""
+    sensors = getattr(ctx, "sensors", None)
+    if sensors is not None:
+        await sensors(chime=name)
+
+
+KNOCK_CLICK = 0.6  # music click loudness for taps without a force (knock switch)
+
+
 def _today() -> date:
     return datetime.now().astimezone().date()
 
@@ -72,6 +95,7 @@ def _clamp_1_5(v: Any) -> int:
 
 
 OFFER_LINE = "Shall we do our little check-in together? Press my ear or say yes."
+OFFER_LINE_BUTTON = "Shall we do our little check-in together? Press my button or say yes."
 
 
 class Greet(Step):
@@ -84,8 +108,9 @@ class Greet(Step):
         self._last_look = 0.0
         if getattr(ctx, "ritual_reason", "") == "attention":
             await ctx.head(eyes="listening", pan_mode="track")
-            await ctx.say(OFFER_LINE)
+            await ctx.say(OFFER_LINE_BUTTON if _button(ctx) else OFFER_LINE)
             return
+        await _chime(ctx, "wake")
         await ctx.head(eyes="wide", pan_mode="track")
         g = GREETINGS.get(ctx.settings.greeting_language, GREETINGS["en"])
         await ctx.say(f"{g} It's good to see you.")
@@ -131,16 +156,17 @@ class Dial(Step):
     async def enter(self, ctx: RitualContext) -> None:
         self.answers, self.current = {}, None
         await ctx.head(eyes="listening", pan_mode="still")
-        await ctx.say(DIAL_QUESTIONS[self.items[0]])
+        await ctx.say((DIAL_QUESTIONS_BUTTON if _button(ctx) else DIAL_QUESTIONS)[self.items[0]])
 
     async def _answer(self, ctx: RitualContext, item: str, value: int) -> Status | None:
         self.answers[item] = _clamp_1_5(value)
         self.current = None
         await ctx.emit("obs.self_report", {"item": item, "value": self.answers[item], "context": "ritual"})
+        await _chime(ctx, "ok")
         nxt = self.item
         if nxt is None:
             return "completed"
-        await ctx.say(DIAL_QUESTIONS[nxt])
+        await ctx.say((DIAL_QUESTIONS_BUTTON if _button(ctx) else DIAL_QUESTIONS)[nxt])
         return None
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
@@ -241,8 +267,9 @@ class Drum(Step):
     name = "drum"
 
     def __init__(self, timeout_s: float | None = None, idle_end_s: float = 6.0, refractory_ms: float = 80,
-                 force_max_g: float = 4.0, min_taps: int = 4, post_s: float = 15.0):
+                 force_max_g: float = 4.0, min_taps: int = 4, post_s: float = 15.0, sway: bool = True):
         super().__init__(timeout_s)
+        self.sway = sway  # off when the drum is a knock switch: motor vibration would trigger it
         self.idle_end_s = idle_end_s
         self.refractory_ms = refractory_ms
         self.force_max_g = force_max_g
@@ -273,6 +300,7 @@ class Drum(Step):
         self.pre_mood = ctx.state.today_mood(_today())
         await ctx.head(eyes="happy")
         await ctx.music.start(self.pre_mood)
+        await _chime(ctx, "start_drum")
         await ctx.say("Now drum on my head. Any rhythm you like. I'll follow you.")
 
     async def _emit_drum(self, ctx: RitualContext) -> None:
@@ -292,10 +320,11 @@ class Drum(Step):
         if self.taps.count < self.min_taps:
             return "skipped"
         await self._stop_music(ctx)
+        await _chime(ctx, "end_drum")
         await self._emit_drum(ctx)
         self.phase, self._post_t0 = "post", time.monotonic()
         await ctx.head(eyes="listening")
-        await ctx.say("That was great. How do you feel now? Turn my ear and press.")
+        await ctx.say(POST_MOOD_LINE["button" if _button(ctx) else "ear"])
         return None
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
@@ -314,16 +343,19 @@ class Drum(Step):
             return None
         if event.kind != "tap":
             return None
-        if not self.taps.add(int(event.data["t_ms"]), float(event.data["force"])):
+        force = event.data.get("force")
+        if not self.taps.add(int(event.data["t_ms"]), None if force is None else float(force)):
             return None
         self._last_tap = time.monotonic()
-        await ctx.music.click(min(1.0, event.data["force"] / self.force_max_g))
+        await ctx.music.click(KNOCK_CLICK if force is None else min(1.0, force / self.force_max_g))
         if self.taps.count >= self.min_taps and self._last_tap - self._last_sway > 1.0:
             self._last_sway = self._last_tap
             bpm = self.taps.tempo_bpm()
             if bpm > 0:
-                await ctx.music.set_tempo(bpm, self.taps.force_mean())
-                await ctx.head(pan_mode="sway", bpm=round(min(300.0, bpm), 1))
+                fm = self.taps.force_mean()
+                await ctx.music.set_tempo(bpm, KNOCK_CLICK if fm is None else fm)
+                if self.sway:
+                    await ctx.head(pan_mode="sway", bpm=round(min(300.0, bpm), 1))
         return None
 
     def on_timeout(self) -> Status:
@@ -450,7 +482,7 @@ def default_steps(settings: Any) -> list[Step]:
         Dial(s.dial_s),
         Breathe(s.breathe_s, bpm=s.breathe_bpm, window_s=s.hrv_window_s),
         Drum(s.drum_s, idle_end_s=s.drum_idle_end_s, refractory_ms=s.tap_refractory_ms, force_max_g=s.tap_force_max_g,
-             post_s=s.post_mood_s),
+             post_s=s.post_mood_s, sway=getattr(s, "drum_sway", True)),
         Phq9(s.step_timeout_s),
         Nudge(s.nudge_s),
         Close(),

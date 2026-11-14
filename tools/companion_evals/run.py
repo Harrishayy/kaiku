@@ -138,6 +138,12 @@ def run_dry_scenario(scn: dict[str, Any], replies: dict[str, list[dict[str, Any]
 
 # ---------------------------------------------------------------- real mode (google-genai)
 def _retry(fn, *a, **kw):
+    from kaiku_contracts import budget
+
+    model = str(kw.get("model", "default"))
+    est = budget.text_estimate(model, len(str(kw.get("contents", ""))), 800)
+    budget.guard("gemini", model, est)  # BudgetExceeded stops the eval run cleanly
+    budget.charge("gemini", model, est, task="eval", component="evals")
     delay = 1.0
     for attempt in range(4):
         try:

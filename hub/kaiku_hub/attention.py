@@ -46,7 +46,9 @@ class AttentionConfig:
     at_desk_size: float = 0.22      # ... and as "at the desk"
     frame_s: float = 0.3            # detections this close in time belong to one camera frame
     two_face_min_sep: float = 0.25  # two detections further apart than this (x_norm) are two people
-    camera_hfov_deg: float = 60.0   # fixed camera: x_norm -1..1 maps to -hfov/2..+hfov/2 pan
+    camera_hfov_deg: float = 60.0   # x_norm -1..1 spans -hfov/2..+hfov/2 degrees
+    camera_on_head: bool = False    # True: the camera turns with the head, so a face offset is relative to the pan
+    pan_limit_deg: float = 100.0    # head travel limit either side of front (cable bundle through the neck)
     pan_deadband_deg: float = 4.0   # don't move the head for smaller changes (no twitching)
     pan_smoothing: float = 0.4      # EMA weight of the newest face position
     pan_speed: float = 0.4
@@ -98,12 +100,16 @@ class Attention:
     _pan: float | None = None             # smoothed target (deg)
     _pan_sent: float | None = None
     _last_track: datetime | None = None
+    head_deg: float = 0.0                 # last raw.head.pan (camera_on_head)
 
     # ------------------------------------------------------------------ inputs
     def add_face(self, payload: dict[str, Any], now: datetime) -> None:
         self.faces_seen = True
         self._dets.append(_Det(now, float(payload["x_norm"]), float(payload["y_norm"]), float(payload["size"])))
         self._last_face = now
+
+    def set_head_pan(self, deg: float) -> None:
+        self.head_deg = float(deg)
 
     def set_present(self, present: bool) -> None:
         self.present = present
@@ -219,6 +225,8 @@ class Attention:
         if self._last_track is not None and (now - self._last_track).total_seconds() < 1.0 / cfg.track_hz:
             return None
         target = face.x * cfg.camera_hfov_deg / 2  # + = toward the image's right (firmware maps to its motor sign)
+        if cfg.camera_on_head:  # the face offset is seen from where the head points now
+            target = max(-cfg.pan_limit_deg, min(cfg.pan_limit_deg, self.head_deg + target))
         self._pan = target if self._pan is None else self._pan + cfg.pan_smoothing * (target - self._pan)
         cmd: dict[str, Any] = {"look": {"x": round(face.x, 3), "y": round(face.y, 3)}}
         if self._pan_sent is None or abs(self._pan - self._pan_sent) >= cfg.pan_deadband_deg:

@@ -28,7 +28,7 @@ owner = "B"
 kind = "node"
 summary = "Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink"
 removable = false
-consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.sensors.ppg", "raw.sensors.distance",
+consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
             "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "cmd.hub",
             "obs.friend_link", "health"]
 emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.speech_features",
@@ -109,21 +109,21 @@ name = "atech-head"
 path = "firmware/atech-head"
 owner = "A"
 kind = "firmware"
-summary = "Head: eyes, IMU taps, ear encoder, pan motor, chest LEDs, purr"
+summary = "Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (hall homing), speaker; MQTT on the LAN"
 removable = true
-consumes = ["cmd.head"]
-emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "health"]
+consumes = ["cmd.head", "raw.sensors.hall", "health"]
+emits = ["raw.head.ear", "raw.head.button", "raw.head.pan", "health"]
 
 [[module]]
 name = "unoq-sensors"
 path = "firmware/unoq-sensors"
 owner = "A"
 kind = "firmware"
-summary = "UNO Q: PPG, distance, light, hall, top button"
+summary = "UNO Q: knock drum, KY-039 pulse (KY-053), KY-054 light, KY-035 hall, buzzer chimes, camera (faces, distance, backup pulse/light)"
 removable = true
-consumes = ["cmd.sensors"]
-emits = ["raw.sensors.ppg", "raw.sensors.distance", "raw.sensors.light", "raw.sensors.button",
-         "raw.sensors.hall", "health"]
+consumes = ["cmd.sensors", "raw.head.pan"]
+emits = ["raw.head.tap", "raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
+         "raw.hub.face", "health"]
 
 [[module]]
 name = "friendlink"
@@ -141,7 +141,7 @@ kind = "harness"
 summary = "Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder"
 removable = true
 consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session"]
-emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.sensors.ppg", "raw.sensors.distance",
+emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
          "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "obs.friend_link", "obs.outing",
          "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
          "obs.play_session", "obs.wearable_daily", "obs.self_report", "cmd.hub", "health"]
@@ -153,7 +153,7 @@ name = "tools"
 path = "tools"
 owner = "B"
 kind = "harness"
-summary = "bus tail / record / replay, doctor, agents sync checker, companion evals (persona/wording/safety scorecard)"
+summary = "bus tail / record / replay, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard)"
 removable = true
 
 [[module]]

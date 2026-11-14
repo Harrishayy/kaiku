@@ -544,7 +544,10 @@ export interface DeletedResponse {
  */
 export interface DrumSession {
   duration_s: number;
-  force_mean: number;
+  /**
+   * None when the drum can't sense force (KY-031 knock switch)
+   */
+  force_mean?: number | null;
   regularity: number;
   taps: number;
   tempo_bpm: number;
@@ -644,6 +647,9 @@ export interface Garden {
   resting?: boolean;
 }
 /**
+ * Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),
+ * pan/home/gesture (pan motor, hall homing), purr (speaker tone; no purr motor on the current build).
+ *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "HeadCmd".
  */
@@ -655,6 +661,10 @@ export interface HeadCmd {
   chest?: ("off" | "breathe" | "glow" | "pulse") | null;
   color?: string | null;
   eyes?: ("neutral" | "happy" | "sleepy" | "wide" | "listening" | "thinking" | "soft") | null;
+  /**
+   * timed motor pulse, then home (no position feedback)
+   */
+  gesture?: ("look_left" | "look_right" | "shake") | null;
   home?: boolean | null;
   look?: LookAt | null;
   pan?: PanTarget | null;
@@ -1256,9 +1266,9 @@ export interface RawPpg {
  */
 export interface RawTap {
   /**
-   * peak acceleration, g
+   * peak acceleration, g; None for a knock switch
    */
-  force: number;
+  force?: number | null;
   src?: "imu" | "knock";
   t_ms: number;
 }
@@ -1352,6 +1362,10 @@ export interface SelfReport {
  */
 export interface SensorsCmd {
   camera_enable?: boolean | null;
+  /**
+   * short cue on the Modulino Buzzer; alert = device fault only
+   */
+  chime?: ("wake" | "ok" | "start_drum" | "end_drum" | "alert") | null;
   ppg?: ("start" | "stop") | null;
 }
 /**

@@ -1,0 +1,17 @@
+part = "button"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload . (data USB-C cable), then atech monitor | make bench ... FROM=-"
+steps = ["Press the button 3 times quickly", "Then hold it for 3 s and let go"]
+duration_s = 20
+
+[[check]]
+name = "4 presses (debounced, no doubles)"
+event = "press"
+min_count = 4
+max_count = 4
+[[check]]
+name = "every press released"
+event = "release"
+min_count = 4
+max_count = 4

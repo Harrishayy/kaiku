@@ -121,6 +121,11 @@
       "schema": "obs/wearable_daily.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/wearable_daily"
     },
+    "raw.head.button": {
+      "payload_model": "RawButton",
+      "schema": "raw/head.button.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/head/button"
+    },
     "raw.head.ear": {
       "payload_model": "RawEar",
       "schema": "raw/head.ear.schema.json",

@@ -1,11 +1,16 @@
 """Sim twin of the Atech head. Publishes the same raw/head/* topics as the real firmware.
 
+Inputs follow config [robot] (or the dial= / drum= arguments):
+  - dial_input "ear" (current build, plan 07: the Atech Knob): turn to 1-5 (raw.head.ear), then press;
+    "button": answers are 1-5 short presses of the head button (raw.head.button).
+  - drum_input "knock" (current build: KY-031 on the UNO Q, src knock, no force) | "imu" (force in g).
+
 Auto mode (default) behaves like a user, following the hub's dial protocol (hub/kaiku_hub/rituals/steps.py):
-  - obs.ritual dial started  -> three answers (mood, energy, sleep): turn the ear to a value, then press
+  - obs.ritual dial started  -> three answers (mood, energy, sleep): press n times / turn the ear, then press
   - obs.ritual drum started  -> tap at --tempo until the drumming ends
   - obs.drum_session         -> stop tapping; answer the post-activity mood dial (turn + press)
   - obs.ritual phq9 started  -> nine ear presses (spoken PHQ-9: dial 1 -> score 0, 2 -> score 1)
-Keyboard mode is driven by sim/run.py (t tap, [ ] ear, e press ear).
+Keyboard mode is driven by sim/run.py (t tap, [ ] ear, e press ear, b press head button).
 """
 
 from __future__ import annotations
@@ -20,11 +25,16 @@ from typing import Any
 from kaiku_contracts.bus import Bus
 from kaiku_contracts.config import get, load_dotenv
 
+PRESS_GAP_S = 0.35  # between presses of one answer (well inside [robot] press_window_s)
+
 
 class HeadSim:
     def __init__(self, *, auto: bool = True, tempo_bpm: float = 96.0, mood: int | None = None,
-                 force_g: float = 2.0, seed: int | None = None):
+                 force_g: float = 2.0, seed: int | None = None, dial: str | None = None, drum: str | None = None):
         self.auto = auto
+        self.dial = dial or str(get("robot", "dial_input", "ear"))  # ear | button
+        self.drum = drum or str(get("robot", "drum_input", "imu"))  # knock | imu
+        self.press_window_s = float(get("robot", "press_window_s", 4.0))
         self.tempo_bpm = tempo_bpm
         self.mood = mood
         self.force_g = force_g
@@ -52,6 +62,9 @@ class HeadSim:
 
     # ------------------------------------------------------------ actions (also used by keyboard)
     async def tap(self, force_g: float | None = None) -> None:
+        if self.drum == "knock":  # knock switch: timing only, no force
+            await self.bus.publish("raw.head.tap", {"t_ms": self.t_ms(), "src": "knock"})
+            return
         f = force_g if force_g is not None else max(0.2, self.rng.gauss(self.force_g, 0.3))
         await self.bus.publish("raw.head.tap", {"t_ms": self.t_ms(), "force": round(f, 2), "src": "imu"})
 
@@ -63,6 +76,11 @@ class HeadSim:
     async def press_ear(self) -> None:
         await self.bus.publish("raw.head.ear", {"value": self.ear, "delta": 0, "pressed": True})
 
+    async def press_button(self, hold_s: float = 0.12) -> None:
+        await self.bus.publish("raw.head.button", {"id": "head", "pressed": True})
+        await asyncio.sleep(hold_s)
+        await self.bus.publish("raw.head.button", {"id": "head", "pressed": False})
+
     # ------------------------------------------------------------ handlers
     async def _on_cmd(self, _t, env) -> None:
         cmd = env.payload.model_dump(exclude_none=True)
@@ -71,6 +89,8 @@ class HeadSim:
             self.deg, self.homed = 0.0, True
         if "pan" in cmd:
             self.deg = float(cmd["pan"]["target_deg"])
+        if cmd.get("gesture"):
+            self.deg, self.homed = 0.0, True  # timed pulse, then back home on the hall sensor
         self.bus.log.info("cmd_head", str(cmd))
 
     async def _on_ritual(self, _t, env) -> None:
@@ -96,8 +116,14 @@ class HeadSim:
         self._spawn(self._answer(min(5, (self.mood or 3) + 1), first_delay=0.8))  # drumming lifted the mood a bit
 
     async def _answer(self, target: int, first_delay: float = 0.6) -> None:
-        """One dial answer: turn the ear to `target`, then press."""
+        """One dial answer: press the button `target` times (button build), or turn the ear to it and press."""
         await asyncio.sleep(first_delay)
+        if self.dial == "button":
+            for _ in range(target):
+                await self.press_button()
+                await asyncio.sleep(PRESS_GAP_S)
+            await asyncio.sleep(self.press_window_s + 0.3)  # let the hub close the answer
+            return
         while self.ear != target:
             await self.turn_ear(1 if target > self.ear else -1)
             await asyncio.sleep(0.25)
@@ -148,8 +174,9 @@ def main() -> None:
     ap.add_argument("--manual", action="store_true", help="don't auto-respond to ritual steps")
     ap.add_argument("--tempo", type=float, default=96.0)
     ap.add_argument("--mood", type=int, choices=range(1, 6))
+    ap.add_argument("--dial", choices=("button", "ear"), help="default: config [robot] dial_input")
     a = ap.parse_args()
-    asyncio.run(HeadSim(auto=not a.manual, tempo_bpm=a.tempo, mood=a.mood).run())
+    asyncio.run(HeadSim(auto=not a.manual, tempo_bpm=a.tempo, mood=a.mood, dial=a.dial).run())
 
 
 if __name__ == "__main__":

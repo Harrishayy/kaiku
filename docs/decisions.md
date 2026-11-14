@@ -143,3 +143,45 @@ their defaults are in docs/plans/01-foundation.md §12 — record the actual ans
   patient-month). People without a watch lose nothing (scenario "stable, no watch" stays stable). Weights stay at
   0.5 until tester data exists; raise them one at a time with `make tune`.
 - Caveat as D20: our own generator, not clinical validity. The rule version above is the file at this commit.
+
+## D30 — Robot body: "cathedral radio", 2 motors, vision-only presence (2026-11-14, Edwin)
+- Decision: the head is built around the Arduino USB Camera (ring light = round grille, Color Display above =
+  eyes in a tuning window, Knob = left ear). Two Atech DC motors: **pan** (12:40 gear) and **purr** (eccentric
+  weight), as in `docs/plans/01-foundation.md` §8. **No tilt** (a 200 g head that sits in front of the motor would make it slip back under
+  load) and **no arms**. KY-050/051 dropped: presence comes from vision.
+- Why: fewer motors means less current and fewer Atech ports. The 12-port budget is display 2, knob 2, IMU 1,
+  LED ×2, button 1, motors 2, plus Microphone *or* Speaker (`hardware/assembly.md`).
+- Print budget: MVP (head + neck, cardboard body) about 3 h 20 min. Full printed robot about 5 h 50 min on a P1S
+  or P2S (`hardware/cad/README.md`).
+
+## D31 — Electronics spec merged into the printed design (2026-11-14, Edwin; supersedes the motor count in D30; `D23` on `main`)
+- Context: `docs/kaiku_robot_electronics_specs.md` (Xavier) arrived after the CAD was printing. Where they
+  disagreed, the physical design won. The spec's additions that need no reprint were adopted: the Modulino Buzzer
+  (body), the KY-031 knock sensor (under the head top, on the UNO Q) and a powered USB-C PD hub (outside, behind the
+  robot).
+- Atech ports: Speaker 1–2, Display 3–4, Knob 5–6, pan motor 7, Mic 9–10, Button 11, LED grids 13 and 14. All
+  12 are used, so there is **one motor** (pan) and **no Atech IMU** (the KY-031 handles taps). The purr mount stays
+  in the CAD as an option if a port frees up.
+- Open at the time, settled in D32: hub location; `firmware/atech-head/AGENTS.md`; the spec's MQTT topics.
+
+## D32 — Robot electronics in software: the spec on our contracts (2026-11-14, team; builds on D31)
+- Decision: build `docs/kaiku_robot_electronics_specs.md` as reconciled in D31, mapped onto the existing contracts
+  (`docs/plans/07-robot-electronics.md` §1). The Atech board does the eyes (Color Display), the Knob dial
+  (`raw.head.ear`, unchanged), the lid button, the chest LED grids (`chest`/`bpm`/`color`, unchanged), the pan motor
+  (open loop, homed on the KY-035 hall edge, which it receives as `raw.sensors.hall`) and the speaker purr tone. The UNO Q
+  does the KY-031 knock, KY-035 hall, KY-054 light, KY-039 via KY-053, buzzer chimes and the camera (faces, distance
+  from face size, backup room light, **camera pulse as KY-039 backup**).
+- **Hub + broker stay on the laptop** (D14 and plan 01 §5; the spec proposed the UNO Q). Everything is MQTT, so
+  moving them later is a config change (plan 07 §4). **Voice stays on the laptop in v1.** PCM through the Atech
+  speaker/mic is STRETCH, on separate `audio/` topics that are never recorded or uplinked. The Speaker stays fitted
+  for that.
+- **One button rule:** a long press ≥ 2 s stays the manual safety trigger. A short press when idle starts a ritual.
+  The spec's 800 ms long press isn't used. An optional press-count dial (`[robot] dial_input = "button"`) stays as
+  a fallback in case the Knob is out.
+- The camera turns with the head (`[attention] camera_on_head`): pan targets are relative to `raw.head.pan`.
+- Keep the module name `unoq-sensors` and source `sensors`. Plan number 07 (06 is the Gemini-first mind).
+- Contract changes, all additive (`SCHEMA_VERSION` 1): `raw.head.button`, `cmd.head.gesture`
+  (`look_left|look_right|shake`; the head only pans), `cmd.sensors.chime`, and optional `raw.head.tap.force` /
+  `obs.drum_session.force_mean` (a knock switch has no force: `None`, never invented).
+- Every part has a bench test that runs alone (`make bench PART=...`), and integration starts only after they pass.
+- Why: the hub, sims and cloud keep working unchanged; the new hardware is adapters at the edges.

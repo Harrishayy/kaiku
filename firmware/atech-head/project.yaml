@@ -1,0 +1,39 @@
+# Kaiku Atech board (14-port, ESP32-S3), in the body; display, knob and mic are cabled up the neck into the head.
+# Build offline: `atech validate . && atech build . && atech upload .`
+# Port plan (D31, hardware/wiring.md): all 12 ports used. Confirm GPIOs with `atech validate`; never hard-code them.
+#
+# VERIFY with `atech guide` / `atech info <module>` before the first build:
+#   - whether `code:` takes `setup:` as well as `loop:` (the docs only show loop)
+#   - C++ method names. The docs' C++ example uses camelCase (`btn.wasPressed()`, `led.setAll(..); led.show()`, Knob
+#     `getPosition` / `isPressed` / `enableRing`), so camelCase is used below. Only this file touches them.
+name: kaiku-head
+board: 14port
+modules_path: ./
+modules:
+  - {id: speaker,             instance: spk,   port: 1}    # 1-2
+  - {id: st7735_tft,          instance: tft,   port: 3}    # 3-4, eyes (head, tuning window)
+  - {id: rotary_encoder_knob, instance: knob,  port: 5}    # 5-6, left ear dial
+  - {id: dc_motor,            instance: motor, port: 7}    # pan, 12:40 gear
+  - {id: microphone,          instance: mic,   port: 9}    # 9-10, right ear (v1: unused by the firmware)
+  - {id: button_module,       instance: btn,   port: 11}   # lid; long press = "I'm not OK" (hub decides, >= 2 s)
+  - {id: neopixel_grid,       instance: ledL,  port: 13}   # chest glow, left
+  - {id: neopixel_grid,       instance: ledR,  port: 14}   # chest glow, right
+  - {id: kaiku_link,          instance: kaiku, port: 0}
+code:
+  setup: |
+    HeadIO io;
+    io.buttonDown   = []() { return btn.isPressed(); };
+    io.knobPosition = []() { return (int32_t)knob.getPosition(); };
+    io.knobDown     = []() { return knob.isPressed(); };
+    io.knobRing     = [](bool on) { knob.enableRing(on); };
+    io.displayFill  = [](uint16_t c) { tft.fillScreen(c); };
+    io.displayRect  = [](int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) { tft.fillRect(x, y, w, h, c); };
+    io.ledsFill     = [](uint8_t r, uint8_t g, uint8_t b) { ledL.setAll(r, g, b); ledL.show(); ledR.setAll(r, g, b); ledR.show(); };
+    io.motorSpeed   = [](int s) { motor.setSpeed(s); };
+    io.motorBrake   = []() { motor.brake(); };
+    io.tone         = [](uint16_t hz, uint16_t ms, float v) { spk.setVolume(v); spk.playNote(hz, ms); };
+    io.speakerStop  = []() { spk.stop(); };
+    kaiku::begin(io);
+  loop: |
+    knob.update();
+    kaiku::tick();

@@ -127,8 +127,16 @@ def synthesize(text: str, style: str, lang: str) -> bytes:
     codes = get("voice", "lang_codes", {}) or {}
     timeout_s = float(get("voice", "timeout_s", 20))
     client = genai.Client(api_key=key, http_options={"timeout": int(timeout_s * 1000)})
+    from kaiku_contracts import budget
+
+    est = budget.estimate(model, in_tokens=len(text) // 3 + 50, out_tokens=600)
+    try:
+        budget.guard("gemini", model, est * 2)
+    except budget.BudgetExceeded as e:
+        raise VoiceUnavailable(str(e)) from e
     err: Exception | None = None
     for attempt in range(2):
+        budget.charge("gemini", model, est, task="tts", component="cloud")
         try:
             resp = client.interactions.create(
                 model=model,

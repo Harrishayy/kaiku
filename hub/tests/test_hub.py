@@ -107,6 +107,35 @@ async def test_button_long_press_and_short_press(hub):
     assert all(e.sim for e in hub.emitted)  # derived from sim inputs -> flagged sim
 
 
+async def test_head_button_build_dial_by_press_count(hub):
+    """Button build: idle short press starts a ritual; a run of presses answers the dial; long press = safety."""
+    hub.settings.dial_input = "button"
+    hub.presses.window_s = 0.1
+    t = parse_topic(f"kaiku/v1/{hub.settings.home_id}/raw/head/button")
+
+    def btn(pressed):
+        return validate({"home_id": hub.settings.home_id, "source": "head", "type": "raw.head.button",
+                         "payload": {"id": "head", "pressed": pressed}, "sim": True})
+
+    async def press_run(n):
+        for _ in range(n):
+            await hub.on_raw(t, btn(True))
+            await hub.on_raw(t, btn(False))
+        await asyncio.sleep(0.25)
+
+    await press_run(1)  # idle -> ritual starts
+    assert hub.machine.running
+    await press_run(1)  # greet: any answer goes on
+    await press_run(3)  # dial: mood = 3
+    moods = [e.payload.value for e in hub.emitted if e.type == "obs.self_report" and e.payload.item == "mood"]
+    assert moods == [3]
+    assert any("button" in x for x in hub.voice.said)  # button wording, not "turn my ear"
+    hub.button.hold_s = 0.1
+    await hub.on_raw(t, btn(True))
+    await asyncio.sleep(0.3)
+    assert [e.payload.trigger for e in hub.emitted if e.type == "obs.safety_flag"] == ["manual"]
+
+
 async def test_cmd_hub_say_goes_through_gate_and_start(hub):
     t = parse_topic(f"kaiku/v1/{hub.settings.home_id}/cmd/hub")
     cmd = validate({"home_id": hub.settings.home_id, "source": "cloud", "type": "cmd.hub",

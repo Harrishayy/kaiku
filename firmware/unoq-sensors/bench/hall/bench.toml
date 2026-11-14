@@ -1,0 +1,24 @@
+part = "hall"
+board = "unoq-mcu"
+program = "hall.ino"
+flash = "App Lab: new app, paste hall.ino into sketch/sketch.ino, Run (turntable magnet away from the sensor at boot)"
+steps = ["Turn the head by hand slowly past the front 3 times (magnet over the KY-035)"]
+duration_s = 25
+
+[[check]]
+name = "mid value near Vcc/2 (49E idle)"
+event = "boot"
+field = "mid"
+all_min = 6000
+all_max = 10400
+[[check]]
+name = "3 home edges"
+event = "hall"
+field = "at_home"
+min_count = 6
+any_min = 1
+[[check]]
+name = "the magnet swing is well above the threshold"
+event = "hall"
+field = "delta"
+any_min = 800

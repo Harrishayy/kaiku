@@ -1,0 +1,14 @@
+# Bench: Atech Knob alone on ports 5-6 (rotary_encoder_knob: EC11 + light ring). Prints position + presses.
+# C++ names from the Atech docs: update / getPosition / isPressed / enableRing.
+name: bench-knob
+board: 14port
+modules:
+  - {id: rotary_encoder_knob, instance: knob, port: 5}
+code:
+  loop: |
+    static int32_t last = 0; static bool down = false; static bool ring = false;
+    knob.update();
+    int32_t p = knob.getPosition();
+    if (p != last) { Serial.printf("{\"event\":\"turn\",\"pos\":%ld,\"delta\":%ld}\n", (long)p, (long)(p - last)); last = p; }
+    bool d = knob.isPressed();
+    if (d != down) { down = d; if (d) { ring = !ring; knob.enableRing(ring); Serial.printf("{\"event\":\"press\",\"ring\":%d}\n", ring); } }

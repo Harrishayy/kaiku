@@ -1,0 +1,24 @@
+# Bench: both Atech LED grids alone on ports 13 and 14 (neopixel_grid, WS2812B 3x3). Colours, then a breath.
+# C++ names from the docs example: setAll(r, g, b) + show().
+name: bench-leds
+board: 14port
+modules:
+  - {id: neopixel_grid, instance: ledL, port: 13}
+  - {id: neopixel_grid, instance: ledR, port: 14}
+code:
+  loop: |
+    static int step = 0; static uint32_t next = 1500;
+    const uint8_t c[][3] = {{60, 0, 0}, {0, 60, 0}, {0, 0, 60}, {0, 0, 0}};
+    if (step < 4 && millis() >= next) {
+      ledL.setAll(c[step][0], c[step][1], c[step][2]); ledL.show();
+      ledR.setAll(c[step][0], c[step][1], c[step][2]); ledR.show();
+      Serial.printf("{\"event\":\"color\",\"step\":%d}\n", step);
+      step++; next = millis() + 700;
+    } else if (step >= 4 && step < 4 + 120 && millis() >= next) {   // one 6 bpm breath at 30 fps over ~4 s
+      float b = 0.5f - 0.5f * cosf((step - 4) / 120.0f * 2 * PI);
+      uint8_t r = 255 * 0.6f * b, g = 176 * 0.6f * b, bl = 112 * 0.6f * b;
+      ledL.setAll(r, g, bl); ledL.show(); ledR.setAll(r, g, bl); ledR.show();
+      if ((step - 4) % 30 == 0) Serial.printf("{\"event\":\"breath\",\"level\":%.2f}\n", b);
+      step++; next = millis() + 33;
+      if (step == 124) Serial.println("{\"event\":\"done\"}");
+    }

@@ -2,7 +2,9 @@
 
 | Data | Where it goes | Stored? |
 |---|---|---|
-| Robot camera frames | processed in memory on the hub for face position only (`raw.hub.face`: x, y, size) | never; never transmitted |
+| Robot camera frames (USB camera in the head, read on the UNO Q, D32) | processed in memory on the UNO Q (or the hub laptop's camera) into face position (`raw.hub.face`: x, y, size) and a distance estimate. Only as backups: mean room luminance and the mean green of the forehead patch (`raw.sensors.ppg`) | never; frames never written, logged or transmitted; the camera mic is never opened |
+| Robot pulse (KY-039 in the lid cradle, via KY-053) | 100 Hz light samples on the local bus only during the breathing step (`raw.sensors.ppg`) → HR / HRV numbers in `obs.hrv_session` | samples never uplinked; numbers only |
+| Robot knob, button, knock drum, light, hall | dial values 1–5, press/tap timing, KY-054 light level, head-at-front edge → `obs.self_report`, `obs.drum_session`, `obs.light_level` | numbers only |
 | Laptop webcam frames (`/session`) | processed in the browser for a facial-expressivity number only | never; never transmitted |
 | Microphone audio | streamed only to Gemini Live during an active, consented conversation | never by us |
 | Speech | robot: rate + pauses as `obs.speech_features`; laptop session: rate, pauses, pitch variability in-browser in `obs.laptop_session` | features only, no transcripts |

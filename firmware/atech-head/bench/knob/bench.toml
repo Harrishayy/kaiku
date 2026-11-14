@@ -1,0 +1,27 @@
+part = "knob"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Turn the ear knob 5 clicks clockwise, then 5 clicks back",
+         "Press it twice (the ring light toggles on, then off)",
+         "Note how many counts one click gives: set KNOB_COUNTS_PER_STEP in kaiku_link/config.h"]
+duration_s = 25
+
+[[check]]
+name = "turning is seen"
+event = "turn"
+min_count = 5
+[[check]]
+name = "both directions"
+event = "turn"
+field = "delta"
+all_min = -8
+all_max = 8
+[[check]]
+name = "two presses"
+event = "press"
+min_count = 2
+max_count = 2
+[[check]]
+name = "ring light"
+ask = "Did the ring light come on after the first press and go off after the second?"

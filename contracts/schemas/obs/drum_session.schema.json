@@ -9,10 +9,19 @@
           "type": "number"
         },
         "force_mean": {
-          "maximum": 1,
-          "minimum": 0,
-          "title": "Force Mean",
-          "type": "number"
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None when the drum can't sense force (KY-031 knock switch)",
+          "title": "Force Mean"
         },
         "regularity": {
           "maximum": 1,
@@ -34,7 +43,6 @@
       },
       "required": [
         "tempo_bpm",
-        "force_mean",
         "duration_s",
         "regularity",
         "taps"

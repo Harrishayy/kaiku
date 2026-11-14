@@ -1,0 +1,21 @@
+part = "mic"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Stay quiet for 3 s", "Then say 'hello Kaiku' at normal volume, 30 cm away"]
+duration_s = 10
+
+[[check]]
+name = "levels at ~10 Hz"
+event = "level"
+min_count = 50
+[[check]]
+name = "the mic returns numeric levels"
+event = "level"
+field = "rms"
+all_min = 0
+[[check]]
+name = "speech is heard"
+event = "level"
+field = "rms"
+any_min = 1500

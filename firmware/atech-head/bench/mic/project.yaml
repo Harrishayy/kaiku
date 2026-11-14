@@ -1,0 +1,14 @@
+# Bench: Atech microphone alone on ports 9-10 (ICS-43434). Prints RMS + peak at 10 Hz.
+# VERIFY method names with `atech info microphone` (camelCase: getSoundLevel / getPeakAmplitude), and set 16 kHz/16-bit.
+name: bench-mic
+board: 14port
+modules:
+  - {id: microphone, instance: mic, port: 9}
+code:
+  loop: |
+    static uint32_t next = 0;
+    if (millis() >= next) {
+      next = millis() + 100;
+      Serial.printf("{\"event\":\"level\",\"t_ms\":%lu,\"rms\":%d,\"peak\":%d}\n", (unsigned long)millis(),
+                    (int)mic.getSoundLevel(), (int)mic.getPeakAmplitude());
+    }

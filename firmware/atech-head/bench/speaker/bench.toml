@@ -1,0 +1,18 @@
+part = "speaker"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Listen: four rising tones, then a short four-note tune"]
+duration_s = 12
+
+[[check]]
+name = "four tones played"
+event = "tone"
+min_count = 4
+[[check]]
+name = "tune started"
+event = "rtttl"
+min_count = 1
+[[check]]
+name = "heard clearly"
+ask = "Did you hear four rising tones and a tune, without crackle or the board resetting?"

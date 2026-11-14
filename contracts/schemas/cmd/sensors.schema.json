@@ -15,6 +15,26 @@
           "default": null,
           "title": "Camera Enable"
         },
+        "chime": {
+          "anyOf": [
+            {
+              "enum": [
+                "wake",
+                "ok",
+                "start_drum",
+                "end_drum",
+                "alert"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "short cue on the Modulino Buzzer; alert = device fault only",
+          "title": "Chime"
+        },
         "ppg": {
           "anyOf": [
             {

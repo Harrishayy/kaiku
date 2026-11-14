@@ -1,0 +1,41 @@
+part = "ky039"
+board = "unoq-mcu"
+program = "ky039.ino"
+flash = "App Lab: new app, paste ky039.ino into sketch/sketch.ino, Run; open the serial monitor (KY-053 wired first)"
+steps = ["Rest a fingertip lightly in the lid's finger cradle (don't press), keep still for 15 s",
+         "Shade it from room light with your other hand if the range stays small"]
+duration_s = 20
+
+[[check]]
+name = "KY-053 answers on Wire at 0x48"
+event = "i2c"
+field = "addr"
+min_count = 1
+any_min = 72
+[[check]]
+name = "ADS1115 configured"
+event = "ads"
+field = "ok"
+all_min = 1
+[[check]]
+name = "samples at a stable 100 Hz"
+event = "batch"
+field = "fs_hz"
+min_count = 5
+all_min = 95
+all_max = 105
+[[check]]
+name = "a real signal (not flat, not pinned at the rail)"
+event = "batch"
+field = "range"
+any_min = 30
+[[check]]
+name = "never saturated (3.3 V on the +-4.096 V range ~ 26400)"
+event = "batch"
+field = "max"
+all_max = 26000
+[[check]]
+name = "rough pulse in a human range at least once"
+event = "batch"
+field = "bpm_rough"
+any_min = 40

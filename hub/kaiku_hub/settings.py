@@ -58,6 +58,10 @@ class Settings:
     ritual_cooldown_s: float = 60
     hrv_window_s: float = 30
     phq9_mode: str = "laptop"  # laptop | spoken | both
+    # robot build ([robot]): how the dial is answered and whether the head sways while drumming
+    dial_input: str = "ear"  # ear | button
+    press_window_s: float = 4.0  # button build: presses within this gap count as one answer
+    drum_sway: bool = True  # False when the drum is a knock switch (motor vibration would trigger it)
     phq9_every_days: float = 14
     # perception
     presence_near_cm: float = 80
@@ -118,6 +122,9 @@ class Settings:
             ritual_cooldown_s=_f(c, "ritual", "cooldown_s", 60),
             hrv_window_s=_f(c, "ritual", "hrv_window_s", 30),
             phq9_mode=str(c.get("ritual", {}).get("phq9_mode", "laptop")),
+            dial_input=str(c.get("robot", {}).get("dial_input", "ear")),
+            press_window_s=_f(c, "robot", "press_window_s", 4.0),
+            drum_sway=bool(c.get("robot", {}).get("drum_sway", True)),
             phq9_every_days=_f(c, "ritual", "phq9_every_days", 14),
             presence_near_cm=_f(c, "perception", "presence_near_cm", 80),
             first_of_day_after_h=_f(c, "perception", "presence_first_of_day_after_h", 4),

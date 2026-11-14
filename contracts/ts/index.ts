@@ -39,6 +39,7 @@ export interface PayloadByType {
   'raw.head.tap': M.RawTap;
   'raw.head.ear': M.RawEar;
   'raw.head.pan': M.RawPan;
+  'raw.head.button': M.RawButton;
   'raw.sensors.ppg': M.RawPpg;
   'raw.sensors.distance': M.RawDistance;
   'raw.sensors.light': M.RawLight;

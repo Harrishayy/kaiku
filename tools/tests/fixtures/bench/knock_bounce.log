@@ -1,0 +1,7 @@
+{"event":"boot","idle_level":1,"high_ratio":1.0}
+{"event":"knock","t_ms":1500,"n":1}
+{"event":"knock","t_ms":1545,"n":2}
+{"event":"knock","t_ms":2510,"n":3}
+{"event":"knock","t_ms":3490,"n":4}
+{"event":"knock","t_ms":4520,"n":5}
+{"event":"knock","t_ms":5480,"n":6}

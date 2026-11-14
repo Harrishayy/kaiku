@@ -89,11 +89,11 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
 | apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis |
-| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Head: eyes, IMU taps, ear encoder, pan motor, chest LEDs, purr |
-| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: PPG, distance, light, hall, top button |
+| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (hall homing), speaker; MQTT on the LAN |
+| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: knock drum, KY-039 pulse (KY-053), KY-054 light, KY-035 hall, buzzer chimes, camera (faces, distance, backup pulse/light) |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
 | sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder |
-| tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker, companion evals (persona/wording/safety scorecard) |
+| tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard) |
 | config | [`config/`](config/AGENTS.md) | all | docs | no | criteria.toml (how each data input decides state), kaiku.toml (settings), persona.md + surfaces.toml (who Kaiku is, per body), voice lines, safety phrases, mosquitto.conf |
 | design | [`design/`](design/AGENTS.md) | D | library | no | Look ground truth: tokens.json, mascot.spec.json (+ generated mascot.svg, tokens.css, Tokens.swift), motion.md |
 | hardware | [`hardware/`](hardware/AGENTS.md) | A | docs | yes | CAD (with provenance), wiring, BOM |

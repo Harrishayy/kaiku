@@ -207,3 +207,17 @@ def test_night_window_accepts_toml_times_from_env():
 
     att = Attention(cfg=AttentionConfig(night_start=time(0, 0), night_end=time(0, 0)))
     assert not att.is_night(T(2))
+
+
+def test_head_mounted_camera_tracks_relative_to_the_pan():
+    """Camera on the head (current build): a face right of centre moves the head further from where it points."""
+    att = Attention(cfg=AttentionConfig(camera_on_head=True, pan_smoothing=1.0, pan_deadband_deg=0.0))
+    att.set_head_pan(40.0)
+    att.add_face(face(x=0.5), T(9))
+    pans = [a[1]["pan"]["target_deg"] for a in att.tick(T(9)) if a[0] == "head" and "pan" in a[1]]
+    assert pans == [55.0]  # 40 + 0.5 * 60 / 2
+    att2 = Attention(cfg=AttentionConfig(camera_on_head=True, pan_smoothing=1.0, pan_deadband_deg=0.0))
+    att2.set_head_pan(95.0)
+    att2.add_face(face(x=1.0), T(9))
+    pans = [a[1]["pan"]["target_deg"] for a in att2.tick(T(9)) if a[0] == "head" and "pan" in a[1]]
+    assert pans == [100.0]  # clamped to the neck's travel

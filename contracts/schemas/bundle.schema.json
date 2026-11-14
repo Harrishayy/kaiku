@@ -822,9 +822,18 @@
           "type": "number"
         },
         "force_mean": {
-          "maximum": 1,
-          "minimum": 0,
-          "type": "number"
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None when the drum can't sense force (KY-031 knock switch)"
         },
         "regularity": {
           "maximum": 1,
@@ -843,7 +852,6 @@
       },
       "required": [
         "tempo_bpm",
-        "force_mean",
         "duration_s",
         "regularity",
         "taps"
@@ -1293,6 +1301,7 @@
     },
     "HeadCmd": {
       "additionalProperties": false,
+      "description": "Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),\npan/home/gesture (pan motor, hall homing), purr (speaker tone; no purr motor on the current build).",
       "properties": {
         "bpm": {
           "anyOf": [
@@ -1356,6 +1365,23 @@
             }
           ],
           "default": null
+        },
+        "gesture": {
+          "anyOf": [
+            {
+              "enum": [
+                "look_left",
+                "look_right",
+                "shake"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "timed motor pulse, then home (no position feedback)"
         },
         "home": {
           "anyOf": [
@@ -3468,9 +3494,17 @@
       "additionalProperties": false,
       "properties": {
         "force": {
-          "description": "peak acceleration, g",
-          "minimum": 0,
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "peak acceleration, g; None for a knock switch"
         },
         "src": {
           "default": "imu",
@@ -3486,8 +3520,7 @@
         }
       },
       "required": [
-        "t_ms",
-        "force"
+        "t_ms"
       ],
       "title": "RawTap",
       "type": "object"
@@ -3777,6 +3810,25 @@
             }
           ],
           "default": null
+        },
+        "chime": {
+          "anyOf": [
+            {
+              "enum": [
+                "wake",
+                "ok",
+                "start_drum",
+                "end_drum",
+                "alert"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "short cue on the Modulino Buzzer; alert = device fault only"
         },
         "ppg": {
           "anyOf": [

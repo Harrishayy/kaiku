@@ -20,7 +20,7 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 ## Map
 | file | twin of | talks | publishes / posts | listens to |
 |---|---|---|---|---|
-| `nodes/head_sim.py` | Atech head | MQTT | `raw/head/tap`, `raw/head/ear`, `raw/head/pan` (5 Hz), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
+| `nodes/head_sim.py` | Atech board (+ the UNO Q knock drum) | MQTT | `raw/head/ear` Knob dial (`[robot] dial_input = ear`, current build) or `raw/head/button` presses (`button`); taps as knocks (`drum_input = knock`, no force) or IMU (`imu`); `raw/head/pan` (5 Hz), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
 | `nodes/sensors_sim.py` | UNO Q (+ its camera's YOLO boxes) | MQTT | `raw/sensors/distance` (5 Hz), `raw/hub/face` (5 Hz, one per person within 180 cm, growing as they approach; `--two` / key `2` = two people), `raw/sensors/ppg` (25 @ 100 Hz, only between `ppg start/stop`), `light`, `hall`, `button`, `health/sensors` | `cmd/sensors`, `obs/ritual` |
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
 | `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: dat_imu, cadence_spm, gait_regularity, head_up_ratio, daylight_min}` + `obs.intervention_response{activity: walk}` | — |
@@ -33,8 +33,8 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 | `seed_demo.py` | `make seed [ARGS=--reset]`: idempotent seeder, prints expected vs actual state per patient; gives Aino 5 memories, 3 Tuesday walks and an open thread via `/v1/companion/tool` + `/episode` | | | |
 
 **Auto mode** acts like a user, following the hub's dial protocol (`hub/AGENTS.md` → Invariants):
-someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn
-the ear, then press · `drum started` → tap at `--tempo` · `obs/drum_session` → stop, answer the post-activity
+someone walks up after 3 s → the hub starts the ritual · `dial started` → three answers (mood, energy, sleep): turn the
+ear knob, then press (`[robot] dial_input`; `--dial button` = press the button n times) · `drum started` → tap at `--tempo` · `obs/drum_session` → stop, answer the post-activity
 mood · `phq9 started` → nine presses (item 9 always 0) · during `breathe` the PPG's RSA grows (RMSSD rises) ·
 glasses walk, laptop session + Mac hour, phone morning (watch summary + weather check) + firefly once at start,
 then every `--every` s.
@@ -55,7 +55,7 @@ Demo patients (ids, intended states): `cloud/AGENTS.md` → Run with sim. Their 
 
 ## Run standalone
 `make sim` (all six twins, auto) · `make sim NODES=head,sensors` · `make sim ARGS=--keyboard` (keys: `t` tap,
-`[`/`]` ear, `e` press ear, `p` arrive/leave, `s` start ritual, `x` long-press top button = manual safety trigger,
+`[`/`]` ear, `e` press ear, `b` press head button, `p` arrive/leave, `s` start ritual, `x` long-press top button = manual safety trigger,
 `2` second person in view, `f` friend presses lamp, `w` glasses walk, `l` laptop session, `9` laptop PHQ-9, `m` Mac hour (screen activity +
 firefly), `o` phone morning (watch summary + weather check), `q` quit).
 Single twin: `uv run python -m sim.nodes.head_sim --tempo 110` · `uv run python -m sim.nodes.laptop_sim --once --phq9-item9`

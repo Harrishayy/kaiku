@@ -4,10 +4,18 @@
       "additionalProperties": false,
       "properties": {
         "force": {
-          "description": "peak acceleration, g",
-          "minimum": 0,
-          "title": "Force",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "peak acceleration, g; None for a knock switch",
+          "title": "Force"
         },
         "src": {
           "default": "imu",
@@ -25,8 +33,7 @@
         }
       },
       "required": [
-        "t_ms",
-        "force"
+        "t_ms"
       ],
       "title": "RawTap",
       "type": "object"

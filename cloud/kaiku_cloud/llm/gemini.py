@@ -44,8 +44,13 @@ def generate(prompt: str, *, tier: Tier = "fast", system: str | None = None, sch
         kw["system_instruction"] = system
     if schema:
         kw["response_format"] = {"type": "text", "mime_type": "application/json", "schema": schema}
+    from kaiku_contracts import budget
+
+    est = budget.text_estimate(model, len(prompt) + len(system or ""), 400 if schema else 800)
     try:
-        out = _client(key, timeout_s).interactions.create(**kw)
+        client = _client(key, timeout_s)
+        out = budget.metered("gemini", model, est, lambda: client.interactions.create(**kw), task=tier,
+                             component="cloud")
         text = getattr(out, "output_text", None)
         if not text:
             raise ValueError("empty output")

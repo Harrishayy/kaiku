@@ -1,0 +1,21 @@
+part = "motor"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Hold the head loosely; it pans slowly right, left, then a little faster right, left (300 ms each, 12:40 gear)"]
+duration_s = 15
+
+[[check]]
+name = "all 8 pulses ran"
+event = "pulse"
+min_count = 8
+[[check]]
+name = "sequence finished"
+event = "done"
+min_count = 1
+[[check]]
+name = "moved both ways and braked"
+ask = "Did the head turn both directions and stop firmly after each pulse (no reset, no stall)?"
+[[check]]
+name = "no brown-out"
+ask = "Did the board keep running (no reboot banner in the monitor)?"

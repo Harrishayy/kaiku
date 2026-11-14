@@ -1,0 +1,8 @@
+[App Lab] sketch started
+{"event":"boot","idle_level":1,"high_ratio":1.0}
+{"event":"knock","t_ms":1500,"n":1}
+{"event":"knock","t_ms":2510,"n":2}
+noise line without json
+{"event":"knock","t_ms":3490,"n":3}
+{"event":"knock","t_ms":4520,"n":4}
+{"event":"knock","t_ms":5480,"n":5}

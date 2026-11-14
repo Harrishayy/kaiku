@@ -19,6 +19,7 @@ Any MQTT topic; `GET {KAIKU_CLOUD_URL}/healthz`, `GET /v1/patients` (doctor: per
 | `record.py` | `make record [TOPIC=...]` | capture traffic to `logs/rec-<ts>.jsonl` (`--seconds N`, `--retained`) |
 | `replay.py` | `make replay FILE=... [SPEED=2]` | re-publish with original timing; fresh ids by default; `--only raw/head`, `--home`, `--loop`, `--keep-ids` |
 | `doctor.py` | `make doctor` | ✅/⚠️/❌ toolchain, `.env` key names, schemas, `.mcp.json`, broker, node heartbeat ages, cloud `/healthz`, per-source last data + consensus, Gemini key, Modal auth |
+| `bench.py` | `make bench-list` · `make bench PART=firmware/<board>/bench/<part> [FROM=serial:<port>\|-\|mqtt\|log]` | electronics bench: one part alone, its program prints JSON lines, `bench.toml` holds steps + checks (count / range / reach / ask y-n); `mqtt` mode sends `send` commands and checks envelopes (whole-node link benches) |
 | `agents_sync.py` | `make agents` (fix) / in `make test` (check) | one `AGENTS.md` per module (no CLAUDE/GEMINI/README), required sections, module index, message flows, criteria producers |
 | `busio.py` | — | MQTT connection kwargs from env + payload decoding |
 | `companion_evals/assemble.py` | — | re-exports `kaiku_cloud.mind.assemble` (what `/v1/companion/session` serves): persona + surface + context card; rejects state/score/wearable keys; `persona+<sha8>` |

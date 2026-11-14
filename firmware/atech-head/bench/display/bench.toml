@@ -1,0 +1,18 @@
+part = "display"
+board = "atech"
+program = "project.yaml"
+flash = "atech build . && atech upload ., then atech monitor | make bench ... FROM=-"
+steps = ["Watch the tuning window: red, green, blue, white, black, then two eyes"]
+duration_s = 12
+
+[[check]]
+name = "five full-screen fills"
+event = "fill"
+min_count = 5
+[[check]]
+name = "eyes drawn"
+event = "eyes"
+min_count = 1
+[[check]]
+name = "seen right"
+ask = "Were the colours right (not swapped red/blue) and the eyes centred in the window, the right way up?"

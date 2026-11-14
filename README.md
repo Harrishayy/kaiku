@@ -271,7 +271,7 @@ make gemma-deploy     # scale-to-zero GPU app
 |---|---|
 | A clear everyday problem and audience | People after depression treatment, for whom daylight and walks matter but going out is hard. |
 | Wearable benefit beyond mirroring a phone | Audio-first and hands-free: a gentle walk companion in the ear, glanceable cards on the display, no phone in hand. |
-| Permissions, errors, performance, connectivity, device state | Handled in [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md): events queue offline and retry with backoff; a missing source counts as "not counted", never as worse. |
+| Permissions, errors, performance, connectivity, device state | Designed in [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md): permissions explained before asking, an offline queue in local storage with retry, and a missing source counts as "not counted", never as worse. |
 | Inclusive, accessible interaction | Audio-first with large-type cards; nothing to type; works with or without the display. |
 | Consent and safe data practices | A "what is shared" screen before the first walk; only minutes and steps leave the glasses, no location track, no camera unless the optional DAT app is installed. |
 | Plausible path to a pilot | As one of three sources in a pilot with Aalto and a neuromodulation unit (see [What's next](#whats-next)). |
@@ -355,7 +355,7 @@ end-to-end check against a throwaway cloud. `make help` lists every command.
 | Where | What |
 |---|---|
 | `.env` (from [`.env.example`](.env.example), never committed) | `GEMINI_API_KEY`, `KAIKU_CLOUD_URL`, `KAIKU_HOME_TOKEN`, MQTT settings, adapter switches (`KAIKU_HEAD=atech\|sim`, `KAIKU_SENSORS=unoq\|sim`, `KAIKU_VOICE=gemini\|text\|off`, `KAIKU_MUSIC=lyria\|local\|off`) |
-| Modal secret `kaiku-secrets` | The same keys for the deployed cloud; `HF_TOKEN` for Gemma weights |
+| Modal secrets `kaiku-secrets`, `huggingface` | The same keys for the deployed cloud; a Hugging Face token for the Gemma weights |
 | [`config/kaiku.toml`](config/kaiku.toml) | Model IDs, timings, thresholds, ports; any key can be overridden with `KAIKU_<SECTION>_<KEY>` |
 | [`config/criteria.toml`](config/criteria.toml) | How every input decides state; check with `make criteria`, simulate with `make tune` |
 | [`config/safety_phrases.toml`](config/safety_phrases.toml) | Crisis phrases and the scripted response |
@@ -436,7 +436,7 @@ module you'll touch, then the plans in [`docs/plans/`](docs/plans/) in order. De
 - Not clinically validated. Thresholds in `config/criteria.toml` are informed by the literature (e.g. RADAR-MDD
   signals: sleep, activity, mood, speech) but not fitted to real patients.
 - Consensus accuracy is measured on synthetic patients, which share the assumptions of the rule they test.
-- Baselines need about a week of data per source before a verdict counts; until then the answer is
+- Baselines need 4–7 days of data per metric (a 14-day window) before a verdict counts; until then the answer is
   "insufficient".
 - Hardware is a hackathon prototype; see [Status](#status) for what still runs only in simulation.
 

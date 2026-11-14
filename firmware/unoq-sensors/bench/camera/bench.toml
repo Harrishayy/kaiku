@@ -1,0 +1,34 @@
+part = "camera"
+board = "unoq-linux"
+program = "camera_check.py"
+flash = "On the UNO Q (ssh or App Lab terminal): python3 camera_check.py | tee cam.log, then FROM=cam.log (laptop: uv run python ...)"
+steps = ["Camera on the powered PD hub; `v4l2-ctl --list-devices` lists it",
+         "Sit in front of it at ~50 cm, face visible, keep still for 20 s"]
+duration_s = 25
+
+[[check]]
+name = "camera opens (USB host mode via the PD hub)"
+event = "camera"
+min_count = 1
+[[check]]
+name = "a face is seen"
+event = "face"
+field = "n"
+any_min = 1
+[[check]]
+name = "distance estimate in a sensible range at some point"
+event = "face"
+field = "cm"
+all_min = 10
+[[check]]
+name = "room light sampled (not black, not blown out)"
+event = "light"
+field = "raw"
+all_min = 1
+all_max = 254
+[[check]]
+name = "camera pulse backup produces batches at ~15 Hz"
+event = "pulse"
+field = "fs_hz"
+all_min = 8
+all_max = 31

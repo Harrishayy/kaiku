@@ -2,7 +2,7 @@
 
 head/sensors/friendlink talk MQTT (like the robot hardware); glasses/laptop/phone POST to the cloud (like the apps).
 
-Keyboard (with --keyboard):  t tap · [ / ] ear down/up · e press ear · p person arrives/leaves
+Keyboard (with --keyboard):  t tap · [ / ] ear down/up · e press ear · b press head button · p person arrives/leaves
                              s start ritual · x long-press top button (manual safety trigger)
                              f friend presses lamp button · w glasses walk done · l laptop session
                              9 laptop PHQ-9 · m Mac hour (screen activity + firefly)
@@ -68,6 +68,8 @@ async def _keyboard(nodes: dict, stop: asyncio.Event) -> None:
                     await head.turn_ear(-1 if ch == "[" else 1)
                 elif ch == "e" and head:
                     await head.press_ear()
+                elif ch == "b" and head:
+                    await head.press_button()
                 elif ch == "p" and sensors:
                     sensors.leave() if sensors.is_near else sensors.arrive()
                     print(f"presence: {'near' if sensors.is_near else 'leaving'}", file=sys.stderr)

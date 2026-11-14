@@ -38,6 +38,7 @@ from .live.tools import SYSTEM_PROMPT, TOOLS
 from .perception import face
 from .perception.light import LightAggregator
 from .perception.presence import PresenceTracker
+from .perception.presses import PressCounter
 from .rituals import Event, RitualMachine, default_steps
 from .safety import ButtonLongPress, CrisisScript, SafetyGate, Trigger
 from .settings import Settings
@@ -76,6 +77,8 @@ class Hub:
         self.gate = SafetyGate.from_file()
         self.script = CrisisScript.from_file()
         self.button = ButtonLongPress(hold_s=2.0)
+        self.presses = PressCounter(window_s=s.press_window_s)
+        self._press_task: asyncio.Task | None = None
         self.presence = PresenceTracker(s.presence_near_cm, s.first_of_day_after_h, last_arrival=self.state.last_arrival)
         self.light = LightAggregator(s.light_window_min)
         self.machine = RitualMachine(self, default_steps(s), step_timeout_s=s.step_timeout_s)
@@ -287,6 +290,8 @@ class Hub:
                 self.attention.person_started(datetime.now().astimezone())
                 await self.emit("obs.self_report",
                                 {"item": "mood", "value": max(1, min(5, int(p["value"]))), "context": "adhoc"})
+        elif name == "head/pan":
+            self.attention.set_head_pan(p["deg"])
         elif name == "sensors/ppg":
             self.machine.feed(Event("ppg", p))
         elif name == "sensors/distance":
@@ -295,7 +300,10 @@ class Hub:
             out = self.light.add(p["lux_est"], datetime.now().astimezone())
             if out:
                 await self.emit("obs.light_level", out)
-        elif name == "sensors/button" and p.get("id") == "top":
+        elif (name == "sensors/button" and p.get("id") == "top") or name == "head/button":
+            # One physical button (UNO Q top button, or the Atech head button on the current build):
+            # long press >= 2 s = manual safety trigger; short press idle = start a ritual;
+            # short presses during a ritual = a dial answer by count (button build) — see perception/presses.py.
             now = time.monotonic()
             short = self.button.was_short_press(p["pressed"], now)
             trig = self.button.update(p["pressed"], now)
@@ -304,11 +312,24 @@ class Hub:
             elif short and not self.machine.running:
                 self.attention.person_started(datetime.now().astimezone())
                 self.start_ritual("button")
+            elif short and self.settings.dial_input == "button":
+                self.presses.add(now)
+                if self._press_task is not None:
+                    self._press_task.cancel()
+                self._press_task = asyncio.create_task(self._flush_presses())
             elif p["pressed"]:
                 self._tasks.append(asyncio.create_task(self._watch_long_press()))
         elif name == "hub/face" and env.source != "hub":  # UNO Q YOLO / sim boxes (our own echo is ignored)
             self.attention.add_face(p, datetime.now().astimezone())
             self.machine.feed(Event("face", p))
+
+    async def _flush_presses(self) -> None:
+        """After `press_window_s` without another press, the count answers the current dial question."""
+        await asyncio.sleep(self.presses.window_s + 0.02)
+        if self.presses.due(time.monotonic()) and self.machine.running:
+            self.machine.feed(Event("ear", self.presses.ear_event()))
+        else:
+            self.presses.take()
 
     async def _watch_long_press(self) -> None:
         """Fire the manual trigger while the button is still held (don't wait for release)."""

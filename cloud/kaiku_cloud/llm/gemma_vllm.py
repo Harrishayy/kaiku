@@ -12,7 +12,14 @@ APP_NAME = os.environ.get("KAIKU_GEMMA_APP", "kaiku-gemma")
 
 
 def generate(prompt: str, timeout_s: float = 60.0) -> str:
+    from kaiku_contracts import budget
+    from kaiku_contracts.config import get
+
+    gpu = "modal-" + str(get("gemma_modal", "gpu", "H100"))
+    est = budget.estimate(gpu, gpu_s=float(get("gemma_modal", "scaledown_s", 60)) + 240)  # cold start + idle tail
     try:
+        budget.guard("modal", gpu, est)
+        budget.charge("modal", gpu, est, task="gemma", component="cloud")
         import modal
 
         Gemma = modal.Cls.from_name(APP_NAME, "Gemma")

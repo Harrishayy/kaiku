@@ -48,6 +48,9 @@ phrase matcher (same as the hub gate, reads `config/safety_phrases.toml`). API: 
 `ContextCard` (no state/score/wearable fields by construction; `tone` is the only consensus cue), `LiveToken`,
 `CompanionToolCall/Result`, `Memory`, `MemoriesResponse`, `MemorySettings`, `DeletedResponse`, `EpisodeIn/Result`,
 `ThreadIn`. `obs.play_session.game` adds `pebbles` (`span_max`, `accuracy`).
+Robot electronics (plan 07, D32; additive): `raw.head.button` (`RawButton`, `id: "head"`) · `cmd.head.gesture`
+(`look_left|look_right|shake`; the head only pans) · `cmd.sensors.chime` (`wake|ok|start_drum|end_drum|alert`) · `raw.head.tap.force` and
+`obs.drum_session.force_mean` optional (`None` for a knock switch, never invented).
 Generated references: `schemas/index.json` (type → schema, topic, model), `schemas/examples.json` (one example per
 type), `schemas/sources.json` (obs type → consensus source).
 
