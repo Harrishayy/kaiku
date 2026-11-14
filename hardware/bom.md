@@ -7,7 +7,7 @@
 | Arduino UNO Q 2 GB | 1 | venue | sensor node + camera app (hub stays on the laptop, D32) |
 | Modulino Buzzer ABX00108 + Qwiic cable | 1 | venue | chimes, on the UNO Q Qwiic |
 | Joy-IT KY-031 knock sensor | 1 | KY kit | taps / drum, under the head top |
-| Joy-IT KY-039 pulse + KY-053 ADC, KY-054 light, KY-035 hall | 1 each | KY kit | HR/HRV, room light, pan homing (KY-050 ultrasonic + KY-051 dropped: presence comes from vision) |
+| Joy-IT KY-039 pulse + KY-053 ADC | 1 each | KY kit | HR/HRV (KY-054 light and KY-035 hall not fitted, D35; KY-050 ultrasonic + KY-051 dropped: presence comes from vision) |
 | Arduino USB Camera TPX00246 | 1 | venue | presence, face tracking, backup pulse / light (local only) |
 | Powered USB-C hub with PD input | 1 | team | UNO Q power + USB host for the camera, behind the robot |
 | Arduino power supply TPX00242 | 1 | venue | power (VERIFY 5 V / 3 A PD) |

@@ -213,3 +213,16 @@ their defaults are in docs/plans/01-foundation.md §12 — record the actual ans
   care team see it. Default off follows `docs/privacy.md` ("never shown to clinicians") until the person opts in.
   The demo seed turns it on for Aino only (her choice in the story); `sim-eero` shows the "Not shared" card.
 - Thresholds: `config/kaiku.toml [week]`.
+
+## D35 — Robot sensors after the first bench run: no KY-054, no KY-035 (2026-11-14, Edwin)
+- **No KY-054 light sensor:** room light comes from the camera (`[unoq] light_source = "camera"`, exposure locked,
+  ring light off). The camera bench passed on the board (`/dev/video2`, so `camera_index = 2`).
+- **No KY-035 hall sensor** (no magnet available): home = the head's position at power-on (face it forward before
+  powering up). `HAS_HALL 0` in both firmwares: the Atech `home` drives back to the dead-reckoned 0°, soft limit ±80°
+  (from ±100°); the UNO Q never polls the floating A1. Face tracking is relative (camera in the head), so drift
+  doesn't affect looking at the person. The CAD keeps the magnet pocket and the sensor spot: with a 6×3 mm magnet and
+  a KY-035, set `HAS_HALL 1` and nothing else changes.
+- **KY-039 + KY-053 kept**, pending a retest in the printed finger cradle: the electronics pass, but in open room light
+  no heartbeat was found (the Garmin read 44 bpm; the sensor showed only a ~117 bpm light-flicker artefact). If the
+  cradle doesn't fix it, HR/HRV is "not measured" (or the camera backup), never guessed. The bench now requires a
+  steady 30–220 bpm beat, so noise can't pass again.

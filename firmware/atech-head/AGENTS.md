@@ -6,7 +6,7 @@
 ## Purpose
 The robot's face, ears and movement on the Atech 14-port board (ESP32-S3). The board sits in the body, and the head
 modules are cabled up the neck. It drives the Color Display eyes, the Knob ear dial, the lid Button, two chest LED
-grids, the pan motor (open loop, homed on the KY-035 hall edge) and the Speaker (purr tone and cues). The Mic is
+grids, the pan motor (open loop; home = power-on position, or the KY-035 hall edge when `HAS_HALL 1`) and the Speaker (purr tone and cues). The Mic is
 fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech's cloud gateway or
 `atech.Board.connect()` at runtime; those are for flashing and debugging only.
 
@@ -18,7 +18,7 @@ the custom module `kaiku_link/` (plain C++). The Atech module C++ API is touched
 ## Consumes (topics/endpoints)
 `cmd/head`: `eyes` · `look{x,y}` · `chest: off|breathe|glow|pulse` + `bpm` + `color` · `pan{target_deg, speed}` ·
 `home` · `gesture: look_left|look_right|shake` · `purr{ms}` · `pan_mode: still`. Ignored: `pan_mode: sway|track`
-(tracking arrives as `pan` targets). `raw/sensors/hall` (homing brake). `health/hub` (watchdog).
+(tracking arrives as `pan` targets). `raw/sensors/hall` (homing brake; only subscribed when `HAS_HALL 1`). `health/hub` (watchdog).
 
 ## Emits (topics/endpoints)
 `raw/head/ear` `{value 1–5, delta, pressed}` (Knob turns + presses) · `raw/head/button` `{id: "head", pressed}` ·
@@ -89,4 +89,6 @@ Not compiled yet (no Atech toolchain on the authoring machine). VERIFY with `ate
 `code.setup` key; C++ method names (camelCase assumed from the docs' example: `isPressed`, `getPosition`,
 `enableRing`, `fillScreen`/`fillRect`, `setAll`/`show`, `setSpeed`, `brake`, `playNote`, `setVolume`, `stop`); the
 `module.yaml` shape; the port id for a non-hardware module. Tune `KNOB_COUNTS_PER_STEP`, `MOTOR_DEG_PER_S_FULL`, the
-eye shapes and the pan sign on the real robot. The hall edge arrives over Bridge → MQTT → Wi-Fi, so homing may overshoot a little.
+eye shapes and the pan sign on the real robot. This build has no hall sensor (D35, `HAS_HALL 0`): face the head forward before
+powering on; `home` drives back to the dead-reckoned 0° and the soft limit is ±80°. With `HAS_HALL 1` the edge arrives over
+Bridge → MQTT → Wi-Fi, so homing may overshoot a little.

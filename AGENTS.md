@@ -89,8 +89,8 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
 | apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
-| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (hall homing), speaker; MQTT on the LAN |
-| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: knock drum, KY-039 pulse (KY-053), KY-054 light, KY-035 hall, buzzer chimes, camera (faces, distance, backup pulse/light) |
+| atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (power-on home, optional hall), speaker; MQTT on the LAN |
+| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: knock drum, KY-039 pulse (KY-053), buzzer chimes, camera (faces, distance, room light, backup pulse); optional KY-035 hall / KY-054 light |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
 | sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder |
 | tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard) |

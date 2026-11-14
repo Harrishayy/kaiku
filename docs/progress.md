@@ -641,3 +641,20 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Verified: signed device build OK; icon + manifests present in the built .app bundles (iOS + Mac).
 - Broken/blocked: install on the iPhone waits for Developer Mode on the phone. Cloud for the phone runs on the LAN
   (`uvicorn kaiku_cloud.api.local:app --host 0.0.0.0 --port 8000`).
+
+## 2026-11-14 06:00 — Claude Code — hardware + firmware (A): UNO Q bring-up on the real board
+- Did: drove the UNO Q bench tests from the laptop (`arduino-app-cli` over adb, then SSH over Wi-Fi once the board
+  moved onto the PD hub; monitor read on the board's router port 7500 because the USB serial relay drops characters).
+  Board updated to App Lab 0.12 / zephyr core 1.1.0 / kernel 7.0. Python env on the board: `~/kaiku-venv` (uv, no sudo).
+  Fixes: knock bench uses an interrupt; buzzer address 0x1E (7-bit); `bench/sketch.yaml` pins every library
+  dependency; OpenCV < 5; `Camera.stop()` joins its thread (process abort on exit); main sketch compile error
+  (`Note` used in an auto-prototype) fixed; KY-039 bench detects real beats (30–220 bpm, 0 when not steady).
+  D35: no KY-054 (camera light), no KY-035 (power-on home, `HAS_HALL 0` in both firmwares, ±80° soft limit),
+  `camera_index = 2`.
+- Verified: buzzer PASS, knock PASS (5/5), camera PASS (opens, faces, distance, light, pulse batches), KY-053 found
+  and stable at 100 Hz; main UNO Q sketch compiles (16 % flash); new KY-039 bench compiles and runs; `make check`.
+- Contract changes: none.
+- Broken/blocked: KY-039 found no heartbeat in open room light (Garmin 44 bpm vs a ~117 bpm flicker artefact):
+  retest in the printed finger cradle. `kaiku_link` (Atech main firmware) still not ported to the SDK module format,
+  so the `HAS_HALL` change there is uncompiled. The Wi-Fi allows device-to-device traffic (SSH to the board works).
+- Next: A: Atech board bench tests (display, knob, button, LEDs, speaker, mic, motor), then port `kaiku_link`.

@@ -63,8 +63,8 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, KY-054 light, KY-035 hall,
-# Modulino Buzzer, USB camera).
+# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, Modulino Buzzer, USB camera).
+# No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D35.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
 drum_input = "knock"     # knock (KY-031: timing, no force) | imu (force in g) — what the sims send
@@ -73,7 +73,7 @@ drum_sway = false        # no head sway while drumming: knocks are ignored while
 
 [unoq]
 # UNO Q Linux app (firmware/unoq-sensors/python/): camera -> derived numbers only, frames never stored or sent.
-camera_index = 0
+camera_index = 2         # /dev/video2 on the UNO Q (0/1 are the Qualcomm codec); verified 2026-11-14
 frame_w = 640
 frame_h = 480
 fps = 15
@@ -81,7 +81,7 @@ face_hz = 5              # face boxes on raw/hub/face (attention ladder, presenc
 face_detector = "haar"   # haar (OpenCV bundled) | yunet (needs the model file, VERIFY path on the board)
 distance_k_cm = 9.0      # distance_cm ~= k / face_width_ratio (60 deg hfov, ~15 cm face); tune on the real head
 far_cm = 300             # published when no face is seen
-light_source = "ky054"   # ky054 (lid window) | camera (backup: exposure locked, ring light off)
+light_source = "camera"  # camera (exposure locked, ring light off) | ky054 (lid window; not fitted in this build)
 light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
 exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`

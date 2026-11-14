@@ -45,7 +45,9 @@
 #define MOTOR_RAMP_MS 100            // ramp speed instead of jumping (brown-outs on the shared rails)
 #define MOTOR_MAX_RUN_MS 1000        // never drive longer than this per command
 #define MOTOR_DEG_PER_S_FULL 120.0f  // estimated head speed at |speed| = 255 (TUNE)
-#define PAN_LIMIT_DEG 100.0f         // cable bundle through the neck
+#define HAS_HALL 0                   // 0 = no KY-035/magnet in this build (D35): home = head position at power-on,
+                                     // then dead reckoning only. 1 = brake on the hall edge (raw/sensors/hall).
+#define PAN_LIMIT_DEG (HAS_HALL ? 100.0f : 80.0f)  // cable bundle through the neck; tighter while the angle can drift
 #define PAN_DEADBAND_DEG 3.0f
 #define HOME_SPEED 80                // slow toward the front; brake on the KY-035 edge (raw/sensors/hall)
 #define HOME_TRY_MS 2000             // give up after this per direction (then try the other way once)

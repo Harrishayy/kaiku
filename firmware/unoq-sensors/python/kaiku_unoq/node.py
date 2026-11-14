@@ -229,5 +229,5 @@ class SensorsNode:
             finally:
                 light.cancel()
                 if self.camera is not None:
-                    self.camera.stop()
+                    await asyncio.to_thread(self.camera.stop)   # joins the thread: no abort on exit
                 log.info("stopped", f"after {time.monotonic() - t0:.0f} s")
