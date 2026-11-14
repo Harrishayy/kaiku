@@ -1139,3 +1139,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   Handover for the team: `docs/robot-network-handover.md`.
 - Verified: builds (RAM 16 %, flash 25 %); `make check` passes. **Not yet flashed or tested on the board.**
 - Next: flash, then knock on the UNO Q while the head is idle (greeting + wake chime), knocks in DRUM.
+
+## 2026-11-14 13:00 — Claude Code — hardware (A): knob cap bore + measured motor
+- Did: `knob_cap` bore Ø9.3 × 16 deep, round (cap Ø22 × 18); DC motor measured 19.5 × 19.5 × 39 + 9 mm shaft, so
+  `pan_motor_mount` and `purr_sleeve` now hold it at Ø20.1 inside (23.3 square outside). Pinion unchanged (5.4 of its
+  6 mm on the shaft).
+- Verified: fit check clean; bore measured round Ø9.30 in the STL. Reprint plate (knob cap + both sleeves) slices to
+  ~23 min / 12 g on P1S and P2S.
+- Next: check the pinion's 3 mm D-hole against the real shaft.

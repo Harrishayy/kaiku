@@ -87,8 +87,8 @@ Change sizes in the `P` dataclass at the top of `kaiku_cad.py`, then rerun. Don'
 
 ## Known gaps
 
-- Sizes marked ASSUMED (button, LED height) are guesses. The knob is a photo estimate; its cap's 9.8 mm bore has to
-  fit over the module's own black knob. The display is a photo estimate (42 × 21 × 10, screen
+- Sizes marked ASSUMED (button, LED height) are guesses. The knob is a photo estimate; its cap's round Ø9.3 × 16 mm bore
+  is a tight fit over the module's own black knob. The display is a photo estimate (42 × 21 × 10, screen
   centred); the frame around it is open at the top for the cable plugs.
 - The motor shaft is assumed to be the standard 3 mm D-shaft. The pinion and purr weight have D-holes; if the
   shaft is round, glue them.

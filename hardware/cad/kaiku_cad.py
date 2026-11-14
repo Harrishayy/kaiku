@@ -54,10 +54,10 @@ MIN = (Align.CENTER, Align.CENTER, Align.MIN)
 @dataclass(frozen=True)
 class P:
     # ---------------- bought-in parts (hardware/dimensions.md) ----------------
-    motor: tuple = (23.0, 23.0, 44.0)      # Atech DC Motor V2.3 body; 3 mm shaft on the centre of one end
+    motor: tuple = (19.5, 19.5, 39.0)      # Atech DC Motor V2.3 body, measured 2026-11-14; shaft on one end's centre
     shaft_d: float = 3.0
     shaft_flat: float = 2.5                # D-flat: flat-to-round distance (N20 standard; VERIFY)
-    shaft_len: float = 10.0
+    shaft_len: float = 9.0                 # exposed shaft, measured 2026-11-14
     plug_clear: float = 15.0               # cable plug room past the connector end of every module
     speaker: tuple = (48.0, 45.0, 23.0)    # Atech Speaker V2.2 (photo estimate)
     mic: tuple = (21.0, 41.0, 12.0)        # Atech Microphone V1.1 (photo estimate)
@@ -69,6 +69,8 @@ class P:
     knob: tuple = (42.0, 42.0, 13.0)       # Knob module: square face x height (photo est.); knob out of the face
     knob_out: float = 23.0                 # bushing (~8 mm) + its own black knob (~9.5 x 14 mm) above the face
     knob_d: float = 9.5                    # that knob's diameter: the printed cap slides over it
+    knob_bore: float = 9.3                 # cap bore (2026-11-14: Ø9.3 × 16 deep, tight on the black knob)
+    knob_bore_h: float = 16.0
     board: tuple = (127.0, 68.0, 6.0)      # Atech motherboard (photo estimate), thickness ASSUMED
     unoq: tuple = (53.34, 68.58, 13.5)     # Arduino UNO Q, datasheet; height incl. headers (photo est.)
     cam_d: float = 70.0                    # Arduino USB Camera TPX00246 body, datasheet
@@ -447,12 +449,12 @@ def ear(side: int):
 def knob_cap():
     """Big tuning-dial cap that slides over the Knob module's own small black knob (press fit + a drop of glue)."""
     x0 = -p.head_w / 2 - 4 - 3.5                       # open end 3.5 mm off the ear ring
-    length = 16.0
+    length = p.knob_bore_h + 2.0                      # bore + a 2 mm closed end
     cap = Cylinder(11, length, align=MIN)
     for i in range(24):
         a = 2 * math.pi * i / 24
         cap -= Pos(11.3 * math.cos(a), 11.3 * math.sin(a), 2) * Cylinder(1.0, length, align=MIN)
-    cap -= Pos(0, 0, -1) * Cylinder(p.knob_d / 2 + 0.15, length - 2 + 1, align=MIN)
+    cap -= Pos(0, 0, -1) * Cylinder(p.knob_bore / 2, p.knob_bore_h + 1, align=MIN)
     return Pos(x0, 0, HEAD_Z + p.ear_z) * (Rot(0, -90, 0) * cap)
 
 
