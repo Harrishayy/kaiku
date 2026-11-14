@@ -51,11 +51,13 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `POST /v1/companion/session` | `CompanionSessionResponse {session_id, model, voice, system_instruction, tools[], context_card, persona_version, safety_phrases_version, live_token\|null, live_setup}` (home token). `live_setup` = Kaiku's recommended Live setup (persona, voice, tools, `[live]` automatic VAD + barge-in, transcriptions); the token locks only the model (`fieldMask: model`), so devices add resumption / compression / tool behaviour |
 | `POST /v1/companion/tool` | `CompanionToolResult {ok, executor, result, error, crisis}` — crisis check first, then surface + schema, then the effect |
 | `POST /v1/companion/episode` | `EpisodeResult`; 422 if the thread topic is refused or the id belongs to another home |
+| `POST /v1/companion/close` `SessionClose {home_id, session_id, elapsed_s}` | `SessionCloseResult {ok, session_id, settled, billed_minutes}`: the device says a conversation stopped and how long it ran, so its Live budget reservation settles to that; 404 when it is not this home's session, 422 for a negative length; repeating it is harmless — see "Live reservations settle" |
 | `GET /v1/me/memories?home_id=` | `MemoriesResponse` ("What Kaiku remembers", newest first, expired plans dropped) |
 | `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` | `DeletedResponse` (404 if not that home's) |
 | `GET /v1/me/transcripts?home_id=` | `TranscriptsResponse` — opt-in conversation transcripts, newest first (D33) |
 | `DELETE /v1/me/transcripts/{episode_id}?home_id=` · `DELETE /v1/me/transcripts?home_id=` | `DeletedResponse` (404 if not that home's) |
 | `PUT /v1/me/memory_settings?home_id=` | `MemorySettings {remember}` — false = no memory writes |
+| `GET /v1/me/invitation?home_id=&surface=iphone\|mac` · `POST /v1/me/invitation/answer?home_id=` `InvitationAnswer {id, answer: yes\|not_now}` | `InvitationResponse {home_id, invitation\|null}`: at most one thing a day Kaiku would like to bring up or offer, chosen by code (`mind/invite.py`); answer → `invitation: null`, 404 for an id that is not today's — see "Walking together, cards, call length, invitation" |
 | `POST /v1/companion/tool` `feel` | `result` = `FeelPlan` (stance, depth, reflect_hint, recall, may_offer, follow_up_saved, scheduling): how to meet a noticed feeling for this person, decided by code — see "Notice and act" |
 | `POST /v1/companion/tool` `ask_mind` | `result` = `MindAnswer` (route memory › gemma › Gemini fallback tiers › scripted fallback; grounded cites, tags stripped) — see "Gemma-primary mind" |
 | `GET /v1/me/constellation?home_id=` | `ConstellationResponse`: people/places/likes/what helps/plans/activities + edges (no health data, scores, states, evidence ids) |
@@ -134,6 +136,10 @@ kaiku_cloud/
                           (`heard`), deleted with the transcript; context-card line
   mind/feel.py            the `feel` tool: register a noticed feeling, decide in code how to help (stance, depth,
                           recall, one offer), save the follow-up thread; no model call
+  mind/walk.py            a walk session: style (config default), the nudge guide (`WalkGuide`), outdoor favourites
+  jobs/settle_live.py     one-off: settle old Live reservations from what cloud databases recorded (dry run first)
+  mind/invite.py          the daily invitation: open thread first, else best-response activity or a game they come
+                          back to; one a day, a not-now is final; template sentences (`invite.*`); no model call
   week.py                 D34 dashboard: routines from obs (+ episodes for the person / when shared), going well /
                           worth a look (drift_for per metric, verdicts, bandit, safety, PHQ-9), graph view + sharing
   api/dashboard.py        /v1/me/week|graph|sharing, /v1/patients/{id}/week|graph (registered by main.py)
@@ -776,4 +782,75 @@ decides in code what to do about it.
 - **`remember` guard** (`memory.grounded`): more than half of the fact's content words must be in the person's own
   words, and every name, day or number in it must be too. Good news the model wants to keep is stored only then.
 - Tests: `tests/test_feel.py`. Evals: `tools/companion_evals/scenarios/act.yaml`.
+
+## Walking together, cards, call length, invitation (2026-11-14, D45)
+- **Walk session** (`mind/walk.py`): a session is a walk when `purpose` is `walk` (or, with no purpose, `intent` is
+  `walk`). `walk_style` (`quiet | playful | chatty`; default `[walk].default_style`) is ignored for anything else.
+  The response carries `walk` = `WalkGuide {style, look_every_s, look_prompt, quiet_after_s, quiet_prompt}` from
+  `[walk.<style>]` (`quiet_*` is null for quiet: it never speaks into a silence). The card carries `walk_style` and
+  `outdoor_likes` (notebook places + likes matching `walk.OUTDOOR`, newest first, `[walk].outdoor_likes`; empty when
+  remembering is off or others are present).
+- **Instruction on a walk** (`assemble`): the persona section "Walking together" is compiled only into walk prompts
+  (`WALK_ONLY`); "Your body right now" uses the style's limits and rules (`assemble.styled`, tables under
+  `[surface.glasses.styles.*]`, also for a walk on the phone); a section "This walk" (`render_walk`) gives the style,
+  the outdoor favourites with "say it as a question", `remember` category places for a favourite they point out,
+  the spotting game tools, and how to treat the walk's own clock lines (answer only when worth it, otherwise no
+  sound). On an `extra-gentle` day a playful or chatty walk also gets "today's tone comes before the style": no
+  game and no suggestion unless they ask. `live_setup.proactivity.proactiveAudio` (`[live].proactive_audio`) is what lets the model decline; the
+  device drops a nudge reply's audio until its transcription has a real word (measured: D45).
+- **Tools**: `set_walk_goal`, `log_walk_moment` (device; glasses always, phone only on a walk: registry
+  `walk_only_on`, `for_surface(surface, walk=)`), `suggest_activity` (device; phone and Mac). The cloud validates
+  and logs the tool name only; nothing is stored or derived from a walk game or a card. `assemble.CARD_RULE` is in
+  the instruction wherever `suggest_activity` is served. A `feel` plan's `offer_activity` is dropped when this
+  surface has no screen for it (`assemble.surface_activities`, from `config/surfaces.toml`); the words of the offer
+  stay.
+- **Length** (`session.start_session`): `max_session_seconds` is `[live].talk_max_minutes` for a talk on the phone
+  or Mac, `walk_max_minutes` for a walk, `session_max_minutes` otherwise. One token (and its budget reservation)
+  covers `min(time left, [live].token_minutes)`; `resume_session_id` returns the same session with the time left
+  and the next token, and is refused once the limit is reached. `idle_end_s` = `[live].idle_end_s`, or
+  `walk_idle_end_s` on a walk. The questionnaire hint (`phq9_due`) is never on a `check_in` card.
+- **Invitation** (`mind/invite.py`, state in `kv invite:<home>`): (1) `talk_about`: the current open thread, said
+  with a template by its kind (`invite.talk.hard | good | open`), the topic turned to second person
+  (`invite.to_them`) and "earlier today / yesterday / the other day"; (2) `activity`: `service.best_response`
+  (posterior mean, no sampling) when the surface has that screen, else the game played most (at least twice), never
+  one already done today, and none when the card tone would be `extra-gentle`. The first read of a day pins the
+  item; every device gets the same one until it is answered; after any answer there is none until tomorrow. An
+  answered item (yes or not now) is kept (last 50) and never returns; an activity id carries the day, so the same
+  activity may be offered on another day. A stored topic that is still about "she/he/they" gets the sentence
+  without the topic (`invite.talk.plain`) instead of a wrong one. The `invite.*` templates are never rendered as
+  audio or listed by `/v1/voice` (`voice.is_template`); devices speak `text` with `POST /v1/voice/say`. Nothing
+  when remembering is off and no activity qualifies.
+- **Spotting game order** (`assemble.SPOTTING`, D47): a proposal sets nothing; when the game is taken up (a yes,
+  or simply a first find) `set_walk_goal` first, then `log_walk_moment` once per find; a count is said only as a
+  tool result gave it. The same order is in both tool descriptions and the persona's playful paragraph.
+- **Reset and the invitation**: `store.delete_sim` also removes a wiped home's `episode-thread:<home>:…` markers and
+  `invite:<home>`, so a re-seed of the same days opens its threads again. The seeded person's invitation is her
+  open thread from the last evening of the record (thread life: `memory.THREAD_DAYS`, three days); her day is
+  extra-gentle, so there is no activity offer to fall back on.
+- **One mind**: every surface reads the same notebook, threads and summaries, so what a walk hears is on the next
+  phone, Mac and robot card and the other way round (`tests/test_walk.py::test_one_mind_…`).
+- Tests: `tests/test_walk.py`. Evals: `tools/companion_evals/scenarios/walk.yaml`, `cards.yaml`.
+
+## Live reservations settle (2026-11-14, D46)
+- **Reserve** (`live_token.mint`): one `live_reservation` row for the token's whole lifetime, units
+  `reserved_audio_minutes=<m> session=<session id>`. The robot mints nothing here.
+- **Settle** (`live_token.settle` → `kaiku_contracts.budget.settle_session`): appends `live_settlement` rows (same
+  `ts` as the reservation they name, `res_ts=`, `used_s=`, `billed_min=`, `via=`, `at=`); the reservation row is
+  never changed. Whole started minutes, at least `[live].settle_min_minutes`, at most what was reserved. Each token
+  of a long conversation is used from its mint until the conversation ends, the next token is minted, or its
+  minutes run out. The longest evidence wins: a second settlement only ever adds.
+- **Signals**: `end_session` and a crisis stop (`via=end_session|crisis`, now + `[live].settle_grace_s`); a resume
+  (`via=resume`, settled before the next token is reserved, so its room is available to that mint);
+  `POST /v1/companion/close` (`via=close`, the device's `elapsed_s`); a recorded episode (`via=episode`, its own
+  `end - start`). `_log_tool` notes when the cloud last saw the conversation (`kv live:<session>`); no reported
+  length ends it earlier. Nothing reported: the full reservation stays. A failed mint also keeps its reservation
+  (existing rule, tested: a retry storm must hit the cap).
+- **Fail soft**: a settlement that cannot be written is logged and skipped; it never fails a tool call, an episode
+  or a close. A lookup opens the ledger read-only and never creates it.
+- **Old rows** (`jobs/settle_live.py`): for reservations without `session=`, a database is trusted only when every
+  mint it logged has its own reservation in the ledger; then reservation → logged mint → that home's one episode
+  started in the 4 s before → its recorded end. Named reservations: the episode's end, the next mint, and with
+  `--last-tool-call` the last tool call (a lower bound).
+- Tests: `tests/test_live_settle.py`, `contracts/tests/test_budget.py`. Every cloud test gets its own ledger file
+  (`conftest.own_spend_ledger`): no test opens `logs/spend.sqlite`.
 

@@ -7,8 +7,11 @@ function-declaration shape) and the surfaces it may be used on. `make contracts`
 Who executes what (`executor`):
     cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind, feel — devices forward the call to
             `POST /v1/companion/tool` and hand the result back to the model
-    device  record_dial, start_activity, log_walk_moment, send_friend_ping, start_phq9, express, look_at_this —
-            the device runs the deterministic effect (it may still forward the call so the episode logs it)
+    device  record_dial, start_activity, suggest_activity, set_walk_goal, log_walk_moment, send_friend_ping,
+            start_phq9, express, look_at_this — the device runs the deterministic effect (it may still forward
+            the call so the episode logs it). Result shapes the device returns: api.ActivityCardResult
+            (suggest_activity), api.WalkGoalResult (set_walk_goal), api.WalkMomentResult (log_walk_moment).
+`walk_only_on`: surfaces where a tool is served only in a walk session (purpose or intent `walk`).
 `behavior: NON_BLOCKING` (Gemini Live asynchronous function calling): the model keeps talking while the tool runs;
 the device declares the function with that behaviour and answers with the `scheduling` the result carries.
 No tool lowers a safety state, reads state numbers, contacts a clinician or changes criteria.
@@ -26,7 +29,15 @@ Skill = Literal["morning_ritual", "weather_check", "walk_companion", "breathe"]
 SKILLS: tuple[str, ...] = get_args(Skill)
 MemoryCategory = Literal["name", "people", "places", "likes", "what_helps", "plans", "preference"]
 MEMORY_CATEGORIES: tuple[str, ...] = get_args(MemoryCategory)
-Activity = Literal["breathe", "drum", "firefly", "pebbles", "tell", "walk", "light_hunt"]
+# Screens a conversation can lead to. `tell` is the journal entry "Tell Kaiku"; lantern, seeds, watering, pebbles and
+# firefly are the games on the phone and Mac; drum is the robot's; light_hunt is the walk's spotting game.
+# Which of them a surface really has: `activities` in config/surfaces.toml.
+Activity = Literal["breathe", "tell", "walk", "lantern", "seeds", "watering", "pebbles", "firefly", "drum", "light_hunt"]
+ACTIVITIES: tuple[str, ...] = get_args(Activity)
+# How Kaiku walks with the person (CompanionSessionRequest.walk_style; what each means: config/persona.md
+# "Walking together"; limits and nudge timings per style: config/surfaces.toml and config/kaiku.toml [walk]).
+WalkStyle = Literal["quiet", "playful", "chatty"]
+WALK_STYLES: tuple[str, ...] = get_args(WalkStyle)
 Feeling = Literal["happy", "curious", "sleepy", "cozy", "proud"]
 MindKind = Literal["fact", "care", "memory", "plan", "emotional"]
 # How a moment sounded, as a model in the conversation reports it (an observation, never a measurement or a state).
@@ -62,9 +73,34 @@ TOOLS: dict[str, dict[str, Any]] = {
         "executor": "device", "surfaces": _ALL,
         "parameters": {"type": "object", "required": ["kind"], "properties": {
             "kind": {"type": "string", "enum": list(get_args(Activity))}}}},
+    "suggest_activity": {
+        "description": "Put one card in the conversation that leads to an activity's screen: a game, the journal "
+                       "entry (tell), breathing or a walk. Call it in the same turn in which you suggest that "
+                       "activity. It opens nothing: the person taps the card or says yes. One card at a time; "
+                       "after a no, none again in this conversation. Returns {ok, shown}.",
+        "executor": "device", "surfaces": ["iphone", "mac"],
+        "parameters": {"type": "object", "required": ["kind"], "properties": {
+            "kind": {"type": "string", "enum": list(ACTIVITIES)},
+            "line": {"type": "string", "maxLength": 80}}}},
+    "set_walk_goal": {
+        "description": "Start one small spotting game on the walk: `target` of `thing` to find, something that is "
+                       "really around (from what they said or what is in view). Call it FIRST, the moment a game "
+                       "is taken up: they said yes to the game you proposed, or simply reported a first find "
+                       "after it. Use the thing and the target you proposed. Proposing a game sets nothing; "
+                       "without this call there is no game and no count. The device keeps the count and returns "
+                       "{thing, target, found, left}. One goal at a time; a new one replaces the old.",
+        "executor": "device", "surfaces": ["glasses", "iphone"], "walk_only_on": ["iphone"],
+        "parameters": {"type": "object", "required": ["thing", "target"], "properties": {
+            "thing": {"type": "string", "maxLength": 30},
+            "target": {"type": "integer", "minimum": 1, "maximum": 5}}}},
     "log_walk_moment": {
-        "description": "The person found something on the light hunt (e.g. something green).",
-        "executor": "device", "surfaces": ["glasses"],
+        "description": "One find in the spotting game: the person said they found one, or said yes to \"is that "
+                       "one?\". Only after `set_walk_goal`: when a first find comes before the goal is set, call "
+                       "`set_walk_goal` and then this, in that order. Exactly one call per find they tell you "
+                       "about, never two for the same find. kind: what it was. Returns {ok, thing, found, "
+                       "target, left, note}. Say how many are found or left only as this result gives it; if it "
+                       "says no goal is set (`note`), set the goal and log the find again before saying a count.",
+        "executor": "device", "surfaces": ["glasses", "iphone"], "walk_only_on": ["iphone"],
         "parameters": {"type": "object", "required": ["kind"], "properties": {"kind": {"type": "string"}}}},
     "remember": {
         "description": "Keep a short fact the person told you and wants kept (stored only if allowed; they can see "
@@ -101,7 +137,8 @@ TOOLS: dict[str, dict[str, Any]] = {
                        "runs. Returns how to meet it for this person: stance, depth (brief = an ordinary moment, "
                        "keep the chat small; stay = do not close, stay as long as they want), one thing the "
                        "record knows (recall) and at most one small thing you may offer once (may_offer). "
-                       "heard.via: voice when you heard them say it, text when it was typed.",
+                       "heard.via: voice when you heard them say it, text when it was typed. about: the topic in "
+                       "a few words, the way you would say it to them (\"your sister's visit\", \"the library job\").",
         "executor": "cloud", "surfaces": _ALL, "behavior": "NON_BLOCKING",
         "parameters": {"type": "object", "required": ["kind", "heard"], "properties": {
             "kind": {"type": "string", "enum": list(FEEL_KINDS)},
@@ -142,13 +179,15 @@ TOOLS: dict[str, dict[str, Any]] = {
 assert all(set(t["surfaces"]) <= set(SURFACES) for t in TOOLS.values())
 
 
-def for_surface(surface: str) -> list[dict[str, Any]]:
-    """Function declarations ({name, description, parameters}) the model may use on this surface, registry order."""
+def for_surface(surface: str, walk: bool | None = None) -> list[dict[str, Any]]:
+    """Function declarations ({name, description, parameters}) the model may use on this surface, registry order.
+    `walk`: is this a walk session? None = every tool the surface can ever serve (what `allowed` checks)."""
     if surface not in SURFACES:
         raise KeyError(f"unknown surface {surface!r}")
     return [{"name": n, "description": t["description"], "parameters": t["parameters"]}
             | ({"behavior": t["behavior"]} if t.get("behavior") else {})
-            for n, t in TOOLS.items() if surface in t["surfaces"]]
+            for n, t in TOOLS.items()
+            if surface in t["surfaces"] and (walk is not False or surface not in t.get("walk_only_on", ()))]
 
 
 def allowed(name: str, surface: str) -> bool:
@@ -201,4 +240,5 @@ def validate_args(schema: dict[str, Any], args: dict[str, Any]) -> list[str]:
 def export() -> dict[str, Any]:
     """JSON for non-Python clients (contracts/schemas/companion_tools.json)."""
     return {"surfaces": list(SURFACES), "intents": list(INTENTS), "skills": list(SKILLS),
-            "skill_of_intent": SKILL_OF_INTENT, "memory_categories": list(MEMORY_CATEGORIES), "tools": TOOLS}
+            "skill_of_intent": SKILL_OF_INTENT, "memory_categories": list(MEMORY_CATEGORIES),
+            "activities": list(ACTIVITIES), "walk_styles": list(WALK_STYLES), "tools": TOOLS}

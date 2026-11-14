@@ -135,7 +135,10 @@ def test_tool_and_reconnect_cannot_cross_home_or_surface(make_client, monkeypatc
     c = make_client(home_tokens={"a": "alpha", "b": "beta"})
     body = {"home_id": "a", "surface": "iphone"}
     session = c.post("/v1/companion/session", json=body, headers=auth("alpha")).json()
-    assert session["max_session_seconds"] == 300
+    assert session["max_session_seconds"] == 1800  # a talk on the phone is like a call ([live].talk_max_minutes)
+    short = c.post("/v1/companion/session", json={"home_id": "b", "surface": "iphone", "purpose": "check_in"},
+                   headers=auth("beta")).json()
+    assert short["max_session_seconds"] == 300 and short["idle_end_s"] == session["idle_end_s"] == 180
     sid = session["session_id"]
     resumed = c.post("/v1/companion/session", json={**body, "resume_session_id": sid}, headers=auth("alpha")).json()
     assert resumed["session_id"] == sid and len(c.app.state.store.episodes("a")) == 1

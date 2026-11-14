@@ -1,9 +1,11 @@
-"""POST /v1/companion/session, /v1/companion/tool, /v1/companion/episode — the companion mind's use-cases.
+"""POST /v1/companion/session, /v1/companion/tool, /v1/companion/episode, /v1/companion/close — the companion
+mind's use-cases.
 
 session: persona + surface + context card (+ the surface's tools) -> one system instruction; an episode row is
 opened (no transcript ever). tool: devices forward the model's tool calls; the crisis phrase check runs on every
 string argument FIRST (hit -> nothing stored, obs.safety_flag raised, scripted message returned), then surface +
 schema checks, then the deterministic effect (`ask_mind` -> mind/router.py). episode: closes a session (or records one run offline).
+close: the device reports how long a conversation ran, so its Live budget reservation settles to that (live_token).
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
-from kaiku_contracts import make, uuid7
+from kaiku_contracts import budget, make, uuid7
 from kaiku_contracts.api import (
     ChatShape,
     CompanionSessionRequest,
@@ -21,6 +23,8 @@ from kaiku_contracts.api import (
     CompanionToolCall,
     CompanionToolResult,
     EpisodeIn,
+    SessionClose,
+    SessionCloseResult,
 )
 from kaiku_contracts.companion_tools import TOOLS, allowed, for_surface, validate_args
 from kaiku_contracts.config import load_config
@@ -31,7 +35,7 @@ from kaiku_contracts.safety import version as safety_version
 from .. import service
 from ..settings import Settings
 from ..store.db import Store
-from . import affect, assemble, feel, graph, live_token, memory, router
+from . import affect, assemble, feel, graph, live_token, memory, router, walk
 from .card import SUGGESTION, build_card, card_dict, done_today
 
 log = get_logger("cloud.mind")
@@ -55,17 +59,24 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
                                   previous["surface"] != req.surface or previous["end"] is not None or
                                   previous["outcome"] is not None):
         raise ValueError("only an open session belonging to this home and surface can resume")
-    max_seconds = int(float(load_config().get("live", {}).get("session_max_minutes", 5)) * 60)
+    live = load_config().get("live", {})
+    walking = walk.is_walk(req.purpose, req.intent)
+    # A talk on the phone or Mac is like a call and a walk is a walk: the person sets the length. Everything else
+    # (a check-in, a break, an activity, the robot's ritual) keeps the short limit.
+    calling = req.surface in ("iphone", "mac") and (req.purpose == "talk" or (req.purpose is None and req.intent == "talk"))
+    cap = live.get("walk_max_minutes" if walking else "talk_max_minutes" if calling else "session_max_minutes", 5)
+    max_seconds = int(float(cap) * 60)
     if previous:
         started = datetime.fromisoformat(previous["start"].replace("Z", "+00:00"))
         max_seconds -= int((now - started).total_seconds())
         if max_seconds <= 0:
             raise ValueError("session duration limit reached")
+    style = walk.style_of(req.walk_style) if walking else None
     card = build_card(store, settings, req.home_id, intent=req.intent, language=req.language,
-                      others_present=req.others_present, now=now, purpose=req.purpose)
+                      others_present=req.others_present, now=now, purpose=req.purpose, walk_style=style)
     feel.prepare(store, req.home_id, now)  # so the `feel` tool answers without scanning the record mid-conversation
     persona, surfaces = assemble.load_files()
-    tools = for_surface(req.surface)
+    tools = for_surface(req.surface, walk=walking)
     instruction = assemble.assemble(persona, surfaces, req.surface, card_dict(card), tools=[t["name"] for t in tools])
     sid = req.resume_session_id or str(uuid7())
     if not previous:
@@ -75,16 +86,23 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
     pv = assemble.persona_version(persona)
     setup = live_token.setup(model, voice, instruction, tools)
     # Robot is a trusted server-side adapter with its own budgeted key; apps receive one reserved token.
-    token = None if req.surface == "robot" else mint(model, live_setup=setup, home_id=req.home_id)
+    # One token and its budget reservation cover at most `token_minutes`; a longer call resumes and gets the next.
+    token_minutes = min(max_seconds / 60, float(live.get("token_minutes", 10)))
+    if previous:  # the token before this one was in use until now: settle it before the next one is reserved
+        live_token.settle(store, sid, via="resume")
+    token = None if req.surface == "robot" else mint(model, live_setup=setup, home_id=req.home_id,
+                                                     minutes=token_minutes, session_id=sid)
     log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv, live=token is not None)
     return CompanionSessionResponse(
         session_id=sid, model=model, voice=voice, system_instruction=instruction,
         tools=[CompanionTool(**t) for t in tools], context_card=card, persona_version=pv,
         safety_phrases_version=safety_version(), live_token=token, live_setup=setup,
         max_session_seconds=max_seconds,
+        walk=walk.guide(style) if style else None,
+        idle_end_s=int(live.get("walk_idle_end_s" if walking else "idle_end_s", 0)) or None,
         chat_shape=ChatShape(purpose=card.purpose, depth=card.chat_depth or "brief", open_items=card.open_items)
         if card.purpose else None,
-        context_refresh_seconds=int(load_config().get("live", {}).get("context_refresh_seconds", 15)))
+        context_refresh_seconds=int(live.get("context_refresh_seconds", 15)))
 
 
 def _strings(v: Any) -> list[str]:
@@ -101,6 +119,7 @@ def _log_tool(store: Store, session_id: str | None, name: str) -> None:
     ep = store.episode(session_id) if session_id else None
     if ep:
         store.episode_upsert({**ep, "tools": [*ep["tools"], name]})
+        live_token.seen(store, session_id)  # the conversation was alive now: no settlement may end it earlier
 
 
 def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang: str) -> CompanionToolResult:
@@ -113,6 +132,8 @@ def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang:
         store.episode_upsert({**ep, "end": memory.iso(datetime.now(UTC)), "outcome": "crisis"})
         affect.forget(store, call.home_id, ep["id"])  # nothing of a crisis conversation is summarised
         feel.close(store, call.home_id, ep["id"], crisis=True)
+        live_token.settle(store, ep["id"], via="crisis",  # the device stops the conversation and shows the script
+                          grace_s=float(load_config().get("live", {}).get("settle_grace_s", 10)))
     log.warning("companion_tool_crisis", call.name, home=call.home_id, surface=call.surface)
     return CompanionToolResult(ok=False, name=call.name, crisis=True, error="crisis",
                                result={"stop_session": True, "script": _gate().script(hit_lang)})
@@ -176,6 +197,9 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
         elif name == "end_session":
             res = end_session(store, call, a, now)
             feel.close(store, home, call.session_id)
+            # the goodbye is still being spoken: a few seconds' grace, and a later close or episode can only add
+            live_token.settle(store, call.session_id, via="end_session",
+                              grace_s=float(load_config().get("live", {}).get("settle_grace_s", 10)))
         else:  # pragma: no cover - every cloud tool is handled above
             return CompanionToolResult(ok=False, name=name, error="not implemented")
     except memory.MemoryRefused as e:
@@ -202,6 +226,24 @@ def end_session(store: Store, call: CompanionToolCall, a: dict[str, Any], now: d
     elif follow_up:
         res["thread_id"] = open_follow_up()
     return res
+
+
+def close_session(store: Store, body: SessionClose) -> SessionCloseResult:
+    """The device says a conversation stopped and how long it ran. Only the meter: nothing else about the
+    session changes (the episode is recorded by its own route). KeyError: not this home's session."""
+    ep = store.episode(body.session_id)
+    if ep is None or ep["home_id"] != body.home_id:
+        raise KeyError(body.session_id)
+    rows = live_token.settle(store, body.session_id, via="close", elapsed_s=body.elapsed_s)
+    return SessionCloseResult(ok=True, session_id=body.session_id, settled=len(rows),
+                              billed_minutes=budget_minutes(body.session_id))
+
+
+def budget_minutes(session_id: str) -> float:
+    try:
+        return float(budget.session_minutes(session_id))
+    except Exception:  # the ledger is a brake, not a dependency
+        return 0.0
 
 
 def transcript_allowed(ep: EpisodeIn) -> bool:
@@ -238,6 +280,9 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
         if stored:
             log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
     feel.close(store, ep.home_id, eid, crisis=crisis)
+    # A recorded episode says how long the conversation ran (the device's own start and end).
+    live_token.settle(store, eid, via="episode",
+                      elapsed_s=(ep.end - ep.start).total_seconds() if ep.end else None)
     affect.on_episode(store, ep.home_id, eid, start=memory.iso(ep.start), surface=ep.surface, intent=ep.intent,
                       outcome=ep.outcome, crisis=crisis,
                       turns=[t.model_dump() for t in ep.transcript] if ep.transcript and not crisis else None)

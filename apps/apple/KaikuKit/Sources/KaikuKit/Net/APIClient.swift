@@ -92,6 +92,12 @@ public actor APIClient {
         return try await send("POST", "/v1/companion/episode", body: ep, retry: true)
     }
 
+    /// A conversation stopped: tell the cloud how long it ran (once is enough, twice is harmless; a cloud that does
+    /// not know the session answers 404, which the caller ignores).
+    public func companionClose(_ close: SessionClose) async throws -> SessionCloseResult {
+        try await send("POST", "/v1/companion/close", body: close, retry: false, timeout: 10)
+    }
+
     /// `GET /v1/voice/{key}` → wav bytes (nil when the cloud has no voice for it: 404 or 503).
     public func voice(_ key: String, lang: String) async -> Data? {
         guard let req = try? request("GET", "/v1/voice/\(key)", query: ["lang": lang]) else { return nil }

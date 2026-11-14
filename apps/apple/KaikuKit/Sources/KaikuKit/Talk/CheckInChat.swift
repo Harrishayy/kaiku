@@ -1,52 +1,6 @@
 import Foundation
 import Observation
 
-/// One soft offer under Kaiku's line (the cloud's `feel` plan). `may_offer` is what it says, `offer_activity` is
-/// what it starts. The person can take it or carry on; taking it counts as the person asking. An activity this
-/// device can start opens it; anything else starts nothing: Kaiku is told they said yes and stays with them
-/// (sitting quietly together is the offer that is always there).
-public struct CheckInOffer: Equatable, Sendable {
-    /// walk | breathe: started here. quiet: sitting together in the chat. other: something this device cannot start.
-    public let kind: String
-    /// The cloud's own words for the offer ("a few slow breaths together").
-    public let text: String
-    public let route: KaikuRoute?
-
-    public var icon: String {
-        switch kind {
-        case "walk": return "figure.walk"
-        case "breathe": return "wind"
-        case "quiet": return "moon.stars.fill"
-        default: return "sparkles"
-        }
-    }
-
-    /// The chip's words: the plan's own phrase as a small question; in another language, the app's wording.
-    public func label(_ language: KaikuLanguage = L10n.shared.language) -> String {
-        guard language == .en, !text.isEmpty else { return L10n.shared.string("offer.\(kind)", lang: language) }
-        return text.prefix(1).uppercased() + text.dropFirst() + (text.hasSuffix("?") ? "" : "?")
-    }
-
-    /// What Live is told when the person takes an offer that starts nothing on this device.
-    public var acceptance: String {
-        kind == "quiet"
-            ? "[the person chose to sit quietly together. Say one short warm line, then stay with them without talking until they speak.]"
-            : "[the person said yes to your offer: \(text). It cannot be started on this device; say plainly where it happens, or stay with them.]"
-    }
-
-    /// Nil when the plan offers nothing (`may_offer` is null).
-    public init?(_ plan: FeelPlan, phone: Bool = KaikuPlatform.isPhone) {
-        guard let offered = plan.mayOffer?.trimmingCharacters(in: .whitespacesAndNewlines), !offered.isEmpty else { return nil }
-        text = offered
-        switch plan.offerActivity {
-        case "walk"? where phone, "light_hunt"? where phone: kind = "walk"; route = .walk
-        case "breathe"?: kind = "breathe"; route = .breathe
-        case nil where offered.lowercased().contains("quiet"): kind = "quiet"; route = nil
-        default: kind = "other"; route = nil      // e.g. the drum lives on the robot
-        }
-    }
-}
-
 /// The daily check-in as a small passing chat (pure state; `CheckInChat` feeds it). An ordinary day closes itself
 /// after a few exchanges: the model wraps up and the stop is ticked. When the plan says `stay` (a very good or a
 /// very hard day) the chat simply goes on: nothing here counts turns, sets a timer or pushes towards an end.
@@ -56,7 +10,7 @@ public struct CheckInState: Equatable, Sendable {
         case chat                 // "Good to see you": the chat wrapped up and the person took part
         case quiet                // it ended before the person said anything: nothing is ticked
         case dials(String)        // the dials were turned: Kaiku's one warm line (copy / voice-line key)
-        case offer                // the person took the offer and is on their way to it
+        case offer                // the person opened the activity card and is on their way to it
     }
 
     public enum Event: Equatable, Sendable {
@@ -66,7 +20,8 @@ public struct CheckInState: Equatable, Sendable {
         case closed
         case dials(mood: Int, energy: Int, sleep: Int)
         case allDialsSpoken
-        case offerTaken
+        /// The activity card was opened: the person goes to that screen.
+        case cardOpened
         case keepTalking
         /// The cloud asked for this chat to open with time (`chat_shape.depth: stay`, e.g. after a heavy few days).
         case opened(FeelPlan.Depth)
@@ -75,47 +30,28 @@ public struct CheckInState: Equatable, Sendable {
     public enum Effect: Equatable, Sendable {
         case tick                 // today's first stop is done + the completion moment
         case sparkle              // good news: the sparkle moment, once
-        case start(KaikuRoute)
-        case accepted(CheckInOffer)   // an offer that starts nothing here was taken: Kaiku is told, and stays
     }
 
     public private(set) var personTurns = 0
     public private(set) var depth: FeelPlan.Depth = .brief
-    /// What the latest plan may offer, and how many things the person had said when it arrived.
-    public private(set) var planned: CheckInOffer?
-    public private(set) var plannedAtTurn = 0
     public private(set) var end: End?
     public private(set) var ticked = false
     public private(set) var sparkled = false
     public private(set) var dialsDone = false
-    /// The person chose to sit quietly together: Kaiku is simply there until they say something.
-    public private(set) var sittingQuietly = false
 
     public init() {}
-
-    /// The chip under Kaiku's line. It waits until the person has said one more thing after the feeling (Kaiku
-    /// meets the feeling first and never offers in its first reply to it), then stays there, easy to ignore,
-    /// until it is taken or the plan changes. After the dials it shows at once: nothing more is being said.
-    public var offer: CheckInOffer? {
-        guard let planned else { return nil }
-        if case .dials? = end { return planned }
-        return personTurns > plannedAtTurn ? planned : nil
-    }
 
     /// A very good or very hard day: the chat goes on for as long as the person likes.
     public var staying: Bool { depth == .stay && end == nil }
 
-    public mutating func apply(_ event: Event, phone: Bool = KaikuPlatform.isPhone) -> [Effect] {
+    public mutating func apply(_ event: Event) -> [Effect] {
         var effects: [Effect] = []
         func tick(_ s: inout CheckInState) { if !s.ticked { s.ticked = true; effects.append(.tick) } }
         switch event {
         case .personSpoke:
             personTurns += 1
-            sittingQuietly = false
         case .plan(let p):
             depth = p.depth                   // the latest plan decides; the model follows the same one
-            planned = CheckInOffer(p, phone: phone)
-            plannedAtTurn = personTurns
             if p.isGoodNews && !sparkled { sparkled = true; effects.append(.sparkle) }
         case .closed:
             guard end == nil else { break }
@@ -127,19 +63,9 @@ public struct CheckInState: Equatable, Sendable {
         case .allDialsSpoken:
             dialsDone = true
             tick(&self)
-        case .offerTaken:
-            guard let o = offer else { break }
-            planned = nil
-            guard let route = o.route else {
-                if o.kind == "quiet" { sittingQuietly = true }
-                depth = .stay                 // they asked Kaiku to stay
-                if end != nil { end = nil }
-                effects.append(.accepted(o))
-                break
-            }
+        case .cardOpened:
             end = .offer
             tick(&self)
-            effects.append(.start(route))
         case .keepTalking:
             end = nil
         case .opened(let d):
@@ -185,7 +111,7 @@ final class CheckInChat {
 
     init(talk: TalkModel? = nil) {
         self.talk = talk ?? TalkModel(opening: Self.opening) {
-            Conversation(surface: KaikuPlatform.surface, intent: .checkin, purpose: .check_in, typedWithoutMic: true)
+            TalkModel.liveConversation(intent: .checkin, purpose: .check_in, typedWithoutMic: true)
         }
         self.talk.silentGreeting = "checkin.hello"
         self.talk.allowsQuestionnaire = false
@@ -198,7 +124,9 @@ final class CheckInChat {
     var hasLive: Bool { talk.hasLive }
     /// Live is open but the microphone is not allowed: Kaiku answers typed messages in its voice.
     var typedOnly: Bool { talk.hasLive && !talk.conversation.listens }
-    var micOn: Bool { talk.hasLive && talk.conversation.listens && ![.muted, .paused].contains(talk.conversation.phase) }
+    var micOn: Bool { talk.micOn }
+    /// The one activity card of this chat (the same card and rules as in Talk).
+    var card: ActivityCard? { talk.activityCard }
     var connecting: Bool { talk.conversation.phase == .connecting }
     var phase: Conversation.Phase { talk.conversation.phase }
     var unavailable: Conversation.UnavailableReason? { talk.conversation.unavailableReason }
@@ -243,7 +171,7 @@ final class CheckInChat {
         sync()
     }
 
-    func toggleMic() { talk.toggleListening() }
+    func toggleMic() { talk.toggleMic() }
 
     /// "That's it": the dials count on their own. Kaiku answers what was dialled in one warm line: in its Live
     /// voice when a conversation is open, otherwise the scripted line (Gemini voice line when the service has it).
@@ -252,22 +180,30 @@ final class CheckInChat {
         let v = values
         kaikuLinesAtDials = talk.conversation.lines.filter { !$0.me }.count
         activeDial = nil
+        talk.planCardAtOnce = true            // nothing more is being said: an offer may show on the end screen
         run(.dials(mood: v[.mood] ?? 3, energy: v[.energy] ?? 3, sleep: v[.sleep] ?? 3))
         if talk.hasLive {
             talk.conversation.setMuted(true)      // an end screen never has an open microphone
-            talk.conversation.context(Self.dialContext(v))
+            talk.conversation.personDid(Self.dialContext(v))
         } else if case .dials(let key)? = state.end {
             VoiceLines.shared.play(key, lang: app.language, fallback: T(key))
         }
         await app.recordWeather(v, celebrates: false)
     }
 
-    func takeOffer() { run(.offerTaken) }
+    /// The card's button: the person asked. It goes to the activity, and the check-in counts.
+    func openCard() {
+        guard talk.activityCard != nil else { return }
+        talk.openCard()
+        run(.cardOpened)
+    }
+
+    func putCardAside() { talk.putCardAside() }
 
     /// "That's enough for now": the person ends the chat; it closes at once, as warmly as a model close.
     func enough() {
         sync()
-        talk.conversation.stop(outcome: .completed)
+        talk.end()
         run(.closed)
     }
 
@@ -333,11 +269,6 @@ final class CheckInChat {
             switch effect {
             case .tick: app?.checkInDone()
             case .sparkle: app?.celebrate()
-            case .start(let route):
-                app?.deepLink = route
-                app?.selectedTab = route.tab
-            case .accepted(let offer):
-                talk.conversation.context(offer.acceptance)
             }
         }
     }

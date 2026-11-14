@@ -67,7 +67,7 @@ def all_lines() -> dict[str, dict[str, str]]:
 
 
 def lines(lang: str) -> dict[str, str]:
-    return {k: v.get(lang) or v["en"] for k, v in sorted(all_lines().items())}
+    return {k: v.get(lang) or v["en"] for k, v in sorted(all_lines().items()) if not is_template(v)}
 
 
 def voice_name() -> str:
@@ -87,9 +87,15 @@ def cache_dir() -> Path:
     return (root.parents[1] / rel) if root else Path(rel)
 
 
+def is_template(entry: dict[str, str]) -> bool:
+    """A line with {placeholders} (the `invite.*` sentences): the cloud fills it and returns the finished text, which
+    is spoken with `say`. It is never rendered, cached or listed as a line of its own."""
+    return "{" in entry.get("en", "")
+
+
 def _spec(key: str, lang: str) -> tuple[str, str]:
     entry = all_lines().get(key)
-    if entry is None:
+    if entry is None or is_template(entry):
         raise UnknownLine(key)
     return entry.get(lang) or entry["en"], entry.get("style") or str(get("voice", "style", "warm, gentle"))
 
@@ -242,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     failed = 0
     for lang in a.lang.split(","):
-        for key in sorted(all_lines()):
+        for key, entry in sorted(all_lines().items()):
+            if is_template(entry):
+                continue
             try:
                 audio(key, lang)
             except VoiceUnavailable as e:

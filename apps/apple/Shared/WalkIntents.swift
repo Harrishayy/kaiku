@@ -25,3 +25,38 @@ struct EndWalkIntent: LiveActivityIntent {
         return .result()
     }
 }
+
+// MARK: the call with Kaiku (Talk / check-in chat): the same rule, the buttons act on the call that is open.
+
+struct ToggleCallMicIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Mute or unmute yourself"
+    static let isDiscoverable = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        KaikuCall.toggleMic()
+        return .result()
+    }
+}
+
+struct ToggleCallVoiceIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Mute or unmute Kaiku"
+    static let isDiscoverable = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        KaikuCall.toggleVoice()
+        return .result()
+    }
+}
+
+struct EndCallIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "End the call with Kaiku"
+    static let isDiscoverable = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        KaikuCall.end()          // ends the session and closes the microphone
+        return .result()
+    }
+}

@@ -18,10 +18,13 @@ protocol ConversationAudioIO: AnyObject, Sendable {
     func resumeAfterInterruption()
     /// Before `start()`: false = playback only, the microphone is never opened (typed conversation).
     func setCapture(_ on: Bool)
+    /// Kaiku's voice on / off at once; the audio keeps flowing (and "speaking" keeps its timing), just unheard.
+    func setOutputMuted(_ on: Bool)
 }
 extension ConversationAudioIO {
     func resumeAfterInterruption() {}
     func setCapture(_ on: Bool) {}
+    func setOutputMuted(_ on: Bool) {}
 }
 extension ConversationAudio: ConversationAudioIO {}
 protocol ConversationTransport: AnyObject, Sendable {
@@ -33,6 +36,18 @@ protocol ConversationTransport: AnyObject, Sendable {
     func sendVideo(_ jpeg: Data)
     func sendContext(_ event: String)
     func respond(id: String, name: String, result: JSONValue)
+    /// The results of calls that arrived in one `toolCall` frame, answered in ONE `toolResponse` frame.
+    func respond(_ answers: [ToolAnswer])
 }
-extension ConversationTransport { func sendVideo(_ jpeg: Data) {} }
+extension ConversationTransport {
+    func sendVideo(_ jpeg: Data) {}
+    func respond(_ answers: [ToolAnswer]) { answers.forEach { respond(id: $0.id, name: $0.name, result: $0.result) } }
+}
+
+/// One function call's result on its way back to the model.
+struct ToolAnswer: Equatable, Sendable {
+    var id: String
+    var name: String
+    var result: JSONValue
+}
 extension LiveSession: ConversationTransport {}

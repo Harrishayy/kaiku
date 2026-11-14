@@ -83,6 +83,24 @@
       ],
       "title": "Surface",
       "type": "string"
+    },
+    "walk_style": {
+      "anyOf": [
+        {
+          "enum": [
+            "quiet",
+            "playful",
+            "chatty"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "with purpose walk: quiet (mostly listens), playful (one small game at a time) or chatty (keeps a gentle conversation going). Omitted = config/kaiku.toml [walk].default_style",
+      "title": "Walk Style"
     }
   },
   "required": [

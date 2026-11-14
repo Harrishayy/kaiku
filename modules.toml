@@ -110,7 +110,8 @@ emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_a
 http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
-        "GET /v1/me/transcripts", "DELETE /v1/me/transcripts"]
+        "GET /v1/me/transcripts", "DELETE /v1/me/transcripts", "GET /v1/me/invitation",
+        "POST /v1/me/invitation/answer", "POST /v1/companion/close"]
 
 [[module]]
 name = "atech-head"

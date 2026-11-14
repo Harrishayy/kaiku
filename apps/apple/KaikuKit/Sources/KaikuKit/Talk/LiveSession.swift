@@ -34,6 +34,9 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         case toolCall(id: String, name: String, args: [String: JSONValue])
         /// The server dropped pending tool calls (after an interruption); their responses must not be sent.
         case toolCancelled([String])
+        /// Several function calls arrived in one frame (comes before their `toolCall` events): their results go
+        /// back together, in one frame.
+        case toolFrame(ids: [String])
         case resumable(handle: String)
         /// The server will close this connection soon: reconnect with the last handle.
         case goAway
@@ -151,10 +154,18 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     public func sendContext(_ text: String) { send(Self.context(text)) }
 
     public func respond(id: String, name: String, result: JSONValue) {
-        lock.lock(); let skip = cancelled.remove(id) != nil; lock.unlock()
-        if skip { return }
-        lock.lock(); let background = nonBlocking.contains(name); lock.unlock()
-        send(Self.toolResponse(id: id, name: name, result: result, background: background))
+        respond([ToolAnswer(id: id, name: name, result: result)])
+    }
+
+    /// All the results of one `toolCall` frame in one `toolResponse` frame (a call cancelled meanwhile is left
+    /// out). Seen on the real model: answered one frame per call, it issued the same call again in a later frame.
+    func respond(_ answers: [ToolAnswer]) {
+        lock.lock()
+        let responses = answers.filter { cancelled.remove($0.id) == nil }.map {
+            Self.functionResponse(id: $0.id, name: $0.name, result: $0.result, background: nonBlocking.contains($0.name))
+        }
+        lock.unlock()
+        if !responses.isEmpty { send(["toolResponse": ["functionResponses": responses]]) }
     }
 
     // MARK: pure frames (tested)
@@ -185,8 +196,12 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         } else {
             realtime = ["automaticActivityDetection": ["disabled": true]]
         }
-        var resumption: [String: Any] = [:]
+        // Resumption and context compression are what let a call outlive one socket (about ten minutes) and one
+        // context window (an audio session ends at about fifteen minutes without compression): always sent, the
+        // cloud's settings (`live_setup`) when it gives them, plus this conversation's handle.
+        var resumption = session.live_setup?["sessionResumption"]?.any as? [String: Any] ?? [:]
         if let h = options.resumeHandle { resumption["handle"] = h }
+        let compression = session.live_setup?["contextWindowCompression"]?.any as? [String: Any] ?? ["slidingWindow": [String: Any]()]
         return ["setup": [
             "model": model,
             "generationConfig": [
@@ -199,8 +214,9 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
             "tools": [["functionDeclarations": decls]],
             "realtimeInputConfig": realtime,
             "sessionResumption": resumption,
-            "contextWindowCompression": ["slidingWindow": [String: Any]()],
-            "proactivity": ["proactiveAudio": true],
+            "contextWindowCompression": compression,
+            // the cloud's choice when it sends one (`live_setup.proactivity`), otherwise proactive audio on
+            "proactivity": session.live_setup?["proactivity"]?.any ?? ["proactiveAudio": true],
             "inputAudioTranscription": [String: Any](),
             "outputAudioTranscription": [String: Any](),
         ] as [String: Any]]
@@ -215,6 +231,10 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     }
 
     static func toolResponse(id: String, name: String, result: JSONValue, background: Bool) -> [String: Any] {
+        ["toolResponse": ["functionResponses": [functionResponse(id: id, name: name, result: result, background: background)]]]
+    }
+
+    static func functionResponse(id: String, name: String, result: JSONValue, background: Bool) -> [String: Any] {
         // A non-blocking tool's result may say how to deliver it (`scheduling`: feel → SILENT, so Kaiku is not
         // made to speak again); that field is for this frame, not for the model.
         var body = result
@@ -227,7 +247,7 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         }
         var response: [String: Any] = ["result": body.any]
         if background { response["scheduling"] = scheduling }
-        return ["toolResponse": ["functionResponses": [["id": id, "name": name, "response": response]]]]
+        return ["id": id, "name": name, "response": response]
     }
 
     /// One server frame → events, in the order a client must act on them (interrupted before more audio).
@@ -252,6 +272,7 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
             if sc["turnComplete"] as? Bool == true { out.append(.turnComplete) }
         }
         if let tc = m["toolCall"] as? [String: Any], let calls = tc["functionCalls"] as? [[String: Any]] {
+            if calls.count > 1 { out.append(.toolFrame(ids: calls.map { $0["id"] as? String ?? "" })) }
             for c in calls {
                 var dict: [String: JSONValue] = [:]
                 if case .object(let o) = JSONValue(any: c["args"]) { dict = o }

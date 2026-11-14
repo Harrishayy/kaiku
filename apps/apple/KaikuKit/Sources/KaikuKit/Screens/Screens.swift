@@ -143,12 +143,12 @@ struct PhoneTabs: View {
 }
 #endif
 
-@ViewBuilder
+@MainActor @ViewBuilder
 func tabRoot(_ tab: KaikuTab) -> some View {
     switch tab {
     case .today: TodayView()
     case .play: PlayView()
-    case .talk: TalkView()
+    case .talk: TalkView(model: .forTalkScreen())   // on the Mac: the conversation quick talk shares (QuickTalkModel)
     case .days: DaysView()
     case .you: YouView()
     }

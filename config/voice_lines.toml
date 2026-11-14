@@ -235,3 +235,50 @@ sv = "Det gör inget. Inte i dag."
 en = "Oh, hello you two!"
 fi = "No hei, te kaksi!"
 sv = "Nämen, hej ni två!"
+
+# ---------------------------------------------------------------- the invitation (Today card)
+# Templates, not finished lines: GET /v1/me/invitation fills {topic} with the person's own stored topic, {when}
+# with " yesterday" / " earlier today" / " the other day" and {game} with the game's name, and returns the
+# sentence as `text`. Speak that text with POST /v1/voice/say. A line with {placeholders} is never rendered or
+# listed by /v1/voice (voice.is_template); `invite.talk.plain` is the sentence when the stored topic cannot be
+# said to the person as it stands.
+[invite.talk.hard]
+en = "You mentioned {topic}{when}. Want to talk about it?"
+fi = "Mainitsit{when} asian: {topic}. Haluatko puhua siitä?"
+sv = "Du nämnde {topic}{when}. Vill du prata om det?"
+
+[invite.talk.good]
+en = "You told me about {topic}{when}. Want to tell me more?"
+fi = "Kerroit{when} asiasta: {topic}. Haluatko kertoa lisää?"
+sv = "Du berättade om {topic}{when}. Vill du berätta mer?"
+
+[invite.talk.open]
+en = "We left off at {topic}. Want to pick it up?"
+fi = "Jäimme kohtaan: {topic}. Jatketaanko siitä?"
+sv = "Vi slutade vid {topic}. Vill du fortsätta där?"
+
+[invite.talk.plain]
+en = "There's something you told me that I'd like to come back to. Want to?"
+fi = "Kerroit minulle jotain, mihin haluaisin palata. Palataanko?"
+sv = "Du berättade något som jag gärna vill återkomma till. Ska vi?"
+
+[invite.activity.breathe]
+en = "Want to take a few slow breaths together?"
+fi = "Hengitetäänkö hetki rauhassa yhdessä?"
+sv = "Ska vi ta några lugna andetag tillsammans?"
+
+[invite.activity.walk]
+en = "Fancy a short walk in the daylight?"
+fi = "Lähdetäänkö lyhyelle kävelylle päivänvaloon?"
+sv = "Vad sägs om en kort promenad i dagsljuset?"
+
+[invite.activity.tell]
+en = "Want to tell me about your day?"
+fi = "Haluatko kertoa minulle päivästäsi?"
+sv = "Vill du berätta om din dag?"
+
+[invite.activity.game]
+en = "Fancy a round of {game} now?"
+fi = "Pelataanko nyt: {game}?"
+sv = "Sugen på en omgång: {game}?"
+

@@ -83,6 +83,8 @@ invitation or quiet; match energy; banned moves: pivot, empty sympathy, fixing, 
 never as something observed). `tools/companion_evals/scenarios/attunement.yaml` + `expect.attune`
 (`run.check_attunement`) and the judge's `attunement` criterion test them; the examples must stay inside the
 two-sentence, one-question caps because the model copies them.
+`voice_lines.toml` `checkin.hello` and `checkin.dials.low|tired|mid|bright` are the apps' check-in chat lines
+(Kaiku's hello when its live voice is not there; its one warm line for what was turned on the dials).
 `voice_lines.toml` `welcome.hello` / `welcome.done` are the app's first-run lines; a running service must be
 restarted to serve new keys (the apps fall back to `/v1/voice/say` with the same words until then).
 `persona.md` → "Notice and act" (call `feel` once per clear shift and keep talking; use `recall` lightly; be glad
@@ -92,4 +94,22 @@ ordinary day and stays on a very good or very hard one; at most one check-in que
 `tools/companion_evals/scenarios/act.yaml` covers them. `surfaces.toml` lists `feel` on every surface.
 `[live] feel_scheduling` is the FunctionResponse scheduling the cloud returns for the non-blocking `feel` tool;
 `[insight] reflection_label_at_episode_end` turns the one Gemma labelling call after an opted-in conversation on.
+
+`persona.md` → "Walking together" (company, not a guide; quiet, playful and chatty in one paragraph each; connect
+what is in view to what is theirs as a question; keep a favourite they point out; never claim to see with the
+camera off; a feeling ends the game) is compiled only into walk prompts. `surfaces.toml`
+`[surface.glasses.styles.quiet|playful|chatty]` holds each style's word limits and rules (the wording linter and
+the prompt both use them; a walk on the phone uses the same tables); `activities` per surface is the list of
+screens that surface really has, and `suggest_activity` is listed on `iphone` and `mac` only. `kaiku.toml [walk]`
+sets the default style, how many outdoor favourites the card carries, and per style the walk's own clock
+(`look_every_s`, `look_prompt`, `quiet_after_s`, `quiet_prompt`). `[live]`: `talk_max_minutes` and
+`walk_max_minutes` (a call and a walk may run long), `token_minutes` (what one token and its reservation cover),
+`idle_end_s` / `walk_idle_end_s` (when the device closes a conversation nobody is speaking in),
+`proactive_audio` (lets the model leave a nudge unanswered). `voice_lines.toml` `invite.*` are templates for the
+daily invitation (`{topic}`, `{when}`, `{game}` are filled by the cloud; they are spoken with `POST /v1/voice/say`,
+never fetched by key). Evals: `tools/companion_evals/scenarios/walk.yaml`, `cards.yaml` (D45).
+
+`kaiku.toml [live]` `settle_min_minutes` (a Live reservation never settles below this many started minutes) and
+`settle_grace_s` (seconds added when the cloud itself sees a conversation end, while the goodbye is still being
+spoken) belong to the settlement of Live budget reservations (D46).
 

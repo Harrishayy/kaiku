@@ -13,17 +13,19 @@
 #   session_minutes typical session length (prompt + eval turn budget)
 #   proactive_max_per_day  how often Kaiku may speak first on this surface
 #   rules           extra plain-language rules compiled into the prompt
+#   styles.<walk style>  (glasses) overrides for a walk in that style: target_words, max_words, max_sentences,
+#                   rules (added to the surface's own). The phone uses the same tables when the walk runs on it.
 #   banned_phrases  regexes (on normalised, lower-case text) the linter rejects on this surface only
 #
 # Tool names (registry: kaiku_contracts/companion_tools.py): record_dial start_activity log_walk_moment remember recall forget suggest_nudge
-# send_friend_ping start_phq9 express end_session look_at_this feel
+# send_friend_ping start_phq9 express end_session look_at_this feel suggest_activity set_walk_goal
 
 [surface.robot]
 label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
 tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel"]
-activities = ["breathe", "drum", "tell"]
+activities = ["breathe", "drum"]
 target_words = 20
 max_words = 30
 max_sentences = 2
@@ -41,8 +43,8 @@ banned_phrases = []
 label = "a voice in the person's glasses while they walk outside"
 modality = "voice"
 body = { eyes = false, ear = false, glow = false, head_pan = false, display = false, cards = false, speaker = true, mic = true, camera = "only while the person has turned on Let Kaiku see: about one still picture a second, told to you by a context event" }
-tools = ["record_dial", "start_activity", "log_walk_moment", "remember", "recall", "forget", "suggest_nudge", "express", "end_session", "look_at_this", "feel"]
-activities = ["walk", "light_hunt", "breathe", "tell"]
+tools = ["record_dial", "start_activity", "set_walk_goal", "log_walk_moment", "remember", "recall", "forget", "suggest_nudge", "express", "end_session", "look_at_this", "feel"]
+activities = ["walk", "light_hunt"]
 target_words = 8
 max_words = 16
 max_sentences = 2
@@ -50,24 +52,53 @@ max_questions = 1
 session_minutes = 20
 proactive_max_per_day = 3
 rules = [
-  "You are a calm, warm voice in their ear who mostly listens. Never chirpy, never clinical, no cheering.",
-  "On a walk: keep turns under 8 words unless they ask for more. Leave silences alone; walking quietly together is fine.",
   "Never tell them to look at a screen or their phone; they are walking.",
-  "Speak first only at walk start, halfway and the end. Ignore talk that is not addressed to you.",
-  "If it is noisy and you did not catch it, say so in three words and wait.",
-  "Start an activity (light hunt, breathing) only when they ask for one.",
+  "Ignore talk that is not addressed to you. If it is noisy and you did not catch it, say so in three words and wait.",
   "Seeing: you can see only after a context event says the glasses camera is on, and until one says it is off. Otherwise you cannot see, and you say so plainly if asked. If unsure, call look_at_this.",
-  "When you can see: answer what they ask about the view (what is this, read that sign) from the picture only. Unasked, at most one short remark now and then about something plainly pleasant: light, sky, trees, water.",
+  "When you can see: answer what they ask about the view (what is this, read that sign) from the picture only.",
   "Never describe, identify or judge people in view, never guess where they are, and never comment on how the person or their home looks. If you cannot make it out, say so.",
 ]
 banned_phrases = ["look at (?:your|the) (?:screen|phone)", "check (?:your|the) (?:screen|phone|app)", "on (?:your|the) screen"]
+
+# How Kaiku walks with them (CompanionSessionRequest.walk_style). What each style is: config/persona.md "Walking
+# together". Here: the limits the wording linter enforces and the rules compiled into that walk's prompt.
+[surface.glasses.styles.quiet]
+target_words = 8
+max_words = 16
+max_sentences = 2
+rules = [
+  "You are a calm, warm voice in their ear who mostly listens. Never chirpy, no cheering.",
+  "Keep turns under 8 words unless they ask for more. Leave silences alone; walking quietly together is fine.",
+  "Speak first only at walk start and the end, or for one short remark when something plainly worth it is in view.",
+  "Start a spotting game or breathing only when they ask for one.",
+]
+
+[surface.glasses.styles.playful]
+target_words = 14
+max_words = 26
+max_sentences = 2
+rules = [
+  "You are bright, light company: one small game at a time, and glad about every find.",
+  "A game is a spotting goal from what is really around (set_walk_goal), or one tiny question about their own day from what you were told about today. Never two games at once, never a score.",
+  "Between games, walk quietly for a bit; a game is an offer, and a no is fine.",
+]
+
+[surface.glasses.styles.chatty]
+target_words = 16
+max_words = 30
+max_sentences = 2
+rules = [
+  "You are good company on a walk: keep a gentle conversation going, follow what they bring up, and ask about their day.",
+  "Bring up one thing they told you before when it fits. You may speak first after a quiet stretch.",
+  "Still one question at a time, and stop to listen. A walk has room for pauses.",
+]
 
 [surface.iphone]
 label = "the Kaiku pebble on the person's phone"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
-activities = ["breathe", "firefly", "tell", "walk"]
+tools = ["record_dial", "start_activity", "suggest_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
+activities = ["breathe", "tell", "walk", "lantern", "seeds", "watering", "pebbles", "firefly"]
 target_words = 20
 max_words = 35
 max_sentences = 2
@@ -75,7 +106,8 @@ max_questions = 1
 session_minutes = 3
 proactive_max_per_day = 1
 rules = [
-  "Sessions are short: one small thing, then let them go.",
+  "A talk here is like a call: it lasts as long as they want. Keep each turn short, never wind the talk down yourself, and stay as long as they like on a very good or a very hard day. A check-in is the short one (its own section says so).",
+  "They may mute themselves or you for a while; when they come back, carry on without remarking on it.",
   "Skipping is always fine: 'not today' gets 'okay, I'll be here'.",
 ]
 banned_phrases = []
@@ -84,8 +116,8 @@ banned_phrases = []
 label = "the Kaiku pebble in the person's menu bar"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = false, display = true, cards = true, speaker = true, mic = true, camera = "never" }
-tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
-activities = ["breathe", "firefly", "tell"]
+tools = ["record_dial", "start_activity", "suggest_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
+activities = ["breathe", "tell", "lantern", "seeds", "watering", "pebbles", "firefly"]
 target_words = 20
 max_words = 35
 max_sentences = 2
@@ -93,7 +125,7 @@ max_questions = 1
 session_minutes = 3
 proactive_max_per_day = 3
 rules = [
-  "They are probably working: be a short break, never a long chat.",
+  "A break or a check-in here is short: they are probably working. A talk they opened themselves is like a call: it lasts as long as they want, and you never wind it down yourself.",
   "You never know which apps they use or what they read; do not guess.",
 ]
 banned_phrases = ["(?:what|which) (?:apps?|sites?|websites?) (?:were|are) you"]
@@ -103,7 +135,7 @@ label = "Kaiku on the person's /me page"
 modality = "text"
 body = { eyes = true, ear = false, glow = false, head_pan = false, display = true, cards = true, speaker = false, mic = false, camera = "never" }
 tools = ["record_dial", "start_activity", "remember", "recall", "forget", "suggest_nudge", "start_phq9", "express", "end_session", "feel"]
-activities = ["firefly"]
+activities = []
 target_words = 30
 max_words = 60
 max_sentences = 3

@@ -41,6 +41,16 @@ export interface ActionResult {
   state: "stable" | "watch" | "needs_call" | "safety";
 }
 /**
+ * What the device returns for `suggest_activity`. shown=false: a card is already up, or they said no before.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ActivityCardResult".
+ */
+export interface ActivityCardResult {
+  ok: boolean;
+  shown?: boolean;
+}
+/**
  * One step the cloud really ran to build this insight. Counts and categories only; never record content.
  *
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -242,6 +252,10 @@ export interface CompanionSessionRequest {
    */
   resume_session_id?: string | null;
   surface: "robot" | "glasses" | "iphone" | "mac" | "web";
+  /**
+   * with purpose walk: quiet (mostly listens), playful (one small game at a time) or chatty (keeps a gentle conversation going). Omitted = config/kaiku.toml [walk].default_style
+   */
+  walk_style?: ("quiet" | "playful" | "chatty") | null;
 }
 /**
  * POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
@@ -260,6 +274,10 @@ export interface CompanionSessionResponse {
    * poll interval for consented source updates during an active conversation
    */
   context_refresh_seconds?: number | null;
+  /**
+   * the device ends the conversation by itself after this long with nobody speaking (an open microphone in a pocket); longer on a walk
+   */
+  idle_end_s?: number | null;
   /**
    * Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; clients must apply this complete setup.
    */
@@ -281,6 +299,10 @@ export interface CompanionSessionResponse {
   system_instruction: string;
   tools: CompanionTool[];
   voice: string;
+  /**
+   * present when the purpose is walk
+   */
+  walk?: WalkGuide | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -329,6 +351,12 @@ export interface ContextCard {
    */
   open_thread?: string | null;
   others_present?: boolean;
+  /**
+   * walk sessions: outdoor things and places the person told Kaiku they like, in their words (notebook)
+   *
+   * @maxItems 4
+   */
+  outdoor_likes?: [] | [string] | [string, string] | [string, string, string] | [string, string, string, string];
   phq9_due?: boolean;
   /**
    * set when the device said why it opened the session
@@ -362,6 +390,10 @@ export interface ContextCard {
    */
   today_facts?: [] | [string] | [string, string] | [string, string, string] | [string, string, string, string];
   tone?: "steady" | "gentle" | "extra-gentle";
+  /**
+   * walk sessions: how Kaiku walks with them
+   */
+  walk_style?: ("quiet" | "playful" | "chatty") | null;
   weather_word?: string | null;
 }
 /**
@@ -452,6 +484,26 @@ export interface CompanionTool {
   parameters: {
     [k: string]: unknown;
   };
+}
+/**
+ * CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the
+ * device nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and
+ * nobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge
+ * is not used in this style. Values: config/kaiku.toml [walk].
+ * Kaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not
+ * always silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),
+ * so the device holds the audio of a nudge's reply until its first output transcription fragment and plays it
+ * only when that fragment has a real word.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WalkGuide".
+ */
+export interface WalkGuide {
+  look_every_s?: number | null;
+  look_prompt?: string | null;
+  quiet_after_s?: number | null;
+  quiet_prompt?: string | null;
+  style: "quiet" | "playful" | "chatty";
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -1378,7 +1430,9 @@ export interface FeelPlan {
   /**
    * start_activity kind, only after a clear yes
    */
-  offer_activity?: ("breathe" | "drum" | "firefly" | "pebbles" | "tell" | "walk" | "light_hunt") | null;
+  offer_activity?:
+    | ("breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt")
+    | null;
   /**
    * why that one, and how to offer it
    */
@@ -1848,6 +1902,57 @@ export interface Measures {
   hr_bpm?: number | null;
   mood?: number | null;
   rmssd_ms?: number | null;
+}
+/**
+ * One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from
+ * config/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk
+ * (kind talk_about: the session card already carries the thread) or the screen for `activity`.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "Invitation".
+ */
+export interface Invitation {
+  /**
+   * activity: which screen
+   */
+  activity?:
+    | ("breathe" | "tell" | "walk" | "lantern" | "seeds" | "watering" | "pebbles" | "firefly" | "drum" | "light_hunt")
+    | null;
+  /**
+   * send it back in the answer; an answered item is never offered again
+   */
+  id: string;
+  kind: "talk_about" | "activity";
+  text: string;
+  /**
+   * talk_about: what was left open
+   */
+  topic?: string | null;
+  /**
+   * the template used; speak `text` with POST /v1/voice/say
+   */
+  voice_key: string;
+}
+/**
+ * POST /v1/me/invitation/answer — yes: the device opens it. not_now: final. Either way the item is settled.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InvitationAnswer".
+ */
+export interface InvitationAnswer {
+  answer: "yes" | "not_now";
+  id: string;
+}
+/**
+ * GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when
+ * today's was answered, or on an extra-gentle day with nothing to talk about.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "InvitationResponse".
+ */
+export interface InvitationResponse {
+  home_id: string;
+  invitation?: Invitation | null;
 }
 /**
  * GET /v1/me/graph ("What Kaiku has learned") · GET /v1/patients/{id}/graph (only when the person shares;
@@ -2847,6 +2952,31 @@ export interface VoiceLinesResponse {
 export interface VoiceSayRequest {
   lang?: "en" | "fi" | "sv";
   text: string;
+}
+/**
+ * What the device returns for `set_walk_goal`: the count it keeps.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WalkGoalResult".
+ */
+export interface WalkGoalResult {
+  found?: number;
+  left: number;
+  target: number;
+  thing: string;
+}
+/**
+ * What the device returns for `log_walk_moment` (one find). Without a goal: ok=true and the rest null.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "WalkMomentResult".
+ */
+export interface WalkMomentResult {
+  found?: number | null;
+  left?: number | null;
+  ok: boolean;
+  target?: number | null;
+  thing?: string | null;
 }
 /**
  * Daily summary from Apple Health (HealthKit) on the iPhone: Apple Watch or any watch that writes to Apple Health.

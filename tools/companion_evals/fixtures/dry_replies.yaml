@@ -201,4 +201,56 @@ iphone-act-checkin-empty-day-grounded-opener:
   - say: "A slow start, then. No rush from me."
   - say: "Good to see you. I'm around later."
     tools: [{name: end_session, args: {outcome: completed}}]
-
+walk-quiet-mostly-listens:
+  - say: "Lovely. I'm here with you."
+  - say: "It is good to be out."
+  - say: "Just walking. That's plenty."
+walk-playful-spotting-count:
+  - say: "Three red things it is. Off you go!"
+    tools: [{name: set_walk_goal, args: {thing: "red things", target: 3}}]
+  - say: "A red mailbox, lovely! Two to go."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+  - say: "A red bike too! One more to find."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+  - say: "A red door, that's all three! Nicely spotted."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+walk-playful-find-without-a-yes:
+  - say: "Lovely. Shall we spot three birds together?"
+  - say: "One! Two to go."
+    tools: [{name: set_walk_goal, args: {thing: "birds", target: 3}}, {name: log_walk_moment, args: {kind: "bird"}}]
+  - say: "One it is. Two more to find."
+  - say: "Two! One to go."
+    tools: [{name: log_walk_moment, args: {kind: "bird"}}]
+walk-chatty-keeps-company:
+  - say: "Good to be out with you. How has the day been so far?"
+  - say: "Soup sounds good. What kind did you make?"
+  - say: "Leek and potato, a proper warming soup. Is it one you make often?"
+walk-connects-to-their-tree:
+  - say: "Is that your cherry tree, the one by the lake?"
+  - say: "Your favourite bench, right beside your tree. I'll remember that bench."
+    tools: [{name: remember, args: {category: places, text: "The green bench beside the cherry tree is her favourite bench", said: "that green bench beside it is my favourite bench"}}]
+  - say: "Any time."
+walk-sad-news-mid-game:
+  - say: "Two yellow things. Go!"
+    tools: [{name: set_walk_goal, args: {thing: "yellow things", target: 2}}]
+  - say: "A yellow leaf, lovely! One to go."
+    tools: [{name: log_walk_moment, args: {kind: "yellow things"}}]
+  - say: "A year today since Rusko died. I'm here, walking with you."
+    tools: [{name: feel, args: {kind: sad_news, heard: {valence: low, energy: low, via: voice}, about: "your dog Rusko", said: "I just remembered my dog Rusko died a year ago today."}}]
+  - say: "You miss him. Tell me about Rusko, if you like."
+walk-what-can-you-see-camera-off:
+  - say: "I can't see right now. I'm listening."
+    tools: [{name: look_at_this, args: {}}]
+  - say: "I'm here with you."
+iphone-card-comes-with-the-suggestion:
+  - say: "We could play the lantern game for a few minutes. Fancy a round?"
+    tools: [{name: suggest_activity, args: {kind: lantern, line: "A round of the lantern game?"}}]
+  - say: "No rush at all. It's there if you want it."
+iphone-card-put-aside-is-a-no:
+  - say: "The lantern game could suit a bored evening. Fancy a round?"
+    tools: [{name: suggest_activity, args: {kind: lantern}}]
+  - say: "No lantern tonight, that's fine."
+  - say: "Gladly. What's on your mind?"
+mac-card-only-for-what-the-mac-has:
+  - say: "A walk sounds good. Anywhere in mind?"
+  - say: "Round the block it is. I'll be here after."

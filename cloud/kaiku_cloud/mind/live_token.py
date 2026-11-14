@@ -15,6 +15,13 @@ the device as `live_setup`; Kaiku's apps send exactly that plus their own transp
 Defaults: 1 min to start, configured session authorization/resumption lifetime. Clients enforce the duration.
 No GEMINI_API_KEY, budget admission or provider availability -> None; apps keep the microphone closed.
 Robot bootstrap skips token minting because its server-side Live adapter meters its own key.
+
+Budget: a mint reserves the token's whole lifetime (`live_reservation`), because the cloud never sees the audio
+socket. `settle` then brings the reservation down to the started minutes the conversation really used, from every
+signal the cloud does get: the `end_session` tool, the next mint of the same conversation, the device's close
+(`POST /v1/companion/close`) and a recorded episode. The longest evidence wins, never less than one started minute
+and never less than the last tool call the cloud saw; a conversation that never reports keeps the full
+reservation, and so does a mint that failed (a retry storm must still hit the cap). Rows: kaiku_contracts.budget.
 """
 
 from __future__ import annotations
@@ -75,19 +82,56 @@ def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str,
     decls = [{k: t[k] for k in ("name", "description", "parameters", "behavior") if k in t} for t in tools]
     if decls:
         s["tools"] = [{"functionDeclarations": decls}]
+    if get("live", "proactive_audio", False):
+        # "If enabled, the model can reject responding to the last prompt" (Live API reference, ProactivityConfig):
+        # a walk nudge with nothing worth saying gets no audio back.
+        s["proactivity"] = {"proactiveAudio": True}
     if get("live", "context_compression", True):
         s["contextWindowCompression"] = {"slidingWindow": {}}  # sessions longer than the audio context limit
     return s
 
 
+def _seen_key(session_id: str) -> str:
+    return f"live:{session_id}"
+
+
+def seen(store: Any, session_id: str | None) -> None:
+    """A tool call arrived for this conversation: it was alive at this moment (the floor of any settlement)."""
+    if session_id:
+        store.kv_set(_seen_key(session_id), {"last": budget.now()})
+
+
+def settle(store: Any, session_id: str | None, *, via: str, elapsed_s: float | None = None,
+           grace_s: float = 0.0) -> list[dict[str, Any]]:
+    """Settle this conversation's Live reservations to what it used: `elapsed_s` as reported by the device, or up
+    to now (+ `grace_s`) when the cloud itself saw it end. Never raises: the meter must not break a request."""
+    if not session_id:
+        return []
+    try:
+        last = (store.kv_get(_seen_key(session_id)) or {}).get("last")
+        rows = budget.settle_session(
+            session_id, elapsed_s=elapsed_s, end_ts=None if elapsed_s is not None else budget.now() + grace_s,
+            floor_ts=float(last) if last is not None else None, via=via,
+            min_minutes=float(get("live", "settle_min_minutes", 1)))
+        if rows:
+            log.info("live_settled", via, tokens=len(rows), released_usd=round(-sum(r["delta"] for r in rows), 4))
+        return rows
+    except Exception as e:  # a locked or missing ledger: the reservation simply stays as it is
+        log.warning("live_settle_failed", type(e).__name__)
+        return []
+
+
 def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str | None = None,
          now: datetime | None = None, transport: httpx.BaseTransport | None = None,
-         timeout_s: float = 8.0, home_id: str | None = None) -> LiveToken | None:
+         timeout_s: float = 8.0, home_id: str | None = None, minutes: float | None = None,
+         session_id: str | None = None) -> LiveToken | None:
+    """`minutes`: how long this token (and its budget reservation) covers; default `[live].session_max_minutes`.
+    `session_id` names the conversation on the reservation, which is what lets it be settled afterwards."""
     key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
     if not key:
         return None
     now = now or datetime.now(UTC)
-    minutes = float(get("live", "session_max_minutes", 5))
+    minutes = float(minutes if minutes is not None else get("live", "session_max_minutes", 5))
     expires, start_by = now + timedelta(minutes=minutes), now + timedelta(minutes=START_MIN)
     body = {"uses": 1, "expireTime": _z(expires), "newSessionExpireTime": _z(start_by),
             "bidiGenerateContentSetup": {"model": model_path(model)}, "fieldMask": "model"}
@@ -97,8 +141,8 @@ def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str |
         # The estimate reserves the full client-enforced duration. Token expiry governs authorization,
         # not a guaranteed server-side end to an already established audio stream.
         with _MINT_LOCK:
-            budget.charge("gemini", model, estimate, task="live_reservation", component="cloud",
-                          units=f"reserved_audio_minutes={minutes:g}")
+            budget.charge("gemini", model, estimate, task=budget.LIVE_RESERVATION, component="cloud",
+                          units=budget.reservation_units(minutes, session_id))
             with httpx.Client(timeout=timeout_s, transport=transport) as c:
                 r = c.post(URL, json=body, headers={"x-goog-api-key": key})
                 r.raise_for_status()
@@ -114,4 +158,4 @@ def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str |
         ledger.record(model, "live_reservation", ok=False, home_id=home_id, route=reason,
                       latency_ms=(time.perf_counter() - started) * 1000)
         log.warning("live_token_failed", type(e).__name__, status=status)
-        return None
+        return None  # the reservation of a failed mint stays (existing rule: a retry storm must hit the cap)

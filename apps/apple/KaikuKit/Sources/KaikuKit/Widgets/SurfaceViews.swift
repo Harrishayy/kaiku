@@ -12,13 +12,28 @@ public enum SurfaceSize {
     public static let mediumWidgetMascot: CGFloat = 120
 }
 
+/// The walk's spotting game on a small surface: its own thing and target ("Trees 1 of 3"). Nil when no game is on.
+public struct WalkGoalLine: Equatable, Sendable {
+    public let thing: String
+    public let target: Int
+    public let found: Int
+    public init?(thing: String?, target: Int?, found: Int) {
+        guard let thing, !thing.isEmpty, let target, target > 0 else { return nil }
+        self.thing = thing; self.target = target; self.found = min(max(0, found), target)
+    }
+    public func text(_ lang: KaikuLanguage) -> String {
+        thing + " " + TL("walk.goal.count", lang, ["n": "\(found)", "m": "\(target)"])
+    }
+}
+
 public struct FoundDotsRow: View {
     let found: Int
+    let target: Int
     let onDark: Bool
-    public init(found: Int, onDark: Bool) { self.found = found; self.onDark = onDark }
+    public init(found: Int, target: Int = 3, onDark: Bool) { self.found = found; self.target = target; self.onDark = onDark }
     public var body: some View {
         HStack(spacing: 7) {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(0..<max(1, target), id: \.self) { i in
                 Circle()
                     .fill(i < found ? KaikuTokens.Colors.sage : (onDark ? Color.white.opacity(0.18) : KaikuTokens.Colors.surface))
                     .overlay(Circle().strokeBorder(KaikuTokens.Colors.sage, lineWidth: 1.5))
@@ -28,14 +43,15 @@ public struct FoundDotsRow: View {
     }
 }
 
-/// Lock Screen walk (design/ia.md): big walking Kaiku, "Walking with Kaiku" (1 line, truncates), "n of 3 found",
-/// dots, minutes. No buttons here (they live in the expanded island) so Kaiku can fill the 160 pt height.
+/// Lock Screen walk (design/ia.md): big walking Kaiku, "Walking with Kaiku" (1 line, truncates), the spotting
+/// game's own thing and count with its dots when one is on (nothing about a game otherwise), minutes. No buttons
+/// here (they live in the expanded island) so Kaiku can fill the 160 pt height.
 public struct WalkLockContent: View {
     let lang: KaikuLanguage
     let minutes: Int
-    let found: Int
-    public init(lang: KaikuLanguage, minutes: Int, found: Int) {
-        self.lang = lang; self.minutes = minutes; self.found = found
+    let goal: WalkGoalLine?
+    public init(lang: KaikuLanguage, minutes: Int, goal: WalkGoalLine?) {
+        self.lang = lang; self.minutes = minutes; self.goal = goal
     }
 
     public var body: some View {
@@ -49,12 +65,14 @@ public struct WalkLockContent: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                         .truncationMode(.tail)
-                    Text(TL("lh.progress", lang, ["n": "\(found)"]))
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(KaikuTokens.Colors.ink2)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    FoundDotsRow(found: found, onDark: false)
+                    if let goal {
+                        Text(goal.text(lang))
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(KaikuTokens.Colors.ink2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        FoundDotsRow(found: goal.found, target: goal.target, onDark: false)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Text(TL("la.min", lang, ["n": "\(minutes)"]))
@@ -67,17 +85,20 @@ public struct WalkLockContent: View {
     }
 }
 
-/// Expanded Dynamic Island, centre region: title, cue, dots.
+/// Expanded Dynamic Island, centre region: title, and the spotting game's thing, count and dots when one is on.
 public struct WalkIslandCenter: View {
     let lang: KaikuLanguage
-    let found: Int
-    public init(lang: KaikuLanguage, found: Int) { self.lang = lang; self.found = found }
+    let goal: WalkGoalLine?
+    public init(lang: KaikuLanguage, goal: WalkGoalLine?) { self.lang = lang; self.goal = goal }
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(TL("game.lighthunt.t", lang)).font(.system(.headline, design: .rounded)).foregroundStyle(.white).lineLimit(1)
-            Text(TL("lh.find", lang)).font(.system(.subheadline, design: .rounded)).foregroundStyle(.white.opacity(0.85))
-                .lineLimit(2).minimumScaleFactor(0.85)
-            FoundDotsRow(found: found, onDark: true)
+            Text(TL("lh.walking", lang)).font(.system(.headline, design: .rounded)).foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            if let goal {
+                Text(goal.text(lang)).font(.system(.subheadline, design: .rounded)).foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                FoundDotsRow(found: goal.found, target: goal.target, onDark: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

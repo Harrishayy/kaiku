@@ -373,3 +373,72 @@ flowchart LR
 - **Power (bench):** the motor only turned once the Atech had its own USB-C charger on port 8; hub charge-only and
   Mac ports ran the logic but not the motor. Port 11's forward line is GPIO44 (UART0 RX) and only reverse turned
   there; port 13 has no such conflict, but the standalone puts its orientation sensor on 13.
+
+## D45 — Walk styles, nudges answered with silence, activity cards, call length and the daily invitation (2026-11-14, lead)
+- **Three walk styles** (`CompanionSessionRequest.walk_style`: `quiet | playful | chatty`, default in
+  `config/kaiku.toml [walk]`): quiet is the walk as it was; playful runs one small game at a time; chatty keeps a
+  gentle conversation going. What each is: `config/persona.md` "Walking together". Word limits and rules per style:
+  `config/surfaces.toml [surface.glasses.styles.*]`. In every style a feeling ends the game (`feel`).
+- **The walk's own clock** (`CompanionSessionResponse.walk`: `look_every_s`, `look_prompt`, `quiet_after_s`,
+  `quiet_prompt`, all from `[walk.<style>]`): the device sends the prompt as a context line; the model may leave it
+  unanswered. Real Gemini Live sessions with stock macOS pictures as frames (2026-11-14): with
+  `proactivity.proactiveAudio` the remarks were timely and grounded (a sunset got one remark, a lone tree got "Is
+  that your favourite tree up there?", a dull road got no words), but 9 of 14 declined nudges still carried 0.7 to
+  2.8 s of audible non-speech sound. **Rejected:** a `stay_quiet` tool (NON_BLOCKING + SILENT): silence was exact,
+  but in 5 of 5 runs the remark arrived one or two looks late, about a picture already gone. **Chosen:** proactive
+  audio in `live_setup.proactivity`, and the device plays a nudge's reply only once its first output-transcription
+  fragment contains a real word.
+- **What it may connect to:** on a walk the card carries `outdoor_likes` (notebook places, and likes that name
+  something a walk can pass). Kaiku says a connection as a question ("Is that your cherry tree?"), because it cannot
+  know it is that one. A favourite pointed out on a walk is kept with `remember` in the person's own words. D43
+  stands unchanged: frames go only to the Live conversation, nothing is stored or derived from them.
+- **Spotting games by tool:** `set_walk_goal {thing, target 1..5}` and `log_walk_moment`; the device keeps the
+  count and answers `{thing, target, found, left}`. The fixed light hunt is one such goal.
+- **Activity cards by tool:** `suggest_activity {kind, line?}` on the phone and Mac puts one card in the
+  conversation; it opens nothing. A card put aside is a no for the whole conversation. `Activity` is the list of
+  screens that exist: breathe, tell, walk, lantern, seeds, watering, pebbles, firefly, drum, light_hunt.
+- **A talk is like a call:** a Talk on the phone or Mac and any walk may run 30 minutes (`[live].talk_max_minutes`,
+  `walk_max_minutes`); a check-in, a break and the robot ritual keep 5. One ephemeral token and its budget
+  reservation cover `[live].token_minutes` (5); a longer call asks for the next one (`resume_session_id`). Gemini
+  resets a Live connection after about 10 minutes and, without context window compression, ends an audio session at
+  15 minutes and one with camera frames at 2 (Live session-management guide); `live_setup` therefore carries
+  `sessionResumption` and `contextWindowCompression.slidingWindow`. `idle_end_s` (180 s, 900 s on a walk) tells the
+  device when to close a conversation nobody is speaking in.
+- **The invitation** (`GET /v1/me/invitation`): at most one thing a day that Kaiku would like to bring up or offer,
+  chosen by code: first something the person left open (in their own stored words), else the suggestion with the
+  best recorded response or a game they come back to. No offer on an extra-gentle day; a not-now is final for that
+  item, and an item that was answered is not offered again. The sentence is a template in `config/voice_lines.toml` (`invite.*`). No model call.
+
+## D46 — A Live budget reservation settles to the time the conversation really ran (2026-11-14, lead)
+- **Why:** a mint reserves the token's whole lifetime ($0.60 for five minutes) because the cloud never sees the
+  audio socket. Nothing ever gave the unused part back, so a day of short test talks held most of the cap.
+- **Rule:** the reservation row stays as it is; `live_settlement` rows are appended that name it and bring it to
+  whole started minutes, at least one, at most what was reserved. A later signal that shows a longer conversation
+  takes some back; a shorter one changes nothing. A conversation that never reports keeps its full reservation, and
+  so does a mint that failed. The caps read the plain sum of all rows.
+- **Signals, all of them the cloud's own or our own app's:** the `end_session` tool and a crisis stop (now, plus
+  `[live].settle_grace_s`), the next mint of the same conversation, `POST /v1/companion/close {home_id, session_id,
+  elapsed_s}`, and a recorded episode's own start and end. No reported length ends a conversation before the last
+  tool call the cloud saw.
+- **Not a billing system:** our app reports its own length; this is the safety brake's arithmetic, bounded by the
+  token's lifetime, which Gemini enforces.
+- **Old rows:** `python -m kaiku_cloud.jobs.settle_live --ledger <file> --db <cloud db> ...` (dry run unless
+  `--apply`) settles a reservation only where a database that provably charged that ledger recorded the
+  conversation and its end.
+
+## D47 — A spotting game is set before it is counted; one frame answers one frame of tool calls (2026-11-14)
+- **What happened:** on a real Live walk Kaiku proposed "three birds", the person answered "Found one!", and it
+  counted aloud by itself ("That's one!", "Two found so far.") without ever calling `set_walk_goal`. The goal card
+  never appeared and the spoken count had no source.
+- **Rule:** the order is spelled out in the walk prompt ("This walk"), in the persona's playful paragraph and in
+  both tool descriptions: a proposal sets nothing; the moment the game is taken up (a yes, or simply a first find)
+  `set_walk_goal`, then `log_walk_moment` once per find, and a count is said only as a tool result gave it. The
+  device answers a find without a goal with a `note` saying so (`WalkMomentResult.note`).
+- **Measured on the real Live model** (typed lines, six short sessions): the goal was set first every time. When
+  two calls arrived in one server frame and were answered in two frames, the model issued `log_walk_moment` again
+  and the device count ran one ahead of what was said (3 of 3 sessions); answered together in one `toolResponse`
+  frame, tools and spoken counts agreed (3 of 3). Devices answer every call of one `toolCall` frame in one frame.
+- **Reset:** a demo reset that wipes a home also removes its `episode-thread:` markers and `invite:` state.
+  Without that, a re-seed of the same days (same episode ids) never re-opened the seeded threads, and the seeded
+  person had no invitation.
+

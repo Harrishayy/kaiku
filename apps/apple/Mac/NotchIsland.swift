@@ -10,10 +10,17 @@ import SwiftUI
 /// buttons. Collapsed ↔ peek ↔ expanded is one spring on the shape's width/height. Mouse-through everywhere except
 /// inside the drawn shape (and the notch itself while collapsed, a hover/click zone → "hello"). On a Mac without a
 /// notch the body is a pill just below the menu bar.
+///
+/// While a quick-talk conversation is on and its popup is put away (the person keeps working), the island shows
+/// the call the way the iPhone's Dynamic Island does (`.call`): Kaiku, the call's one state word, the elapsed
+/// time, mute me, end. A click anywhere else on it brings the popup back. It stays as long as the call does (no
+/// timer folds it away) and folds back into the notch when the call ends.
 @Observable @MainActor
 final class IslandModel {
-    enum State: Equatable { case hidden, peek, expanded }
+    enum State: Equatable { case hidden, peek, expanded, call }
     var state: State = .hidden
+    /// The call showing in `.call`.
+    var call: QuickTalkCall?
     /// What is showing: a peek rule's kind, or nil = "hello" (the person clicked the notch).
     var kind: MacPeekKind? = .lateNight
     var reply: String?
@@ -38,6 +45,11 @@ final class IslandModel {
             let e = s == .expanded
             return MacIslandShape(topWidth: band, bodyWidth: MacIslandLayout.size(expanded: e).width,
                                   bodyHeight: MacIslandLayout.bodyHeight(expanded: e), menuBar: menuBar, pill: !hasNotch)
+        case .call:
+            // A small body right under the notch: no wider than it has to be, like the Dynamic Island around its cutout.
+            let size = QuickTalkLayout.islandCall
+            return MacIslandShape(topWidth: band, bodyWidth: size.width, bodyHeight: size.height + (hasNotch ? MacIslandShape.shoulder : 0),
+                                  menuBar: menuBar, pill: !hasNotch)
         }
     }
 
@@ -47,7 +59,7 @@ final class IslandModel {
     }
 }
 
-enum IslandAction { case yes, later, notToday, talk, open, expand, hello }
+enum IslandAction { case yes, later, notToday, talk, open, expand, hello, callMute, callEnd, callShow }
 
 @MainActor
 final class NotchIsland {
@@ -85,6 +97,50 @@ final class NotchIsland {
         }
         hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.trackMouse() }
+        }
+        // Kaiku coming to the front or leaving it decides whether its own Talk screen is showing the call.
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshCall() }
+            }
+        }
+        followCall()
+    }
+
+    // MARK: the call (quick talk put away)
+
+    private var quick: QuickTalkModel { QuickTalkController.shared.model }
+
+    /// The call to show: a conversation is on, the popup is not showing it, and neither is Kaiku's own Talk
+    /// screen in front.
+    private var wantedCall: QuickTalkCall? {
+        guard let call = quick.call, !quick.isOpen, !(NSApp.isActive && quick.mainShowsTalk()) else { return nil }
+        return call
+    }
+
+    /// Follows the conversation: its state word, the microphone, its beginning and its end.
+    private func followCall() {
+        withObservationTracking {
+            _ = (quick.call, quick.isOpen, companion?.app?.selectedTab)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.followCall() }
+        }
+        refreshCall()
+    }
+
+    private func refreshCall() {
+        if let call = wantedCall {
+            model.call = call
+            guard model.state != .call else { return }
+            // A call comes before a peek: whatever was out makes way.
+            reposition()
+            hideWork?.cancel()
+            model.reply = nil
+            model.risen = false
+            panel.orderFrontRegardless()
+            model.state = .call
+        } else if model.state == .call {
+            hide()
         }
     }
 
@@ -139,12 +195,18 @@ final class NotchIsland {
     func hide(animated: Bool = true) {
         hideWork?.cancel()
         model.risen = false
-        model.state = .hidden
         model.reply = nil
+        // A call that is still on comes back when a peek or a hello folds away.
+        if model.state != .call, let call = wantedCall {
+            model.call = call
+            model.state = .call
+        } else {
+            model.state = .hidden
+        }
     }
 
     func hover(_ inside: Bool) {
-        guard model.state != .hidden else { return }
+        guard model.state != .hidden, model.state != .call else { return }   // a call stays as long as it is on
         if inside { hideWork?.cancel() } else { scheduleHide(after: 8) }
     }
 
@@ -174,6 +236,12 @@ final class NotchIsland {
         case .notToday:
             companion?.snooze(.today)
             hide()
+        case .callMute:
+            quick.toggleMicrophone()
+        case .callEnd:
+            quick.end()
+        case .callShow:
+            QuickTalkController.shared.open()
         case .talk, .open:
             hide()
             if a == .talk { companion?.app?.selectedTab = .talk }
@@ -218,7 +286,7 @@ struct IslandView: View {
         .padding(.horizontal, NotchIsland.shadowPad)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .contentShape(shape)
-        .onTapGesture { if !out { act(.hello) } }
+        .onTapGesture { if !out { act(.hello) } else if inCall { act(.callShow) } }   // the wings beside the notch too
         .onHover { inside in hoverChanged(inside) }
         .animation(reduceMotion ? IslandMotion.fade : IslandMotion.morph, value: model.state)
         .animation(reduceMotion ? IslandMotion.fade : IslandMotion.drop, value: model.risen)
@@ -232,35 +300,99 @@ struct IslandView: View {
     }
 
     private var expanded: Bool { model.state == .expanded }
+    private var inCall: Bool { model.state == .call && model.call != nil }
 
     /// Wing glyphs in the menu bar band (only inside notch ± wings): Kaiku left, the time right.
     @ViewBuilder private var wings: some View {
         if model.hasNotch {
             HStack(spacing: 0) {
-                MascotView(state: model.mascotState, size: min(24, model.menuBar - 6), tappable: false)
+                MascotView(state: inCall ? (model.call?.mascot ?? .listening) : model.mascotState,
+                           size: min(24, model.menuBar - 6), tappable: false, cycleStart: model.loopStart)
                     .environment(\.kaikuMascotOnDark, true)
                     .frame(width: model.wing)
                 Spacer(minLength: model.notchWidth)
-                Text(Date(), format: .dateTime.hour().minute())
-                    .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(KaikuTokens.Colors.mascotBody)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(width: model.wing)
+                Group {
+                    // In a call the wing is the call's clock (the Dynamic Island's trailing side); else the time.
+                    if inCall, let since = model.call?.since {
+                        Text(since, style: .timer).foregroundStyle(KaikuTokens.Colors.sage)
+                    } else {
+                        Text(Date(), format: .dateTime.hour().minute()).foregroundStyle(KaikuTokens.Colors.mascotBody)
+                    }
+                }
+                .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: model.wing)
             }
             .frame(width: model.notchWidth + 2 * model.wing, height: model.menuBar)
         }
     }
 
     /// Two columns inside the body (`MacIslandLayout`): Kaiku vertically centred left, text + buttons right.
-    private var content: some View {
-        let size = MacIslandLayout.size(expanded: expanded)
-        return HStack(alignment: .center, spacing: MacIslandLayout.gap) {
-            mascot
-            textColumn
+    /// In a call: the small call row instead.
+    @ViewBuilder private var content: some View {
+        if model.state == .call, let call = model.call {
+            callRow(call)
+        } else {
+            let size = MacIslandLayout.size(expanded: expanded)
+            HStack(alignment: .center, spacing: MacIslandLayout.gap) {
+                mascot
+                textColumn
+            }
+            .padding(MacIslandLayout.padding)
+            .frame(width: size.width, height: size.height, alignment: .leading)
         }
-        .padding(MacIslandLayout.padding)
-        .frame(width: size.width, height: size.height, alignment: .leading)
+    }
+
+    /// The call, small: the call's one state word, mute me, end; Kaiku and the elapsed time are in the wings beside
+    /// the notch (on a Mac without a notch, in the row). A click anywhere else brings the popup back.
+    private func callRow(_ call: QuickTalkCall) -> some View {
+        let size = QuickTalkLayout.islandCall
+        return HStack(spacing: KaikuTokens.Space.s3) {
+            if !model.hasNotch {
+                MascotView(state: call.mascot, size: 30, tappable: false, cycleStart: model.loopStart)
+                    .environment(\.kaikuMascotOnDark, true)
+                    .frame(width: 30, height: 30)
+                    .accessibilityHidden(true)
+            } else {
+                Circle().fill(call.micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted).frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+            }
+            HStack(spacing: KaikuTokens.Space.s2) {
+                Text(T(call.status.key)).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                if !model.hasNotch, let since = call.since {   // with a notch the elapsed time is in the wing
+                    Text(since, style: .timer).kText(.footnote).monospacedDigit().foregroundStyle(KaikuTokens.Colors.muted)
+                        .lineLimit(1).fixedSize()
+                        .accessibilityLabel(T("call.a11y.time"))
+                }
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: KaikuTokens.Space.s1)
+            callButton(call.micOn ? "mic.fill" : "mic.slash.fill", T(call.micOn ? "call.mute.me" : "call.unmute.me"),
+                       ink: call.micOn ? KaikuTokens.Colors.ink : KaikuTokens.Colors.clayInk,
+                       fill: call.micOn ? KaikuTokens.Colors.surface2 : KaikuTokens.Colors.clay) { act(.callMute) }
+            callButton("phone.down.fill", T("call.end"), ink: KaikuTokens.Colors.bg, fill: KaikuTokens.Colors.ink) { act(.callEnd) }
+        }
+        .padding(.horizontal, KaikuTokens.Space.s4)
+        .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
+        .onTapGesture { act(.callShow) }
+        .help(T("quick.show"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(T("quick.live"))
+    }
+
+    private func callButton(_ symbol: String, _ label: String, ink: Color, fill: Color, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).kText(.caption, weight: .semibold).foregroundStyle(ink)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(fill))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
     }
 
     /// Before it has come down Kaiku waits above the body (clipped away), so it drops out of the notch.

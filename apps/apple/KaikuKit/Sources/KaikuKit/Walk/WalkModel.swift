@@ -4,27 +4,37 @@ import Observation
 import CoreMotion
 #endif
 
-/// The walk companion (plan 05 §3, §6): Light hunt on a walk, with Meta glasses when they're there. Glasses IMU →
-/// cadence, gait regularity, head-up ratio; sparse brightness → daylight minutes; at the end one
-/// `obs.outing {method: dat_imu | steps}`. A disconnect mid-walk keeps the walk going on the phone (one spoken
-/// notice). A draft is saved every 15 s, so a walk the app never finished (killed) is posted on the next launch.
+/// The walk companion (plan 05 §3, §6): a walk with Kaiku's voice, with Meta glasses when they're there. Glasses
+/// IMU → cadence, gait regularity, head-up ratio; at the end one `obs.outing {method: dat_imu | steps}`. A
+/// disconnect mid-walk keeps the walk going on the phone (one spoken notice). A draft is saved every 15 s, so a
+/// walk the app never finished (killed) is posted on the next launch.
 ///
-/// Talking on the walk: `companion` is a live `Conversation` on the `glasses` surface (intent `walk`) — the mind
-/// gives it the walking persona (very short turns, never "look at your screen") and the walk tools. With Meta
-/// glasses paired over Bluetooth, the glasses' mics and speakers carry it (HFP); without them the phone does.
-/// The walk tells Kaiku what happens as short context events (`[found one · 2 of 3]`, `[walk · 10 min]`); the
-/// person can interrupt Kaiku at any time. Without Live (offline / no key) the scripted voice lines play instead.
+/// Talking on the walk: `companion` is a live `Conversation` (intent and purpose `walk`; surface `glasses` when the
+/// voice is in the ear, `iphone` when the walk runs on the phone). The person's `style` (Calm · Playful · Chatty)
+/// goes with it as `walk_style`; the mind answers with that style's persona, the walk tools and a `WalkGuide`.
+/// A Live session only answers input, so the walk nudges Kaiku with the guide's lines (`WalkNudger`): a look
+/// around while pictures flow, a word after a quiet stretch. Kaiku answers a nudge in words only when there is
+/// something to say; every nudge leaves through `send(_:to:)`, so its answer can be held until it has a real word.
+/// A spotting game (`set_walk_goal` / `log_walk_moment`) is counted here (`goal`), so "two more to find" is true;
+/// the fixed light hunt is one instance of it. The walk tells Kaiku what happens as short context events
+/// (`[spotting game · trees · 2 of 3 found · 1 left]`, `[walk · 10 min]`); the person can interrupt Kaiku at any
+/// time. Without Live (offline / no key) the scripted voice lines play instead.
 @Observable @MainActor
 public final class WalkModel {
     public static let shared = WalkModel()
 
     public private(set) var active = false
     public private(set) var start: Date?
-    public private(set) var found = 0
+    /// The spotting game on this walk, if one is on (Kaiku sets it; the count is kept here).
+    public private(set) var goal: WalkGoal?
+    public var found: Int { goal?.found ?? 0 }
+    /// How Kaiku walks with the person. Stored on this device; sent as `walk_style` when a conversation starts.
+    public var style: WalkStyle { didSet { if style != oldValue { style.store(defaults) } } }
+    /// The style of the conversation that is open now (what the cloud answered with); nil without one.
+    public var liveStyle: WalkStyle? { companion?.session?.walk?.style }
     public private(set) var glasses: GlassesState = .off
     public private(set) var steps: Int?
     public private(set) var finished: Outing?
-    public static let goal = 3
     /// The live companion for this walk (nil when off or unavailable).
     public private(set) var companion: Conversation?
     public var talking: Bool { companion?.isLive == true }
@@ -76,6 +86,19 @@ public final class WalkModel {
     @ObservationIgnored private var latestFrame: (frame: GlassesFrame, at: Date)?
     @ObservationIgnored private var toldSeeing = false
     @ObservationIgnored private var heardInEar = false
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private var nudger = WalkNudger()
+    @ObservationIgnored private var nudgeTask: Task<Void, Never>?
+    /// A conversation was opened on this walk before (a later one is told the walk goes on, not to greet again).
+    @ObservationIgnored private var openedBefore = false
+    /// Tests: the walk's conversation on a fake microphone and a fake Live socket; the draft in a scratch file.
+    @ObservationIgnored var makeConversation: @MainActor (CompanionSurface) -> Conversation = { surface in
+        #if DEBUG
+        if WalkTyped.on { return WalkTyped.conversation(surface) }   // simulator: no microphone, typed lines
+        #endif
+        return Conversation(surface: surface, intent: .walk, purpose: .walk)
+    }
+    @ObservationIgnored var draftFile = WalkModel.draftURL
     #if os(iOS)
     /// Created and used only once a walk starts: touching Core Motion (even `stopUpdates`) outside a walk made
     /// the Motion & Fitness question appear during setup, when the service connected and walk state was cleared.
@@ -83,7 +106,10 @@ public final class WalkModel {
     @ObservationIgnored private var phoneSteps: Int?
     #endif
 
-    public init() {}
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        style = WalkStyle.stored(defaults)
+    }
 
     public var minutes: Int { start.map { Int(Date().timeIntervalSince($0) / 60) } ?? 0 }
 
@@ -97,7 +123,8 @@ public final class WalkModel {
         simulated = adapter?.kind == "mock" || adapter?.kind == "dat-mock"
         active = true
         finished = nil
-        found = 0
+        goal = nil
+        openedBefore = false
         steps = nil
         gait = GaitAnalyzer()
         daylight = DaylightCounter()
@@ -145,6 +172,17 @@ public final class WalkModel {
                 self.tick()
             }
         }
+        nudgeTask?.cancel()
+        nudgeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, self.active else { return }
+                self.nudge()
+            }
+        }
+        #if DEBUG
+        WalkTyped.endLater(self)
+        #endif
     }
 
     func clearFinished() { finished = nil }
@@ -153,6 +191,7 @@ public final class WalkModel {
     func clearForPairingChange() {
         active = false
         ticker?.cancel(); ticker = nil
+        nudgeTask?.cancel(); nudgeTask = nil
         adapterTask?.cancel(); adapterTask = nil
         stopCompanion()
         let previousAdapter = adapter
@@ -162,29 +201,77 @@ public final class WalkModel {
         pedometer?.stopUpdates(); pedometer = nil; phoneSteps = nil
         KaikuLiveActivities.endAllWalks()
         #endif
-        start = nil; finished = nil; found = 0; steps = nil; glasses = .off; scope = nil
+        start = nil; finished = nil; goal = nil; steps = nil; glasses = .off; scope = nil
         camera = .off; cameraNote = nil; latestFrame = nil; summary = nil; worn = nil; voiceProblem = nil
         gait = GaitAnalyzer(); daylight = DaylightCounter()
     }
 
-    /// `byKaiku`: the model's `log_walk_moment` already knows (it heard it), so no context event goes back.
-    public func foundOne(byKaiku: Bool = false) {
-        guard active, found < Self.goal else { return }
-        found += 1
+    /// The person marked a find themselves (walk screen, Dynamic Island, a tap on the glasses). With no game on,
+    /// this starts the fixed light hunt. Kaiku is told the new count.
+    public func foundOne() {
+        guard active else { return }
+        var g = goal ?? .lightHunt
+        guard g.find() else { return }
+        goal = g
+        counted(byKaiku: false)
+    }
+
+    /// After a find. `byKaiku`: the model's `log_walk_moment` gets the count as its result, so no context event
+    /// goes back. A finished game gets the completion moment; without Kaiku's live voice the scripted lines play.
+    private func counted(byKaiku: Bool) {
+        guard let g = goal else { return }
         Haptics.finished()
+        if g.done { app?.celebrate() }
         if talking {
-            if !byKaiku { companion?.context("[found one · \(found) of \(Self.goal)]") }
+            if !byKaiku { companion?.personDid(g.contextLine) }      // the person's own tap: Kaiku's answer is theirs
         } else if let app {
-            VoiceLines.shared.play(found >= Self.goal ? "walk.light_hunt.found" : "walk.light_hunt.\(found + 1)", lang: app.language)
+            if g.done { VoiceLines.shared.play("walk.light_hunt.found", lang: app.language) }
+            else if g.isLightHunt { VoiceLines.shared.play("walk.light_hunt.\(g.found + 1)", lang: app.language) }
         }
+        GlassesLog.shared.log("walk_goal_count", ["found": g.found, "target": g.target, "by_kaiku": byKaiku])
         tick()
+    }
+
+    /// The walk screen's style control. The choice is stored at once; an open conversation is started again in the
+    /// new style (the walk, its count and its minutes go on), because a style is part of how a conversation opens.
+    public func choose(_ s: WalkStyle) {
+        guard s != style else { return }
+        style = s
+        // Not during a quiet walk (the microphone stays closed until the person asks): `setTalking` picks the
+        // new style up when they do.
+        let restart = active && !companionMuted && companion.map { ($0.isLive || $0.phase == .connecting) && $0.walkStyle != s } == true
+        GlassesLog.shared.log("walk_style", ["style": s.rawValue, "restart": restart])
+        if restart, let app { startCompanion(app: app) }
+    }
+
+    // MARK: nudges (the guide's lines → the live conversation)
+
+    /// Once a second while the walk runs: sends the guide's look / quiet line when `WalkNudger` says one is due.
+    /// The guide is kept for the whole conversation, so the timers go on through a token renewal or a reconnect
+    /// (the conversation is `connecting` for a moment: nothing is sent, and the silence starts again after it).
+    func nudge(now: Date = Date()) {
+        guard active, let c = companion else { return }
+        if let guide = c.session?.walk { nudger.guide = guide }
+        let seeing = camera == .streaming && now.timeIntervalSince(lastFrameSent) < 3
+        let words = [c.lastPersonAt, c.lastKaikuAt].compactMap { $0 }.max()
+        guard let n = nudger.next(at: now, .init(phase: c.phase, cameraOn: seeing, paused: app?.isPaused == true,
+                                                 lastWords: words)) else { return }
+        send(n, to: c)
+        GlassesLog.shared.log("walk_nudge", ["kind": n.kind])   // which nudge, never its words or an answer
+    }
+
+    /// The one place a nudge leaves the walk. A declined nudge is not always silent (real sessions: a second or
+    /// two of non-speech sound), so the answering turn is held until its first real word: `Conversation.nudge(_:)`
+    /// sends the context turn and gates the answer. Never `context(_:)` for a nudge.
+    private func send(_ nudge: WalkNudger.Nudge, to c: Conversation) {
+        c.nudge(nudge.text)
     }
 
     /// Quiet walk ↔ talk with Kaiku (button on the walk screen).
     public func setTalking(_ on: Bool) {
         guard active, let app else { return }
         if on {
-            if let c = companion, c.isLive { c.setMuted(false) } else { startCompanion(app: app) }
+            if let c = companion, c.isLive, c.walkStyle == style { c.setMuted(false) } else { startCompanion(app: app) }
         } else {
             companion?.setMuted(true)
         }
@@ -270,6 +357,7 @@ public final class WalkModel {
         guard active, let start else { return }
         active = false
         ticker?.cancel()
+        nudgeTask?.cancel(); nudgeTask = nil
         adapterTask?.cancel(); adapterTask = nil
         let turns = companion?.lines.filter(\.me).count ?? 0
         let frames = GlassesStatus.shared.framesSent
@@ -287,7 +375,7 @@ public final class WalkModel {
         #if os(iOS)
         KaikuLiveActivities.endWalk(contentState)
         #endif
-        Self.clearDraft()
+        clearDraft()
         glasses = .off
         guard let app else { return }
         let saved: Summary.Saved = outing.minutes < 1 ? .tooShort : !app.allowed(.walks) ? .walksOff
@@ -358,7 +446,8 @@ public final class WalkModel {
 
     #if os(iOS)
     private var contentState: WalkActivityAttributes.ContentState {
-        .init(minutes: minutes, found: found, steps: steps ?? phoneSteps, glasses: glasses == .connected)
+        .init(minutes: minutes, found: found, steps: steps ?? phoneSteps, glasses: glasses == .connected,
+              thing: goal?.title, target: goal?.target)
     }
     #endif
 
@@ -384,14 +473,26 @@ public final class WalkModel {
     private func startCompanion(app: AppModel) -> Task<Bool, Never> {
         stopCompanion()
         voiceProblem = nil
-        let c = Conversation(surface: .glasses, intent: .walk)
+        nudger = WalkNudger()
+        toldSeeing = false   // a new conversation has not been told whether pictures are arriving
+        // In the ear (glasses, or any hands-free headset) it is the glasses surface; a walk that runs on the
+        // phone's own speaker says so, and the mind gives the phone the same walk tools.
+        let inEar = adapter != nil || TalkAudio.headsetAvailable != nil
+        let c = makeConversation(inEar ? .glasses : .iphone)
+        c.walkStyle = style
         companion = c
         c.deviceTool = { [weak self] name, args in await self?.walkTool(name, args) ?? .object(["ok": .bool(false)]) }
         c.onCrisis = { [weak self, weak app] in
             Task { await self?.end() }
             app?.crisis(trigger: "phrase")
         }
-        c.onReady = { [weak c] in c?.context("[walk started · the person chose to walk with you: greet them in a few warm words, then mostly listen]") }
+        c.onReady = { [weak self, weak c] in
+            guard let self, let c else { return }
+            c.context(self.openingLine())
+            #if DEBUG
+            WalkTyped.say(into: c)
+            #endif
+        }
         c.onReconnected = { [weak self] in self?.toldSeeing = false }
         if audioTokens.isEmpty {
             audioTokens = TalkAudio.observe { [weak self] ev in
@@ -424,13 +525,44 @@ public final class WalkModel {
         audioTokens = []
     }
 
+    /// What a conversation is told when it opens. The first one greets; a later one on the same walk (after the
+    /// time limit, a lost connection or a new style) carries on, and is told the game that is still on.
+    func openingLine() -> String {
+        defer { openedBefore = true }
+        guard openedBefore else { return "[walk started · the person chose to walk with you: greet them in a few warm words]" }
+        var parts = ["walk goes on", "\(minutes) min", "your voice is back after a short break: no new greeting, carry on"]
+        if let g = goal, !g.done { parts.append("spotting game still on: \(g.thing), \(g.found) of \(g.target) found") }
+        return "[" + parts.joined(separator: " · ") + "]"
+    }
+
+    /// The person's line the latest find was counted for, and what the model was told.
+    private var lastFind: (said: UUID, result: JSONValue)?
+
     /// Device tools on a walk: the model asks, the walk decides.
-    private func walkTool(_ name: String, _ args: [String: JSONValue]) async -> JSONValue {
+    func walkTool(_ name: String, _ args: [String: JSONValue]) async -> JSONValue {
         switch name {
+        case "set_walk_goal":
+            // One game at a time: a new goal replaces the old one. The result is the count Kaiku may speak from.
+            guard let thing = args["thing"]?.string,
+                  let target = args["target"]?.int ?? args["target"]?.string.flatMap(Int.init),
+                  let g = WalkGoal(thing: thing, target: target) else {
+                return .object(["ok": .bool(false), "error": .string("say what to find (thing) and how many (target, 1 to 5)")])
+            }
+            goal = g
+            lastFind = nil
+            GlassesLog.shared.log("walk_goal", ["target": g.target])   // the number only, never the thing
+            tick()
+            return g.goalResult
         case "log_walk_moment":
-            guard found < Self.goal else { return .object(["ok": .bool(true), "found": .number(Double(found)), "goal": .number(Double(Self.goal))]) }
-            foundOne(byKaiku: true)
-            return .object(["ok": .bool(true), "found": .number(Double(found)), "goal": .number(Double(Self.goal))])
+            // One find. Without a game there is nothing to count; a finished game does not count past its target.
+            guard var g = goal else { return WalkGoal.momentWithoutGoal }
+            // At most one counted find for one thing the person said: the model sometimes logs the same find twice
+            // (seen on the real model), and the count must stay what Kaiku says. The second call gets the first's answer.
+            let said = companion?.lines.last(where: \.me)?.id
+            if let said, let last = lastFind, last.said == said { return last.result }
+            if g.find() { goal = g; counted(byKaiku: true) }
+            if let said { lastFind = (said, g.momentResult) }
+            return g.momentResult
         case "express":
             return .object(["ok": .bool(true)])
         case "record_dial":
@@ -439,6 +571,12 @@ public final class WalkModel {
             return .object(["ok": .bool(await app.recordDial(item: item, value: v))])
         case "start_activity":
             let kind = args["kind"]?.string ?? ""
+            // Already walking. The light hunt is the fixed spotting game: it starts unless a game is still on.
+            if kind == "light_hunt", goal?.done != false {
+                goal = .lightHunt
+                tick()
+                return goal?.momentResult ?? .object(["ok": .bool(true)])
+            }
             return .object(["ok": .bool(kind == "walk" || kind == "light_hunt")])
         case "look_at_this":
             // Only true when a frame from the last three seconds really went to Live: never pretend to see.
@@ -478,10 +616,10 @@ public final class WalkModel {
     private func saveDraft() {
         guard let start else { return }
         let d = Draft(id: envelopeID, start: start, lastSeen: Date(), outing: makeOuting(minutes: Date().timeIntervalSince(start) / 60), simulated: simulated, scope: scope)
-        if let data = try? JSONEncoder().encode(d) { try? data.write(to: Self.draftURL, options: .atomic) }
+        if let data = try? JSONEncoder().encode(d) { try? data.write(to: draftFile, options: .atomic) }
     }
 
-    static func clearDraft() { try? FileManager.default.removeItem(at: draftURL) }
+    private func clearDraft() { try? FileManager.default.removeItem(at: draftFile) }
 
     /// On launch: a draft without a running walk means the app was killed mid-walk → post what we had.
     public static func recover(app: AppModel) async { await recover(app: app, from: draftURL) }

@@ -23,6 +23,7 @@ public final class ConversationAudio: @unchecked Sendable {
     private var tapInstalled = false
     /// False: playback only (no microphone permission). The input node is never touched, nothing is captured.
     private var captures = true
+    private var outputMuted = false
 
     /// 16 kHz mono PCM16 chunks (only while the mic is on).
     public var onPCM: ((Data) -> Void)?
@@ -57,8 +58,7 @@ public final class ConversationAudio: @unchecked Sendable {
         }
         if player.engine == nil { engine.attach(player) }
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
-        // `-kaikuMute YES` silences everything (tests, screenshots), Kaiku's live voice included.
-        player.volume = UserDefaults.standard.bool(forKey: "kaikuMute") ? 0 : 1
+        applyVolume()
         do {
             if captures { try installTap() }
             engine.prepare()
@@ -81,6 +81,19 @@ public final class ConversationAudio: @unchecked Sendable {
         flush()
         player.stop()
         engine.stop()
+    }
+
+    /// Kaiku's voice unheard (the person muted it): the buffers still play at volume 0, so timing, "speaking"
+    /// and barge-in behave as usual and unmuting mid-sentence is heard at once.
+    public func setOutputMuted(_ on: Bool) {
+        lock.lock(); outputMuted = on; lock.unlock()
+        applyVolume()
+    }
+
+    /// `-kaikuMute YES` silences everything (tests, screenshots), Kaiku's live voice included.
+    private func applyVolume() {
+        lock.lock(); let off = outputMuted; lock.unlock()
+        player.volume = off || UserDefaults.standard.bool(forKey: "kaikuMute") ? 0 : 1
     }
 
     /// Before `start()`: false opens the voice for playback only (typed conversation without the microphone).

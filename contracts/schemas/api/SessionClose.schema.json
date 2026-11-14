@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "description": "POST /v1/companion/close — the device says a conversation stopped and how long it ran. The cloud never\nsees the audio socket, so this is what brings the Live budget reservation down to the time really used\n(whole started minutes, at least one, never more than was reserved). Send it once when the conversation\nends, whatever ended it; sending it again is harmless. It changes nothing else about the session.",
+  "properties": {
+    "elapsed_s": {
+      "description": "seconds from the conversation's start to its end, across every token it used",
+      "maximum": 86400,
+      "minimum": 0,
+      "title": "Elapsed S",
+      "type": "number"
+    },
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "CompanionSessionResponse.session_id",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "home_id",
+    "session_id",
+    "elapsed_s"
+  ],
+  "title": "SessionClose",
+  "type": "object"
+}

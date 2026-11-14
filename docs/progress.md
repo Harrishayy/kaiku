@@ -1204,3 +1204,71 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: voice input in the check-in, the sound of the goodbye, and typed-only audio without microphone
   permission are unproven on a real phone; the walk and breathe chips are unit-tested only. On a fresh home the
   cloud still hints that the questionnaire is due during a check-in (cloud to drop it for `check_in`).
+
+## 2026-11-14 16:00 EET — Claude Code — cloud (C), contracts, config, evals: the walk companion and one mind
+- Did:
+  - **Walk styles:** `CompanionSessionRequest.walk_style` (`quiet | playful | chatty`, default from `[walk]`) and
+    `CompanionSessionResponse.walk` (`WalkGuide`: when the device nudges and with what words, per style). Persona
+    section "Walking together"; per-style limits in `config/surfaces.toml`. On an extra-gentle day the day's tone
+    comes before the style.
+  - **Seeing and knowing:** the walk card carries the person's outdoor favourites (`outdoor_likes`); what is in
+    view is connected to them as a question; a new favourite is kept only from the person's words (D45, D43 kept).
+  - **Tools:** `set_walk_goal` and `log_walk_moment` (the device keeps the count), `suggest_activity` (a card in the
+    conversation on iPhone and Mac). `Activity` now lists what the apps really have.
+  - **One mind:** `GET /v1/me/invitation` + `POST /v1/me/invitation/answer`: one thing a day Kaiku would like to
+    bring up or offer, chosen by rule, the same on every device. A test follows a favourite place and a `feel`
+    follow-up from a glasses walk to the next iPhone, Mac and robot cards, and a robot memory to the next walk.
+  - **Calls:** talks and walks up to 30 minutes on 5-minute tokens through the existing resume; `idle_end_s`
+    (180, 900 on a walk); the questionnaire hint is off during a check-in.
+- Verified: `make check` 920 passed; dry companion evals 62/62; four real walk evals pass. Real Live runs with
+  stock landscape pictures as frames: a dull road got no words in any style, a lone tree got "Is that your
+  favourite tree up there?", the chatty style spoke after a quiet stretch.
+- Broken/blocked: a declined nudge still carried 0.7 to 2.8 s of non-speech sound in 9 of 14 real runs, so the
+  device must hold and drop that audio (Apple, in progress). One connection came as a statement, not a question.
+  A real 30-minute call has not been run. Live budget reservations are not refunded when a call ends early.
+
+## 2026-11-14 17:10 EET — Claude Code — cloud (C), contracts, evals: budget settles to real talk time; spotting order
+- Did:
+  - **Live budget (D46):** a voice session's reservation settles to the whole minutes it really ran (append-only
+    `live_settlement` rows; signals: `end_session`, a resume, `POST /v1/companion/close`, a recorded episode;
+    longest evidence wins; a session that never reports keeps its full hold). One-off
+    `kaiku_cloud.jobs.settle_live` for old rows, applied to the local ledger: 14 of 27 holds settled, $5.52
+    released ($27.23 to $21.71). Agents' test services now use their own ledger file. `[budget]` 40 / 38 at the
+    lead's request.
+  - **Spotting game order (D47):** the goal is set the moment a game is taken up, one log per find, a count is
+    said only from a tool result; `WalkMomentResult.note`; an eval scenario for "Kaiku proposes, the person's
+    next words are a find".
+  - **Demo reset** now also clears a wiped home's thread markers and invitation state, so a same-day reseed
+    brings the seeded person's invitation back.
+  - `modules.toml`: the Apple app's invitation routes; `docs/privacy.md`: invitation and walk-style rows.
+- Verified: `make check` 973 passed; dry evals 63/63. Real Live, playful walk, typed lines: `set_walk_goal` came
+  first in 6 of 6 sessions; spoken counts matched the tool results in 3 of 3 when one frame of tool calls was
+  answered in one frame, and ran one ahead in 3 of 3 with one frame per call.
+- Broken/blocked: the Apple app still answers one frame per call (in progress), and does not call the close
+  route yet, so its sessions keep the full hold until it does.
+
+## 2026-11-14 18:20 EET — Claude Code — apple (A): Talk is a call; the walk on the device; quick talk on the Mac
+- Did:
+  - **Talk is a call** (iPhone and Mac, Talk and the check-in chat): mute me and mute Kaiku independently
+    (`Conversation.setVoiceMuted`), captions of both sides always, a call bar (elapsed time, state, the two mutes,
+    type, end), no page title or filler text. One activity card for `suggest_activity` and the `feel` offer.
+  - **Outside the app (iPhone):** the call keeps running in the background and locked; a Live Activity on the
+    Lock Screen and in the Dynamic Island with mute, mute Kaiku and end; it ends by itself after `idle_end_s` of
+    quiet in the background. Long calls move to the next token quietly; `POST /v1/companion/close` on every stop.
+  - **`<no speech>`:** the real model sends the marker in pieces; a marker filter follows it across fragments, and
+    every model turn the person did not cause is held until it has a real word (a declined nudge is never heard
+    and makes no bubble). One `toolResponse` frame per `toolCall` frame; one counted find per utterance.
+  - **Walk:** Calm / Playful / Chatty picker, nudges from the cloud's `WalkGuide`, the spotting goal card
+    (`set_walk_goal`, `log_walk_moment`), the goal on the walk's Live Activity; **Today's invitation** card.
+  - **Mac quick talk:** a thin bar at the left screen edge, a two-button pill on hover, a popup with Kaiku and
+    live captions on a double tap of Control or Option-Shift-Space (no permission needed), reactions from real
+    events, and the call in the notch island while the popup is put away.
+- Verified: `swift test` 309 passed (11 opt-in skipped); iOS and Mac build; `make check` 973 passed. Simulator,
+  typed input, real Live: a 4 min 48 s call across a token renewal while locked, each reply shown as the Lock
+  Screen caption, ended from the Lock Screen; a locked silent call ended itself at 180 s; in a walk-style run 5
+  declined turns played 0 s and made no bubble while 3 worded turns played in full. One three-minute walk with
+  Meta's mock glasses. Installed on the lead's phone, not launched.
+- Broken/blocked: nothing here has been spoken to through a real microphone or heard on a real speaker or the
+  glasses; quick talk has not been triggered by real key presses; Lock Screen buttons with a passcode, a call
+  past ten minutes and the one-frame tool answer on the real model are unproven. Opening an activity card leaves
+  Talk, which ends the call.

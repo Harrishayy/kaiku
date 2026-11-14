@@ -2,11 +2,14 @@ import SwiftUI
 
 /// Today: greeting + not-OK, Kaiku in its time-of-day glow with the one suggestion, primary + "not today", Weather
 /// check (sky) + Breathe (sage) rows, garden. One viewport: two columns on the Mac window, a compact stack on
-/// iPhone. Mascot mood from /v1/me; loading → thinking; offline → sky banner.
+/// iPhone. Mascot mood from /v1/me; loading → thinking; offline → sky banner. When the cloud has an invitation
+/// (`InvitationModel`), its card stands where Kaiku's line is until it is answered.
 public struct TodayView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.kaikuPaneWidth) private var width
+    @Environment(\.scenePhase) private var scenePhase
     @State private var declined = false
+    @State private var invite = InvitationModel()
 
     public init() {}
 
@@ -35,20 +38,56 @@ public struct TodayView: View {
                     if wide {
                         VStack(spacing: KaikuTokens.Space.s4) {
                             GlowingMascot(state: app.ambientState, size: KaikuTokens.Size.mascotL)
-                            Bubble(bubble, big: true, centered: true)
+                            if let inv = invite.invitation {
+                                invitationCard(inv, mascot: false)
+                            } else {
+                                Bubble(bubble, big: true, centered: true)
+                            }
                         }
                         .frame(maxWidth: .infinity)
+                    } else if let inv = invite.invitation {
+                        invitationCard(inv, mascot: true)
                     } else {
                         MascotWithBubble(state: app.ambientState, text: bubble, size: KaikuTokens.Size.mascotM, big: true)
                     }
                 }
-                actions
+                .animation(gently, value: invite.invitation?.id)   // the card arrives and leaves softly
+                if invite.invitation == nil { actions }
             } trailing: {
                 TodayPathCard()
                 GardenCard(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
             }
         }
-        .refreshable { await app.refresh() }
+        .refreshable { await app.refresh(); await loadInvitation() }
+        .task(id: app.pairingRevision) { await loadInvitation() }
+        .onChange(of: scenePhase) { _, p in if p == .active { Task { await loadInvitation() } } }
+    }
+
+    // MARK: invitation (one thing Kaiku would like to bring up or offer now)
+
+    private var gently: Animation { KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast) }
+
+    private func loadInvitation() async { await invite.load(app: app) }
+
+    private func invitationCard(_ inv: Invitation, mascot: Bool) -> some View {
+        InvitationCard(invitation: inv, showsMascot: mascot, waiting: invite.sending,
+                       hear: { VoiceLines.shared.say(inv.text, lang: app.language) },
+                       yes: { answer(.yes) }, notNow: { answer(.not_now) })
+            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+    }
+
+    /// Yes: the answer goes to the service, then the screen it leads to opens. Not now: the card leaves and Kaiku
+    /// says it will be here.
+    private func answer(_ a: InvitationAnswer.Answer) {
+        VoiceLines.shared.stop()
+        if a == .not_now { declined = true }
+        Task {
+            switch await invite.answer(a, app: app) {
+            case .talk?: app.selectedTab = .talk
+            case .route(let r)?: app.deepLink = r; app.selectedTab = r.tab
+            case nil: break
+            }
+        }
     }
 
     @ViewBuilder private var actions: some View {

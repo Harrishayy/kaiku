@@ -20,8 +20,7 @@ final class KaikuFlowTests: XCTestCase {
         app.buttons["Today"].tap()
         app.staticTexts["Weather check"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Checking in"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["Type a message"].waitForExistence(timeout: 20), "the chat is there to answer in words")
-        XCTAssertTrue(app.staticTexts["Or just turn the dials"].exists, "and the dials are on the same screen, never a gate")
+        XCTAssertTrue(app.staticTexts["Or just turn the dials"].waitForExistence(timeout: 20), "the dials are on the same screen, never a gate")
         let done = app.buttons["That's it"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         for _ in 0..<6 where !done.isHittable { app.swipeUp() }

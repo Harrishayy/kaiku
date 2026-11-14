@@ -103,7 +103,8 @@ def open_items(events: list[dict[str, Any]], now: datetime) -> list[str]:
 
 
 def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = "talk", language: str | None = None,
-               others_present: bool = False, now: datetime | None = None, purpose: str | None = None) -> ContextCard:
+               others_present: bool = False, now: datetime | None = None, purpose: str | None = None,
+               walk_style: str | None = None) -> ContextCard:
     now = now or datetime.now(UTC)
     local = now.astimezone(TZ)
     known = home_id in store.home_ids()
@@ -128,7 +129,9 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
         first_name=memory.first_name(store, home_id),
         done_today=done_today(events, store.episodes(home_id), now),
         source_context=list(prepared_sources.values())[:4],
-        suggestion=SUGGESTION.get(arm), phq9_due=service.phq9_due(data, settings.phq9_every_days, local.date()),
+        suggestion=SUGGESTION.get(arm),
+        # not in a check-in: it is a passing chat, and the device refuses start_phq9 there
+        phq9_due=purpose != "check_in" and service.phq9_due(data, settings.phq9_every_days, local.date()),
         memories=[m["text"] for m in mems], routines=memory.routines(store, home_id, now, TZ),
         open_thread=thread["topic"] if thread and not others_present else None,
         tone=tone_for(row), others_present=others_present, dont_remember=not memory.remembering(store, home_id))
@@ -152,6 +155,11 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
             card.chat_depth = "stay" if hard or affect.heavy_days(store, home_id, now) >= HEAVY_DAYS else "brief"
         if purpose == "check_in":
             card.open_items = open_items(events, now)  # type: ignore[assignment]
+    if walk_style:
+        from . import walk
+
+        card.walk_style = walk_style  # type: ignore[assignment]
+        card.outdoor_likes = walk.outdoor_likes(store, home_id) if keep else []
     if purpose:
         card.purpose = purpose  # type: ignore[assignment]
         if purpose in ("check_in", "talk") and card.chat_depth is None:

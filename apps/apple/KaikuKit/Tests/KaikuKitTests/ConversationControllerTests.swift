@@ -144,7 +144,8 @@ private final class ConversationHTTP: URLProtocol {
         live.event?(.ready); await settle()
         XCTAssertTrue(audio.mic)
         audio.onPCM?(pcm); await settle(); XCTAssertEqual(live.sent, [pcm], "production controller must wire capture into Live")
-        live.event?(.audio(pcm)); await settle(); XCTAssertEqual(audio.played, [pcm])
+        live.event?(.audio(pcm)); await settle(); XCTAssertTrue(audio.played.isEmpty, "a turn of Kaiku's own is held until its first real word")
+        live.event?(.kaikuText("Hello. ")); await settle(); XCTAssertEqual(audio.played, [pcm])
         live.event?(.interrupted); await settle(); XCTAssertFalse(audio.isPlaying)
         c.setMuted(true); audio.onPCM?(pcm); await settle(); XCTAssertEqual(live.sent.count, 1)
         c.pause(); c.setMuted(false); audio.onPCM?(pcm); await settle(); XCTAssertEqual(c.phase, .paused); XCTAssertEqual(live.sent.count, 1)
@@ -336,7 +337,7 @@ private final class ConversationHTTP: URLProtocol {
         let (app, audio, live, c, dir) = fixture(); defer { try? FileManager.default.removeItem(at: dir) }
         _ = await c.start(app: app); live.event?(.ready); await settle()
         ConversationHTTP.eventsJSON = #"{"events":[{"v":1,"id":"event1","ts":"2026-11-14T00:00:00Z","home_id":"synthetic","source":"hub","type":"obs.self_report","sim":false,"payload":{"item":"mood","value":1,"private":"sensitive words"}}]}"#
-        live.event?(.audio(Data([0, 0]))); await settle()
+        live.event?(.audio(Data([0, 0]))); live.event?(.kaikuText("One moment. ")); live.event?(.turnComplete); await settle()
         await c.refreshContext(); XCTAssertTrue(live.contexts.isEmpty)
         audio.flush(); await settle()
         XCTAssertEqual(live.contexts.count, 1)

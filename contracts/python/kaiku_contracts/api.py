@@ -20,6 +20,7 @@ from .companion_tools import (
     Surface,
     Tone,
     Valence,
+    WalkStyle,
 )
 from .criteria import Criteria
 from .envelope import Envelope
@@ -302,6 +303,34 @@ class MeResponse(ApiModel):
 VoiceLang = Literal["en", "fi", "sv"]
 
 
+class Invitation(ApiModel):
+    """One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from
+    config/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk
+    (kind talk_about: the session card already carries the thread) or the screen for `activity`."""
+
+    id: str = Field(description="send it back in the answer; an answered item is never offered again")
+    kind: Literal["talk_about", "activity"]
+    text: str = Field(max_length=200)
+    voice_key: str = Field(description="the template used; speak `text` with POST /v1/voice/say")
+    topic: str | None = Field(default=None, description="talk_about: what was left open")
+    activity: Activity | None = Field(default=None, description="activity: which screen")
+
+
+class InvitationResponse(ApiModel):
+    """GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when
+    today's was answered, or on an extra-gentle day with nothing to talk about."""
+
+    home_id: str
+    invitation: Invitation | None = None
+
+
+class InvitationAnswer(ApiModel):
+    """POST /v1/me/invitation/answer — yes: the device opens it. not_now: final. Either way the item is settled."""
+
+    id: str
+    answer: Literal["yes", "not_now"]
+
+
 class VoiceLinesResponse(ApiModel):
     """GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.
     Audio for one line: GET /v1/voice/{line_key}?lang= (audio/wav, cached; 503 + JSON hint without a TTS key)."""
@@ -457,6 +486,51 @@ class FeelPlan(ApiModel):
         "`response.scheduling` so the model answers with the plan as soon as it is idle")
 
 
+class WalkGuide(ApiModel):
+    """CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the
+    device nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and
+    nobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge
+    is not used in this style. Values: config/kaiku.toml [walk].
+    Kaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not
+    always silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),
+    so the device holds the audio of a nudge's reply until its first output transcription fragment and plays it
+    only when that fragment has a real word."""
+
+    style: WalkStyle
+    look_every_s: int | None = Field(default=None, ge=1)
+    look_prompt: str | None = None
+    quiet_after_s: int | None = Field(default=None, ge=1)
+    quiet_prompt: str | None = None
+
+
+class ActivityCardResult(ApiModel):
+    """What the device returns for `suggest_activity`. shown=false: a card is already up, or they said no before."""
+
+    ok: bool
+    shown: bool = False
+
+
+class WalkGoalResult(ApiModel):
+    """What the device returns for `set_walk_goal`: the count it keeps."""
+
+    thing: str = Field(max_length=30)
+    target: int = Field(ge=1, le=5)
+    found: int = Field(default=0, ge=0)
+    left: int = Field(ge=0)
+
+
+class WalkMomentResult(ApiModel):
+    """What the device returns for `log_walk_moment` (one find). Without a goal: ok=true, the counts null, and
+    `note` tells the model that nothing was counted and to call `set_walk_goal` first, then log the find again."""
+
+    ok: bool
+    thing: str | None = None
+    found: int | None = Field(default=None, ge=0)
+    target: int | None = None
+    left: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, description="for the model, when there was no goal to count against")
+
+
 class ChatShape(ApiModel):
     """How this conversation should run, for the device: the same guidance the model reads in its instruction."""
 
@@ -493,6 +567,9 @@ class ContextCard(ApiModel):
     chat_depth: ChatDepth | None = Field(default=None, description="check-in sessions: how the chat should open")
     open_items: list[CheckinItem] = Field(default_factory=list, max_length=3, description="check-in sessions: dials "
                                           "not answered today; at most one is woven into the chat")
+    walk_style: WalkStyle | None = Field(default=None, description="walk sessions: how Kaiku walks with them")
+    outdoor_likes: list[str] = Field(default_factory=list, max_length=4, description="walk sessions: outdoor things "
+                                     "and places the person told Kaiku they like, in their words (notebook)")
     others_present: bool = False
     dont_remember: bool = False
 
@@ -507,6 +584,9 @@ class CompanionSessionRequest(ApiModel):
     purpose: Purpose | None = Field(default=None, description="why the conversation was opened. check_in: a small "
                                     "passing chat alongside the periodic check-in (see chat_shape). Omitted = "
                                     "today's behaviour for the intent")
+    walk_style: WalkStyle | None = Field(default=None, description="with purpose walk: quiet (mostly listens), "
+                                         "playful (one small game at a time) or chatty (keeps a gentle "
+                                         "conversation going). Omitted = config/kaiku.toml [walk].default_style")
 
 
 class LiveToken(ApiModel):
@@ -546,6 +626,9 @@ class CompanionSessionResponse(ApiModel):
         "voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame "
         "{setup: live_setup}; clients must apply this complete setup.")
     chat_shape: ChatShape | None = Field(default=None, description="present when the request named a purpose")
+    walk: WalkGuide | None = Field(default=None, description="present when the purpose is walk")
+    idle_end_s: int | None = Field(default=None, ge=1, description="the device ends the conversation by itself after "
+                                   "this long with nobody speaking (an open microphone in a pocket); longer on a walk")
 
 
 class CompanionToolCall(ApiModel):
@@ -633,6 +716,25 @@ class EpisodeResult(ApiModel):
     ok: bool
     id: str
     transcript_stored: bool = False
+
+
+class SessionClose(ApiModel):
+    """POST /v1/companion/close — the device says a conversation stopped and how long it ran. The cloud never
+    sees the audio socket, so this is what brings the Live budget reservation down to the time really used
+    (whole started minutes, at least one, never more than was reserved). Send it once when the conversation
+    ends, whatever ended it; sending it again is harmless. It changes nothing else about the session."""
+
+    home_id: str
+    session_id: str = Field(description="CompanionSessionResponse.session_id")
+    elapsed_s: float = Field(ge=0, le=86400, description="seconds from the conversation's start to its end, "
+                                                         "across every token it used")
+
+
+class SessionCloseResult(ApiModel):
+    ok: bool
+    session_id: str
+    settled: int = Field(description="Live reservations this call settled or corrected (0: nothing to change)")
+    billed_minutes: float = Field(description="started minutes now counted for this conversation")
 
 
 class Transcript(ApiModel):

@@ -44,69 +44,72 @@ final class CheckInStateTests: XCTestCase {
         XCTAssertEqual(CheckInState.dialLine(mood: 1, energy: 5, sleep: 5), "checkin.dials.low")
     }
 
-    func testOfferTakenStartsTheActivityAndIgnoredJustGoesAway() {
+    func testOpeningTheCardCounts() {
         var s = CheckInState()
         _ = s.apply(.personSpoke)
-        _ = s.apply(.plan(FeelPlan(stance: "comfort", depth: .stay, mayOffer: "a short walk in daylight", offerActivity: "walk")), phone: true)
-        XCTAssertNil(s.offer, "never in Kaiku's first reply to the feeling")
-        XCTAssertEqual(s.apply(.offerTaken), [], "nothing to take yet")
-        XCTAssertEqual(s.apply(.personSpoke), [])
-        XCTAssertEqual(s.offer?.route, .walk, "once they have been heard, it is there")
-        XCTAssertEqual(s.offer?.label(.en), "A short walk in daylight?", "the chip says what the plan may offer")
-        XCTAssertEqual(s.offer?.label(.fi), "Lyhyt kävely?")
-        for _ in 0..<5 { XCTAssertEqual(s.apply(.personSpoke), [], "ignoring it changes nothing") }
-        XCTAssertEqual(s.offer?.route, .walk)
-        XCTAssertNil(s.end)
-        _ = s.apply(.plan(FeelPlan(stance: "comfort", depth: .stay)), phone: true)
-        XCTAssertNil(s.offer, "a plan that offers nothing takes the chip away")
-
-        _ = s.apply(.plan(FeelPlan(mayOffer: "a few slow breaths together", offerActivity: "breathe")), phone: true)
-        _ = s.apply(.personSpoke)
-        XCTAssertEqual(s.apply(.offerTaken), [.tick, .start(.breathe)])
+        XCTAssertEqual(s.apply(.cardOpened), [.tick], "the person asked: the check-in counts")
         XCTAssertEqual(s.end, .offer)
-        XCTAssertEqual(s.apply(.offerTaken), [], "nothing left to take")
     }
 
-    func testTheQuietOfferStartsNothingAndKeepsKaikuThere() {
-        var s = CheckInState()
-        _ = s.apply(.personSpoke)
-        _ = s.apply(.plan(FeelPlan(stance: "comfort", mayOffer: "sitting quietly together for a minute")))
-        _ = s.apply(.personSpoke)
-        let offer = s.offer
-        XCTAssertEqual(offer?.kind, "quiet")
-        XCTAssertNil(offer?.route, "no activity behind it")
-        XCTAssertEqual(offer?.label(.en), "Sitting quietly together for a minute?")
-        XCTAssertEqual(s.apply(.offerTaken), [.accepted(offer!)])
-        XCTAssertTrue(offer!.acceptance.contains("sit quietly together"))
-        XCTAssertTrue(s.sittingQuietly)
-        XCTAssertTrue(s.staying, "sitting together has no clock")
-        XCTAssertNil(s.end)
-        XCTAssertFalse(s.ticked)
-        XCTAssertEqual(s.apply(.personSpoke), [])
-        XCTAssertFalse(s.sittingQuietly, "their next words bring the chat back")
+    func testTheActivityCardIsOneComponentForBothSources() {
+        // from the tool
+        XCTAssertEqual(ActivityCard(kind: "lantern", phone: true)?.route, .lantern)
+        XCTAssertEqual(ActivityCard(kind: "seeds", phone: true)?.route, .seeds)
+        XCTAssertEqual(ActivityCard(kind: "watering", phone: false)?.route, .watering)
+        XCTAssertEqual(ActivityCard(kind: "walk", phone: true)?.route, .walk)
+        XCTAssertNil(ActivityCard(kind: "walk", phone: false), "the Mac has no walk")
+        XCTAssertNil(ActivityCard(kind: "drum", phone: true), "the drum is the robot's")
+        XCTAssertNil(ActivityCard(kind: "light_hunt", phone: true))
+        let breathe = ActivityCard(kind: "breathe", line: " A few slow breaths? ")
+        XCTAssertEqual(breathe?.line, "A few slow breaths?")
+        XCTAssertEqual(breathe?.minutes, 1)
+        XCTAssertEqual(breathe?.openedText, "The person opened the breathe card.")
+        XCTAssertEqual(breathe?.asideText, "The person put the breathe card aside.")
+        XCTAssertEqual(ActivityCard(kind: "pebbles")?.minutes, 2)
+        // from the plan
+        XCTAssertNil(ActivityCard(plan: FeelPlan(stance: "celebrate")), "nothing offered: no card")
+        XCTAssertNil(ActivityCard(plan: FeelPlan(offerActivity: "breathe")), "no words for it: no card")
+        let walk = ActivityCard(plan: FeelPlan(mayOffer: "a short walk in daylight", offerActivity: "walk"), phone: true)
+        XCTAssertEqual(walk?.route, .walk)
+        XCTAssertEqual(walk?.line, "A short walk in daylight?")
+        // An offer with no screen on this device stays Kaiku's spoken words: no card.
+        XCTAssertNil(ActivityCard(plan: FeelPlan(mayOffer: "sitting quietly together for a minute")), "offer_activity is null")
+        XCTAssertNil(ActivityCard(plan: FeelPlan(mayOffer: "a short drum jam with the robot", offerActivity: "drum"), phone: true))
+        XCTAssertNil(ActivityCard(plan: FeelPlan(mayOffer: "a short walk", offerActivity: "walk"), phone: false))
     }
 
-    func testOffersThisDeviceCannotStartStartNothing() {
-        XCTAssertNil(CheckInOffer(FeelPlan(stance: "celebrate")), "nothing offered: no chip")
-        XCTAssertNil(CheckInOffer(FeelPlan(offerActivity: "breathe")), "no words for it: no chip")
-        let onMac = CheckInOffer(FeelPlan(mayOffer: "a short walk in daylight", offerActivity: "walk"), phone: false)
-        XCTAssertEqual(onMac?.kind, "other", "the Mac has no walk")
-        XCTAssertNil(onMac?.route)
-        let drum = CheckInOffer(FeelPlan(mayOffer: "a short drum jam with the robot", offerActivity: "drum"), phone: true)
-        XCTAssertEqual(drum?.label(.en), "A short drum jam with the robot?")
-        XCTAssertTrue(drum?.acceptance.contains("cannot be started on this device") == true)
-        var s = CheckInState()
-        _ = s.apply(.personSpoke)
-        _ = s.apply(.plan(FeelPlan(mayOffer: "a short drum jam with the robot", offerActivity: "drum")))
-        _ = s.apply(.personSpoke)
-        XCTAssertEqual(s.apply(.offerTaken), [.accepted(drum!)])
+    func testTheCallHasOneShortStateAndTheIdleScreenOneLineAndOneAction() {
+        typealias S = CallStatus
+        XCTAssertEqual(S(phase: .connecting, listens: true, micMuted: false, kaikuSpeaking: false), .connecting)
+        XCTAssertEqual(S(phase: .listening, listens: true, micMuted: false, kaikuSpeaking: false), .listening)
+        XCTAssertEqual(S(phase: .hearing, listens: true, micMuted: false, kaikuSpeaking: false), .listening)
+        XCTAssertEqual(S(phase: .muted, listens: true, micMuted: true, kaikuSpeaking: false), .muted)
+        XCTAssertEqual(S(phase: .muted, listens: true, micMuted: true, kaikuSpeaking: true), .speaking, "Kaiku speaking shows even while I am muted")
+        XCTAssertEqual(S(phase: .muted, listens: false, micMuted: true, kaikuSpeaking: false), .micOff)
+        XCTAssertEqual(S(phase: .paused, listens: true, micMuted: false, kaikuSpeaking: true), .paused)
+        XCTAssertEqual(S(phase: .thinking, listens: true, micMuted: false, kaikuSpeaking: false), .thinking)
 
-        var d = CheckInState()
-        _ = d.apply(.dials(mood: 2, energy: 2, sleep: 2))
-        _ = d.apply(.plan(FeelPlan(mayOffer: "sitting quietly together for a minute")))
-        XCTAssertEqual(d.offer?.kind, "quiet", "after the dials the offer shows at once: nothing more is being said")
-        XCTAssertFalse(s.sittingQuietly)
-        XCTAssertNil(s.end)
+        typealias R = Conversation.UnavailableReason
+        func idle(_ mode: TalkModel.Mode, _ reason: R?, paired: Bool = true, lines: Bool = false, live: Bool = false) -> (String, TalkView.IdleAction?) {
+            let s = TalkView.idleState(mode: mode, reason: reason, paired: paired, hasLines: lines, everLive: live)
+            return (s.line, s.action)
+        }
+        XCTAssertTrue(idle(.connecting, nil) == ("talk.connecting", nil))
+        XCTAssertTrue(idle(.scripted, R.pairing, paired: false) == ("call.line.unpaired", .connect))
+        XCTAssertTrue(idle(.denied, R.microphone) == ("talk.unavailable.microphone", .settings))
+        XCTAssertTrue(idle(.scripted, R.paused) == ("call.line.paused", nil))
+        XCTAssertTrue(idle(.scripted, R.connection) == ("call.line.connection", .retry))
+        XCTAssertTrue(idle(.scripted, R.voice) == ("call.line.voice", .retry))
+        XCTAssertTrue(idle(.scripted, R.connection, lines: true, live: true) == ("talk.unavailable.dropped", .retry))
+        XCTAssertTrue(idle(.ended, nil) == ("call.ended", .call))
+
+        // The Lock Screen caption is the newest words, never cut mid-word.
+        XCTAssertEqual(CallSurface.tail("Good to see you."), "Good to see you.")
+        let long = "That sounds like a gentle way to spend the time. Do you want company on your walk, or would you prefer to just have your thoughts?"
+        let tail = CallSurface.tail(long, limit: 60)
+        XCTAssertTrue(tail.hasPrefix("…") && tail.hasSuffix("have your thoughts?"))
+        XCTAssertLessThanOrEqual(tail.count, 61)
+        XCTAssertTrue(long.contains(" " + tail.dropFirst()), "it starts at a word")
     }
 
     func testAnActivityStartsOnlyOnThePersonsWord() {
@@ -173,7 +176,7 @@ final class CheckInStateTests: XCTestCase {
         XCTAssertEqual(plan, FeelPlan(stance: "comfort", depth: .stay, mayOffer: "a few slow breaths together", offerActivity: "breathe"))
         let glad = FeelPlan(result: .object(["stance": .string("celebrate"), "depth": .string("stay"), "may_offer": .null, "offer_activity": .null]))
         XCTAssertTrue(glad?.isGoodNews == true)
-        XCTAssertNil(glad.flatMap { CheckInOffer($0) })
+        XCTAssertNil(glad.flatMap { ActivityCard(plan: $0) })
         let card = try? JSONDecoder().decode(ContextCard.self, from: Data(#"{"time_of_day":"morning","purpose":"check_in","chat_depth":"stay","open_items":["sleep"],"today_facts":["a short night"],"last_reflection":{"when":"yesterday evening","valence":"low","themes":["sleep"],"declined":false,"tone":["flat"],"energy":null,"heard":null}}"#.utf8))
         XCTAssertEqual(card?.purpose, "check_in")
         XCTAssertEqual(card?.chat_depth, "stay")
@@ -226,6 +229,7 @@ private final class ChatTransport: ConversationTransport, @unchecked Sendable {
     var text: [String] = []
     var contexts: [String] = []
     var results: [String] = []
+    var values: [JSONValue] = []
     var closed = false
     func connect(token: String, session: CompanionSessionResponse, options: LiveSession.Options) {}
     func close() { closed = true }
@@ -233,7 +237,7 @@ private final class ChatTransport: ConversationTransport, @unchecked Sendable {
     func audioStreamEnd() {}
     func sendText(_ text: String) { self.text.append(text) }
     func sendContext(_ event: String) { contexts.append(event) }
-    func respond(id: String, name: String, result: JSONValue) { results.append(name) }
+    func respond(id: String, name: String, result: JSONValue) { results.append(name); values.append(result) }
 }
 
 private final class ChatHTTP: URLProtocol {
@@ -442,7 +446,7 @@ private final class ChatHTTP: URLProtocol {
         XCTAssertNotEqual(chat.phase, .thinking)
         XCTAssertEqual(live.results, ["feel"], "the plan goes back to the model")
         XCTAssertTrue(chat.state.staying)
-        XCTAssertNil(chat.state.offer, "Kaiku meets the feeling first")
+        XCTAssertNil(chat.card, "Kaiku meets the feeling first")
         XCTAssertEqual(chat.talk.conversation.toolsUsed, ["feel"])
 
         // Ignored: the person just carries on, for as long as they like; the chip waits quietly.
@@ -450,14 +454,15 @@ private final class ChatHTTP: URLProtocol {
             live.event?(.turnComplete)
             live.event?(.userText("And another thing, \(i).")); live.event?(.userTranscriptComplete); await settle()
         }
-        XCTAssertEqual(chat.state.offer?.kind, "breathe")
-        XCTAssertEqual(chat.state.offer?.label(.en), "A few slow breaths together?")
+        XCTAssertEqual(chat.card?.kind, "breathe")
+        XCTAssertEqual(chat.card?.line, "A few slow breaths together?")
         XCTAssertNil(chat.state.end)
         XCTAssertTrue(chat.state.staying)
         XCTAssertFalse(app.weatherDoneToday, "nothing is ticked while the chat is still going")
 
         // Taken: the activity starts and the check-in counts.
-        chat.takeOffer()
+        chat.openCard()
+        XCTAssertEqual(live.contexts.last, "The person opened the breathe card.")
         XCTAssertEqual(app.deepLink, .breathe)
         XCTAssertEqual(chat.state.end, .offer)
         XCTAssertTrue(app.weatherDoneToday)
@@ -472,7 +477,7 @@ private final class ChatHTTP: URLProtocol {
         live.event?(.toolCall(id: "a", name: "feel", args: [:])); await settle()
         live.event?(.toolCall(id: "b", name: "feel", args: [:])); await settle()
         XCTAssertEqual(app.celebration, before + 1)
-        XCTAssertNil(chat.state.offer)
+        XCTAssertNil(chat.card)
         XCTAssertTrue(chat.state.staying)
     }
 
@@ -535,31 +540,94 @@ private final class ChatHTTP: URLProtocol {
         live.event?(.toolCall(id: "f", name: "feel", args: [:])); await settle()
         XCTAssertTrue(chat.state.staying, "and the plan works the same")
         chat.send("It has been a long week.")
-        XCTAssertEqual(chat.state.offer?.kind, "breathe")
+        XCTAssertEqual(chat.card?.kind, "breathe")
     }
 
-    func testTalkShowsTheSameOfferAndSparkle() async {
+    func testTalkShowsOneCardFromEitherSourceAndAsideIsFinal() async {
         let (app, _, live, chat, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }
         let talk = chat.talk                                  // the model Talk uses, on its own (the chat never starts)
         await talk.start(app: app)
         live.event?(.ready); await settle()
         live.event?(.userText("It has been a rough week.")); live.event?(.userTranscriptComplete); live.event?(.turnComplete); await settle()
-        XCTAssertNil(talk.offer)
+        XCTAssertNil(talk.activityCard)
+
+        // from the tool: shown at once, opened by the person
+        live.event?(.toolCall(id: "s", name: "suggest_activity", args: ["kind": .string("lantern"), "line": .string("A little lantern game?")])); await settle()
+        XCTAssertEqual(talk.activityCard?.kind, "lantern")
+        XCTAssertEqual(live.results.last, "suggest_activity")
+        XCTAssertEqual(live.values.last, .object(["ok": .bool(true), "shown": .bool(true)]))
+        XCTAssertNil(app.deepLink, "a card starts nothing by itself")
+        talk.putCardAside()
+        XCTAssertNil(talk.activityCard)
+        XCTAssertEqual(live.contexts.last, "The person put the lantern card aside.")
+        live.event?(.toolCall(id: "s2", name: "suggest_activity", args: ["kind": .string("lantern")])); await settle()
+        XCTAssertNil(talk.activityCard, "put aside is final for this conversation")
+        XCTAssertEqual(live.values.last, .object(["ok": .bool(true), "shown": .bool(false)]), "and Kaiku is told it was not shown")
+        live.event?(.toolCall(id: "s3", name: "suggest_activity", args: ["kind": .string("drum")])); await settle()
+        XCTAssertNil(talk.activityCard, "not on this device: no card")
+        XCTAssertEqual(live.values.last, .object(["ok": .bool(true), "shown": .bool(false)]))
+
+        // from the plan: after the person's next words; the same kind from the tool is still one card
         live.event?(.toolCall(id: "f", name: "feel", args: [:])); await settle()
-        XCTAssertNil(talk.offer, "not in the first reply to the feeling")
+        XCTAssertNil(talk.activityCard, "not in the first reply to the feeling")
         live.event?(.userText("It just keeps piling up.")); live.event?(.userTranscriptComplete); live.event?(.turnComplete); await settle()
-        XCTAssertEqual(talk.offer?.route, .breathe)
-        talk.takeOffer()
+        XCTAssertEqual(talk.activityCard?.kind, "breathe")
+        live.event?(.toolCall(id: "s4", name: "suggest_activity", args: ["kind": .string("breathe")])); await settle()
+        XCTAssertEqual(talk.activityCard?.kind, "breathe", "never two cards for the same kind")
+        talk.openCard()
+        XCTAssertEqual(live.contexts.last, "The person opened the breathe card.")
         XCTAssertEqual(app.deepLink, .breathe)
-        XCTAssertNil(talk.offer, "taken once")
+        XCTAssertNil(talk.activityCard, "opened once")
 
         ChatHTTP.feel = #"{"stance":"celebrate","depth":"stay","reflect_hint":"h","may_offer":null,"offer_activity":null,"scheduling":"SILENT"}"#
         let before = app.celebration
         live.event?(.toolCall(id: "h", name: "feel", args: [:])); await settle()
         talk.planArrived(); talk.planArrived()
         XCTAssertEqual(app.celebration, before + 1, "good news sparkles once")
-        XCTAssertFalse(chat.state.sparkled)
+    }
+
+    func testACallLeftInAPocketEndsByItself() async {
+        let limit = TalkModel.backgroundQuietLimit
+        TalkModel.backgroundQuietLimit = 0.6
+        defer { TalkModel.backgroundQuietLimit = limit }
+        let (app, _, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let talk = chat.talk
+        await talk.start(app: app)
+        live.event?(.ready); await settle()
+        XCTAssertTrue(talk.hasLive)
+        let pocket = Task { await talk.backgrounded() }                  // the app left the screen
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        live.event?(.userText("Still here, walking.")); await settle()   // the person is there: the clock starts again
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(talk.hasLive, "heard a moment ago: the call goes on out of sight")
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        await pocket.value
+        XCTAssertFalse(talk.hasLive, "nothing heard for the quiet limit: the call ended by itself")
+        XCTAssertTrue(live.closed, "and the socket is closed")
+        XCTAssertEqual(talk.conversation.phase, .idle)
+
+        // Back in the app before the limit: the watch is cancelled, the call stays.
+        talk.restart()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        live.event?(.ready); await settle()
+        let again = Task { await talk.backgrounded() }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        again.cancel()
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        XCTAssertTrue(talk.hasLive)
+        talk.stop()
+    }
+
+    func testStartActivityKnowsEveryGameOnThisDevice() async {
+        let (app, _, live, chat, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await chat.talk.start(app: app)
+        live.event?(.ready); await settle()
+        live.event?(.userText("Yes, a game please.")); live.event?(.userTranscriptComplete); await settle()
+        live.event?(.toolCall(id: "a", name: "start_activity", args: ["kind": .string("watering")])); await settle()
+        XCTAssertEqual(app.deepLink, .watering)
     }
 
     func testLeavingAfterTakingPartCountsAndThatsEnoughClosesAtOnce() async {

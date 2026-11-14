@@ -36,11 +36,14 @@
         {
           "enum": [
             "breathe",
-            "drum",
-            "firefly",
-            "pebbles",
             "tell",
             "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
             "light_hunt"
           ],
           "type": "string"

@@ -4,6 +4,12 @@ from kaiku_cloud.api.main import create_app
 from kaiku_cloud.settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def own_spend_ledger(tmp_path, monkeypatch):
+    """No test reads or writes the real spend ledger (logs/spend.sqlite): each gets its own file."""
+    monkeypatch.setenv("KAIKU_SPEND_DB", str(tmp_path / "spend-default.sqlite"))
+
+
 @pytest.fixture
 def make_client(tmp_path):
     def _make(**kw):

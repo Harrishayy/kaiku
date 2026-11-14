@@ -3,8 +3,9 @@ import SwiftUI
 /// Today's first stop: a small passing chat with Kaiku, not a form. Kaiku says hello (its Live voice when there is
 /// one, text always); the person answers out loud, by typing, or just turns the three dials underneath: all three
 /// count, and the dials are never a gate. An ordinary day wraps itself up ("Good to see you"); a very good or a
-/// very hard day simply goes on (`CheckInState`). One soft chip under Kaiku's line when the plan may offer
-/// something. iPhone: one column, the dials under the chat. Mac / wide: the chat beside the dials.
+/// very hard day simply goes on (`CheckInState`). While Kaiku is on the line it is a call like Talk: the call
+/// bar (mute me, mute Kaiku, type, end) and at most one activity card. iPhone: one column, the dials under the
+/// chat. Mac / wide: the chat beside the dials.
 public struct CheckInChatView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -14,6 +15,7 @@ public struct CheckInChatView: View {
     @Environment(\.dynamicTypeSize) private var dts
     @State private var chat = CheckInChat()
     @State private var text = ""
+    @State private var typing = false
     @State private var columnWidth: CGFloat = 0
     @State private var bgTask: Task<Void, Never>?
 
@@ -43,6 +45,7 @@ public struct CheckInChatView: View {
         }
         .task { if !staticLayout { await chat.start(app: app) } }
         .onDisappear { chat.leave() }
+        .onChange(of: chat.talk.hasLive, initial: true) { _, live in typing = live && !chat.talk.conversation.listens }
         .onChange(of: scenePhase) { _, p in
             bgTask?.cancel()
             if p == .background { bgTask = Task { await chat.talk.backgrounded() } }
@@ -89,7 +92,7 @@ public struct CheckInChatView: View {
                     if abs(w - columnWidth) > 0.5 { columnWidth = w }
                 }
                 .onChange(of: chat.lines) { _, _ in follow(proxy) }
-                .onChange(of: chat.state.offer) { _, _ in follow(proxy) }
+                .onChange(of: chat.card) { _, _ in follow(proxy) }
                 .onChange(of: chat.state.end) { _, end in
                     guard end != nil else { return }
                     withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { proxy.scrollTo(Self.top, anchor: .top) }
@@ -104,14 +107,18 @@ public struct CheckInChatView: View {
         }
     }
 
+    /// The call bar while Kaiku is on the line (typing stays folded away until wanted).
     @ViewBuilder private var composer: some View {
-        if chat.state.end == nil {
-            Composer(text: $text, placeholder: T("talk.type"), mic: micAction, micOn: chat.micOn,
-                     micLabel: T(chat.micOn ? "talk.voice.mute" : "talk.voice.start"), micDisabled: chat.connecting) {
-                chat.send(text)
-                text = ""
+        if chat.state.end == nil && chat.hasLive {
+            if typing {
+                Composer(text: $text, placeholder: T("talk.type")) {
+                    chat.send(text)
+                    text = ""
+                }
             }
-            .disabled(chat.connecting)
+            CallBar(since: chat.talk.conversation.liveSince, status: chat.talk.status, micOn: chat.micOn,
+                    voiceMuted: chat.talk.voiceMuted, typing: typing, toggleMic: micAction,
+                    toggleVoice: { chat.talk.toggleVoice() }, toggleTyping: { typing.toggle() }, end: { chat.enough() })
         }
     }
 
@@ -128,7 +135,6 @@ public struct CheckInChatView: View {
 
     private var mascotState: MascotState {
         if chat.activeDial != nil { return .listening }
-        if chat.state.sittingQuietly && chat.phase != .speaking { return .breathing }
         switch chat.state.end {
         case .chat?, .offer?: return .happy
         case .dials(let key)?: return key == "checkin.dials.low" || key == "checkin.dials.tired" ? .cozy : .happy
@@ -161,21 +167,19 @@ public struct CheckInChatView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Only when Kaiku is not on the line: the one short reason (the call bar says the rest).
     private var status: String? {
-        guard chat.state.end == nil else { return nil }
+        guard chat.state.end == nil, !chat.hasLive else { return nil }
         if chat.connecting { return T("talk.connecting") }
-        if chat.typedOnly { return T("checkin.typedonly") }
-        if chat.micOn { return T("talk.on") }
-        if chat.hasLive { return T("talk.tap") }
         switch chat.unavailable {
-        case .pairing?: return T("talk.unavailable.pairing")
-        case .paused?: return T("you.pauseall.d")
+        case .pairing?: return T("call.line.unpaired")
+        case .paused?: return T("call.line.paused")
         case nil: return nil
         default: return T("checkin.voiceless")
         }
     }
 
-    /// Kaiku's hello, then the few lines of the chat; the offer chip sits under Kaiku's latest line.
+    /// Kaiku's hello, then the few lines of the chat; the one activity card sits under the latest line.
     @ViewBuilder private var thread: some View {
         let lines = chat.lines
         if lines.first?.me != false {
@@ -187,19 +191,8 @@ public struct CheckInChatView: View {
                 .textSelection(.enabled)
         }
         if chat.talk.mode == .thinking { TypingDots().frame(maxWidth: .infinity, alignment: .leading) }
-        if let offer = chat.state.offer { OfferChip(offer: offer) { chat.takeOffer() } }
-        if chat.state.sittingQuietly {
-            Text(T("checkin.sitting")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted)
-                .frame(maxWidth: .infinity, alignment: .leading).wraps()
-        } else if chat.state.staying {
-            Text(T("checkin.stay")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted)
-                .frame(maxWidth: .infinity, alignment: .leading).wraps()
-        }
-        if chat.state.personTurns > 0 && chat.hasLive {
-            // A calm way out, never a push: it sits quietly under the chat, the same on a long day.
-            Button(T("checkin.enough")) { chat.enough() }
-                .buttonStyle(KButtonStyle(.ghost, fullWidth: false))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+        if let card = chat.card {
+            ActivityCardView(card: card, open: { chat.openCard() }, putAside: { chat.putCardAside() })
         }
     }
 
@@ -217,7 +210,9 @@ public struct CheckInChatView: View {
         case .offer?, nil:
             EmptyView()
         }
-        if let offer = chat.state.offer { OfferChip(offer: offer, centered: true) { chat.takeOffer() } }
+        if let card = chat.card {
+            ActivityCardView(card: card, open: { chat.openCard() }, putAside: { chat.putCardAside() })
+        }
         if chat.state.end != .offer {
             VStack(spacing: KaikuTokens.Space.s1) {
                 if chat.state.end != .quiet {
@@ -240,13 +235,13 @@ public struct CheckInChatView: View {
     }
 
     private func micAction() {
-        if chat.typedOnly || (!chat.hasLive && AudioCapture.permission == .denied) {
+        if chat.talk.conversation.listens { chat.talk.toggleMic() } else {
             #if os(iOS)
             if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
             #else
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") { openURL(url) }
             #endif
-        } else { chat.toggleMic() }
+        }
     }
 
     // MARK: the dials — the quiet alternative, on the same screen
@@ -254,11 +249,8 @@ public struct CheckInChatView: View {
     @ViewBuilder private var dials: some View {
         if !chat.state.dialsDone {
             VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
-                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
-                    Text(T("checkin.dials.t")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(T("checkin.dials.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-                }
+                Text(T("checkin.dials.t")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
+                    .accessibilityAddTraits(.isHeader)
                 ForEach(DialItem.allCases) { item in
                     WeatherDial(item: item, value: binding(item), active: chat.activeDial == item) { chat.activeDial = item }
                 }
@@ -275,32 +267,5 @@ public struct CheckInChatView: View {
 
     private func binding(_ item: DialItem) -> Binding<Int> {
         Binding(get: { chat.values[item] ?? 3 }, set: { chat.values[item] = $0; chat.activeDial = item })
-    }
-}
-
-/// One soft offer under Kaiku's line. Taking it starts the activity; leaving it alone is just as fine.
-struct OfferChip: View {
-    let offer: CheckInOffer
-    var centered = false
-    let take: () -> Void
-
-    var body: some View {
-        Button(action: take) {
-            HStack(spacing: KaikuTokens.Space.s2) {
-                Image(systemName: offer.icon).foregroundStyle(KTone.sage.ink).accessibilityHidden(true)
-                Text(offer.label()).foregroundStyle(KaikuTokens.Colors.ink).multilineTextAlignment(.leading)
-            }
-            .kText(.callout, weight: .medium)
-            .padding(.horizontal, KaikuTokens.Space.s4)
-            .padding(.vertical, KaikuTokens.Space.s2)
-            .frame(minHeight: KaikuTokens.Size.tapMin)
-            .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KTone.sage.soft))
-            .contentShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
-        }
-        .buttonStyle(.kPress)
-        .accessibilityHint(T("offer.hint"))
-        .accessibilityIdentifier("offer.chip")
-        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
-        .transition(.opacity)
     }
 }

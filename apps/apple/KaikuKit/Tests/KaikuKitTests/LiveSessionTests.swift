@@ -54,6 +54,29 @@ final class LiveSessionTests: XCTestCase {
         XCTAssertNil((setup(.init())["sessionResumption"] as! [String: Any])["handle"])
     }
 
+    func testWhatLetsACallOutliveOneSocketIsAlwaysSentAndTheCloudsSettingsWin() {
+        // Without `live_setup`: resumption, sliding-window compression and proactive audio are still asked for.
+        let plain = setup(.init())
+        XCTAssertNotNil(plain["sessionResumption"] as? [String: Any])
+        XCTAssertNotNil((plain["contextWindowCompression"] as? [String: Any])?["slidingWindow"])
+        XCTAssertEqual((plain["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, true)
+
+        var s = session()
+        s.live_setup = .object([
+            "sessionResumption": .object(["transparent": .bool(true)]),
+            "contextWindowCompression": .object(["triggerTokens": .number(12000), "slidingWindow": .object(["targetTokens": .number(6000)])]),
+            "proactivity": .object(["proactiveAudio": .bool(false)]),
+        ])
+        let cloud = LiveSession.setup(session: s, options: .init(resumeHandle: "h-7"))["setup"] as! [String: Any]
+        let r = cloud["sessionResumption"] as! [String: Any]
+        XCTAssertEqual(r["transparent"] as? Bool, true, "the cloud's resumption settings")
+        XCTAssertEqual(r["handle"] as? String, "h-7", "plus this conversation's handle")
+        let cw = cloud["contextWindowCompression"] as! [String: Any]
+        XCTAssertEqual(cw["triggerTokens"] as? Double, 12000)
+        XCTAssertEqual((cw["slidingWindow"] as? [String: Any])?["targetTokens"] as? Double, 6000)
+        XCTAssertEqual((cloud["proactivity"] as? [String: Any])?["proactiveAudio"] as? Bool, false)
+    }
+
     func testAskMindIsNonBlockingOthersAreNot() {
         let decls = ((setup(.init())["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
         let byName = Dictionary(uniqueKeysWithValues: decls.map { ($0["name"] as! String, $0) })

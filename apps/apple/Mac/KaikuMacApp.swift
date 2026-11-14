@@ -16,7 +16,7 @@ struct KaikuMacApp: App {
                 .frame(minWidth: 720, minHeight: 480)
                 // kaiku://play/firefly etc. switch screens (same links as iPhone); anything else is a pairing link
                 .onOpenURL { url in if !app.open(url) { Task { await app.pair(link: url.absoluteString) } } }
-                .onAppear { MacCompanion.shared.start(app: app) }
+                .onAppear { MacCompanion.shared.start(app: app); startQuickTalk() }
                 .task(id: app.nudge?.arm) { DailyInvitation.schedule(app: app) }
                 #if DEBUG
                 .onAppear { DebugSnapshot.runIfAsked(app: app) }
@@ -27,6 +27,7 @@ struct KaikuMacApp: App {
 
         MenuBarExtra {
             VStack(spacing: 0) {
+                talkNow
                 MenuBarPopover { tab, route in
                     app.selectedTab = tab
                     app.deepLink = route
@@ -44,10 +45,50 @@ struct KaikuMacApp: App {
             .background(KaikuTokens.Colors.bg)
             .environment(app)
             .tint(KaikuTokens.Colors.clay)
-            .onAppear { MacCompanion.shared.start(app: app) }
+            .onAppear { MacCompanion.shared.start(app: app); startQuickTalk() }
         } label: {
             Image(systemName: "circle.hexagongrid.fill")
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Quick talk (the bar at the left edge of the screen) needs a way to bring this window forward: for "open
+    /// Kaiku", for
+    /// "Continue in Kaiku", for an activity, and for the crisis screen, which lives here.
+    private func startQuickTalk() {
+        QuickTalkController.shared.start(app: app) { tab in
+            if let tab { app.selectedTab = tab }
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// "Talk now": the same as the key combination, for the pointer; and the switch for the bar at the screen
+    /// edge (the same setting as in You). Shown while quick talk is on.
+    @ViewBuilder private var talkNow: some View {
+        let quick = QuickTalkController.shared.model
+        if quick.enabled, !quick.inert {
+            VStack(spacing: KaikuTokens.Space.s2) {
+                Button { QuickTalkController.shared.trigger() } label: {
+                    HStack(spacing: KaikuTokens.Space.s2) {
+                        Image(systemName: "waveform")
+                        Text(T("quick.now"))
+                        Spacer(minLength: KaikuTokens.Space.s2)
+                        Text(T("quick.keys")).opacity(0.8)
+                    }
+                }
+                .buttonStyle(KButtonStyle(.primary))
+                Toggle(isOn: Binding(get: { quick.showBar }, set: { quick.showBar = $0 })) {
+                    Text(T("quick.set.bar")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(KaikuTokens.Colors.sage)
+                .padding(.horizontal, KaikuTokens.Space.s1)
+            }
+            .padding(.horizontal, KaikuTokens.Space.s4)
+            .padding(.top, KaikuTokens.Space.s4)
+        }
     }
 }

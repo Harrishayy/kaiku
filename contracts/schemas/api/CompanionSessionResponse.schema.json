@@ -228,6 +228,15 @@
           "title": "Others Present",
           "type": "boolean"
         },
+        "outdoor_likes": {
+          "description": "walk sessions: outdoor things and places the person told Kaiku they like, in their words (notebook)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Outdoor Likes",
+          "type": "array"
+        },
         "phq9_due": {
           "default": false,
           "title": "Phq9 Due",
@@ -324,6 +333,24 @@
           ],
           "title": "Tone",
           "type": "string"
+        },
+        "walk_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "quiet",
+                "playful",
+                "chatty"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walk sessions: how Kaiku walks with them",
+          "title": "Walk Style"
         },
         "weather_word": {
           "anyOf": [
@@ -540,6 +567,76 @@
       ],
       "title": "LiveToken",
       "type": "object"
+    },
+    "WalkGuide": {
+      "additionalProperties": false,
+      "description": "CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the\ndevice nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and\nnobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge\nis not used in this style. Values: config/kaiku.toml [walk].\nKaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not\nalways silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),\nso the device holds the audio of a nudge's reply until its first output transcription fragment and plays it\nonly when that fragment has a real word.",
+      "properties": {
+        "look_every_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Look Every S"
+        },
+        "look_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Look Prompt"
+        },
+        "quiet_after_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quiet After S"
+        },
+        "quiet_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quiet Prompt"
+        },
+        "style": {
+          "enum": [
+            "quiet",
+            "playful",
+            "chatty"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "style"
+      ],
+      "title": "WalkGuide",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -573,6 +670,20 @@
       "default": null,
       "description": "poll interval for consented source updates during an active conversation",
       "title": "Context Refresh Seconds"
+    },
+    "idle_end_s": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the device ends the conversation by itself after this long with nobody speaking (an open microphone in a pocket); longer on a walk",
+      "title": "Idle End S"
     },
     "live_setup": {
       "anyOf": [
@@ -644,6 +755,18 @@
     "voice": {
       "title": "Voice",
       "type": "string"
+    },
+    "walk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WalkGuide"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "present when the purpose is walk"
     }
   },
   "required": [

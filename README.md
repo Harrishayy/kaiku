@@ -80,6 +80,26 @@ flowchart TD
 | **Needs a call** | Two or more signal groups worse than her usual |
 | **Safety** | PHQ-9 item 9 or a crisis phrase; overrides everything, with a fixed script and no model |
 
+## A companion, not a reporting machine
+
+<table align="center">
+<tr>
+<td align="center" valign="top"><img src="docs/media/ios-checkin-chat.png" width="190" alt="iPhone: a hard-day check-in where Kaiku stays and offers one thing"><br><sub>A hard day: Kaiku stays and offers one thing</sub></td>
+<td align="center" valign="top"><img src="docs/media/ios-today-invitation.png" width="190" alt="iPhone: Today with one invitation from Kaiku"><br><sub>Today: one invitation, from something she said</sub></td>
+<td align="center" valign="top"><img src="docs/media/ios-walk-styles.png" width="190" alt="iPhone: the walk start with three walk styles"><br><sub>A walk: Calm, Playful or Chatty</sub></td>
+</tr>
+</table>
+
+- **It notices and acts.** When what the person says, or how they say it, carries a clear feeling, the voice tells Kaiku's mind once (the `feel` tool, non-blocking, so the talk never stalls). The answer is a small plan: how to meet it (comfort, celebrate, explore, give space), whether to keep the chat brief or stay, one thing the record knows helps this person, and at most one offer per conversation. Good news gets gladness. A heavy day gets company before any suggestion.
+- **The check-in is a small chat.** Today's first stop opens with Kaiku's hello, like meeting on the street. Answer by voice, by typing, or turn the three dials underneath; all three count. An ordinary day closes in a few turns; a really good or really hard one goes on as long as the person wants.
+- **A suggestion comes as a card.** When Kaiku suggests a game, a journal entry, breathing or a walk, it makes a tool call that puts one card in the conversation. Nothing opens without the person's yes, and a no is final for that conversation.
+- **One mind on every device.** A favourite place mentioned on a glasses walk is known to the phone, the Mac and the robot the next time ([tested](cloud/tests/test_walk.py)). Once a day Kaiku may bring one thing up on Today, chosen by rule and worded around her own words.
+- **None of this sets the state.** The consensus stays code. The plan shapes a conversation; it never changes what the practitioner sees as the state.
+
+**Where it stands:** shown with real Gemini Live replies to typed input on the iPhone simulator. An ordinary day
+closed in three turns; on a hard day ("my cat died") Kaiku stayed, offered sitting quietly together once and
+went on after the offer was taken. Not yet heard through a real microphone.
+
 ## The surfaces
 
 ### iPhone
@@ -93,12 +113,14 @@ flowchart TD
 </tr>
 </table>
 
-- **Three minutes a day.** Today's path (first clip at the top of this page) is a weather-style check-in, Kaiku's one suggestion, the Lantern game and one more game in turn. Games end on what grew, never a time or a count; they are short activities inspired by research, not validated tests ([games](docs/validation.md#games)).
-- **Talk.** One voice everywhere: a Gemini Live call opened with a short-lived token from the cloud, so the app never holds the API key. If the voice is unavailable Kaiku stays silent and shows text, never a synthesizer.
+- **Three minutes a day.** Today's path is a small check-in chat with Kaiku, its one suggestion, the Lantern game and one more game in turn. Games end on what grew, never a time or a count; they are short activities inspired by research, not validated tests ([games](docs/validation.md#games)).
+- **Talk is a call.** One voice everywhere: a Gemini Live call opened with a short-lived token from the cloud, so the app never holds the API key. Mute yourself or mute Kaiku, independently; the words of both keep coming as captions. The call goes on when the phone locks, with a bar on the Lock Screen and in the Dynamic Island (elapsed time, the last caption, mute, end), and ends by itself after three quiet minutes in the background. If the voice is unavailable Kaiku stays silent and shows text, never a synthesizer.
 - **Her choices, her day.** Every signal has its own switch, set at first run and reversible. "Today, so far" lists what was noticed, from which device and what is shared. Readings queue on the phone until the cloud confirms them.
 
-**Where it stands:** a signed build is installed on a real iPhone and found the service from the phone. A real
-microphone, Apple Health and background behaviour are not yet accepted on the device. [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)
+**Where it stands:** a signed build is installed on a real iPhone and found the service from the phone. On the
+simulator, with typed input, a real call ran 4 min 48 s across a token renewal while locked, answered from the
+Lock Screen caption, and was ended from the Lock Screen. A real microphone, Kaiku's voice while locked, and
+Apple Health are not yet accepted on the device. [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)
 
 ### Mac
 
@@ -107,9 +129,18 @@ microphone, Apple Health and background behaviour are not yet accepted on the de
 - **The same Kaiku on the desk.** One Swift package holds every screen and game; the Mac and iPhone targets are thin shells around it.
 - **Rhythm, never content.** Opt-in and pausable: the frontmost app is mapped to a broad category on the Mac, and one message an hour carries minutes per category, late-night minutes, switches and breaks. Never window titles, URLs, keystrokes or screenshots; the contract rejects extra fields.
 - **A quiet nudge from the notch.** After 01:00 while still active, or after 90 active minutes without a break, Kaiku peeks from the notch with one line: at most three a day, with a snooze.
+- **Quick talk from any app.** A thin bar rests at the left edge of the screen. Hover and it becomes two buttons: start speaking, open Kaiku. Tap Control twice (or Option-Shift-Space) and it grows into a small popup with Kaiku and live captions, and the conversation starts at once without taking focus from the app in front. Mute yourself or mute Kaiku; the captions keep coming. Tuck the popup away and the call lives in the notch with its elapsed time.
+
+<p align="center">
+<img src="docs/media/mac-quick-talk-bar.png" width="200" alt="Mac quick talk: the bar on hover with two buttons">
+<img src="docs/media/mac-quick-talk-popup.png" width="300" alt="Mac quick talk: the popup while Kaiku answers">
+<img src="docs/media/mac-quick-talk-island.png" width="330" alt="Mac: the notch island showing a call">
+<br><sub>Quick talk: the bar on hover, the popup, and the call in the notch. Rendered from the app's own views, not a screen capture.</sub></p>
 
 **Where it stands:** the Mac target builds; a simulated late evening produced the peek and its hourly record
-on a local service. The clip above is rendered in-app, not captured from the screen. [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)
+on a local service. Quick talk is unit-tested and rendered in every state, and both triggers were shown to need
+no Accessibility or Input Monitoring permission; nobody has yet pressed the keys in the running app or spoken to
+it. The clip above is rendered in-app, not captured from the screen. [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)
 
 ### Meta glasses walk
 
@@ -120,6 +151,8 @@ on a local service. The clip above is rendered in-app, not captured from the scr
 
 - **A voice in the ear, head up, hands free.** The iPhone registers with the glasses through Meta's Device Access Toolkit. Kaiku's voice travels over ordinary Bluetooth, so the conversation that started in the kitchen continues on the street.
 - **The walk survives the glasses.** Glasses off or out of range: the walk continues on the phone, and the record says so.
+- **Company, in the style she chooses.** Calm mostly listens and speaks up only when something worth it comes into view. Playful sets small spotting goals ("two more to find": the phone keeps the count, Kaiku only says it) and asks a little about her day. Chatty keeps the talk going. A sad sentence drops the game in any style.
+- **It connects what it sees to what it knows.** Her outdoor favourites travel with the walk, so a view can become "Is that your favourite tree up there?". It asks rather than asserts, because a model cannot know it is that tree. A new favourite is kept only from her own words.
 - **Seeing is a separate opt-in (D43).** With "Let Kaiku see through the glasses during walks" on (off by default), about one camera frame a second goes to that walk's Gemini Live conversation and nowhere else. With it off, Kaiku says it cannot see.
 
 </td>
@@ -127,8 +160,9 @@ on a local service. The clip above is rendered in-app, not captured from the scr
 </table>
 
 **Where it stands:** registration and connection are confirmed on real Gen 2 glasses in Developer Mode. Voice
-and seeing are proven with Meta's Mock Device Kit and one real Gemini Live call on an injected picture, not
-yet on the real glasses; the five-minute test is [`docs/glasses-test.md`](docs/glasses-test.md). The integration lives in
+and seeing are proven with Meta's Mock Device Kit and real Gemini Live calls: stock landscape pictures as the
+view (a dull road got no words in any style, a lone tree got the question above) and one three-minute walk on
+the simulator with typed lines. Not yet on the real glasses; the five-minute test is [`docs/glasses-test.md`](docs/glasses-test.md). The integration lives in
 the iPhone app ([`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)); the two `apps/glasses-*` folders hold instructions only.
 
 ### Robot
@@ -246,12 +280,12 @@ are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrat
 
 | Part | Real today | Simulated or pending a physical test |
 |---|---|---|
-| Cloud, consensus, dashboard | Deployed on Modal and checked from outside; 805 Python tests passed at the last logged merge | Every record is authored and marked simulated; thresholds are engineering defaults |
+| Cloud, consensus, dashboard | Deployed on Modal and checked from outside; 973 Python tests passed at the last logged merge | Every record is authored and marked simulated; thresholds are engineering defaults |
 | Gemma | Reviews through Google's hosted API on the simulated record; one cold call on a Modal H100 | Our own GPU is not the default path; no tuned weights |
-| Gemini Live | Real Live calls with injected speech and one injected picture | A spoken exchange on a real microphone |
-| iPhone app | Signed build installed on a real iPhone; 183 Swift tests passed (8 skipped) | Microphone, Apple Health and background behaviour on the device |
-| Mac app | Builds; a simulated late evening produced the notch peek and its hourly record | A screen capture; real usage over days |
-| Meta glasses | Registration and connection on real Gen 2 glasses (Developer Mode) | Voice, head motion and opt-in seeing on the real glasses: one filmed walk |
+| Gemini Live | Real Live calls with injected speech, typed turns (ordinary day, hard day, spotting game) and pictures as the walk's view | A spoken exchange on a real microphone |
+| iPhone app | Signed build installed on a real iPhone; 309 Swift tests passed (11 skipped); a real typed call kept going while the simulator was locked | Microphone, Kaiku's voice while locked and Apple Health on the device |
+| Mac app | Builds; a simulated late evening produced the notch peek and its hourly record; quick talk rendered in every state | Quick talk by real key presses and voice; a screen capture; real usage over days |
+| Meta glasses | Registration and connection on real Gen 2 glasses (Developer Mode); a three-minute walk with Meta's mock glasses and real Live | Voice, head motion, walk styles and opt-in seeing on the real glasses: one filmed walk |
 | Robot | Ritual by knob on the Atech board; knob, button, eyes, knock drum, face camera and buzzer seen over MQTT | Hub-driven ritual on the physical robot, its records on the dashboard, motor, pulse |
 | People | Four logged sessions, all by the project lead | Testers outside the team; any clinical validation |
 

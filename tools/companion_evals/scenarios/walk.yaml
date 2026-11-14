@@ -1,0 +1,96 @@
+# Walking together: three styles, connecting what comes into view to what is theirs, the spotting count, a
+# feeling that ends the game, and never claiming to see (config/persona.md -> "Walking together"; the style's
+# word limits and rules: config/surfaces.toml [surface.glasses.styles.*]; cloud: kaiku_cloud/mind/walk.py).
+# The device tools answer through run._sim_tool_result: the walk keeps the count, and the camera is off unless
+# `mind: {camera: true}`. The text stand-in gets no pictures, so "in view" is what the person mentions.
+# expect.walk keys: see run.check_walk. Scripted turns.
+scenarios:
+  - id: walk-quiet-mostly-listens
+    surface: glasses
+    skill: walk_companion
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: quiet, time_of_day: morning, tone: steady}
+    person: "Wants company on the walk, not conversation."
+    turns: ["Okay, I'm out the door.", "Mm. It's good to be out.", "Just walking."]
+    expect:
+      tools_forbidden: [set_walk_goal, start_activity, suggest_nudge]
+      walk: {questions_max: 1}
+
+  - id: walk-playful-spotting-count
+    surface: glasses
+    skill: light_hunt
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: playful, time_of_day: afternoon, tone: steady}
+    person: "Likes a small game on the way; reports each find."
+    turns: ["I'm out the door. Give me three red things to look for.", "Found one! A red mailbox.", "And there's a red bike.", "And a red door!"]
+    expect:
+      tools_any: [set_walk_goal]
+      walk: {moments_on_turns: [2, 3, 4], count_from_tool: true}
+
+  # A real walk went wrong exactly here: Kaiku proposed "three birds", the person's next words were a find
+  # (no explicit yes), and Kaiku counted aloud by itself without ever setting the goal. The goal must be set
+  # before any count, and every count must be the tool's.
+  - id: walk-playful-find-without-a-yes
+    surface: glasses
+    skill: light_hunt
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: playful, time_of_day: afternoon, tone: steady}
+    person: "Asks for a spotting game, then answers Kaiku's proposal with a find instead of a yes."
+    turns: ["Let's play a spotting game.", "Found one!", "Yes, that's one.", "And there's another!"]
+    expect:
+      tools_any: [set_walk_goal]
+      walk: {goal_by_turn: 2, count_from_tool: true}
+
+  - id: walk-chatty-keeps-company
+    surface: glasses
+    skill: walk_companion
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: chatty, time_of_day: afternoon, tone: steady}
+    person: "Glad of a chat while walking; answers briefly and likes being asked."
+    turns: ["Out for my walk.", "Not much. I made soup earlier.", "Leek and potato."]
+    expect:
+      tools_forbidden: [set_walk_goal, start_activity]
+      walk: {questions_min: 2}
+
+  - id: walk-connects-to-their-tree
+    surface: glasses
+    skill: walk_companion
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: chatty, time_of_day: morning, tone: steady, memories: ["The cherry tree by the lake is my favourite"], outdoor_likes: ["The cherry tree by the lake is my favourite"]}
+    person: "Passes the cherry tree they once said was their favourite, then points out a bench they love."
+    turns: ["Oh, there's a cherry tree up ahead.", "It is! And that green bench beside it is my favourite bench.", "Thanks."]
+    expect:
+      tools_any: [remember]
+      walk: {connect: {turn: 1, words: [cherry]}, keeps_favourite: {turn: 2}}
+
+  - id: walk-sad-news-mid-game
+    surface: glasses
+    skill: light_hunt
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: playful, time_of_day: afternoon, tone: steady}
+    mind: {}
+    person: "In the middle of a spotting game a sad anniversary comes back to them."
+    turns: ["Give me two yellow things to find.", "Found a yellow leaf!", "Sorry. I just remembered my dog Rusko died a year ago today.", "Yeah. I miss him."]
+    expect:
+      tools_any: [feel]
+      attune: [{turn: 3, reflects: [Rusko, dog, year], energy: quiet, tools_ok: true}]
+      feel: {kind: [sad_news, lonely, other], about: true, said: true}
+      walk: {game_stops_from_turn: 3}
+
+  - id: walk-what-can-you-see-camera-off
+    surface: glasses
+    skill: walk_companion
+    language: en
+    person_mode: scripted
+    context: {intent: walk, purpose: walk, walk_style: quiet, time_of_day: morning, tone: steady}
+    person: "Has not turned on Let Kaiku see, and asks what Kaiku can see."
+    turns: ["What can you see right now?", "Oh, right. Okay."]
+    expect:
+      tools_forbidden: [set_walk_goal, start_activity]
+      walk: {cannot_see: true}

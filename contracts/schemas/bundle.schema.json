@@ -138,6 +138,24 @@
       "title": "ActionResult",
       "type": "object"
     },
+    "ActivityCardResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `suggest_activity`. shown=false: a card is already up, or they said no before.",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "shown": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "ActivityCardResult",
+      "type": "object"
+    },
     "AgentStep": {
       "additionalProperties": false,
       "description": "One step the cloud really ran to build this insight. Counts and categories only; never record content.",
@@ -618,6 +636,23 @@
             "web"
           ],
           "type": "string"
+        },
+        "walk_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "quiet",
+                "playful",
+                "chatty"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "with purpose walk: quiet (mostly listens), playful (one small game at a time) or chatty (keeps a gentle conversation going). Omitted = config/kaiku.toml [walk].default_style"
         }
       },
       "required": [
@@ -658,6 +693,19 @@
           ],
           "default": null,
           "description": "poll interval for consented source updates during an active conversation"
+        },
+        "idle_end_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the device ends the conversation by itself after this long with nobody speaking (an open microphone in a pocket); longer on a walk"
         },
         "live_setup": {
           "anyOf": [
@@ -720,6 +768,18 @@
         },
         "voice": {
           "type": "string"
+        },
+        "walk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WalkGuide"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "present when the purpose is walk"
         }
       },
       "required": [
@@ -1175,6 +1235,14 @@
           "default": false,
           "type": "boolean"
         },
+        "outdoor_likes": {
+          "description": "walk sessions: outdoor things and places the person told Kaiku they like, in their words (notebook)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "type": "array"
+        },
         "phq9_due": {
           "default": false,
           "type": "boolean"
@@ -1262,6 +1330,23 @@
             "extra-gentle"
           ],
           "type": "string"
+        },
+        "walk_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "quiet",
+                "playful",
+                "chatty"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walk sessions: how Kaiku walks with them"
         },
         "weather_word": {
           "anyOf": [
@@ -2507,11 +2592,14 @@
             {
               "enum": [
                 "breathe",
-                "drum",
-                "firefly",
-                "pebbles",
                 "tell",
                 "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
                 "light_hunt"
               ],
               "type": "string"
@@ -3805,6 +3893,122 @@
         "activity"
       ],
       "title": "InterventionResponse",
+      "type": "object"
+    },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from\nconfig/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk\n(kind talk_about: the session card already carries the thread) or the screen for `activity`.",
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "tell",
+                "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
+                "light_hunt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "activity: which screen"
+        },
+        "id": {
+          "description": "send it back in the answer; an answered item is never offered again",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "talk_about",
+            "activity"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "talk_about: what was left open"
+        },
+        "voice_key": {
+          "description": "the template used; speak `text` with POST /v1/voice/say",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "voice_key"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "InvitationAnswer": {
+      "additionalProperties": false,
+      "description": "POST /v1/me/invitation/answer — yes: the device opens it. not_now: final. Either way the item is settled.",
+      "properties": {
+        "answer": {
+          "enum": [
+            "yes",
+            "not_now"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "answer"
+      ],
+      "title": "InvitationAnswer",
+      "type": "object"
+    },
+    "InvitationResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when\ntoday's was answered, or on an extra-gentle day with nothing to talk about.",
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "invitation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Invitation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "home_id"
+      ],
+      "title": "InvitationResponse",
       "type": "object"
     },
     "KnowledgeGraph": {
@@ -7630,6 +7834,59 @@
       "title": "SensorsCmd",
       "type": "object"
     },
+    "SessionClose": {
+      "additionalProperties": false,
+      "description": "POST /v1/companion/close — the device says a conversation stopped and how long it ran. The cloud never\nsees the audio socket, so this is what brings the Live budget reservation down to the time really used\n(whole started minutes, at least one, never more than was reserved). Send it once when the conversation\nends, whatever ended it; sending it again is harmless. It changes nothing else about the session.",
+      "properties": {
+        "elapsed_s": {
+          "description": "seconds from the conversation's start to its end, across every token it used",
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "number"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "description": "CompanionSessionResponse.session_id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "session_id",
+        "elapsed_s"
+      ],
+      "title": "SessionClose",
+      "type": "object"
+    },
+    "SessionCloseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "billed_minutes": {
+          "description": "started minutes now counted for this conversation",
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "settled": {
+          "description": "Live reservations this call settled or corrected (0: nothing to change)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "session_id",
+        "settled",
+        "billed_minutes"
+      ],
+      "title": "SessionCloseResult",
+      "type": "object"
+    },
     "SourceBadge": {
       "additionalProperties": false,
       "properties": {
@@ -8403,6 +8660,174 @@
         "text"
       ],
       "title": "VoiceSayRequest",
+      "type": "object"
+    },
+    "WalkGoalResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `set_walk_goal`: the count it keeps.",
+      "properties": {
+        "found": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "left": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "thing": {
+          "maxLength": 30,
+          "type": "string"
+        }
+      },
+      "required": [
+        "thing",
+        "target",
+        "left"
+      ],
+      "title": "WalkGoalResult",
+      "type": "object"
+    },
+    "WalkGuide": {
+      "additionalProperties": false,
+      "description": "CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the\ndevice nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and\nnobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge\nis not used in this style. Values: config/kaiku.toml [walk].\nKaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not\nalways silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),\nso the device holds the audio of a nudge's reply until its first output transcription fragment and plays it\nonly when that fragment has a real word.",
+      "properties": {
+        "look_every_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "look_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "quiet_after_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "quiet_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "style": {
+          "enum": [
+            "quiet",
+            "playful",
+            "chatty"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "style"
+      ],
+      "title": "WalkGuide",
+      "type": "object"
+    },
+    "WalkMomentResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `log_walk_moment` (one find). Without a goal: ok=true, the counts null, and\n`note` tells the model that nothing was counted and to call `set_walk_goal` first, then log the find again.",
+      "properties": {
+        "found": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "left": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for the model, when there was no goal to count against"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "thing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "WalkMomentResult",
       "type": "object"
     },
     "WearableDaily": {

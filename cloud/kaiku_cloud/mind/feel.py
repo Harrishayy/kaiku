@@ -31,7 +31,7 @@ from .. import service
 from ..analytics.metrics import parse_ts
 from ..settings import TZ
 from ..store.db import Store
-from . import affect, memory
+from . import affect, assemble, memory
 from .card import SUGGESTION, today_facts, tone_for
 
 STANCE = {"sad_news": "comfort", "lonely": "comfort", "worried": "steady", "angry": "steady", "flat": "give_space",
@@ -215,7 +215,8 @@ def save_follow_up(store: Store, home_id: str, kind: str, valence: str, about: s
 
 
 def plan_from(kind: str, heard: dict[str, Any], about: str | None, said: str | None, *, earlier: int, heavy: int,
-              cue: str, offered: bool, best: dict[str, Any] | None, recall: str | None, follow_up: bool) -> FeelPlan:
+              cue: str, offered: bool, best: dict[str, Any] | None, recall: str | None, follow_up: bool,
+              can: list[str] | None = None) -> FeelPlan:
     """The whole decision as one pure function of the moment and what the record knows (the companion evals run
     exactly this with a fixture record)."""
     kind = read_kind(kind, heard["valence"], said, about)
@@ -225,6 +226,8 @@ def plan_from(kind: str, heard: dict[str, Any], about: str | None, said: str | N
     if heavy >= HEAVY_DAYS and heard["valence"] != "bright" and (heard["valence"] == "low" or kind in HARD_KINDS):
         hint += f" It has sounded heavy on {heavy} days this week: you may say, once, that it has been a heavy few days."
     may_offer, note, activity = offer_for(stance, kind, cue, offered, best)
+    if can is not None and activity not in can:
+        activity = None  # this device has no screen for it: the offer stays words, no card and nothing to start
     return FeelPlan(stance=stance, depth=depth, reflect_hint=hint, recall=recall,  # type: ignore[arg-type]
                     may_offer=may_offer, offer_note=note, offer_activity=activity,  # type: ignore[arg-type]
                     follow_up_saved=follow_up, scheduling=str(get("live", "feel_scheduling", "WHEN_IDLE")))  # type: ignore[arg-type]
@@ -264,7 +267,7 @@ def act(store: Store, home_id: str, surface: str, session_id: str | None, episod
     plan = plan_from(
         kind, heard, about, said, earlier=earlier, heavy=affect.heavy_days(store, home_id, now),
         cue=tone_for(store.home_summary(home_id)),  # no row yet -> steady
-        offered=state["offered"], best=prep.get("help"),
+        offered=state["offered"], best=prep.get("help"), can=assemble.surface_activities(surface),
         recall=recall_for(store, home_id, stance_of(read_kind(kind, heard["valence"], said, about), heard["valence"]),
                           about, said, now,
                           prep.get("facts") or [], before),

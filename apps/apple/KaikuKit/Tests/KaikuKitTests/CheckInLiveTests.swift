@@ -124,7 +124,7 @@ import XCTest
             await quiet(25, after: turns)
             flush()
             if chat.talk.conversation.planCount > plans, let p = chat.talk.conversation.plan {
-                note("FEEL → stance \(p.stance ?? "-"), depth \(p.depth.rawValue), may_offer \(p.mayOffer ?? "none"), activity \(p.offerActivity ?? "none"); chip: \(chat.state.offer?.kind ?? "none")")
+                note("FEEL → stance \(p.stance ?? "-"), depth \(p.depth.rawValue), may_offer \(p.mayOffer ?? "none"), activity \(p.offerActivity ?? "none"); card: \(chat.card?.kind ?? "none")")
             }
             note("state: turns \(chat.state.personTurns), staying \(chat.state.staying), end \(String(describing: chat.state.end)), ticked \(app.weatherDoneToday)")
         }

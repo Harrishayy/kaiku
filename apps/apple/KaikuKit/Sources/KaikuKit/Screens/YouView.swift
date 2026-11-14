@@ -41,6 +41,9 @@ public struct YouView: View {
                     KDivider()
                     link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
                 }
+                #if os(macOS)
+                QuickTalkSettingsSection()   // Mac only: talk from any app (KaikuKit/Mac/QuickTalkView.swift)
+                #endif
             } trailing: {
                 KSection(T("you.sec.settings"), icon: "slider.horizontal.3", tone: .sky) {
                     link(.voice, "globe", KaikuTokens.Colors.sky, "voice.title")
@@ -51,6 +54,8 @@ public struct YouView: View {
                     if KaikuPlatform.isPhone {
                         KDivider()
                         link(.glasses, "eyeglasses", KaikuTokens.Colors.sage, "gc.title")
+                        KDivider()
+                        WalkStyleSetting()   // Calm · Playful · Chatty (Walk/WalkView.swift)
                     }
                     KDivider()
                     KToggleRow(icon: "speaker.wave.2.fill", tint: KaikuTokens.Colors.sage, title: T("you.sounds"), isOn: $app.sounds)

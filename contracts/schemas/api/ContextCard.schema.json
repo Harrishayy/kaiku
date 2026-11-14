@@ -316,6 +316,15 @@
       "title": "Others Present",
       "type": "boolean"
     },
+    "outdoor_likes": {
+      "description": "walk sessions: outdoor things and places the person told Kaiku they like, in their words (notebook)",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Outdoor Likes",
+      "type": "array"
+    },
     "phq9_due": {
       "default": false,
       "title": "Phq9 Due",
@@ -412,6 +421,24 @@
       ],
       "title": "Tone",
       "type": "string"
+    },
+    "walk_style": {
+      "anyOf": [
+        {
+          "enum": [
+            "quiet",
+            "playful",
+            "chatty"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "walk sessions: how Kaiku walks with them",
+      "title": "Walk Style"
     },
     "weather_word": {
       "anyOf": [

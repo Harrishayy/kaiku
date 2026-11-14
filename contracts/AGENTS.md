@@ -204,3 +204,26 @@ the received words unchanged; completion metadata never authorises transcript re
   `ReflectionDay` gain `tone[]`, `energy?`, `heard?`; `ReflectionOverview.tone_summary?`.
 - Tone is an observation by a model, never a state and never an input to the consensus.
 
+## Walk styles, activity cards, call length and the invitation (2026-11-14, additive, D45)
+- `companion_tools`: `Activity` = `breathe | tell | walk | lantern | seeds | watering | pebbles | firefly | drum |
+  light_hunt` (`ACTIVITIES`, the screens that exist; each surface lists its own in `config/surfaces.toml`);
+  `WalkStyle` = `quiet | playful | chatty` (`WALK_STYLES`). Both are in `export()` (`activities`, `walk_styles`).
+- Device tools: `suggest_activity {kind: Activity, line? ≤ 80}` (iphone, mac) → `api.ActivityCardResult {ok, shown}`;
+  `set_walk_goal {thing ≤ 30, target 1..5}` → `api.WalkGoalResult {thing, target, found, left}`; `log_walk_moment
+  {kind}` → `api.WalkMomentResult {ok, thing?, found?, target?, left?, note?}` (`note`: for the model when no goal
+  was set, so nothing was counted; glasses; iphone only on a walk:
+  `walk_only_on`, `for_surface(surface, walk=True|False|None)`).
+- `CompanionSessionRequest.walk_style?`; `CompanionSessionResponse.walk?` (`WalkGuide {style, look_every_s?,
+  look_prompt?, quiet_after_s?, quiet_prompt?}`) and `.idle_end_s?`; `ContextCard.walk_style?`, `.outdoor_likes[≤4]`.
+- `Invitation {id, kind: talk_about|activity, text ≤ 200, voice_key, topic?, activity?}`, `InvitationResponse
+  {home_id, invitation?}`, `InvitationAnswer {id, answer: yes|not_now}`.
+
+## Live reservations settle to real talk time (2026-11-14, additive, D46)
+- `api.SessionClose {home_id, session_id, elapsed_s 0..86400}` → `api.SessionCloseResult {ok, session_id, settled,
+  billed_minutes}` (`POST /v1/companion/close`).
+- `budget`: `charge` returns the row's `ts`; `reservation_units(minutes, session)`, `live_reservations(path?)`
+  (read-only), `bill` and `plan_session` (pure), `settle_session(session, end_ts|elapsed_s, floor_ts, via)`,
+  `settle(res_ts, used_s, via)`, `session_minutes(session)`. The `spend` table is unchanged (no new column: other
+  processes keep writing seven values); a settlement is one more row, task `live_settlement`, usd below zero for a
+  release and above for a correction. `charge` still refuses a negative amount.
+

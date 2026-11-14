@@ -41,6 +41,7 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions opts: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         Self.current = self
+        KaikuCall.clearLeftovers()
         UNUserNotificationCenter.current().delegate = self
         Notifier.shared.registerCategories()
         #if DEBUG

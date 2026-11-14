@@ -10,8 +10,13 @@ public struct WalkActivityAttributes: ActivityAttributes {
         public var found: Int
         public var steps: Int?
         public var glasses: Bool
-        public init(minutes: Int, found: Int, steps: Int?, glasses: Bool) {
+        /// The spotting game that is on (`WalkGoal`): what to look for and how many. Nil = no game, and the
+        /// surfaces say nothing about one.
+        public var thing: String?
+        public var target: Int?
+        public init(minutes: Int, found: Int, steps: Int?, glasses: Bool, thing: String? = nil, target: Int? = nil) {
             self.minutes = minutes; self.found = found; self.steps = steps; self.glasses = glasses
+            self.thing = thing; self.target = target
         }
     }
     public var startedAt: Date

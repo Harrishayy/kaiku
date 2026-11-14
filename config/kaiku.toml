@@ -38,12 +38,49 @@ prefix_padding_ms = 120
 silence_ms = 900                              # quiet this long = the person's turn is over
 affective_dialog = false                      # the Live guide lists it as supported on gemini-3.8-live (v1beta, enable_affective_dialog), but true closes the session with 1007 "invalid argument" on the first turn (real calls 2026-11-14: SDK, raw key and token endpoint). Leave off until a real call passes.
 feel_scheduling = "WHEN_IDLE"                 # FunctionResponse scheduling for the non-blocking `feel` tool (INTERRUPT | WHEN_IDLE | SILENT). Real Live sessions 2026-11-14: the model calls `feel` before it speaks; with WHEN_IDLE it then answers using the plan, with SILENT it said nothing that turn.
-context_compression = true                    # sliding window: long chats don't hit the context limit
+proactive_audio = true                        # setup.proactivity.proactiveAudio: "the model can reject responding to the last prompt" (Live API reference, ProactivityConfig): talk not meant for Kaiku can go unanswered. A declined walk nudge then has no words; the device drops its audio (see [walk]).
+context_compression = true                    # sliding window. Without it Gemini ends an audio-only session at 15 minutes and one with camera frames at 2 (Live session-management guide, 2026-11-14)
 session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
+talk_max_minutes = 30                        # a Talk on the phone or Mac is like a call: the person sets the length (purpose/intent talk)
+walk_max_minutes = 30                        # a walk with Kaiku in the ear
+token_minutes = 5                            # one ephemeral token and its budget reservation cover at most this long; a longer call resumes (resume_session_id) and gets the next token. Five keeps a short talk's reservation what it was before calls could run long; Gemini resets a Live connection after about ten minutes anyway (session-management guide)
+idle_end_s = 180                             # CompanionSessionResponse.idle_end_s: the device ends a conversation after this long with nobody speaking (an open microphone in a pocket)
+walk_idle_end_s = 900                        # ... on a walk, where long quiet stretches are normal
+settle_min_minutes = 1                       # a Live reservation never settles below this many started minutes (kaiku_contracts.budget)
+settle_grace_s = 10                          # seconds added when the cloud itself sees a conversation end (end_session, crisis): the goodbye is still being spoken
 reconnect_attempts = 2                       # bounded recovery during an explicitly started conversation
 mind_timeout_s = 120                       # bounded shared reasoning wait; audio receive remains responsive
 context_refresh_seconds = 15                 # active sessions receive bounded source-labelled activity updates
 hub_transcripts = false                     # explicit household opt-in before robot transcripts may be persisted
+
+[walk]
+# Walking together (cloud/kaiku_cloud/mind/walk.py; persona: "Walking together"). A Live session only answers input,
+# so the device nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on
+# and nobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Kaiku answers a
+# nudge in words only when there is something to say. A declined nudge is not always silent (real sessions
+# 2026-11-14: 9 of 14 carried a second or two of non-speech sound), so the device plays a nudge's reply only once
+# its output transcription has a real word. A `stay_quiet` tool call gave exact silence but made remarks arrive one
+# look late, about the previous view; it is not used. 0 = that nudge is not used.
+default_style = "quiet"                       # CompanionSessionRequest.walk_style when the device sends none
+outdoor_likes = 4                             # notebook places / outdoor likes carried on the walk card
+
+[walk.quiet]
+look_every_s = 30
+look_prompt = "A look around, not said by them. Only if something plainly worth it is in view (striking light, water, a tree in blossom, an animal, something that looks like one of their own places), say one short remark about it. Ordinary ground, road, wall or sky: answer with silence."
+quiet_after_s = 0
+quiet_prompt = ""
+
+[walk.playful]
+look_every_s = 20
+look_prompt = "A look around, not said by them. If a spotting game is on and one of the things may be in view, ask if that is one. If no game is on and something in view would make a small game, offer it. Something striking gets one bright remark. Nothing worth it: answer with silence."
+quiet_after_s = 60
+quiet_prompt = "It has been quiet for a while, not said by them. You may offer one small game from what is around, or one playful question about their own day. If they seem to want the quiet, answer with silence."
+
+[walk.chatty]
+look_every_s = 20
+look_prompt = "A look around, not said by them. Say one friendly thing about what is in view, or connect it to something of theirs as a question. Nothing worth a word: answer with silence."
+quiet_after_s = 40
+quiet_prompt = "It has been quiet for a while, not said by them. You may speak first: ask about their day, pick up what was left open, or bring up one thing they told you. One short turn."
 
 [attention]
 # Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
@@ -191,8 +228,9 @@ max_model_len = 8192
 # uses KAIKU_BUDGET_TOTAL_USD=5 and KAIKU_BUDGET_DAILY_USD=5 in its runtime secret.
 # Over the cap every caller fails softly; this is an estimated spend ceiling, not a provider billing guarantee.
 # Lead approved a further extension on 2026-11-14 (voice on recordings, real attunement and tone proofs): +$10.
-total_usd = 30.0
-daily_usd = 28.0
+# Lead approved another +$10 on 2026-11-14 for the evening of real-device testing and filming (long calls, walks).
+total_usd = 40.0
+daily_usd = 38.0
 argon_per_home_day = 20                    # flagship calls per home per local day (ask_mind, reflection, consolidation, briefs); then Flash only
 images_per_home_day = 3                    # walk postcards per home per local day
 
