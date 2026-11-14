@@ -1,0 +1,78 @@
+{
+  "additionalProperties": false,
+  "description": "What the device returns for `log_walk_moment` (one find). Without a goal: ok=true, the counts null, and\n`note` tells the model that nothing was counted and to call `set_walk_goal` first, then log the find again.",
+  "properties": {
+    "found": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Found"
+    },
+    "left": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Left"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "for the model, when there was no goal to count against",
+      "title": "Note"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target"
+    },
+    "thing": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Thing"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "title": "WalkMomentResult",
+  "type": "object"
+}

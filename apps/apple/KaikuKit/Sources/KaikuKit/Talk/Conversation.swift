@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(iOS) && DEBUG
+import UIKit
+#endif
 
 /// One spoken conversation with Kaiku, the same on every Apple surface (Talk on iPhone/Mac, the walk through Meta
 /// glasses). The pipeline:
@@ -38,10 +41,33 @@ public final class Conversation {
         public var transcriptFinished = false
         public var interrupted = false
         public var completionUnknown = false
+        /// Typed by the person (their own characters, kept as they are), not transcribed speech.
+        public var typed = false
     }
 
     public let surface: CompanionSurface
     public let intent: CompanionIntent
+    /// Why the conversation was opened; the cloud shapes the chat with it (a check-in is a small passing chat).
+    public let purpose: CompanionPurpose?
+    /// Walk conversations: how Kaiku walks with the person, sent as `walk_style` (set before `start`; nil elsewhere).
+    @ObservationIgnored public var walkStyle: WalkStyle?
+    /// The latest plan from the cloud's `feel` tool (the voice model noticed a feeling or news). `planCount`
+    /// goes up with each one, so a view can react to a new plan that equals the previous one.
+    public private(set) var plan: FeelPlan?
+    public private(set) var planCount = 0
+    /// How many things the person had said when the latest plan arrived (an offer lasts until they carry on).
+    public private(set) var planTurns = 0
+    /// The model closed the conversation itself (`end_session`): a passing chat that wrapped up warmly.
+    public private(set) var closedByModel = false
+    /// Kaiku's voice is muted: nothing is played, its words keep arriving as captions (the audio modality and the
+    /// output transcription stay on). Independent of the microphone mute. Remembered on this device.
+    public private(set) var voiceMuted = UserDefaults.standard.bool(forKey: Conversation.voiceMutedKey)
+    public static let voiceMutedKey = "kaiku.talk.voiceMuted"
+    /// When Live first answered in this conversation (the call's clock starts here).
+    public private(set) var liveSince: Date?
+    /// False when the conversation runs without the microphone (permission off): Kaiku still speaks and answers
+    /// typed messages; nothing is captured.
+    public private(set) var listens = true
     public private(set) var phase: Phase = .idle {
         didSet { if oldValue != phase { notePhase() } }
     }
@@ -88,6 +114,14 @@ public final class Conversation {
     @ObservationIgnored private var pendingContext: [AnyEnvelope] = []
     @ObservationIgnored private var limitTask: Task<Void, Never>?
     @ObservationIgnored private var readyTask: Task<Void, Never>?
+    @ObservationIgnored private var closeTask: Task<Void, Never>?
+    @ObservationIgnored private var resumeTask: Task<Void, Never>?
+    /// A new socket is open and has not answered yet (first connect, reconnect or planned resume).
+    @ObservationIgnored private var awaitingReady = false
+    /// A planned move to the next token is under way (not a reconnect: nothing on screen changes).
+    @ObservationIgnored private var resuming = false
+    /// Set while a conversation the model closed is letting Kaiku's goodbye finish.
+    @ObservationIgnored private var closing: (sawOutput: Bool, turnDone: Bool)?
     @ObservationIgnored private var listenerTask: Task<Void, Never>?
     @ObservationIgnored private var handle: String?
     @ObservationIgnored private var started = Date()
@@ -95,30 +129,49 @@ public final class Conversation {
     @ObservationIgnored private var everReady = false
     @ObservationIgnored private var failures = 0
     @ObservationIgnored private var reconnecting = false
-    @ObservationIgnored private var muted = false
+    /// The person muted their microphone (or it is not allowed): observable, independent of what Kaiku is doing.
+    public private(set) var micMuted = false
+    @ObservationIgnored private var muted: Bool { get { micMuted } set { if micMuted != newValue { micMuted = newValue } } }
+    /// Kaiku's voice is playing right now (also while the person is muted, and while its voice is muted).
+    public private(set) var kaikuSpeaking = false
     @ObservationIgnored private var pendingTools = 0
     @ObservationIgnored private var pauseGeneration = 0
     @ObservationIgnored private var pairingRevision = 0
 
-    public convenience init(surface: CompanionSurface, intent: CompanionIntent) {
+    public convenience init(surface: CompanionSurface, intent: CompanionIntent, purpose: CompanionPurpose? = nil,
+                            typedWithoutMic: Bool = false) {
         self.init(surface: surface, intent: intent, audio: ConversationAudio(),
-                  transport: { LiveSession(onEvent: $0) }, permission: { await Self.micGranted() })
+                  transport: { LiveSession(onEvent: $0) }, permission: { await Self.micGranted() },
+                  purpose: purpose, typedWithoutMic: typedWithoutMic)
     }
 
     init(surface: CompanionSurface, intent: CompanionIntent, audio: any ConversationAudioIO,
          transport: @escaping (@escaping @Sendable (LiveSession.Event) -> Void) -> any ConversationTransport,
-         permission: @escaping () async -> Bool, localListener: Bool = true) {
+         permission: @escaping () async -> Bool, localListener: Bool = true, purpose: CompanionPurpose? = nil,
+         typedWithoutMic: Bool = false) {
         self.surface = surface; self.intent = intent; self.audio = audio
         self.transport = transport; self.permission = permission; self.localListener = localListener
+        self.purpose = purpose; self.typedWithoutMic = typedWithoutMic
     }
+
+    /// Without microphone permission the conversation still opens, with the microphone closed: writing works
+    /// like speaking and Kaiku answers in its voice. Off by default (Talk and the walk need the microphone).
+    @ObservationIgnored private let typedWithoutMic: Bool
+    /// Cloud tools that must not look like waiting: Kaiku keeps talking and no "thinking" state is shown.
+    nonisolated static let quietTools: Set<String> = ["feel"]
 
     public var isLive: Bool { live != nil && phase != .unavailable }
     /// Live setup was acknowledged at least once in this conversation.
     public private(set) var wasLive = false
 
+    #if DEBUG
+    var audioForDemo: any ConversationAudioIO { audio }
+    #endif
+
     /// Tests: open the conversation on an already-made session, without the bootstrap request.
-    func adoptForTest(session s: CompanionSessionResponse, app: AppModel) {
+    func adoptForTest(session s: CompanionSessionResponse, app: AppModel, listens hears: Bool = true) {
         self.app = app
+        listens = hears; if !hears { muted = true }
         stopped = false; sessionPairing = app.pairing; pairingRevision = app.pairingRevision
         session = s; started = Date(); phase = .connecting
         try? startAudio()
@@ -139,6 +192,8 @@ public final class Conversation {
         lines = []; personTurnID = nil; kaikuTurnID = nil
         inputFinalObserved = false; outputFinalObserved = false; audioTurnEnded = false
         toolsUsed = []; everReady = false; wasLive = false; failures = 0; muted = false; handle = nil
+        plan = nil; planCount = 0; planTurns = 0; closedByModel = false; listens = true; liveSince = nil
+        turn = nil; answerOwed = false; toolsThisTurn = 0; heldContext = []; kaikuMarks.reset(); personMarks.reset()
         sessionPairing = app.pairing
         pairingRevision = app.pairingRevision
         seenEvents = []; pendingContext = []
@@ -148,7 +203,10 @@ public final class Conversation {
         guard !app.isPaused else { unavailableReason = .paused; phase = .unavailable; return false }
         pauseGeneration += 1
         observeGlobalPause(generation: pauseGeneration)
-        guard await permission() else { unavailableReason = .microphone; phase = .unavailable; return false }
+        if !(await permission()) {
+            guard typedWithoutMic else { unavailableReason = .microphone; phase = .unavailable; return false }
+            listens = false; muted = true
+        }
         guard !stopped, !app.isPaused else { return false }
         guard let s = await bootstrap() else {
             note("live_bootstrap_failed", ["reason": String(describing: unavailableReason)])
@@ -170,7 +228,7 @@ public final class Conversation {
                 self.stop(outcome: .ended_early)
             }
         }
-        if localListener && !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
+        if localListener && listens && !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
         guard !stopped else { return false }
         do { try startAudio() } catch {
             note("audio_start_failed", ["error": error.localizedDescription])
@@ -184,9 +242,13 @@ public final class Conversation {
     public func stop(outcome: EpisodeOutcome? = nil) {
         guard !stopped else { return }
         stopped = true
+        note("live_stop", ["outcome": outcome?.rawValue ?? "-", "lines": lines.count])
         pauseGeneration += 1
         limitTask?.cancel(); limitTask = nil
         readyTask?.cancel(); readyTask = nil
+        closeTask?.cancel(); closeTask = nil; closing = nil
+        resumeTask?.cancel(); resumeTask = nil; resuming = false; awaitingReady = false; turn = nil; heldText = []
+        contextDrain?.cancel(); contextDrain = nil; heldContext = []; answerOwed = false; toolFrames = []; cancelledCalls = []
         contextTask?.cancel(); contextTask = nil; pendingContext = []
         connectionGeneration += 1
         eventContinuation?.finish(); eventContinuation = nil
@@ -195,8 +257,17 @@ public final class Conversation {
         live = nil
         audio.stop()
         stopListener()
+        kaikuSpeaking = false
         phase = .idle
         guard let app, let s = session, let pairing = sessionPairing else { return }
+        // The cloud never sees the audio socket: tell it the conversation is over and how long it ran (every way a
+        // conversation ends comes through here, once), so its budget hold comes down to the time really used.
+        // Not awaited, never retried, any answer is fine.
+        if app.pairing == pairing {
+            let api = app.api
+            let close = SessionClose(home_id: pairing.homeID, session_id: s.session_id, elapsed_s: max(0, Date().timeIntervalSince(started)))
+            Task { _ = try? await api.companionClose(close) }
+        }
         let out = outcome ?? (lines.contains(where: \.me) ? .completed : .skipped)
         var ep = EpisodeIn(id: s.session_id, home_id: pairing.homeID, surface: surface, intent: intent,
                            start: KaikuTime.iso(started), end: KaikuTime.iso(Date()), outcome: out, tools_used: toolsUsed)
@@ -210,8 +281,15 @@ public final class Conversation {
 
     // MARK: input
 
+    /// Mute / unmute Kaiku's voice, at once (mid-sentence too). Captions are not affected.
+    public func setVoiceMuted(_ on: Bool) {
+        voiceMuted = on
+        UserDefaults.standard.set(on, forKey: Self.voiceMutedKey)
+        audio.setOutputMuted(on)
+    }
+
     public func setMuted(_ on: Bool) {
-        guard isLive else { return }
+        guard isLive, listens else { return }
         muted = on
         audio.setMic(!on && phase != .paused && phase != .connecting)
         guard phase != .paused && phase != .connecting else { return }
@@ -240,10 +318,13 @@ public final class Conversation {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, isLive, phase != .paused, app?.pairing == sessionPairing else { return }
         // Typed text is complete locally and must not steal an unfinished audio-transcription stream.
-        let line = Line(text: t, me: true, transcriptFinished: true)
+        let line = Line(text: t, me: true, transcriptFinished: true, typed: true)
         lines.append(line)
+        lastPersonAt = Date()
+        personTookTheTurn()
         if SafetyGate.shared.check(t) != nil { crisis(); return }
-        live?.sendText(t)
+        // Typed in the second or two a call spends moving to its next socket: sent as soon as that one answers.
+        if awaitingReady { heldText.append(t) } else { live?.sendText(t) }
     }
 
     /// One camera frame from the glasses → Live (`realtimeInput.video`). Only while the conversation is open and
@@ -259,9 +340,30 @@ public final class Conversation {
     }
 
     private func note(_ event: String, _ fields: [String: Any] = [:]) {
+        #if DEBUG
+        Self.debugTrace(event, fields)
+        #endif
         guard surface == .glasses else { return }
         GlassesLog.shared.log(event, fields)
     }
+
+    #if DEBUG
+    /// `-kaikuCallTrace <file>`: one line per connection event (start, ready, the move to the next token, drops,
+    /// the end) with the time; never words, audio or tokens. For checking a real call from outside the app.
+    private static let traceFile = UserDefaults.standard.string(forKey: "kaikuCallTrace").map(URL.init(fileURLWithPath:))
+    private static func debugTrace(_ event: String, _ fields: [String: Any]) {
+        guard let traceFile else { return }
+        let f = fields.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        #if os(iOS)
+        let state = ["active", "inactive", "background"][UIApplication.shared.applicationState.rawValue]
+        #else
+        let state = "mac"
+        #endif
+        let line = "\(KaikuTime.iso(Date())) \(event) \(f) app=\(state)\n"
+        if let h = try? FileHandle(forWritingTo: traceFile) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+        else { try? Data(line.utf8).write(to: traceFile) }
+    }
+    #endif
 
     private func notePhase() {
         guard surface == .glasses else { return }
@@ -274,7 +376,9 @@ public final class Conversation {
     /// A short bracketed context event from the device's senses, from a fixed vocabulary (`[walk · 10 min]`).
     public func context(_ event: String) {
         guard !stopped, app?.pairing == sessionPairing else { return }
-        live?.sendContext(event)
+        if heldContext.isEmpty { heldContextSince = Date() }
+        heldContext.append(event)
+        drainContext()
     }
 
     // MARK: private — connection
@@ -284,6 +388,8 @@ public final class Conversation {
         var req = CompanionSessionRequest(surface: surface, home_id: app.pairing?.homeID ?? "", intent: intent,
                                           language: app.language.rawValue)
         req.resume_session_id = session?.session_id
+        req.purpose = purpose
+        req.walk_style = walkStyle
         do { return try await app.api.companionSession(req) }
         catch APIError.http(let status) where status == 401 || status == 403 { unavailableReason = .pairing; return nil }
         catch { unavailableReason = .connection; return nil }
@@ -304,14 +410,17 @@ public final class Conversation {
         }
         let l = transport { event in continuation.yield(event) }
         live = l
+        endedWhileResuming = false
         let tuning: LiveSession.Tuning = ConversationAudio.headsetRoute ? .headset : .loudspeaker
         l.connect(token: token, session: s, options: .init(handsFree: true, tuning: tuning, resumeHandle: handle))
         // Setup must be acknowledged: a socket that opens but never says `setupComplete` would leave Talk on
         // "connecting" for good. Treat it like a drop (bounded by the same three attempts).
+        awaitingReady = true
         readyTask?.cancel()
         readyTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: UInt64(Self.readyTimeout * 1_000_000_000)) } catch { return }
-            guard let self, !self.stopped, self.connectionGeneration == generation, self.phase == .connecting else { return }
+            guard let self, !self.stopped, self.connectionGeneration == generation, self.awaitingReady else { return }
+            self.resuming = false
             self.reconnect()
         }
     }
@@ -324,6 +433,84 @@ public final class Conversation {
         unavailableReason = reason
         phase = .unavailable
         notePhase()
+    }
+
+    /// How long before a Live token ends the conversation moves to the next one.
+    static var resumeMargin: TimeInterval = 45
+    @ObservationIgnored private var endedWhileResuming = false
+    @ObservationIgnored private var heldText: [String] = []
+
+    /// One Live token covers a limited stretch (about ten minutes); a longer call goes on with the next one. At
+    /// the token's end (and when the server says the socket is about to close) the conversation asks the cloud
+    /// for the next token (`resume_session_id`) and moves to a new socket with the resumption handle, between
+    /// sentences. Nothing on screen changes: the captions stay, the call's clock keeps counting, the phase is
+    /// not "connecting", and it is not a failed attempt. If the new socket never answers, the ordinary
+    /// reconnect takes over.
+    private func scheduleTokenResume() {
+        resumeTask?.cancel()
+        guard let t = session?.live_token, let end = Self.date(t.expires_at) else { return }
+        let wait = end.timeIntervalSinceNow - Self.resumeMargin
+        resumeTask = Task { [weak self] in
+            if wait > 0 { do { try await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) } catch { return } }
+            // between sentences, but never later than the margin allows
+            var waited = 0.0
+            while waited < Self.resumeMargin * 0.6 {
+                guard let self, !self.stopped else { return }
+                if !self.audio.isPlaying && self.personTurnID == nil && self.pendingTools == 0 { break }
+                do { try await Task.sleep(nanoseconds: 250_000_000) } catch { return }
+                waited += 0.25
+            }
+            self?.plannedResume()
+        }
+    }
+
+    private func plannedResume() {
+        guard !stopped, !reconnecting, !resuming, isLive, phase != .connecting else { return }
+        resuming = true
+        note("live_next_token", ["handle": handle != nil])
+        Task {
+            guard let fresh = await bootstrap(), let token = fresh.live_token?.token, !stopped, resuming else {
+                // The cloud did not answer: the socket's own end reconnects (now, if it has ended meanwhile).
+                note("live_next_token_failed", [:])
+                let ended = endedWhileResuming
+                resuming = false; endedWhileResuming = false
+                if ended, !stopped { reconnect() }
+                return
+            }
+            session?.live_token = fresh.live_token
+            let old = live
+            connect(token: token)                     // events of the old socket are ignored from here
+            old?.close()
+        }
+    }
+
+    /// The socket ended by itself in the middle of a call. That is ordinary: the server resets a connection after
+    /// about ten minutes and closes one that has sent nothing for about two (a muted microphone, a typed
+    /// conversation; seen live as close 1008 "client inactivity"). With a resumption handle the first try is
+    /// quiet like a planned move: same token while it lasts, nothing on screen changes, the microphone stays as
+    /// it was. It still counts as an attempt: if the new socket does not answer, the visible reconnect follows.
+    private func quietReconnect() {
+        failures += 1
+        resuming = true
+        Task {
+            if let t = session?.live_token, !Self.expired(t.expires_at, margin: 60) {
+                connect(token: t.token)
+                return
+            }
+            guard let fresh = await bootstrap(), let token = fresh.live_token?.token, !stopped, resuming else {
+                resuming = false
+                if !stopped { reconnect() }
+                return
+            }
+            session?.live_token = fresh.live_token
+            connect(token: token)
+        }
+    }
+
+    nonisolated static func date(_ iso: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
     }
 
     /// goAway / drop: reconnect with the resumption handle. The same token keeps working until its expireTime;
@@ -360,8 +547,11 @@ public final class Conversation {
     /// The on-screen lines as transcript turns (pure; tested).
     nonisolated static func transcript(_ lines: [Line]) -> [TranscriptTurn] {
         lines.compactMap { l in
-            let t = l.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return t.isEmpty ? nil : TranscriptTurn(role: l.me ? .person : .kaiku, text: String(t.prefix(2000)), complete: l.interrupted || t.count > 2000 ? false : (l.completionUnknown ? nil : l.transcriptFinished))
+            // Typed lines are the person's own characters. A transcribed line never keeps a transcription marker,
+            // and one that is only markers or marks was not said by anyone: it is not stored.
+            let t = (l.typed ? l.text : MarkerFilter.clean(l.text)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let said = l.typed ? !t.isEmpty : t.contains(where: { $0.isLetter || $0.isNumber })
+            return !said ? nil : TranscriptTurn(role: l.me ? .person : .kaiku, text: String(t.prefix(2000)), complete: l.interrupted || t.count > 2000 ? false : (l.completionUnknown ? nil : l.transcriptFinished))
         }
     }
 
@@ -386,13 +576,15 @@ public final class Conversation {
             self.live?.sendAudio(pcm)
         } }
         audio.setMic(false)
+        audio.setCapture(listens)
+        audio.setOutputMuted(voiceMuted)
         audio.onPlaying = { [weak self] on in Task { @MainActor in self?.playing(on) } }
         audio.onLevel = { [weak self] db in Task { @MainActor in self?.level = db } }
         let listener = listener
-        audio.onBuffer = localListener ? { b in listener.append(b) } : nil
+        audio.onBuffer = localListener && listens ? { b in listener.append(b) } : nil
         try audio.start()
         listener.onHit = { [weak self] hit in Task { @MainActor in self?.onDeviceHit(hit) } }
-        if localListener { startListener() }
+        if localListener && listens { startListener() }
     }
 
     /// Global privacy pause closes an already-open Live microphone. Unpausing never resumes it silently.
@@ -435,35 +627,167 @@ public final class Conversation {
         listener.stop()
     }
 
+    /// Something Kaiku may say on its own initiative (a walk prompt, a reminder): the text goes to the model as a
+    /// context turn (`context(_:)`), and like every model turn the person did not cause, the answer is held until
+    /// its first real word (see `ModelTurn`). The name is the walk's.
+    public func nudge(_ text: String) {
+        guard isLive else { return }
+        context(text)
+    }
+
+    /// Something the person did on the screen (opened a card, put it aside, set the dials): the model is told at
+    /// once, and what it says back is the person's answer (played at once, like an answer to their words).
+    public func personDid(_ text: String) {
+        guard !stopped, isLive, app?.pairing == sessionPairing else { return }
+        personTookTheTurn()
+        live?.sendContext(text)
+    }
+
+    /// One model turn. A turn that answers the person plays at once. Any other turn is Kaiku's own initiative: it
+    /// answers a context event, a nudge, a tool result, or nothing at all. With proactive audio on, the model
+    /// often declines those with a second of non-speech sound (transcribed as `<no speech>`, `{pause}`, `×`, or
+    /// not at all; seen in 9 of 14 real sessions and on a real walk). So such a turn's audio is held until its
+    /// transcription has a real word, then played from the start; a turn whose transcription is a marker, or
+    /// that ends without a word, is never heard and shows no bubble.
+    private struct ModelTurn {
+        var gated: Bool
+        var held: [Data] = []
+        /// nil = not known yet (audio is held), true = playing, false = the rest of this turn is dropped.
+        var play: Bool?
+        var said = ""
+        /// Audio or transcription arrived in this turn.
+        var sound = false
+        /// When its latest frame arrived.
+        var last = Date()
+    }
+    /// A turn streams without gaps. The server does not always say that a declined turn is over (seen live: a
+    /// `<no speech>` turn with no `turnComplete` for half a minute), so a turn with no frame for this long is over:
+    /// it no longer holds context events back, and the next frame starts a new turn.
+    static var turnGap: TimeInterval = 3
+    private var turnOpen: Bool { turn.map { Date().timeIntervalSince($0.last) < Self.turnGap } ?? false }
+    @ObservationIgnored private var turn: ModelTurn?
+    /// The person spoke or typed and the model has not answered since: its next turn is theirs. The credit is
+    /// used up by a turn with sound, or by a turn that ends with nothing at all (the model chose to stay quiet);
+    /// a turn that only called a tool keeps it (the answer comes after the tool).
+    @ObservationIgnored private var answerOwed = false
+    @ObservationIgnored private var toolsThisTurn = 0
+    @ObservationIgnored private var owedAt = Date.distantPast
+    /// How long after the person's last words (or a tool they caused) a model turn still counts as their answer.
+    static var answerWindow: TimeInterval = 15
+    private var owesAnswer: Bool { answerOwed && Date().timeIntervalSince(owedAt) < Self.answerWindow }
+
+    private func modelTurn() -> ModelTurn {
+        if let t = turn, turnOpen { turn?.last = Date(); return t }
+        let owed = owesAnswer || closing != nil          // the goodbye of a conversation the model closed is an answer too
+        let t = ModelTurn(gated: !owed, play: owed ? true : nil)
+        turn = t
+        return t
+    }
+
+    /// A letter or digit outside `<…>` and `{…}`: something was really said.
+    nonisolated static func hasRealWord(_ fragment: String) -> Bool { Heard(fragment) == .word }
+
+    /// The person spoke or typed: the model's next turn is their answer. A held turn of Kaiku's own that had not
+    /// been heard yet is theirs to interrupt (it is dropped).
+    private func personTookTheTurn() {
+        answerOwed = true
+        owedAt = Date()
+        if let t = turn, t.gated, t.play != true { turn?.play = false; turn?.held = [] }
+    }
+
+    /// Context events wait while Kaiku is speaking, a tool is running, or the person is owed an answer: a context
+    /// turn sent then would cut Kaiku off (a client turn interrupts the generation) or take the person's answer.
+    @ObservationIgnored private var heldContext: [String] = []
+    @ObservationIgnored private var heldContextSince = Date.distantPast
+    @ObservationIgnored private var contextDrain: Task<Void, Never>?
+    /// The longest a context event waits for a quiet moment before it is sent anyway.
+    static var contextPatience: TimeInterval = 20
+
+    private var busyForContext: Bool {
+        turnOpen || audio.isPlaying || owesAnswer || phase == .hearing || pendingTools > 0 || awaitingReady
+    }
+
+    private func drainContext() {
+        guard !stopped, !heldContext.isEmpty else { contextDrain?.cancel(); contextDrain = nil; return }
+        if busyForContext && Date().timeIntervalSince(heldContextSince) < Self.contextPatience {
+            guard contextDrain == nil else { return }
+            contextDrain = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
+                    guard let self, !self.stopped, !self.heldContext.isEmpty else { return }
+                    if !self.busyForContext || Date().timeIntervalSince(self.heldContextSince) >= Self.contextPatience {
+                        self.contextDrain = nil
+                        self.drainContext()
+                        return
+                    }
+                }
+            }
+            return
+        }
+        contextDrain?.cancel(); contextDrain = nil
+        let text = heldContext.joined(separator: "\n")
+        heldContext = []
+        answerOwed = false                      // what the model says next answers this, not the person
+        live?.sendContext(text)
+    }
+
     // MARK: private — events
+
+    /// Tests: every Live event as it is handled (the opt-in real runs write their evidence from it).
+    @ObservationIgnored var trace: ((LiveSession.Event) -> Void)?
 
     private func handle(_ ev: LiveSession.Event) {
         guard !stopped else { return }
+        trace?(ev)
         guard app?.pairing == sessionPairing else { stop(outcome: .ended_early); return }
         switch ev {
         case .ready:
             readyTask?.cancel(); readyTask = nil
             failures = 0
+            awaitingReady = false
+            let planned = resuming
+            resuming = false
+            note(planned ? "live_next_socket_ready" : "live_ready", ["handle": handle != nil])
+            let held = heldText
+            heldText = []
+            held.forEach { live?.sendText($0) }
+            scheduleTokenResume()
             if phase == .connecting || phase == .unavailable { phase = muted ? .muted : .listening }
             audio.setMic(!muted && phase != .paused)
             wasLive = true
-            if !everReady { everReady = true; onReady?(); startContextRefresh() } else { onReconnected?() }
+            if liveSince == nil { liveSince = Date() }
+            if !everReady { everReady = true; onReady?(); startContextRefresh() } else if !planned { onReconnected?() }
         case .modelOutput:
+            _ = modelTurn()
             if audioTurnEnded {
                 if !outputFinalObserved { closeUnknownTranscript(me: false) }
                 audioTurnEnded = false
             }
         case .audio(let pcm):
             guard phase != .paused else { return }
-            audio.play(pcm)
+            if let c = closing {
+                if c.turnDone { return }
+                closing?.sawOutput = true
+            }
+            let play = modelTurn().play
+            turn?.sound = true
+            switch play {
+            case nil: turn?.held.append(pcm)                              // held until the first word, or dropped
+            case false?: break
+            case true?: audio.play(pcm)
+            }
         case .interrupted:
             if let id = kaikuTurnID, let index = lines.firstIndex(where: { $0.id == id }) {
                 lines[index].interrupted = true
                 lines[index].completionUnknown = false
             }
             audio.flush()
+            turn = nil
+            kaikuMarks.reset()
             if phase != .muted && phase != .paused { phase = .hearing }
-        case .userText(let t):
+        case .userText(let raw):
+            guard let t = words(raw, me: true) else { return }
+            personTookTheTurn()
             // Older providers omit finished. A new physical-input turn after audio completion is then a
             // boundary, but never evidence that the older transcript was final. Typed input is independent.
             if audioTurnEnded {
@@ -475,7 +799,30 @@ public final class Conversation {
             if SafetyGate.shared.check((lines.last(where: \.me)?.text ?? "") + t) != nil { crisis(); return }
             append(t, me: true)
             if phase == .listening { phase = .hearing }
-        case .kaikuText(let t):
+        case .kaikuText(let raw):
+            let now = modelTurn()
+            turn?.sound = true
+            if now.play == nil {
+                let said = Self.mergeTranscript(now.said, raw)
+                turn?.said = said
+                switch Heard(said) {
+                case .word:
+                    turn?.play = true
+                    turn?.held = []
+                    now.held.forEach { audio.play($0) }
+                case .notSpeech: turn?.play = false; turn?.held = []          // sound, not speech
+                case .undecided: break
+                }
+            }
+            let text = words(raw, me: false)
+            if turn?.play == false { return }                                  // an unheard turn shows nothing
+            guard let t = text else { return }
+            if let c = closing {
+                if c.turnDone { return }               // filler after the goodbye turn
+                closing?.sawOutput = true
+            }
+            // A turn never starts with a stray mark ("-"): that is transcription noise, not a line.
+            if kaikuTurnID == nil && !t.contains(where: { $0.isLetter || $0.isNumber }) { return }
             append(t, me: false)
         case .userTranscriptComplete:
             inputFinalObserved = true
@@ -484,28 +831,49 @@ public final class Conversation {
             outputFinalObserved = true
             finishTranscript(me: false)
         case .turnComplete:
+            // The turn is over: unheard if it never had a word. A turn with words was the person's answer.
+            if let t = turn { if t.play == true && t.sound { answerOwed = false } }
+            else if toolsThisTurn == 0 && pendingTools == 0 { answerOwed = false }
+            turn = nil
+            toolsThisTurn = 0
+            kaikuMarks.reset()
+            if closing?.sawOutput == true { closing?.turnDone = true }
             audioTurnEnded = true
             if !inputFinalObserved { markUnknownTranscript(me: true) }
             if !outputFinalObserved { markUnknownTranscript(me: false) }
             // Audio generation and transcript finalisation are independent protocol boundaries.
             if !audio.isPlaying && pendingTools == 0 && (phase == .hearing || phase == .speaking) { phase = .listening }
             flushPendingContext()
+            drainContext()
         case .toolCall(let id, let name, let args):
+            toolsThisTurn += 1
             Task { await tool(id: id, name: name, args: args) }
-        case .toolCancelled:
+        case .toolFrame(let ids):
+            toolFrames.append(ToolFrame(ids: ids))
+        case .toolCancelled(let ids):
             pendingTools = 0
+            cancelledCalls.formUnion(ids)
+            for i in toolFrames.indices { toolFrames[i].ids.removeAll(where: ids.contains) }
+            sendCompleteToolFrames()
         case .resumable(let h):
             handle = h
-        case .goAway, .closed:
-            note("live_dropped", ["go_away": ev == .goAway, "attempt": failures + 1])
-            reconnect()
+        case .goAway:
+            // The server says this socket is about to end: move to a new one before it does.
+            note("live_go_away", [:])
+            plannedResume()
+        case .closed:
+            note("live_dropped", ["attempt": failures + 1, "quiet": everReady && handle != nil && failures == 0])
+            if resuming && !awaitingReady { endedWhileResuming = true }            // the next token is on its way
+            else if everReady, handle != nil, failures == 0, phase != .connecting { quietReconnect() }
+            else { resuming = false; reconnect() }
         }
     }
 
     private func playing(_ on: Bool) {
+        if kaikuSpeaking != (on && !stopped) { kaikuSpeaking = on && !stopped }
         guard !stopped, phase != .paused, phase != .muted else { return }
         if on { phase = .speaking } else if phase == .speaking { phase = pendingTools > 0 ? .thinking : .listening }
-        if !on { flushPendingContext() }
+        if !on { flushPendingContext(); drainContext() }
     }
 
     /// Live can interleave person/model transcription fragments. Keep one bubble per speaker per turn.
@@ -525,6 +893,27 @@ public final class Conversation {
         }
     }
 
+    @ObservationIgnored private var kaikuMarks = MarkerFilter()
+    @ObservationIgnored private var personMarks = MarkerFilter()
+
+    /// The words of a transcription fragment. Every transcribed line of either speaker passes through here:
+    /// markers are taken out, also when one arrives in pieces. Nil when nothing spoken is left.
+    private func words(_ raw: String, me: Bool) -> String? {
+        let wasInMarker = me ? personMarks.inMarker : kaikuMarks.inMarker
+        let out = me ? personMarks.feed(raw) : kaikuMarks.feed(raw)
+        guard !out.isEmpty else { return nil }
+        let cut = wasInMarker || out.count != raw.count
+        return cut && out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : out
+    }
+
+    /// A turn's line is closed: its marker state goes with it, and a line that holds no word after all (only
+    /// marks) is not a line.
+    private func closeLine(me: Bool) {
+        if me { personMarks.reset() } else { kaikuMarks.reset() }
+        guard let id = me ? personTurnID : kaikuTurnID, let index = lines.firstIndex(where: { $0.id == id }) else { return }
+        if !MarkerFilter.clean(lines[index].text).contains(where: { $0.isLetter || $0.isNumber }) { lines.remove(at: index) }
+    }
+
     private func markUnknownTranscript(me: Bool) {
         if let id = me ? personTurnID : kaikuTurnID, let index = lines.firstIndex(where: { $0.id == id }),
            !lines[index].interrupted { lines[index].completionUnknown = true }
@@ -532,6 +921,7 @@ public final class Conversation {
 
     private func closeUnknownTranscript(me: Bool) {
         markUnknownTranscript(me: me)
+        closeLine(me: me)
         if me { personTurnID = nil } else { kaikuTurnID = nil }
     }
 
@@ -540,7 +930,16 @@ public final class Conversation {
             lines[index].transcriptFinished = true
             lines[index].completionUnknown = false
         }
+        closeLine(me: me)
         if me { personTurnID = nil } else { kaikuTurnID = nil }
+    }
+
+    /// One whole fragment without its markers (`<no speech>`, `{pause}`, `<noise>`; pure). Nil when nothing spoken
+    /// is left. The conversation itself uses `words(_:me:)`, which also follows a marker across fragments.
+    nonisolated static func spoken(_ fragment: String) -> String? {
+        guard fragment.contains("<") || fragment.contains("{") else { return fragment.isEmpty ? nil : fragment }
+        let cleaned = MarkerFilter.clean(fragment)
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : cleaned
     }
 
     nonisolated static func mergeTranscript(_ existing: String, _ incoming: String) -> String {
@@ -554,27 +953,121 @@ public final class Conversation {
         guard let app, let s = session, app.pairing == sessionPairing else { return }
         if ToolExecutor.isDevice(name) {
             let result = await deviceTool?(name, args) ?? .object(["ok": .bool(false), "error": .string("not on this device")])
-            live?.respond(id: id, name: name, result: result)
+            answer(id: id, name: name, result: result)
             return
         }
-        pendingTools += 1
-        if !audio.isPlaying { phase = .thinking }
+        let quiet = Self.quietTools.contains(name)
+        if !quiet {
+            pendingTools += 1
+            if !audio.isPlaying && phase != .muted && phase != .paused { phase = .thinking }
+        }
         defer {
-            pendingTools = max(0, pendingTools - 1)
-            if phase == .thinking && pendingTools == 0 { phase = .listening }
+            if !quiet {
+                pendingTools = max(0, pendingTools - 1)
+                if phase == .thinking && pendingTools == 0 { phase = .listening }
+            }
         }
         let call = CompanionToolCall(home_id: app.pairing?.homeID ?? "", surface: surface, name: name, args: args,
                                      session_id: s.session_id)
         guard let r = try? await app.api.companionTool(call) else {
-            live?.respond(id: id, name: name, result: .object(["ok": .bool(false), "error": .string("offline")]))
+            answer(id: id, name: name, result: .object(["ok": .bool(false), "error": .string("offline")]))
             return
         }
         guard !stopped, app.pairing == sessionPairing else { return }
         onToolResult?(name, r)
         if r.crisis == true { crisis(); return }
-        live?.respond(id: id, name: name, result: r.result ?? .object(["ok": .bool(r.ok)]))
+        if answerOwed && !quiet { owedAt = Date() }       // the answer the person is waiting for comes after this tool
+        answer(id: id, name: name, result: r.result ?? .object(["ok": .bool(r.ok)]))
+        if name == "feel", r.ok, let p = FeelPlan(result: r.result) {
+            plan = p; planTurns = lines.filter(\.me).count; planCount += 1
+        }
         if name == "end_session", r.ok {
-            stop(outcome: args["outcome"]?.string.flatMap(EpisodeOutcome.init(rawValue:)) ?? .completed)
+            closedByModel = true
+            closeAfterGoodbye(args["outcome"]?.string.flatMap(EpisodeOutcome.init(rawValue:)) ?? .completed)
+        }
+    }
+
+    /// Calls that arrived in one `toolCall` frame are answered in one `toolResponse` frame, device and cloud tools
+    /// alike (answered one by one, the real model issued a call again and the device stood one ahead of what
+    /// Kaiku said). A result waits for the others of its frame, at most `toolFramePatience`: a slow cloud tool
+    /// (the mind can think for two minutes) must not hold a fast device result back for long; after that what is
+    /// there goes out and the rest follows when it comes.
+    private struct ToolFrame {
+        var ids: [String]
+        var answers: [ToolAnswer] = []
+        var since: Date?
+    }
+    @ObservationIgnored private var toolFrames: [ToolFrame] = []
+    @ObservationIgnored private var cancelledCalls: Set<String> = []
+    static var toolFramePatience: TimeInterval = 10
+
+    private func answer(id: String, name: String, result: JSONValue) {
+        if cancelledCalls.remove(id) != nil { return }                 // the model no longer waits for this one
+        guard let i = toolFrames.firstIndex(where: { $0.ids.contains(id) }) else {
+            live?.respond([ToolAnswer(id: id, name: name, result: result)])
+            return
+        }
+        toolFrames[i].answers.append(ToolAnswer(id: id, name: name, result: result))
+        if toolFrames[i].since == nil {
+            toolFrames[i].since = Date()
+            let first = id
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(Self.toolFramePatience * 1_000_000_000))
+                self?.sendCompleteToolFrames(overdue: first)
+            }
+        }
+        sendCompleteToolFrames()
+    }
+
+    /// Sends every frame whose calls have all been answered (in the order they were called); `overdue` also
+    /// sends what a frame has so far once its first answer has waited long enough.
+    private func sendCompleteToolFrames(overdue: String? = nil) {
+        guard !stopped else { toolFrames = []; return }
+        for i in toolFrames.indices.reversed() {
+            var f = toolFrames[i]
+            let answered = Set(f.answers.map(\.id))
+            let complete = f.ids.allSatisfy(answered.contains)
+            let late = overdue.map { o in f.answers.contains { $0.id == o } } ?? false
+            guard complete || late else { continue }
+            let order = f.ids
+            let out = f.answers.filter { order.contains($0.id) }
+                .sorted { (order.firstIndex(of: $0.id) ?? 0) < (order.firstIndex(of: $1.id) ?? 0) }
+            if !out.isEmpty { live?.respond(out) }
+            f.ids.removeAll(where: answered.contains)
+            f.answers = []
+            f.since = nil
+            if f.ids.isEmpty { toolFrames.remove(at: i) } else { toolFrames[i] = f }
+        }
+    }
+
+    /// How long Kaiku's voice must have been quiet before a conversation the model closed really ends.
+    static var closeGrace: TimeInterval = 1.5
+
+    /// `end_session` lands just before Kaiku's goodbye (the model speaks it once the tool has answered) or right
+    /// after it (its voice is still playing): both were seen live. Stop listening at once and let the goodbye be
+    /// heard (bounded), then end: it is never cut off and never skipped. Whatever the model produces after the
+    /// goodbye turn is filler (seen live: seconds of silent audio, transcribed as "-"), so that is dropped.
+    private func closeAfterGoodbye(_ outcome: EpisodeOutcome) {
+        guard Self.closeGrace > 0 || audio.isPlaying else { stop(outcome: outcome); return }
+        muted = true
+        audio.setMic(false)
+        live?.audioStreamEnd()
+        closing = (sawOutput: audio.isPlaying, turnDone: false)
+        closeTask?.cancel()
+        closeTask = Task { [weak self] in
+            let grace = Self.closeGrace
+            var quiet = 0.0, waited = 0.0
+            while waited < 15 {
+                do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
+                waited += 0.2
+                guard let self, !self.stopped, let c = self.closing else { return }
+                quiet = self.audio.isPlaying ? 0 : quiet + 0.2
+                if c.sawOutput {
+                    // the goodbye turn ended and its voice has played out (or it simply went quiet)
+                    if (c.turnDone && quiet >= max(0.2, grace * 0.4)) || quiet >= max(0.2, grace * 2) { break }
+                } else if waited >= grace * 3 && quiet >= max(0.2, grace) { break }   // it had already said goodbye
+            }
+            self?.stop(outcome: outcome)
         }
     }
 

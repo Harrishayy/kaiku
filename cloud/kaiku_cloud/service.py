@@ -327,7 +327,7 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
         if avg > 0:
             lines.append(f"Breathing with Kaiku calmed your heart rhythm on average (+{avg:.0f} ms HRV).")
     helps = [HelpStat(**h) for h in bandit.help_stats(data.nudge_outcomes, data.interventions)]
-    nxt = NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions, arms=nudge_arms(store, home_id)))
+    nxt = suggest(store, home_id, data)
     return MeResponse(home_id=home_id, summary=ME_STATE[state], last_week=lines, what_helps=helps,
                       next_suggestion=nxt, phq9_due=phq9_due(data, settings.phq9_every_days, today),
                       mascot=companion.mascot_for(state, now_local.hour, companion.together_recently(events, today)),
@@ -335,9 +335,37 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
                       garden=companion.garden_for(events, today), sim=data.sim)
 
 
-def nudge(store: Store, settings: Settings, home_id: str) -> NudgeResponse:
-    data = patient_data(store, home_id, active_criteria(store))
-    return NudgeResponse(**bandit.choose(data.nudge_outcomes, data.interventions, arms=nudge_arms(store, home_id)))
+def best_response(data: PatientData, arms: tuple[str, ...]) -> dict[str, Any] | None:
+    """The suggestion with the best recorded response for this person so far: {arm, tries, mean}. Deterministic
+    (posterior mean, no sampling). Arms tried at least `[insight].help_early_tries` times come first; None when
+    nothing this home can do has been tried with a response above neutral."""
+    early = int(get("insight", "help_early_tries", 3))
+    post = bandit.posteriors(data.nudge_outcomes, data.interventions)
+    tried = [(n >= early, al / (al + be), n, arm) for arm, (al, be, n) in post.items()
+             if arm in arms and n >= 1 and al / (al + be) > 0.5]
+    if not tried:
+        return None
+    _, mean, n, arm = max(tried)
+    return {"arm": arm, "tries": n, "mean": round(mean, 3)}
+
+
+def suggest(store: Store, home_id: str, data: PatientData, now: datetime | None = None) -> NudgeResponse:
+    """Today's one suggestion. Usually the learner explores (Thompson sampling). After a talk that sounded low,
+    it is the one with the best recorded response for this person instead: no experiments on a hard day."""
+    arms = nudge_arms(store, home_id)
+    out = bandit.choose(data.nudge_outcomes, data.interventions, arms=arms)
+    from .mind import affect  # the mind imports this module
+
+    best = best_response(data, arms) if affect.last_was_low(store, home_id, now) else None
+    if best:
+        out["arm"] = best["arm"]
+        out["reason"] = (f"{bandit.ARM_LABEL[best['arm']]} has gone best for you so far, over {best['tries']} "
+                         f"recent tr{'y' if best['tries'] == 1 else 'ies'}.")
+    return NudgeResponse(**out)
+
+
+def nudge(store: Store, settings: Settings, home_id: str, now: datetime | None = None) -> NudgeResponse:
+    return suggest(store, home_id, patient_data(store, home_id, active_criteria(store)), now)
 
 
 def now_utc() -> datetime:

@@ -1,4 +1,16 @@
 {
+  "activities": [
+    "breathe",
+    "tell",
+    "walk",
+    "lantern",
+    "seeds",
+    "watering",
+    "pebbles",
+    "firefly",
+    "drum",
+    "light_hunt"
+  ],
   "intents": [
     "ritual",
     "checkin",
@@ -147,6 +159,96 @@
         "web"
       ]
     },
+    "feel": {
+      "behavior": "NON_BLOCKING",
+      "description": "Tell Kaiku's mind about a clear feeling or a piece of news in what the person just said or how they sounded. Once per clear shift, never every turn; keep talking warmly while it runs. Returns how to meet it for this person: stance, depth (brief = an ordinary moment, keep the chat small; stay = do not close, stay as long as they want), one thing the record knows (recall) and at most one small thing you may offer once (may_offer). heard.via: voice when you heard them say it, text when it was typed. about: the topic in a few words, the way you would say it to them (\"your sister's visit\", \"the library job\").",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "about": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "heard": {
+            "properties": {
+              "energy": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              "tone": {
+                "items": {
+                  "enum": [
+                    "flat",
+                    "tense",
+                    "tearful",
+                    "irritable",
+                    "warm",
+                    "playful",
+                    "calm"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              "valence": {
+                "enum": [
+                  "low",
+                  "neutral",
+                  "bright"
+                ],
+                "type": "string"
+              },
+              "via": {
+                "enum": [
+                  "voice",
+                  "text"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "valence"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "enum": [
+              "sad_news",
+              "good_news",
+              "flat",
+              "angry",
+              "worried",
+              "lonely",
+              "proud",
+              "relief",
+              "other"
+            ],
+            "type": "string"
+          },
+          "said": {
+            "maxLength": 300,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "heard"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
     "forget": {
       "description": "The person said \"don't remember that\" (scope last) or wants everything forgotten (all).",
       "executor": "cloud",
@@ -174,7 +276,7 @@
       ]
     },
     "log_walk_moment": {
-      "description": "The person found something on the light hunt (e.g. something green).",
+      "description": "One find in the spotting game: the person said they found one, or said yes to \"is that one?\". Only after `set_walk_goal`: when a first find comes before the goal is set, call `set_walk_goal` and then this, in that order. Exactly one call per find they tell you about, never two for the same find. kind: what it was. Returns {ok, thing, found, target, left, note}. Say how many are found or left only as this result gives it; if it says no goal is set (`note`), set the goal and log the find again before saying a count.",
       "executor": "device",
       "parameters": {
         "properties": {
@@ -188,7 +290,11 @@
         "type": "object"
       },
       "surfaces": [
-        "glasses"
+        "glasses",
+        "iphone"
+      ],
+      "walk_only_on": [
+        "iphone"
       ]
     },
     "look_at_this": {
@@ -308,6 +414,35 @@
         "robot"
       ]
     },
+    "set_walk_goal": {
+      "description": "Start one small spotting game on the walk: `target` of `thing` to find, something that is really around (from what they said or what is in view). Call it FIRST, the moment a game is taken up: they said yes to the game you proposed, or simply reported a first find after it. Use the thing and the target you proposed. Proposing a game sets nothing; without this call there is no game and no count. The device keeps the count and returns {thing, target, found, left}. One goal at a time; a new one replaces the old.",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "target": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "thing": {
+            "maxLength": 30,
+            "type": "string"
+          }
+        },
+        "required": [
+          "thing",
+          "target"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "glasses",
+        "iphone"
+      ],
+      "walk_only_on": [
+        "iphone"
+      ]
+    },
     "start_activity": {
       "description": "Start a short activity on this device (the device runs it; data comes from sensors).",
       "executor": "device",
@@ -316,11 +451,14 @@
           "kind": {
             "enum": [
               "breathe",
-              "drum",
-              "firefly",
-              "pebbles",
               "tell",
               "walk",
+              "lantern",
+              "seeds",
+              "watering",
+              "pebbles",
+              "firefly",
+              "drum",
               "light_hunt"
             ],
             "type": "string"
@@ -353,6 +491,41 @@
         "web"
       ]
     },
+    "suggest_activity": {
+      "description": "Put one card in the conversation that leads to an activity's screen: a game, the journal entry (tell), breathing or a walk. Call it in the same turn in which you suggest that activity. It opens nothing: the person taps the card or says yes. One card at a time; after a no, none again in this conversation. Returns {ok, shown}.",
+      "executor": "device",
+      "parameters": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "breathe",
+              "tell",
+              "walk",
+              "lantern",
+              "seeds",
+              "watering",
+              "pebbles",
+              "firefly",
+              "drum",
+              "light_hunt"
+            ],
+            "type": "string"
+          },
+          "line": {
+            "maxLength": 80,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "iphone",
+        "mac"
+      ]
+    },
     "suggest_nudge": {
       "description": "Get today's one small suggestion (phrase it, never change it).",
       "executor": "cloud",
@@ -368,5 +541,10 @@
         "web"
       ]
     }
-  }
+  },
+  "walk_styles": [
+    "quiet",
+    "playful",
+    "chatty"
+  ]
 }

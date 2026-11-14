@@ -274,6 +274,9 @@ public struct LiveEventsResponse: Codable, Sendable { public var events: [AnyEnv
 
 public enum CompanionSurface: String, Codable, Sendable { case robot, glasses, iphone, mac, web }
 public enum CompanionIntent: String, Codable, Sendable { case ritual, checkin, walk, breathe, talk, `break` }
+/// Why this conversation was opened (contracts: api.CompanionSessionRequest.purpose). The cloud shapes the chat
+/// with it: a check-in is a small passing chat that closes itself on an ordinary day.
+public enum CompanionPurpose: String, Codable, Sendable { case talk, check_in, walk, ritual }
 
 public struct CompanionSessionRequest: Codable, Sendable {
     public var surface: CompanionSurface
@@ -282,6 +285,10 @@ public struct CompanionSessionRequest: Codable, Sendable {
     public var language: String?
     public var others_present: Bool = false
     public var resume_session_id: String? = nil
+    /// Omitted when nil, so a cloud that does not know the field yet still accepts the request.
+    public var purpose: CompanionPurpose? = nil
+    /// Walk sessions: how Kaiku walks with the person (the person's choice on this device). Omitted when nil.
+    public var walk_style: WalkStyle? = nil
 }
 
 public struct LiveToken: Codable, Sendable, Equatable {
@@ -294,6 +301,8 @@ public struct CompanionTool: Codable, Sendable, Equatable {
     public var name: String
     public var description: String
     public var parameters: JSONValue
+    /// "NON_BLOCKING": Live asynchronous function calling; answer with the result's `scheduling`.
+    public var behavior: String? = nil
 }
 
 public struct ContextCard: Codable, Sendable, Equatable {
@@ -304,6 +313,23 @@ public struct ContextCard: Codable, Sendable, Equatable {
     public var suggestion: String?
     public var open_thread: String?
     public var tone: String?
+    /// Plain facts the person recorded themselves today, in everyday words ("a short night"); never a number.
+    public var today_facts: [String]? = nil
+    public var last_reflection: LastReflection? = nil
+    /// Set when the device said why it opened the session (talk | check_in | walk | ritual).
+    public var purpose: String? = nil
+    /// Check-in sessions: how the chat should open (brief | stay).
+    public var chat_depth: String? = nil
+    /// Check-in sessions: dials not answered today (mood | energy | sleep).
+    public var open_items: [String]? = nil
+}
+
+/// How the latest talk with Kaiku went: a level and themes, never the words (contracts: api.LastReflection).
+public struct LastReflection: Codable, Sendable, Equatable {
+    public var when: String?
+    public var valence: String?
+    public var themes: [String]?
+    public var declined: Bool?
 }
 
 public struct CompanionSessionResponse: Codable, Sendable, Equatable {
@@ -317,9 +343,16 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var safety_phrases_version: String
     public var live_token: LiveToken?
     public var max_session_seconds: Int? = nil
+    /// The quiet limit after which the device ends the call by itself (talk and check-in 180, a walk 900).
+    public var idle_end_s: Int? = nil
     public var context_refresh_seconds: Int? = nil
     /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
     public var live_setup: JSONValue?
+    /// How this conversation should run (contracts: api.ChatShape {purpose, depth, open_items}): the same guidance
+    /// the model reads. Loosely typed on purpose: the device only reads it; absent when no purpose was sent.
+    public var chat_shape: JSONValue? = nil
+    /// Walk sessions only: the nudges the device sends so Kaiku can speak first (contracts: api.WalkGuide).
+    public var walk: WalkGuide? = nil
 }
 
 public struct CompanionToolCall: Codable, Sendable {
@@ -376,11 +409,133 @@ public struct TranscriptsResponse: Codable, Sendable, Equatable {
 
 public struct EpisodeResult: Codable, Sendable { public var ok: Bool; public var id: String; public var transcript_stored: Bool? }
 
+/// `POST /v1/companion/close` (contracts: api.SessionClose): a conversation stopped and how long it ran, across
+/// every token it used. The cloud settles its Live budget hold to that time.
+public struct SessionClose: Codable, Sendable, Equatable {
+    public var home_id: String
+    public var session_id: String
+    public var elapsed_s: Double
+}
+public struct SessionCloseResult: Codable, Sendable { public var ok: Bool; public var session_id: String }
+
 /// Tool registry facts the device needs (contracts/schemas/companion_tools.json → `executor`). Device tools are
 /// handled in the app; cloud tools are forwarded to POST /v1/companion/tool.
 public enum ToolExecutor {
     public static let deviceTools: Set<String> = [
         "express", "log_walk_moment", "look_at_this", "record_dial", "send_friend_ping", "start_activity", "start_phq9",
+        // In the registry since 2026-11-14: the walk's spotting game (`WalkModel.walkTool`) and the activity card
+        // in a conversation (`TalkModel.deviceTool`). A surface that has no use for one answers "not on this
+        // device" (the default of every `deviceTool`) instead of forwarding it to the cloud.
+        "set_walk_goal", "suggest_activity",
     ]
     public static func isDevice(_ name: String) -> Bool { deviceTools.contains(name) }
+}
+
+/// What the cloud's `feel` tool hands back when the voice model noticed a feeling or news (contracts:
+/// api.FeelPlan; chosen by code in the cloud from this person's own record). The device never decides any of it:
+/// it shows the one thing that may be offered as a soft chip, lets a `stay` conversation run on, and plays the
+/// completion sparkle once for good news. The hints for the model's own words (`reflect_hint`, `recall`,
+/// `offer_note`) go back to the model untouched and are not read here.
+public struct FeelPlan: Equatable, Sendable {
+    public enum Depth: String, Sendable { case brief, stay }
+    /// comfort | celebrate | steady | explore | give_space
+    public var stance: String?
+    public var depth: Depth
+    /// One small thing Kaiku may offer once, as a phrase for the model ("sitting quietly together for a minute").
+    public var mayOffer: String?
+    /// The `start_activity` kind behind the offer, when it is an activity (breathe | drum | walk …).
+    public var offerActivity: String?
+
+    public init(stance: String? = nil, depth: Depth = .brief, mayOffer: String? = nil, offerActivity: String? = nil) {
+        self.stance = stance; self.depth = depth; self.mayOffer = mayOffer; self.offerActivity = offerActivity
+    }
+
+    /// Reads a tool result. Nil when it is not a plan.
+    public init?(result: JSONValue?) {
+        guard let result, case .object(let o) = result["plan"] ?? result,
+              o["depth"] != nil || o["stance"] != nil else { return nil }
+        stance = o["stance"]?.string
+        depth = o["depth"]?.string.flatMap(Depth.init(rawValue:)) ?? .brief
+        mayOffer = o["may_offer"]?.string
+        offerActivity = o["offer_activity"]?.string
+    }
+
+    /// Good news: the one case that gets the sparkle moment.
+    public var isGoodNews: Bool { stance == "celebrate" }
+}
+
+public extension CompanionSessionResponse {
+    /// How the cloud wants this conversation to open (`chat_shape.depth`): `stay` after a heavy few days.
+    var openingDepth: FeelPlan.Depth? { chat_shape?["depth"]?.string.flatMap(FeelPlan.Depth.init(rawValue:)) }
+    /// Check-in dials not answered today on any surface (`chat_shape.open_items`); nil on an older cloud.
+    var openCheckInItems: [DialItem]? {
+        guard case .array(let a)? = chat_shape?["open_items"] else { return nil }
+        return a.compactMap { $0.string.flatMap(DialItem.init(rawValue:)) }
+    }
+}
+
+// MARK: - Walking together (contracts: api.WalkGuide, api.WalkGoalResult, api.WalkMomentResult)
+
+/// How Kaiku walks with the person (`CompanionSessionRequest.walk_style`; registry `walk_styles`). What each style
+/// means for Kaiku's words lives in the cloud (config/persona.md "Walking together"); the device stores the
+/// person's choice, sends it, and shows it.
+public enum WalkStyle: String, Codable, Sendable, CaseIterable, Identifiable {
+    case quiet, playful, chatty
+    public var id: String { rawValue }
+}
+
+/// `CompanionSessionResponse.walk`: the nudges the device sends on a walk. A Live session only answers input, so
+/// the device sends `look_prompt` every `look_every_s` (camera on, nobody speaking) and `quiet_prompt` once after
+/// `quiet_after_s` without anyone speaking. Nil = that nudge is not used in this style. Timing rules: `WalkNudger`.
+public struct WalkGuide: Codable, Sendable, Equatable {
+    public var style: WalkStyle
+    public var look_every_s: Int? = nil
+    public var look_prompt: String? = nil
+    public var quiet_after_s: Int? = nil
+    public var quiet_prompt: String? = nil
+
+    public init(style: WalkStyle, look_every_s: Int? = nil, look_prompt: String? = nil,
+                quiet_after_s: Int? = nil, quiet_prompt: String? = nil) {
+        self.style = style; self.look_every_s = look_every_s; self.look_prompt = look_prompt
+        self.quiet_after_s = quiet_after_s; self.quiet_prompt = quiet_prompt
+    }
+
+    /// A style this build does not know must not stop the walk's conversation from opening.
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        style = (try? c.decode(WalkStyle.self, forKey: .style)) ?? .quiet
+        look_every_s = try? c.decodeIfPresent(Int.self, forKey: .look_every_s)
+        look_prompt = try? c.decodeIfPresent(String.self, forKey: .look_prompt)
+        quiet_after_s = try? c.decodeIfPresent(Int.self, forKey: .quiet_after_s)
+        quiet_prompt = try? c.decodeIfPresent(String.self, forKey: .quiet_prompt)
+    }
+}
+
+// MARK: - Invitation (contracts: api.InvitationResponse, api.Invitation, api.InvitationAnswer)
+
+/// One thing Kaiku would like to bring up or offer now (`GET /v1/me/invitation`). Chosen by code in the cloud;
+/// the device shows the sentence and two answers and goes where a yes leads.
+public struct Invitation: Codable, Sendable, Equatable, Identifiable {
+    public enum Kind: String, Codable, Sendable { case talk_about, activity }
+    public var id: String
+    public var kind: Kind
+    public var text: String
+    /// Names the template the cloud used. Not an audio key: `text` is spoken with `POST /v1/voice/say`.
+    public var voice_key: String
+    public var topic: String? = nil
+    /// One of the registry's `activities` (kept as the raw word: a kind this build has no screen for is not shown).
+    public var activity: String? = nil
+}
+
+public struct InvitationResponse: Codable, Sendable, Equatable {
+    public var home_id: String
+    public var invitation: Invitation? = nil
+}
+
+/// `POST /v1/me/invitation/answer`. A not-now is final for that id.
+public struct InvitationAnswer: Codable, Sendable, Equatable {
+    public enum Answer: String, Codable, Sendable { case yes, not_now }
+    public var id: String
+    public var answer: Answer
+    public init(id: String, answer: Answer) { self.id = id; self.answer = answer }
 }

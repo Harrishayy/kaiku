@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Walk with Kaiku (iPhone): one start, Kaiku's voice in the glasses (or the phone when they are not there), what
-/// both sides said, where the sound is going, whether Kaiku can see, and a plain summary at the end. Every state
-/// that can go wrong has words on this screen; the same states go to the glasses log (You → Glasses check).
+/// Walk with Kaiku (iPhone): one start with the way Kaiku walks with you (Calm · Playful · Chatty), Kaiku's voice
+/// in the glasses (or the phone when they are not there), what both sides said, where the sound is going, whether
+/// Kaiku can see, the spotting game while one is on, and a plain summary at the end. Every state that can go wrong
+/// has words on this screen; the same states go to the glasses log (You → Glasses check).
 public struct WalkView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -34,6 +35,7 @@ public struct WalkView: View {
     private var intro: some View {
         VStack(spacing: KaikuTokens.Space.s4) {
             MascotWithBubble(state: .walking, text: T("walk.intro"))
+            WalkStylePicker()
             KSection {
                 StatusLine(icon: "ear", ok: TalkAudio.headsetAvailable != nil,
                            text: TalkAudio.headsetAvailable.map { T("walk.ready.ear") + " " + $0 } ?? T("walk.ready.phone"))
@@ -52,7 +54,7 @@ public struct WalkView: View {
     private var walking: some View {
         VStack(spacing: KaikuTokens.Space.s4) {
             HStack(spacing: KaikuTokens.Space.s3) {
-                MascotView(state: .walking, size: KaikuTokens.Size.mascotS, tappable: false)
+                MascotView(state: walk.goal?.done == true ? .happy : .walking, size: KaikuTokens.Size.mascotS, tappable: false)
                 VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
                     Text(voiceLabel).kText(.title2).foregroundStyle(KaikuTokens.Colors.ink).wraps()
                     TimelineView(.periodic(from: .now, by: 15)) { _ in
@@ -78,6 +80,11 @@ public struct WalkView: View {
                     }
                 }
             }
+            WalkStylePicker(showsLine: false)
+            if let goal = walk.goal {
+                WalkGoalCard(goal: goal) { walk.foundOne() }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
             if let problem = voiceProblemText {
                 OfflineBanner(problem)
                 Button(T("walk.voice.again")) { walk.setTalking(true) }.buttonStyle(.kSecondary)
@@ -89,10 +96,9 @@ public struct WalkView: View {
                 }
                 .buttonStyle(.kSecondary)
                 .accessibilityHint(T("walk.talk.on"))
-            }
-            HStack(spacing: KaikuTokens.Space.s3) {
-                FoundDots(found: walk.found)
-                Button(T("lh.found")) { walk.foundOne() }.buttonStyle(KButtonStyle(.ghost, fullWidth: false)).disabled(walk.found >= WalkModel.goal)
+            } else if walk.goal == nil {
+                // Without Kaiku's live voice the walk still has its small game: the fixed light hunt.
+                Button(T("lh.found")) { walk.foundOne() }.buttonStyle(.kSecondary)
             }
             Button(T("lh.end")) { Task { await walk.end() } }.buttonStyle(.kPrimary)
         }
@@ -214,20 +220,116 @@ struct StatusLine: View {
     }
 }
 
-/// Three soft dots: found ones filled sage.
-struct FoundDots: View {
-    let found: Int
+/// Calm · Playful · Chatty, with the chosen style's one line. Where a walk starts, on the walk (the three words
+/// only) and in You. The choice is stored on this device; on a walk an open conversation starts again in it.
+struct WalkStylePicker: View {
+    var showsLine = true
+    private let walk = WalkModel.shared
+    init(showsLine: Bool = true) { self.showsLine = showsLine }
+
     var body: some View {
-        HStack(spacing: KaikuTokens.Space.s3) {
-            ForEach(0..<WalkModel.goal, id: \.self) { i in
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+            KSegmented(WalkStyle.allCases.map { ($0, T($0.titleKey)) },
+                       selection: Binding(get: { walk.style }, set: { walk.choose($0) }))
+            if showsLine {
+                Text(T(walk.style.lineKey)).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, KaikuTokens.Space.s1)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(T("walk.style.title"))
+    }
+}
+
+/// The style choice as a settings row (You → Settings, under Glasses check).
+struct WalkStyleSetting: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+            HStack(spacing: KaikuTokens.Space.s3) {
+                RowIcon(symbol: "figure.walk", tint: KaikuTokens.Colors.sage)
+                Text(T("walk.style.title")).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+            }
+            WalkStylePicker()
+        }
+        .padding(.horizontal, KaikuTokens.Space.s4)
+        .padding(.vertical, KaikuTokens.Space.s3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The spotting game, quietly: "Trees  1 of 3", its dots, and one way to say "found one" without speaking. Shown
+/// only while a game is on. The count is the walk's own (`WalkModel.goal`); nothing here is stored.
+struct WalkGoalCard: View {
+    let goal: WalkGoal
+    let found: () -> Void
+
+    var body: some View {
+        // Three layouts, the first that fits: "Trees  1 of 3" on one line beside the button; the count under the
+        // thing; and for a long thing the button underneath, so its name never squeezes into a narrow column.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: KaikuTokens.Space.s3) { summary(inline: true); trailing(wide: false) }
+            HStack(spacing: KaikuTokens.Space.s3) { summary(inline: false); trailing(wide: false) }
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) { summary(inline: false); trailing(wide: true) }
+        }
+        .padding(KaikuTokens.Space.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.sageSoft))
+        .animation(KaikuTokens.Spring.gentle, value: goal.found)
+        .accessibilityIdentifier("walk.goal")
+    }
+
+    private func summary(inline: Bool) -> some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+            if inline {
+                HStack(alignment: .firstTextBaseline, spacing: KaikuTokens.Space.s3) { thing.fixedSize(); count }
+            } else {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) { thing.lineLimit(2).wraps(); count }
+            }
+            GoalDots(found: goal.found, target: goal.target)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(goal.title + ", " + T("walk.goal.a11y", ["n": "\(goal.found)", "m": "\(goal.target)"]))
+    }
+
+    private var thing: some View {
+        Text(goal.title).kText(.title2).foregroundStyle(KaikuTokens.Colors.ink)
+    }
+
+    private var count: some View {
+        Text(T("walk.goal.count", ["n": "\(goal.found)", "m": "\(goal.target)"]))
+            .kText(.title2, weight: .regular).foregroundStyle(KaikuTokens.Colors.ink2).fixedSize()
+            .contentTransition(.numericText())
+    }
+
+    @ViewBuilder private func trailing(wide: Bool) -> some View {
+        if goal.done {
+            Image(systemName: "checkmark.circle.fill").kText(.title1).foregroundStyle(KaikuTokens.Colors.sage)
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                .accessibilityHidden(true)
+        } else if wide {
+            Button(T("lh.found"), action: found).buttonStyle(.kSecondary)
+        } else {
+            Button(T("lh.found"), action: found).buttonStyle(KButtonStyle(.secondary, fullWidth: false)).fixedSize()
+        }
+    }
+}
+
+/// One soft dot per thing to find: found ones filled sage.
+struct GoalDots: View {
+    let found: Int
+    let target: Int
+    var body: some View {
+        HStack(spacing: KaikuTokens.Space.s2) {
+            ForEach(0..<max(target, 0), id: \.self) { i in
                 Circle()
                     .fill(i < found ? KaikuTokens.Colors.sage : KaikuTokens.Colors.surface)
                     .overlay(Circle().strokeBorder(KaikuTokens.Colors.sage, lineWidth: 2))
-                    .frame(width: 22, height: 22)
+                    .frame(width: KaikuTokens.Space.s4, height: KaikuTokens.Space.s4)
             }
         }
-        .accessibilityElement()
-        .accessibilityLabel(T("lh.progress", n: found))
+        .accessibilityHidden(true)
     }
 }
 

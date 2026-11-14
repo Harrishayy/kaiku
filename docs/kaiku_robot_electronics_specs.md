@@ -6,7 +6,7 @@
 
 Nov 14, 2026 · @Xavier (updated the same day to match the printed robot, `hardware/cad/`; see "Changes" at the end)
 
-> **Current build, end of 2026-11-14 (D44, D45; handover: [`robot-network-handover.md`](robot-network-handover.md)).**
+> **Current build, end of 2026-11-14 (D44, D48; handover: [`robot-network-handover.md`](robot-network-handover.md)).**
 > Not fitted: KY-053 ADC and so the KY-039 pulse (pulse = camera), LED grids, KY-054, KY-035. The Atech runs the
 > standalone ritual firmware with Wi-Fi/MQTT (`kaiku_net`) and needs its own USB-C charger on port 8. Network: an
 > iPhone hotspot (2.4 GHz); the broker runs on the laptop for now, not the UNO Q. Rows below that disagree are kept
@@ -48,14 +48,14 @@ Physical placement and sizes are in `hardware/cad/README.md`, `hardware/assembly
 | Atech Button | `button_module`, active-low switch | GPIO, 1 port | Body lid (square opening) | Start / confirm / talk; long press = "I'm not OK" |
 | Atech Speaker | MAX98357A I2S amp | I2S, 2 ports | Body, right-wall grille | Robot voice, music, breathing cues |
 | Atech Microphone | ICS-43434 I2S MEMS | I2S, 2 ports | Head, right ear grille | Speech for voice chat and speech pace |
-| ~~Atech LED Grid ×2~~ *not fitted (D45)* | `neopixel_grid`, WS2812B 3×3 | 1 port each | Body, behind the chest louvres | Breathing glow |
+| ~~Atech LED Grid ×2~~ *not fitted (D48)* | `neopixel_grid`, WS2812B 3×3 | 1 port each | Body, behind the chest louvres | Breathing glow |
 | Atech DC Motor V2.3 | DRV8833 driver + geared motor in one 23×23×44 mm block, 3 mm shaft | 2 GPIO (IN1, IN2), 1 port | Body, under the pan base | Turns the head (12:40 printed gear) |
 | [Arduino UNO Q 2 GB](https://docs.arduino.cc/hardware/uno-q/) | QRB2210 (Linux) + STM32U585 (MCU) | Wi-Fi, USB-C | Body floor, rear | Hub, broker, sensors |
 | UNO Q LED matrix | 8×13 blue, on board | MCU internal | Body (hidden) | Status/debug only; the eyes are the Atech display |
 | [Arduino USB Camera](https://docs.arduino.cc/hardware/usb-camera/) | UVC video + UAC mic, ring light, autofocus | USB-A (1 m cable) via the powered hub | Head; its ring light is the round "grille" of the face | Presence, get-up time, face tracking, optional pulse |
 | [Modulino Buzzer](https://docs.arduino.cc/hardware/modulino-buzzer/) (ABX00108) | STM32C011F4 + PKLCS1212E4001, I2C 0x3C | Qwiic (Wire1), 3.3 V | Body, right wall above the speaker | Chimes and alerts |
 | KY-031 knock sensor | Spring switch + 10 kΩ resistor | 1 digital GPIO, 3.3 V | Under the head top, wired to the UNO Q through the neck | Drumming energy |
-| ~~KY-039 pulse + KY-053 ADC~~ *not fitted (D45): camera pulse instead* | IR LED + phototransistor; ADS1115 16-bit | Analog → I2C | Lid, under the finger cradle; ADC on the body floor | Resting HR / HRV before and after breathing |
+| ~~KY-039 pulse + KY-053 ADC~~ *not fitted (D48): camera pulse instead* | IR LED + phototransistor; ADS1115 16-bit | Analog → I2C | Lid, under the finger cradle; ADC on the body floor | Resting HR / HRV before and after breathing |
 | ~~KY-054 light sensor~~ | Phototransistor | Analog, 3.3 V | **Not fitted (D39)**; the lid window stays empty | Room light comes from the camera |
 | ~~KY-035 hall sensor + 6×3 mm magnet~~ | 49E linear hall | Analog, 3.3 V | **Not fitted (D39)**; the CAD keeps the spot and the magnet pocket | Optional pan homing |
 | Powered USB-C hub (PD) | Any USB-C hub with PD input | USB-C | Outside, behind the robot | Powers the UNO Q and lets it host the camera |
@@ -270,7 +270,7 @@ eyes are on the Atech display.
 | KY-031 S | D2 | Interrupt on CHANGE; 3.3 V logic |
 | ~~KY-035 hall out~~ | (A1 if fitted) | Not fitted (D39) |
 | ~~KY-054 light~~ | — | Not fitted (D39) |
-| ~~KY-053 ADC (KY-039 on its A0)~~ *not fitted (D45)* | SDA / SCL header pins (`Wire`) | Not A4/A5 |
+| ~~KY-053 ADC (KY-039 on its A0)~~ *not fitted (D48)* | SDA / SCL header pins (`Wire`) | Not A4/A5 |
 | All KY + | 3V3 | — |
 | All KY − | GND | — |
 | Modulino Buzzer | Qwiic connector | **`Wire1`**, not `Wire` (Qwiic is a separate I2C bus); 3.3 V |
@@ -377,7 +377,7 @@ Every physical connection, in one place. Record the final port and pin numbers i
 | Atech LED Grid ×2 | Atech ports 11 (left), 14 (right) | Atech cables | Breathing glow |
 | Modulino Buzzer | UNO Q Qwiic | Qwiic cable | I2C scan on `Wire1` finds 0x3C |
 | KY-031 S / + / − (head) | UNO Q D2 / 3V3 / GND | Dupont jumpers, through the neck | Knock prints in the serial monitor |
-| ~~KY-053 SDA / SCL / + / − (KY-039 on its A0)~~ *not fitted (D45)* | UNO Q SDA / SCL / 3V3 / GND | Dupont jumpers | I2C scan on `Wire` finds 0x48 |
+| ~~KY-053 SDA / SCL / + / − (KY-039 on its A0)~~ *not fitted (D48)* | UNO Q SDA / SCL / 3V3 / GND | Dupont jumpers | I2C scan on `Wire` finds 0x48 |
 
 Charge-only USB-C cables can't program the Atech board. The head carries 6 Atech cables, 3 jumper wires and the
 camera cable through a 19 mm axle: feed the plugs through one at a time, the camera's USB-A plug first.

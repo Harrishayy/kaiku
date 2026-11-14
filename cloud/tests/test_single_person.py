@@ -342,3 +342,31 @@ def test_live_recordings_change_what_the_practitioner_api_returns(api):
     assert not [s for s in after["sources"] if s["verdict"] == "worse"]
     # a later seed keeps today's recordings and does not call them stale
     assert single_person.seed("http://localhost:18061", single_person.build(yesterday()), jobs=False)["accepted"] == 0
+
+
+def _invitation(api):
+    return api.get("/v1/me/invitation", params={"home_id": "aino"}).json()["invitation"]
+
+
+def test_a_reset_and_reseed_on_the_same_day_brings_her_open_thread_and_invitation_back(api):
+    """A reset deletes her episodes and threads. The re-seed has the same episode ids, so the markers that say
+    "this episode already opened its thread" must go with them, and so must the day's answered invitation:
+    otherwise the seeded person has nothing left open and no invitation (the lead's database, 2026-11-14)."""
+    rows = single_person.build(yesterday())
+    single_person.seed("http://localhost:18061", rows, jobs=False)
+    first = _invitation(api)
+    assert first["kind"] == "talk_about" and first["topic"] == "the long lake loop with Leena on Saturday"
+    assert first["text"] == "We left off at the long lake loop with Leena on Saturday. Want to pick it up?"
+    assert api.post("/v1/me/invitation/answer", params={"home_id": "aino"},
+                    json={"id": first["id"], "answer": "not_now"}).status_code == 200
+    assert _invitation(api) is None
+    store = api.app.state.store
+    other = "episode-thread:aino-elsewhere:some-episode:open"  # a home whose id merely starts the same way
+    store.kv_set(other, {"result": 9})
+    single_person.seed("http://localhost:18061", rows, reset=True, jobs=False)
+    again = _invitation(api)
+    assert again is not None and again["topic"] == first["topic"] and again["id"] != first["id"]
+    topics = [t["topic"] for t in [store.thread_current("aino", datetime.now(TZ).isoformat())] if t]
+    assert topics == ["the long lake loop with Leena on Saturday"] and store.kv_get(other) == {"result": 9}
+    single_person.seed("http://localhost:18061", rows, jobs=False)  # seeding again without a reset adds nothing
+    assert _invitation(api) == again

@@ -138,6 +138,24 @@
       "title": "ActionResult",
       "type": "object"
     },
+    "ActivityCardResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `suggest_activity`. shown=false: a card is already up, or they said no before.",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "shown": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "ActivityCardResult",
+      "type": "object"
+    },
     "AgentStep": {
       "additionalProperties": false,
       "description": "One step the cloud really ran to build this insight. Counts and categories only; never record content.",
@@ -317,6 +335,46 @@
         }
       },
       "title": "CareSharing",
+      "type": "object"
+    },
+    "ChatShape": {
+      "additionalProperties": false,
+      "description": "How this conversation should run, for the device: the same guidance the model reads in its instruction.",
+      "properties": {
+        "depth": {
+          "enum": [
+            "brief",
+            "stay"
+          ],
+          "type": "string"
+        },
+        "open_items": {
+          "description": "check-in dials not answered today",
+          "items": {
+            "enum": [
+              "mood",
+              "energy",
+              "sleep"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "purpose": {
+          "enum": [
+            "talk",
+            "check_in",
+            "walk",
+            "ritual"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "purpose",
+        "depth"
+      ],
+      "title": "ChatShape",
       "type": "object"
     },
     "ClinicianAskRequest": {
@@ -539,6 +597,24 @@
           "default": false,
           "type": "boolean"
         },
+        "purpose": {
+          "anyOf": [
+            {
+              "enum": [
+                "talk",
+                "check_in",
+                "walk",
+                "ritual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "why the conversation was opened. check_in: a small passing chat alongside the periodic check-in (see chat_shape). Omitted = today's behaviour for the intent"
+        },
         "resume_session_id": {
           "anyOf": [
             {
@@ -560,6 +636,23 @@
             "web"
           ],
           "type": "string"
+        },
+        "walk_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "quiet",
+                "playful",
+                "chatty"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "with purpose walk: quiet (mostly listens), playful (one small game at a time) or chatty (keeps a gentle conversation going). Omitted = config/kaiku.toml [walk].default_style"
         }
       },
       "required": [
@@ -573,6 +666,18 @@
       "additionalProperties": false,
       "description": "POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null\nwhen Live is unavailable: the device reports unavailability and keeps the microphone closed.",
       "properties": {
+        "chat_shape": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChatShape"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "present when the request named a purpose"
+        },
         "context_card": {
           "$ref": "#/$defs/ContextCard"
         },
@@ -588,6 +693,19 @@
           ],
           "default": null,
           "description": "poll interval for consented source updates during an active conversation"
+        },
+        "idle_end_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the device ends the conversation by itself after this long with nobody speaking (an open microphone in a pocket); longer on a walk"
         },
         "live_setup": {
           "anyOf": [
@@ -650,6 +768,18 @@
         },
         "voice": {
           "type": "string"
+        },
+        "walk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WalkGuide"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "present when the purpose is walk"
         }
       },
       "required": [
@@ -668,6 +798,19 @@
     "CompanionTool": {
       "additionalProperties": false,
       "properties": {
+        "behavior": {
+          "anyOf": [
+            {
+              "const": "NON_BLOCKING",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Live asynchronous function calling: declare it so and answer with the result's `scheduling`"
+        },
         "description": {
           "type": "string"
         },
@@ -972,6 +1115,22 @@
           ],
           "default": null
         },
+        "chat_depth": {
+          "anyOf": [
+            {
+              "enum": [
+                "brief",
+                "stay"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "check-in sessions: how the chat should open"
+        },
         "done_today": {
           "description": "on any surface",
           "items": {
@@ -1047,6 +1206,19 @@
           "maxItems": 3,
           "type": "array"
         },
+        "open_items": {
+          "description": "check-in sessions: dials not answered today; at most one is woven into the chat",
+          "items": {
+            "enum": [
+              "mood",
+              "energy",
+              "sleep"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
         "open_thread": {
           "anyOf": [
             {
@@ -1063,9 +1235,35 @@
           "default": false,
           "type": "boolean"
         },
+        "outdoor_likes": {
+          "description": "walk sessions: outdoor things and places the person told Kaiku they like, in their words (notebook)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "type": "array"
+        },
         "phq9_due": {
           "default": false,
           "type": "boolean"
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "enum": [
+                "talk",
+                "check_in",
+                "walk",
+                "ritual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "set when the device said why it opened the session"
         },
         "recent_reflection": {
           "anyOf": [
@@ -1132,6 +1330,23 @@
             "extra-gentle"
           ],
           "type": "string"
+        },
+        "walk_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "quiet",
+                "playful",
+                "chatty"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "walk sessions: how Kaiku walks with them"
         },
         "weather_word": {
           "anyOf": [
@@ -2342,6 +2557,119 @@
       "title": "Explanation",
       "type": "object"
     },
+    "FeelPlan": {
+      "additionalProperties": false,
+      "description": "Result of the `feel` tool: how to meet what the person just shared. Chosen by code from this person's own\nrecord; hints for the companion's own words, never a script. Nothing here is a state or changes one.",
+      "properties": {
+        "depth": {
+          "description": "brief: an ordinary moment, the chat may stay small. stay: a strong feeling either way, repeated heaviness, or they keep talking: never close first",
+          "enum": [
+            "brief",
+            "stay"
+          ],
+          "type": "string"
+        },
+        "follow_up_saved": {
+          "default": false,
+          "description": "a thread to ask about next time was kept",
+          "type": "boolean"
+        },
+        "may_offer": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "one small thing to offer once, or null"
+        },
+        "offer_activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "tell",
+                "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
+                "light_hunt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "start_activity kind, only after a clear yes"
+        },
+        "offer_note": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "why that one, and how to offer it"
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "one thing the record knows that fits"
+        },
+        "reflect_hint": {
+          "maxLength": 300,
+          "type": "string"
+        },
+        "scheduling": {
+          "default": "WHEN_IDLE",
+          "description": "Live FunctionResponse scheduling for this non-blocking tool: send it as `response.scheduling` so the model answers with the plan as soon as it is idle",
+          "enum": [
+            "INTERRUPT",
+            "WHEN_IDLE",
+            "SILENT"
+          ],
+          "type": "string"
+        },
+        "stance": {
+          "enum": [
+            "comfort",
+            "celebrate",
+            "steady",
+            "explore",
+            "give_space"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "stance",
+        "depth",
+        "reflect_hint"
+      ],
+      "title": "FeelPlan",
+      "type": "object"
+    },
     "FriendLink": {
       "additionalProperties": false,
       "properties": {
@@ -2905,6 +3233,78 @@
         "time"
       ],
       "title": "Healthz",
+      "type": "object"
+    },
+    "HeardTone": {
+      "additionalProperties": false,
+      "description": "How a conversation sounded to the model that was in it, reported through the `feel` tool. An observation\nby a model, never a measurement and never a state. `model_heard`: the native-audio voice model heard the\nperson speak. `model_read`: it went by their typed or transcribed words only.",
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "moments": {
+          "default": 1,
+          "description": "how many times a feeling was noticed in that conversation",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "provenance": {
+          "enum": [
+            "model_heard",
+            "model_read"
+          ],
+          "type": "string"
+        },
+        "tone": {
+          "items": {
+            "enum": [
+              "flat",
+              "tense",
+              "tearful",
+              "irritable",
+              "warm",
+              "playful",
+              "calm"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "provenance"
+      ],
+      "title": "HeardTone",
       "type": "object"
     },
     "HelpEffect": {
@@ -3495,6 +3895,122 @@
       "title": "InterventionResponse",
       "type": "object"
     },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from\nconfig/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk\n(kind talk_about: the session card already carries the thread) or the screen for `activity`.",
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "tell",
+                "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
+                "light_hunt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "activity: which screen"
+        },
+        "id": {
+          "description": "send it back in the answer; an answered item is never offered again",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "talk_about",
+            "activity"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "talk_about: what was left open"
+        },
+        "voice_key": {
+          "description": "the template used; speak `text` with POST /v1/voice/say",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "voice_key"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "InvitationAnswer": {
+      "additionalProperties": false,
+      "description": "POST /v1/me/invitation/answer — yes: the device opens it. not_now: final. Either way the item is settled.",
+      "properties": {
+        "answer": {
+          "enum": [
+            "yes",
+            "not_now"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "answer"
+      ],
+      "title": "InvitationAnswer",
+      "type": "object"
+    },
+    "InvitationResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when\ntoday's was answered, or on an extra-gentle day with nothing to talk about.",
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "invitation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Invitation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "home_id"
+      ],
+      "title": "InvitationResponse",
+      "type": "object"
+    },
     "KnowledgeGraph": {
       "additionalProperties": false,
       "description": "GET /v1/me/graph (\"What Kaiku has learned\") · GET /v1/patients/{id}/graph (only when the person shares;\nthen activities, what helps and routines — never people, places, likes or plans: listed in `withheld`).\nNever health data, scores or states.",
@@ -3669,11 +4185,55 @@
           "description": "they did not want to talk or asked to stop",
           "type": "boolean"
         },
+        "energy": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "heard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeardTone"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "themes": {
           "items": {
             "type": "string"
           },
           "maxItems": 3,
+          "type": "array"
+        },
+        "tone": {
+          "description": "from their words (rules or Gemma)",
+          "items": {
+            "enum": [
+              "flat",
+              "tense",
+              "tearful",
+              "irritable",
+              "warm",
+              "playful",
+              "calm"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
           "type": "array"
         },
         "valence": {
@@ -6604,6 +7164,34 @@
           "default": false,
           "type": "boolean"
         },
+        "energy": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "heard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeardTone"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "as reported by the model in the conversation"
+        },
         "part": {
           "enum": [
             "morning",
@@ -6616,6 +7204,23 @@
           "items": {
             "type": "string"
           },
+          "type": "array"
+        },
+        "tone": {
+          "description": "from their words (rules or Gemma)",
+          "items": {
+            "enum": [
+              "flat",
+              "tense",
+              "tearful",
+              "irritable",
+              "warm",
+              "playful",
+              "calm"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
           "type": "array"
         },
         "valence": {
@@ -6689,6 +7294,19 @@
             "$ref": "#/$defs/SourceCount"
           },
           "type": "array"
+        },
+        "tone_summary": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how they sounded, by provenance: tone of their words, and tone as reported by the model in the conversation"
         }
       },
       "required": [
@@ -7137,6 +7755,20 @@
           ],
           "type": "string"
         },
+        "scale_10": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the answer exactly as dialled when the device has a 1-10 dial (the standalone robot head); `value` is then ceil(scale_10 / 2). Absent for 1-5 dials"
+        },
         "value": {
           "maximum": 5,
           "minimum": 1,
@@ -7200,6 +7832,59 @@
         }
       },
       "title": "SensorsCmd",
+      "type": "object"
+    },
+    "SessionClose": {
+      "additionalProperties": false,
+      "description": "POST /v1/companion/close — the device says a conversation stopped and how long it ran. The cloud never\nsees the audio socket, so this is what brings the Live budget reservation down to the time really used\n(whole started minutes, at least one, never more than was reserved). Send it once when the conversation\nends, whatever ended it; sending it again is harmless. It changes nothing else about the session.",
+      "properties": {
+        "elapsed_s": {
+          "description": "seconds from the conversation's start to its end, across every token it used",
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "number"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "description": "CompanionSessionResponse.session_id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "home_id",
+        "session_id",
+        "elapsed_s"
+      ],
+      "title": "SessionClose",
+      "type": "object"
+    },
+    "SessionCloseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "billed_minutes": {
+          "description": "started minutes now counted for this conversation",
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "settled": {
+          "description": "Live reservations this call settled or corrected (0: nothing to change)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "session_id",
+        "settled",
+        "billed_minutes"
+      ],
+      "title": "SessionCloseResult",
       "type": "object"
     },
     "SourceBadge": {
@@ -7975,6 +8660,174 @@
         "text"
       ],
       "title": "VoiceSayRequest",
+      "type": "object"
+    },
+    "WalkGoalResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `set_walk_goal`: the count it keeps.",
+      "properties": {
+        "found": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "left": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "thing": {
+          "maxLength": 30,
+          "type": "string"
+        }
+      },
+      "required": [
+        "thing",
+        "target",
+        "left"
+      ],
+      "title": "WalkGoalResult",
+      "type": "object"
+    },
+    "WalkGuide": {
+      "additionalProperties": false,
+      "description": "CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the\ndevice nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and\nnobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge\nis not used in this style. Values: config/kaiku.toml [walk].\nKaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not\nalways silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),\nso the device holds the audio of a nudge's reply until its first output transcription fragment and plays it\nonly when that fragment has a real word.",
+      "properties": {
+        "look_every_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "look_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "quiet_after_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "quiet_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "style": {
+          "enum": [
+            "quiet",
+            "playful",
+            "chatty"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "style"
+      ],
+      "title": "WalkGuide",
+      "type": "object"
+    },
+    "WalkMomentResult": {
+      "additionalProperties": false,
+      "description": "What the device returns for `log_walk_moment` (one find). Without a goal: ok=true, the counts null, and\n`note` tells the model that nothing was counted and to call `set_walk_goal` first, then log the find again.",
+      "properties": {
+        "found": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "left": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for the model, when there was no goal to count against"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "thing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "WalkMomentResult",
       "type": "object"
     },
     "WearableDaily": {

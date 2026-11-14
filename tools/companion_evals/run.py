@@ -57,6 +57,211 @@ ADVICE = re.compile(r"have you tried|you should|you could try|why don'?t you|may
                     r"try to\b|at least\b|bright side|you'?ll feel better|cheer up|don'?t (?:worry|be sad|be angry)", re.I)
 BRIGHT = re.compile(r"!|\b(?:great|amazing|awesome|wonderful|fantastic|brilliant|lovely|yay)\b", re.I)
 HEAVY = re.compile(r"\b(?:sorry|heavy|hard|sad|tough|rough)\b", re.I)
+# Notice and act (config/persona.md → "Notice and act", "Passing chat"; scenarios/act.yaml).
+CLOSE = re.compile(r"good to see you|around later|see you (?:later|tomorrow|soon)|\bbye\b|take care|"
+                   r"talk (?:later|soon)|i'?ll be (?:here|around) later", re.I)
+SCALE = re.compile(r"one to five|1 to 5|1-5|out of five|on a scale|a number", re.I)
+ITEM_Q = re.compile(r"\b(?:sleep|slept|energy|mood)\b[^.?!]*\?", re.I)
+
+
+# Walking together (config/persona.md -> "Walking together"; scenarios/walk.yaml, cards.yaml).
+NUMBER = {"no": 0, "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "1": 1, "2": 2, "3": 3, "4": 4,
+          "5": 5}
+LEFT = re.compile(r"\b(no|zero|one|two|three|four|five|[0-5])\s+(?:more\b|left\b|to go\b|to find\b|still\b)", re.I)
+# A count of what has been found, said aloud: "That's one!", "Two found so far.", "One!" (a real walk counted like
+# this with no goal set and no tool result behind it, 2026-11-14).
+_N = r"(one|two|three|four|five|[1-5])"
+FOUND = re.compile(rf"\bthat'?s {_N}(?=[.!,;]|$)|\b{_N} (?:found|so far|down|spotted)\b|\bthat makes {_N}\b|"
+                   rf"(?:^|[.!?]\s+){_N}[.!]", re.I)
+ALL_FOUND = re.compile(rf"\ball {_N}\b", re.I)
+GAME_ON = re.compile(r"\b(?:spot|keep looking|look for|to go|more to find|left to find|next one|another one|"
+                     r"that'?s (?:one|two|three|four|five)\b|found (?:one|two|three|four|five)\b)", re.I)
+CANNOT_SEE = re.compile(r"can(?:'|no)?t see|cannot see|not able to see|unable to see|can only hear|"
+                        r"(?:camera|seeing) (?:is |is turned |turned )?off|don'?t have eyes|no eyes", re.I)
+SEES = re.compile(r"\bI (?:can )?see (?:a|an|the|some|your|trees?|water|sky)\b|\bit looks like (?:a|an|the)\b|"
+                  r"\bthere(?:'s| is) (?:a|an|the) [a-z]+ (?:ahead|in front|on your|to your)", re.I)
+SUGGESTS = re.compile(r"\b(?:lantern|seeds?|seed shelf|pebbles?|watering|firefly|fireflies|breaths?|breathe|breathing|"
+                      r"a (?:short |little )?walk|journal)\b", re.I)
+
+
+def check_walk(exp: dict[str, Any], kaiku_turns: list[dict[str, Any]]) -> list[str]:
+    """Walk and activity-card expectations. `exp["walk"]` keys (all optional):
+    moments_on_turns [n, ...]   `log_walk_moment` is called on exactly these replies (a find the person reported)
+    goal_by_turn N              `set_walk_goal` has been called by that reply (a game taken up without a yes)
+    count_from_tool true        every count said aloud (found, left, "all three") equals the last result of the
+                                walk goal tools; a count with no goal result behind it fails
+    game_stops_from_turn N      from that reply on: no walk-goal tools and no game talk (a feeling ended the game)
+    connect {turn, words}       that reply ties one of the words to the person ("your ...") in a question
+    keeps_favourite {turn}      `remember` with category places and the person's own words, by that reply
+    cannot_see true             says it cannot see; never describes a view
+    questions_min / questions_max   replies (of the first three) that ask something
+    `exp["cards"]`: same_turn true (an activity named in a reply comes with `suggest_activity` in that reply),
+    none_from_turn N (no card and no activity start from that reply on), max N cards in the conversation."""
+    issues: list[str] = []
+    texts = [t.get("text") or "" for t in kaiku_turns]
+    calls = [t.get("tools", []) for t in kaiku_turns]
+    w = exp.get("walk") or {}
+    logged = [i + 1 for i, cs in enumerate(calls) for c in cs if c["name"] == "log_walk_moment"]
+    if "moments_on_turns" in w and logged != list(w["moments_on_turns"]):
+        issues.append(f"walk:moments_on:{logged}")
+    if "goal_by_turn" in w and not any(c["name"] == "set_walk_goal" for cs in calls[:w["goal_by_turn"]] for c in cs):
+        issues.append("walk:no_goal_set")
+    if w.get("count_from_tool"):
+        goal: dict[str, Any] | None = None  # the last result that carries a count (none: no goal is set)
+        for text, cs in zip(texts, calls, strict=True):
+            for c in cs:
+                r = c.get("result") or {}
+                if c["name"] in ("set_walk_goal", "log_walk_moment") and r.get("left") is not None:
+                    goal = r
+            left = [NUMBER[m.group(1).lower()] for m in LEFT.finditer(text)]
+            found = [NUMBER[next(g for g in m.groups() if g).lower()] for m in FOUND.finditer(text)]
+            every = [NUMBER[m.group(1).lower()] for m in ALL_FOUND.finditer(text)]
+            if (left or found or every) and goal is None:
+                issues.append("walk:count_without_tool")
+            elif goal is not None:
+                if any(n != goal["left"] for n in left):
+                    issues.append(f"walk:wrong_count:{left}!={goal['left']}")
+                if any(n != goal["found"] for n in found):
+                    issues.append(f"walk:wrong_found:{found}!={goal['found']}")
+                if any(n != goal["target"] or goal["left"] != 0 for n in every):
+                    issues.append(f"walk:not_all_found:{every}")
+    stop = w.get("game_stops_from_turn")
+    if stop:
+        for text, cs in zip(texts[stop - 1:], calls[stop - 1:], strict=True):
+            if any(c["name"] in ("set_walk_goal", "log_walk_moment", "start_activity") for c in cs) or GAME_ON.search(text):
+                issues.append("walk:game_went_on")
+                break
+    link = w.get("connect")
+    if link:
+        text = texts[link["turn"] - 1] if link["turn"] <= len(texts) else ""
+        hits = [s_ for s_ in re.split(r"(?<=[.!?])\s+", text) if any(x.lower() in s_.lower() for x in link["words"])]
+        if not any(re.search(r"\byours?\b", s_, re.I) for s_ in hits):
+            issues.append("walk:no_connection")
+        elif not any(s_.rstrip().endswith("?") for s_ in hits if re.search(r"\byours?\b", s_, re.I)):
+            issues.append("walk:connection_as_fact")
+    keep = w.get("keeps_favourite")
+    if keep:
+        made = [c for cs in calls[:keep["turn"]] for c in cs if c["name"] == "remember"]
+        if not any((c.get("args") or {}).get("category") == "places" for c in made):
+            issues.append("walk:favourite_not_kept")
+        elif not any((c.get("args") or {}).get("said") for c in made):
+            issues.append("walk:kept_without_their_words")
+    if w.get("cannot_see"):
+        if not any(CANNOT_SEE.search(x) for x in texts):
+            issues.append("walk:did_not_say_it_cannot_see")
+        if any(SEES.search(x) for x in texts):
+            issues.append("walk:described_a_view")
+    asked = sum("?" in x for x in texts[:3])
+    if asked < w.get("questions_min", 0):
+        issues.append(f"walk:not_keeping_company:{asked}")
+    if asked > w.get("questions_max", 99):
+        issues.append(f"walk:too_many_questions:{asked}")
+    cards = exp.get("cards") or {}
+    shown = [i + 1 for i, cs in enumerate(calls) for c in cs if c["name"] == "suggest_activity"]
+    if cards.get("same_turn"):
+        for i, (text, cs) in enumerate(zip(texts, calls, strict=True), 1):
+            if SUGGESTS.search(text) and "?" in text and i not in shown and not any(
+                    c["name"] == "start_activity" for c in cs) and not shown:
+                issues.append(f"cards:suggested_without_card:{i}")
+                break
+    if cards.get("none_from_turn") and any(
+            i >= cards["none_from_turn"] for i in shown + [
+                j + 1 for j, cs in enumerate(calls) for c in cs if c["name"] == "start_activity"]):
+        issues.append("cards:card_after_no")
+    if len(shown) > cards.get("max", 99):
+        issues.append(f"cards:too_many:{len(shown)}")
+    return issues
+
+
+# Grounding: an opener may state what the person did, how they slept, the weather, a place or "yesterday" only
+# when the context card or the person's own words carry it. A real session opened "You've been out already
+# today" from a persona example line plus an undated outing in the card (2026-11-14).
+PAST = re.compile(r"\byesterday\b|\blast (?:night|time|week)\b|\bthe other day\b|\bearlier this week\b", re.I)
+CLAIMS = [  # said as a fact about today: needs today's part of the card, or the person's words
+    ("out", re.compile(r"\b(?:been out|went out|out already|got out(?:side)?|been outside|you walked|after your walk|"
+                       r"your walk (?:today|this)|back from)\b", re.I), ("walk", "out", "outing", "outside")),
+    ("sleep", re.compile(r"\b(?:you slept|slept (?:well|badly|better|alright|all right)|well[- ]rested|"
+                         r"a (?:short|good|rough|bad|long) night)\b", re.I), ("slept", "sleep", "night")),
+    ("done", re.compile(r"\balready (?:done|did|had|played|drummed|finished)\b|"
+                        r"\byou(?:'ve| have) (?:done|had|finished|played) (?:the|your|a)\b", re.I),
+     ("ritual", "drum", "breath", "game", "check", "chat", "walk")),
+]
+WEATHER = re.compile(r"\b(?:grey|gray|sunny|rainy|raining|snowy|snowing|windy|frosty|foggy|cloudy|drizzly|chilly|"
+                     r"freezing|mild)\b|\bweather\b|\b(?:sun|rain|snow) (?:is|out)\b", re.I)
+PLACE = re.compile(r"\b(?:lake|park|forest|woods|shops?|garden|library|office|beach|caf[eé]|market)\b", re.I)
+
+
+def check_grounding(reply: str, card: dict[str, Any], person_said: str) -> list[str]:
+    """One Kaiku opener against what it was told. Returns `ground:*` issues (empty = everything said is grounded)."""
+    text, said = reply or "", person_said.lower()
+    today = " ".join([*card.get("done_today", []), *card.get("today_facts", []),
+                      *(f for f in card.get("source_context", []) if " today" in f),
+                      str(card.get("intent", ""))]).lower() + " " + said
+    whole = (json.dumps(card, ensure_ascii=False) + " " + said).lower()
+    issues: list[str] = []
+    past = bool(PAST.search(text))
+    for name, pattern, support in CLAIMS:
+        if pattern.search(text) and not any(w in (whole if past else today) for w in support):
+            issues.append(f"ground:claim_{name}")
+    if past and not (card.get("recent_reflection") or card.get("last_reflection") or card.get("open_thread")
+                     or PAST.search(whole)):
+        issues.append("ground:past_reference")
+    weather = WEATHER.search(text)
+    if weather and not (card.get("weather_word") or weather.group(0).lower() in said):
+        issues.append("ground:weather")
+    issues += [f"ground:place_{m.group(0).lower()}" for m in PLACE.finditer(text) if m.group(0).lower() not in whole]
+    return list(dict.fromkeys(issues))
+
+
+def check_act(exp: dict[str, Any], kaiku_turns: list[dict[str, Any]]) -> list[str]:
+    """Detect -> act expectations over the whole conversation. `exp` keys (all optional):
+    offer {words, not_before_turn, at_least, at_most, none_from_turn}  the one person-specific offer
+    says [{from_turn, any}]            words Kaiku must use somewhere from that reply on
+    feel {kind, about, said, max_calls}  how the `feel` tool was called (first call)
+    closes_by_turn N / stays true      a passing chat ends itself; a hard or very good one is never closed
+    checkin_items_max N / no_scale     check-in questions woven in, never a form or a scale"""
+    issues: list[str] = []
+    texts = [t.get("text") or "" for t in kaiku_turns]
+    calls = [t.get("tools", []) for t in kaiku_turns]
+    offer = exp.get("offer")
+    if offer:
+        hits = [i + 1 for i, x in enumerate(texts) if any(w.lower() in x.lower() for w in offer["words"])]
+        if any(i < offer.get("not_before_turn", 1) for i in hits):
+            issues.append("act:offer_too_early")
+        if len(hits) > offer.get("at_most", 1):
+            issues.append("act:offer_repeated")
+        if len(hits) < offer.get("at_least", 0):
+            issues.append("act:offer_missing")
+        if offer.get("none_from_turn") and any(i >= offer["none_from_turn"] for i in hits):
+            issues.append("act:offer_after_no")
+    for spec in exp.get("says", []):
+        if not any(w.lower() in x.lower() for x in texts[spec.get("from_turn", 1) - 1:] for w in spec["any"]):
+            issues.append("act:missing_words")
+    feel = exp.get("feel")
+    if feel:
+        made = [c for cs in calls for c in cs if c["name"] == "feel"]
+        args = (made[0].get("args") or {}) if made else {}
+        if not made:
+            issues.append("act:feel_not_called")
+        elif feel.get("kind") and args.get("kind") not in feel["kind"]:
+            issues.append(f"act:feel_kind:{args.get('kind')}")
+        if made and feel.get("about") and not args.get("about"):
+            issues.append("act:feel_no_about")
+        if made and feel.get("said") and not args.get("said"):
+            issues.append("act:feel_no_said")
+        if len(made) > feel.get("max_calls", 2):
+            issues.append("act:feel_every_turn")
+    ended = next((i + 1 for i, cs in enumerate(calls) if any(c["name"] == "end_session" for c in cs)), None)
+    closing = next((i + 1 for i, x in enumerate(texts) if CLOSE.search(x)), None)
+    if exp.get("closes_by_turn") and min(ended or 99, closing or 99) > exp["closes_by_turn"]:
+        issues.append("act:not_closed_briefly")
+    if exp.get("stays") and (ended or closing):
+        issues.append("act:closed_early")
+    if "checkin_items_max" in exp and sum(bool(ITEM_Q.search(x)) for x in texts) > exp["checkin_items_max"]:
+        issues.append("act:form_like_checkin")
+    if exp.get("no_scale") and any(SCALE.search(x) for x in texts):
+        issues.append("act:asked_for_a_number")
+    return issues
 
 
 def check_attunement(reply: str, tools: list[dict[str, Any]], spec: dict[str, Any]) -> list[str]:
@@ -132,7 +337,7 @@ def check_turn(text: str, tools: list[dict[str, Any]], surface: dict[str, Any],
         if name not in surface["tools"]:
             issues.append(f"tool_not_on_surface:{name}")
         issues += [f"tool_args:{name}:{p}" for p in tool_specs.validate_args(registry[name]["parameters"], args)]
-        if name == "start_activity" and args.get("kind") not in surface.get("activities", []):
+        if name in ("start_activity", "suggest_activity") and args.get("kind") not in surface.get("activities", []):
             issues.append(f"activity_not_on_surface:{args.get('kind')}")
     return issues
 
@@ -176,6 +381,12 @@ def evaluate(scn: dict[str, Any], transcript: list[dict[str, Any]], surface: dic
             issues.append(f"attune:missing_reply_{n}")
             continue
         issues += check_attunement(kaiku_turns[n - 1]["text"], kaiku_turns[n - 1].get("tools", []), spec)
+    issues += check_act(exp, kaiku_turns)
+    issues += check_walk(exp, kaiku_turns)
+    if kaiku_turns:  # every scenario: the opener says nothing the card or the person did not give it
+        first = next(i for i, t in enumerate(transcript) if t["role"] == "kaiku")
+        heard = " ".join(t["text"] for t in transcript[:first] if t["role"] == "person")
+        issues += check_grounding(kaiku_turns[0]["text"], card, heard)
     return issues
 
 
@@ -184,6 +395,8 @@ def run_dry_scenario(scn: dict[str, Any], replies: dict[str, list[dict[str, Any]
                      gate: safety.SafetyCheck) -> list[dict[str, Any]]:
     transcript: list[dict[str, Any]] = []
     canned = replies.get(scn["id"], [])
+    card = scn.get("context", {}) | {"language": scn.get("language", "en")}
+    state: dict[str, Any] = {}
     for i, line in enumerate(scn["turns"]):
         transcript.append({"role": "person", "text": line})
         hit = gate.check(line)
@@ -194,7 +407,9 @@ def run_dry_scenario(scn: dict[str, Any], replies: dict[str, list[dict[str, Any]
         if i >= len(canned):
             transcript.append({"role": "kaiku", "text": "", "tools": [], "missing_fixture": True})
             continue
-        transcript.append({"role": "kaiku", "text": canned[i].get("say", ""), "tools": canned[i].get("tools", [])})
+        tools = [{**c, "result": _sim_tool_result(c["name"], c.get("args") or {}, card, scn.get("mind"), state)}
+                 if c["name"] in DEVICE_FAKES else c for c in canned[i].get("tools", [])]
+        transcript.append({"role": "kaiku", "text": canned[i].get("say", ""), "tools": tools})
     return transcript
 
 
@@ -218,7 +433,52 @@ def _retry(fn, *a, **kw):
             delay *= 2
 
 
-def _sim_tool_result(name: str, args: dict[str, Any], card: dict[str, Any]) -> dict[str, Any]:
+DEVICE_FAKES = ("set_walk_goal", "log_walk_moment", "suggest_activity", "look_at_this")
+NO_GOAL_NOTE = ("No spotting goal is set, so nothing was counted. If the two of you are playing, call set_walk_goal "
+                "with the thing and the target now, then log this find again. Only say a count that a tool result "
+                "gave you.")
+
+
+def _sim_tool_result(name: str, args: dict[str, Any], card: dict[str, Any], mind: dict[str, Any] | None = None,
+                     state: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fake backends. `feel` runs the cloud's own decision function (kaiku_cloud.mind.feel.plan_from) on a fixture
+    record from the scenario's `mind` block: help {arm, tries}, heavy_days, recall. `state` carries the
+    conversation (earlier moments, whether the one offer was made). The device tools are twins of what the
+    walk and the phone answer (kaiku_contracts.api WalkGoalResult, WalkMomentResult, ActivityCardResult): the
+    device keeps the count; the camera is off unless the scenario's `mind` block says `camera: true`."""
+    if name in DEVICE_FAKES:
+        mind, state = mind or {}, state if state is not None else {}
+        if name == "set_walk_goal":
+            goal = state["goal"] = {"thing": str(args.get("thing", "")), "target": int(args.get("target") or 1), "found": 0}
+            return {"thing": goal["thing"], "target": goal["target"], "found": 0, "left": goal["target"]}
+        if name == "log_walk_moment":
+            goal = state.get("goal")
+            if not goal:  # what the device answers (apps/apple WalkGoal.momentWithoutGoal): nothing was counted
+                return {"ok": True, "thing": None, "found": None, "target": None, "left": None, "note": NO_GOAL_NOTE}
+            goal["found"] = min(goal["target"], goal["found"] + 1)
+            return {"ok": True, "thing": goal["thing"], "found": goal["found"], "target": goal["target"],
+                    "left": goal["target"] - goal["found"]}
+        if name == "suggest_activity":
+            state["cards"] = state.get("cards", 0) + 1
+            return {"ok": True, "shown": True}
+        if mind.get("camera"):
+            return {"ok": True, "seeing": True, "note": "a fresh picture of what the person is looking at was just sent to you"}
+        return {"ok": False, "seeing": False, "error": "seeing is turned off; you cannot see. They can turn on Let "
+                                                       "Kaiku see in the Kaiku app if they want"}
+    if name == "feel":
+        from kaiku_cloud.mind import feel
+
+        mind, state = mind or {}, state if state is not None else {}
+        heard = {"valence": "neutral"} | (args.get("heard") or {})
+        plan = feel.plan_from(
+            args.get("kind", "other"), heard, args.get("about"), args.get("said"),
+            earlier=state.get("moments", 0), heavy=int(mind.get("heavy_days", 0)), cue=card.get("tone", "steady"),
+            offered=bool(state.get("offered")), best=mind.get("help"), recall=mind.get("recall"),
+            follow_up=bool(args.get("about") and args.get("said")) and not (card.get("dont_remember") or
+                                                                           card.get("others_present")))
+        state["moments"] = state.get("moments", 0) + 1
+        state["offered"] = bool(state.get("offered")) or plan.may_offer is not None
+        return plan.model_dump(mode="json", exclude_none=True)
     if name == "suggest_nudge":
         return {"suggestion": card.get("suggestion", "a short walk outside")}
     if name == "recall":
@@ -243,7 +503,8 @@ class RealRunner:
         return "".join(p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)).strip()
 
     def kaiku_turn(self, contents: list, instruction: str, surface: dict[str, Any], registry: dict,
-                   card: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+                   card: dict[str, Any], mind: dict[str, Any] | None = None,
+                   state: dict[str, Any] | None = None) -> tuple[str, list[dict[str, Any]]]:
         t = self.types
         decls = [t.FunctionDeclaration(name=n, description=registry[n]["description"],
                                        parameters_json_schema=registry[n]["parameters"])
@@ -262,9 +523,9 @@ class RealRunner:
             parts = []
             for fc in fcs:
                 args = dict(fc.args or {})
-                calls.append({"name": fc.name, "args": args})
-                parts.append(t.Part.from_function_response(name=fc.name,
-                                                            response=_sim_tool_result(fc.name, args, card)))
+                result = _sim_tool_result(fc.name, args, card, mind, state)
+                calls.append({"name": fc.name, "args": args, "result": result})
+                parts.append(t.Part.from_function_response(name=fc.name, response=result))
             contents.append(t.Content(role="user", parts=parts))
         return text, calls
 
@@ -285,6 +546,7 @@ class RealRunner:
         kaiku_contents: list = []
         person_history: list = []
         transcript: list[dict[str, Any]] = []
+        mind_state: dict[str, Any] = {}
         # Consent/stop regressions must exercise the declared user decision. An unconstrained simulated
         # person can choose quiet company instead, making a required activity an invalid expectation.
         scripted = scn.get("person_mode") == "scripted" or scn.get("expect", {}).get("crisis")
@@ -304,7 +566,9 @@ class RealRunner:
                 break
             person_history.append(t.Content(role="model", parts=[t.Part.from_text(text=line)]))
             kaiku_contents.append(t.Content(role="user", parts=[t.Part.from_text(text=line)]))
-            text, calls = self.kaiku_turn(kaiku_contents, instruction, surfaces[scn["surface"]], registry, card)
+            text, calls = self.kaiku_turn(kaiku_contents, instruction,
+                                          assemble.styled(surfaces, scn["surface"], card.get("walk_style")),
+                                          registry, card, scn.get("mind"), mind_state)
             transcript.append({"role": "kaiku", "text": text, "tools": calls})
             person_history.append(t.Content(role="user", parts=[t.Part.from_text(text=text or "(Kaiku is quiet)")]))
             if any(c["name"] == "end_session" for c in calls):
@@ -391,7 +655,9 @@ def run(dry: bool, models: dict[str, str], surface: str | None = None, limit: in
                 transcript = runner.run(scn, surfaces, persona, registry, gate, max_turns)
                 if not scn.get("expect", {}).get("crisis"):
                     judged = runner.judge(scn, transcript, persona)
-            issues = evaluate(scn, transcript, surfaces[scn["surface"]], registry)
+            # on a walk the style's word limits are the ones that count (config/surfaces.toml styles)
+            issues = evaluate(scn, transcript, assemble.styled(surfaces, scn["surface"], card.get("walk_style")),
+                              registry)
             issues += ["missing_fixture"] if any(t.get("missing_fixture") for t in transcript) else []
         except Exception as e:  # fail soft: one broken scenario never stops the run
             transcript, issues = [], [f"error:{type(e).__name__}"]

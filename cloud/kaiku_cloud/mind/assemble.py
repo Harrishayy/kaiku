@@ -19,6 +19,12 @@ Context card (built deterministically by the cloud, ≤ 400 tokens). Allowed key
     care_info       an approved passage from the care team (the only source for treatment facts)
     others_present  bool (a second person is in the room)
     dont_remember   bool (the person said "don't remember things")
+    purpose         "talk" | "check_in" | "walk" | "ritual" (why the device opened the session, when it said so)
+    chat_depth      "brief" | "stay" (how the chat should open; rule in mind/card.py)
+    open_items      check-in dials not answered today ("mood" | "energy" | "sleep"); at most one is woven in
+    walk_style      "quiet" | "playful" | "chatty" (walk sessions; limits and rules: surfaces.toml glasses.styles)
+    outdoor_likes   up to 4 places / outdoor things they told Kaiku they like, in their words
+The shape of a check-in (`render_shape`) is its own short section, outside the card's token budget.
 Anything that looks like state, scores or data about the person is rejected: the model never sees it.
 """
 
@@ -37,13 +43,26 @@ ROOT = _PERSONA.parents[1] if _PERSONA else Path.cwd()
 
 CARD_KEYS = {"language", "intent", "time_of_day", "weather_word", "first_name", "done_today", "suggestion",
              "phq9_due", "source_context", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember",
-             "recent_reflection", "last_reflection", "today_facts"}
+             "recent_reflection", "last_reflection", "today_facts", "purpose", "chat_depth", "open_items", "walk_style", "outdoor_likes"}
+WALK_STYLES = {"quiet", "playful", "chatty"}
+DEPTHS = {"brief", "stay"}
+OPEN_ITEMS = {"mood": "how they feel", "energy": "their energy", "sleep": "how they slept"}
+CARD_RULE = ("`suggest_activity`: whenever you suggest a game, the journal entry (tell), breathing or a walk, call it in "
+             "that same turn with the kind, so a card with a button appears; when a `feel` plan gave you "
+             "`offer_activity`, voice the offer and call it for that kind. It opens nothing: `start_activity` is "
+             "only for a clear yes or an explicit ask. One card at a time. When you are told they put the card "
+             "aside, that is a no: no more cards or activity offers in this conversation.")
+FEEL_RULE = ("`feel`: call it once per clear shift in how they feel or clear news, and keep talking while it runs. Its "
+             "answer shapes your next turns: how to meet it (`stance`, `reflect_hint`), one thing to bring in lightly "
+             "(`recall`), at most one thing to offer once after they feel heard (`may_offer`; a no is final), and "
+             "whether to keep it small or stay (`depth`).")
 TONES = {"steady", "gentle", "extra-gentle"}
 LANGUAGES = {"en", "fi", "sv"}
 FORBIDDEN_KEY = re.compile(r"state|score|verdict|consensus|needs_call|phq9_total|z_|baseline|metric|trend|risk|"
                            r"sleep|heart|hrv|steps|watch|wearable", re.I)
 MAX_CARD_TOKENS = 400  # ~4 chars per token
 NOT_FOR_MODEL = {"About this file", "Examples", "Per-language notes"}
+WALK_ONLY = {"Walking together"}  # persona sections compiled only into a walk's prompt (the card has walk_style)
 TONE_TEXT = {
     "steady": "Be your usual warm self.",
     "gentle": "Be a little gentler and slower today; offer less, listen more.",
@@ -83,6 +102,16 @@ def parse_surfaces(text: str) -> dict[str, dict[str, Any]]:
     return tomllib.loads(text)["surface"]
 
 
+def styled(surfaces: dict[str, dict[str, Any]], surface: str, walk_style: str | None) -> dict[str, Any]:
+    """The surface table for this session: on a walk, the style's limits replace the surface's and its rules are
+    added (config/surfaces.toml `[surface.glasses.styles.<style>]`; a walk on the phone uses the same tables)."""
+    s = surfaces[surface]
+    style = (surfaces.get("glasses", {}).get("styles") or {}).get(walk_style or "")
+    if not style:
+        return s
+    return {**s, **{k: v for k, v in style.items() if k != "rules"}, "rules": [*style.get("rules", []), *s.get("rules", [])]}
+
+
 def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None) -> str:
     """`tools`: the tool names actually served on this surface (registry); default: the surface table's list."""
     tools = list(s["tools"]) if tools is None else tools
@@ -91,13 +120,17 @@ def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None)
         f"Right now you are {s['label']} ({name}, {s['modality']}). Your body here: {body}.",
         f"Aim for about {s['target_words']} words per turn; never more than {s['max_words']} words or "
         f"{s['max_sentences']} sentences, and at most one question.",
-        f"A typical session here lasts about {s['session_minutes']} minutes.",
+        f"A short session here (a check-in, a break, an activity) lasts about {s['session_minutes']} minutes.",
         f"Tools you may use here: {', '.join(tools)}.",
     ]
-    if "start_activity" in tools:
+    if "start_activity" in tools and s["activities"]:
         lines.append(f"Activities you can start here: {', '.join(s['activities'])}. Start one only when the person "
                      "asks for it or says yes to your offer; when a conversation opens, greet them first.")
+    if "suggest_activity" in tools:
+        lines.append(f"- {CARD_RULE}")
     lines += [f"- {r}" for r in s.get("rules", [])]
+    if "feel" in tools:
+        lines.append(f"- {FEEL_RULE}")
     return "\n".join(lines)
 
 
@@ -114,6 +147,14 @@ def validate_card(card: dict[str, Any]) -> None:
         raise ValueError("at most 3 memories")
     if len(card.get("routines", [])) > 2:
         raise ValueError("at most 2 routines")
+    if card.get("chat_depth", "brief") not in DEPTHS:
+        raise ValueError(f"chat_depth must be one of {sorted(DEPTHS)}")
+    if set(card.get("open_items", [])) - set(OPEN_ITEMS):
+        raise ValueError(f"open_items must be among {sorted(OPEN_ITEMS)}")
+    if card.get("walk_style", "quiet") not in WALK_STYLES:
+        raise ValueError(f"walk_style must be one of {sorted(WALK_STYLES)}")
+    if len(card.get("outdoor_likes", [])) > 4:
+        raise ValueError("at most 4 outdoor likes")
 
 
 def render_card(card: dict[str, Any]) -> str:
@@ -133,7 +174,8 @@ def render_card(card: dict[str, Any]) -> str:
     if c.get("suggestion"):
         lines.append(f"Today's suggestion (if it fits): {c['suggestion']}.")
     if c.get("phq9_due"):
-        lines.append("The two-weekly questionnaire is due; offer it once, gently, with start_phq9.")
+        lines.append("The two-weekly questionnaire is due: you may offer it once, gently. Call start_phq9 only "
+                     "after a clear yes.")
     if c.get("routines"):
         lines.append("Their rhythm: " + "; ".join(c["routines"]) + ".")
     if c.get("open_thread"):
@@ -161,6 +203,94 @@ def render_card(card: dict[str, Any]) -> str:
     return text
 
 
+def render_grounding(card: dict[str, Any]) -> str:
+    """What may be said as fact. The persona is full of quoted example lines ("You've been out already…"); a model
+    reused one as a fact about a day with nothing recorded. This section says which is which, every session."""
+    today = bool(card.get("done_today") or card.get("today_facts")) or any(
+        " today" in f for f in card.get("source_context", []))
+    lines = ["Quoted lines anywhere in these instructions show how to speak. They are never facts about this person "
+             "or this day: do not reuse one unless \"Today\" above or the person's own words make it true.",
+             "Say that they went out, slept a certain way, did an activity or were somewhere only if \"Today\" lists "
+             "it for today or they just told you. Something listed for yesterday or earlier is not about today."]
+    if not today:
+        lines.append("Nothing is recorded for today yet: do not say or imply that they have done anything today.")
+    if not card.get("weather_word"):
+        lines.append("You are not told the weather: do not describe it.")
+    return "\n".join(lines)
+
+
+# A real walk (2026-11-14): Kaiku proposed "three birds", the person answered "Found one!", and it counted aloud by
+# itself without ever setting the goal. So the order is spelled out, with that very exchange as the example.
+SPOTTING = (
+    "A spotting game, always in this order:\n"
+    "- Propose something that is really around, never from a fixed list (\"Shall we spot three birds?\"). A "
+    "proposal sets nothing.\n"
+    "- They take it up, with a yes or simply with a first find (\"Found one!\"): call `set_walk_goal` at once, "
+    "with the thing and the target you proposed. If their words were already a find, call `log_walk_moment` "
+    "straight after it, before you speak.\n"
+    "- Every later find they tell you about, or a yes to your \"is that one?\": `log_walk_moment`, once per "
+    "find. A find they only confirm (\"yes, that's one\") is not a new one.\n"
+    "- Say a count only as the last tool result gave it (`found`, `left`). Never count in your head: no result, "
+    "no number. If `log_walk_moment` answers that no goal is set, call `set_walk_goal`, log the find again, then "
+    "speak.\n"
+    "Like this. You: \"Shall we spot three birds?\" They: \"Found one!\" You call `set_walk_goal` (birds, three), "
+    "then `log_walk_moment`; the result says one found, two left. Only then you say: \"One! Two to go.\"")
+
+
+def render_walk(card: dict[str, Any]) -> str | None:
+    """A walk session: which style, what of theirs may come into view, the spotting game, and the device's nudges."""
+    style = card.get("walk_style")
+    if not style:
+        return None
+    lines = [f"You are walking with them in the {style} style (see \"Walking together\"; its rules are under "
+             "\"Your body right now\"). Whatever the style, a sad or heavy thing ends the game and the chatter: "
+             "you stay with it."]
+    if card.get("tone") == "extra-gentle" and style != "quiet":
+        lines.append("Today's tone comes before the style: start no game and make no suggestion yourself, also "
+                     "when a clock line invites one. Play only if they ask. Be easy, quiet company.")
+    likes = card.get("outdoor_likes", [])
+    if likes:
+        lines.append("Outdoor things and places they told you they like: " + "; ".join(f'"{x}"' for x in likes) + ". "
+                     "When something in view, or something they mention, could be one of these, connect it and say "
+                     "it as theirs, as a question (\"Is that your lake loop? We could stop a minute.\"): you cannot "
+                     "know it is that very one.")
+    lines += [
+        "When they say something out here is theirs or a favourite (\"that's my favourite tree\"), call `remember` "
+        "with category places and their own words in `said`, so the next walk knows it.",
+        SPOTTING,
+        "Now and then a context line arrives that begins \"A look around\" or \"It has been quiet\". Nobody said "
+        "it; it is the walk's own clock. Answer it only when you have something worth saying. Otherwise make no "
+        "sound at all: no \"mm\", no \"nothing to report\". Never mention these lines.",
+    ]
+    return "\n".join(lines)
+
+
+def render_shape(card: dict[str, Any]) -> str | None:
+    """How a check-in conversation runs: a passing chat that stays small on an ordinary day and stays on a very
+    good or very hard one. Only when the device opened the session as a check-in."""
+    if card.get("purpose") != "check_in":
+        return None
+    if card.get("chat_depth") == "stay":
+        lines = ["This check-in is in no hurry: the last talk was a hard one, or it has been a heavy few days. Open "
+                 "gently with something real, follow them, and never be the one to close."]
+    else:
+        lines = ["This check-in is a passing chat, like meeting someone you like on the street. Open with something "
+                 "real that \"Today\" above actually lists (what was left open last time, the weather if it is "
+                 "given); if it lists nothing, a plain greeting and one open question. Give back what you hear, and "
+                 "close warmly and lightly within about four exchanges, in words like \"Good to see you. I'm "
+                 "around later.\" Call `end_session` with your goodbye.",
+                 "If it turns out to be a very good or a very hard day, call `feel`; when its `depth` is stay, or "
+                 "they keep talking or ask for more, stay as long as they want. Never keep someone talking, and "
+                 "never rush someone who needs it."]
+    items = [OPEN_ITEMS[i] for i in card.get("open_items", [])]
+    if items:
+        lines.append("Not answered yet today: " + ", ".join(items) + ". You may weave ONE of these into the chat as "
+                     "an ordinary question (\"How did you sleep?\"), never as a scale. Call `record_dial` only if "
+                     "they offer a number from one to five themselves; never ask for a number, never go through "
+                     "them like a form, and recording none is fine: the dials on screen still work.")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- assemble
 def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: str, card: dict[str, Any],
              max_examples: int = 4, tools: list[str] | None = None) -> str:
@@ -169,11 +299,20 @@ def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: st
         raise KeyError(f"unknown surface {surface!r}; known: {sorted(surfaces)}")
     p = parse_persona(persona_text)
     lang = card.get("language", "en")
-    out = [f"## {h}\n{b}" for h, b in p["sections"].items() if h not in NOT_FOR_MODEL]
+    skip = NOT_FOR_MODEL if card.get("walk_style") else NOT_FOR_MODEL | WALK_ONLY
+    out = [f"## {h}\n{b}" for h, b in p["sections"].items() if h not in skip]
     if lang in p["languages"]:
         out.append(f"## Language notes ({lang})\n{p['languages'][lang]}")
-    out.append("## Your body right now\n" + render_surface(surface, surfaces[surface], tools))
+    out.append("## Your body right now\n" + render_surface(
+        surface, styled(surfaces, surface, card.get("walk_style")), tools))
     out.append("## Today\n" + render_card(card))
+    out.append("## What you may say as fact\n" + render_grounding(card))
+    walking = render_walk(card)
+    if walking:
+        out.append("## This walk\n" + walking)
+    shape = render_shape(card)
+    if shape:
+        out.append("## The shape of this conversation\n" + shape)
     exs = sorted(p["examples"], key=lambda e: e["surface"] != surface)[:max_examples]
     if exs:
         out.append("## Examples (say it like Good, never like Bad)\n" + "\n".join(
@@ -184,6 +323,19 @@ def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: st
 def load_files(root: Path | None = None) -> tuple[str, dict[str, dict[str, Any]]]:
     root = root or ROOT
     return (root / "config" / "persona.md").read_text(), parse_surfaces((root / "config" / "surfaces.toml").read_text())
+
+
+_SURFACES: dict[str, tuple[float, dict[str, dict[str, Any]]]] = {}
+
+
+def surface_activities(surface: str) -> list[str]:
+    """The screens this surface really has (config/surfaces.toml `activities`); re-read when the file changes."""
+    path = ROOT / "config" / "surfaces.toml"
+    mtime = path.stat().st_mtime
+    hit = _SURFACES.get(str(path))
+    if hit is None or hit[0] != mtime:
+        _SURFACES[str(path)] = (mtime, parse_surfaces(path.read_text()))
+    return list(_SURFACES[str(path)][1].get(surface, {}).get("activities", []))
 
 
 def assemble_from_files(surface: str, card: dict[str, Any], root: Path | None = None) -> str:

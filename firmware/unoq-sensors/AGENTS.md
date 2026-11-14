@@ -6,7 +6,7 @@
 ## Purpose
 The robot's sensors on the Arduino UNO Q (in the body), as one App Lab app with two halves.
 - **STM32 sketch:** reads the KY-031 knock drum (under the head top), the KY-035 hall sensor (pan home; not fitted, `HAS_HALL 0`, D39), the KY-054 (not fitted)
-  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D45**: the
+  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D48**: the
   pulse comes from the camera, `ppg_source = "camera"`). It plays the Modulino Buzzer chimes and
   shows a status icon on the hidden LED matrix.
 - **Linux app:** bridges the sketch to MQTT and turns the USB camera (in the head) into numbers: face boxes,
@@ -71,7 +71,7 @@ Without hardware: `make sim NODES=sensors`.
 
 ## Health signal
 `health/sensors` every 5 s. `mcu_ok` false = the sketch doesn't answer `ping` (its version string names a missing
-ADS1115 or buzzer; `ads-missing` is expected in this build, D45). `camera_ok` false = no camera (check the PD hub).
+ADS1115 or buzzer; `ads-missing` is expected in this build, D48). `camera_ok` false = no camera (check the PD hub).
 
 ## Tests
 `make test` runs `python/tests`. Bench: `make bench PART=firmware/unoq-sensors/bench/<knock|hall|light|ky039|buzzer|camera>`

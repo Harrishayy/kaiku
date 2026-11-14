@@ -47,9 +47,50 @@ None of this has run on the real glasses yet. If a step fails, **screenshot You 
 10. **Practitioner dashboard** on the Mac (`http://localhost:8000`, this person's record): the outing appears
     under Walks and outings for today.
 
+## Walking together: what to film (about 8 minutes, after the steps above work)
+Kaiku as company on a walk: it sees what you look at, knows a few things you told it, plays small games and
+drops them when you need something else. One real walk of this ran in the simulator (Meta's mock glasses, typed
+lines instead of a microphone, 2026-11-14); nothing here has run on the real glasses. Say things in your own
+words; the lines below are examples. Seeing must be on (step 4) for A2 to A4.
+
+A1. **Pick how Kaiku walks with you.** On the start screen, under Kaiku's bubble: **Calm · Playful · Chatty**, with
+    one line saying what the chosen one does. Choose **Playful**, then **Walk with Kaiku**.
+    See on the walk: the same three words with Playful lit. (You → Settings has the same choice.)
+A2. **"What's that?"** Look at one clear thing (a tree, a bench, a boat) and ask "What's that over there?".
+    Hear: a short answer naming what you are looking at.
+A3. **"That's my favourite …"** Look at something you like and say so: "That's my favourite cherry tree."
+    Hear: a short warm reply that it will remember it. Check later: You → What Kaiku remembers lists it.
+A4. **A spotting game, counted aloud.** Say "Let's play a spotting game" (in Playful, Kaiku may also offer one
+    by itself after about a minute of quiet, or when something in view would make one).
+    Hear: what to find and how many, chosen from what is around ("three red doors").
+    See: a green card on the walk screen: the thing and **0 of 3**, with one dot per thing.
+    When you see one, say "Found one" (or "yes" when Kaiku asks "is that one?"). Hear: how many are left.
+    See: the card count goes up with every find. **Found one** on the card does the same without speaking.
+    If Kaiku counts aloud but no card appears, or the spoken number and the card disagree: that is a failure.
+    Screenshot it (in the simulator run Kaiku proposed "three birds" and counted by itself, with no card).
+A5. **A sad sentence in the middle of the game.** Before the last find, say something true and heavy: "I don't
+    feel like playing anymore. I've been missing my sister all week."
+    Hear: Kaiku leaves the game and stays with what you said. No "two more to find", no new game.
+    (Never use the words on the crisis list for this take: those end the walk and open the crisis screen.)
+A6. **Finish the game** on another take: find the last one. See: the card shows a tick and a soft sparkle.
+A7. **A quiet stretch.** Walk 40 to 60 seconds without speaking. Look at plain ground or a wall for half of it,
+    then at something striking (water, low sun through trees).
+    Hear in Calm: nothing for the ground, at most one short remark for the striking view. In Chatty: Kaiku
+    speaks first after about 40 seconds of quiet. A click, breath or hum with no words is a failure: note the time.
+A8. **Change the style on the walk.** Tap **Calm**. See: "Kaiku is joining…" for a moment, then listening again;
+    a game card that was showing stays. Hear: no second greeting.
+A9. **The next walk remembers.** End the walk, start a new one (seeing on), and look at the favourite from A3.
+    Hear: Kaiku connects it to you ("Is that your favourite cherry tree?"), by itself in Calm within about half
+    a minute of looking, or when you ask "Do you know where we are?".
+
 ## Known limits (expected, not failures)
-- After 5 minutes the conversation reaches its time limit: the screen says so, the walk goes on, **Talk again**
-  starts a new one.
+- A game's count lives on the phone for that walk only. Nothing about what was seen is stored: the pictures go
+  to the live conversation and nowhere else, and the saved walk has minutes and steps, not sights.
+- Kaiku speaks by itself only because the phone asks it to look (every 20 to 30 seconds while it can see) or
+  notes a quiet stretch. With seeing off or paused it never remarks on the view.
+- A walk's conversation has a time limit from the service (30 minutes on 2026-11-14) and ends by itself after a
+  long stretch with nobody speaking (15 minutes): the screen says so, the walk goes on, **Talk again** starts a
+  new one, which is told the walk and any game are still going. Neither limit has been reached in a test run.
 - With the phone locked or Kaiku in the background the voice continues, but Kaiku stops seeing (the screen says
   "No pictures are arriving").
 - If the Kaiku service is only on the Mac's network, the walk may be saved a little later (it waits in the queue).

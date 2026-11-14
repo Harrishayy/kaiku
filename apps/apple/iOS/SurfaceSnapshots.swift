@@ -21,7 +21,7 @@ enum SurfaceSnapshots {
                     if let d = r.uiImage?.pngData() { try? d.write(to: url.appendingPathComponent("\(file)-\(lang.rawValue)-\(name).png")) }
                 }
                 let lockW = width - 16
-                save(lockCard(WalkLockContent(lang: lang, minutes: 12, found: 2)), "lock-walk", CGSize(width: lockW, height: 160))
+                save(lockCard(WalkLockContent(lang: lang, minutes: 12, goal: WalkGoalLine(thing: "Trees", target: 3, found: 2))), "lock-walk", CGSize(width: lockW, height: 160))
                 save(lockCard(BreatheLockContent(lang: lang, breath: 3)), "lock-breathe", CGSize(width: lockW, height: 160))
                 save(expandedIsland(lang), "island-expanded", CGSize(width: width - 22, height: 190))
                 save(compactIsland(lang, minutes: 12), "island-compact", CGSize(width: 250, height: 37))
@@ -74,7 +74,7 @@ enum SurfaceSnapshots {
             HStack(alignment: .top, spacing: 10) {
                 MascotView(state: .walking, size: SurfaceSize.islandMascot, tappable: false)
                     .frame(width: SurfaceSize.islandMascot, height: SurfaceSize.islandMascot)
-                WalkIslandCenter(lang: lang, found: 2)
+                WalkIslandCenter(lang: lang, goal: WalkGoalLine(thing: "Trees", target: 3, found: 2))
                 IslandMinutes(lang: lang, minutes: 12)
             }
             HStack(spacing: 10) {

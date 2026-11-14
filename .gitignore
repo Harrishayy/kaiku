@@ -49,3 +49,6 @@ hardware/assembly_guide/*.log
 hardware/assembly_guide/*.fls
 hardware/assembly_guide/*.fdb_latexmk
 hardware/assembly_guide/*.out
+
+# local recording guide for the team (not published)
+/video_making.md

@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "One thing Kaiku would like to bring up or offer now. Chosen by code; `text` is a template from\nconfig/voice_lines.toml (`voice_key`) around the person's own stored words. On yes the device opens Talk\n(kind talk_about: the session card already carries the thread) or the screen for `activity`.",
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "tell",
+                "walk",
+                "lantern",
+                "seeds",
+                "watering",
+                "pebbles",
+                "firefly",
+                "drum",
+                "light_hunt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "activity: which screen",
+          "title": "Activity"
+        },
+        "id": {
+          "description": "send it back in the answer; an answered item is never offered again",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "talk_about",
+            "activity"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "title": "Text",
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "talk_about: what was left open",
+          "title": "Topic"
+        },
+        "voice_key": {
+          "description": "the template used; speak `text` with POST /v1/voice/say",
+          "title": "Voice Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "voice_key"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /v1/me/invitation — at most one invitation a day per home; null when there is nothing to offer, when\ntoday's was answered, or on an extra-gentle day with nothing to talk about.",
+  "properties": {
+    "home_id": {
+      "title": "Home Id",
+      "type": "string"
+    },
+    "invitation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Invitation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "home_id"
+  ],
+  "title": "InvitationResponse",
+  "type": "object"
+}

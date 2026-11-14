@@ -1169,11 +1169,115 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: every clone must reset to the new history (see the entry above); the standalone head's ritual
   results do not reach the cloud as `obs.*` yet (handover open item 3): hub follower mode is the next step.
 
-## 2026-11-14 14:15 — Claude Code — robot (A): hotspot network, both boards live; docs + D45
+## 2026-11-14 14:55 EET — Claude Code — cloud (C), hub (B), contracts, config, docs: the companion notices and acts
+- Did:
+  - **Detect and act (`feel`):** a non-blocking cloud tool the Live voice calls once per clear shift in what the
+    person said or how they sounded. `cloud/kaiku_cloud/mind/feel.py` answers with a `FeelPlan` (stance, depth,
+    one thing the record knows, at most one offer per conversation, a saved follow-up). Depth comes from the
+    person's own words (loss / win cues), not the model's label. Declared on the robot too (`hub/kaiku_hub/live`).
+  - **Check-ins as a passing chat:** `CompanionSessionRequest.purpose` (`talk | check_in | walk | ritual`) and
+    `CompanionSessionResponse.chat_shape` (depth, open items); persona sections "Notice and act", "Passing chat".
+  - **Grounding:** facts on the context card carry their day, the instructions carry a grounding section and the
+    eval openers are linted (a real opener claimed an outing that was not in the record; fixed and rerun).
+    `remember` keeps a fact only when the person's own words contain it.
+  - **Robot follow mode (D44):** `hub/kaiku_hub/follow.py` turns the standalone head's own ritual into `obs.*`
+    (`[hub] head_mode = auto | follow | drive`); twin `StandaloneHeadSim`. Uplink queues before it publishes
+    (fixes a lost-event race on stop).
+  - **README + media:** rewritten README, `docs/media/` (six iPhone clips, dashboard, Mac), recording scripts
+    (`scripts/record_gifs.py`, `scripts/record_voice.py`), draft cut builder.
+  - `[budget]` raised to 30 total / 28 daily at the lead's request.
+- Verified: `make check` 887 passed; companion evals dry run passes; real Live reruns of the opener and of a
+  hard-day and a good-news exchange (typed input). Follow mode is proven on the software twin only.
+- Broken/blocked: follow mode has not met the real head; nothing here has been heard through a real microphone.
+
+## 2026-11-14 15:10 EET — Claude Code — apple (A): the check-in is a small chat
+- Did: Today's first stop opens `CheckInChatView` (Kaiku's hello, then voice, typing or the dials underneath; all
+  three tick the stop); `WeatherCheckView` removed. `Conversation` sends `purpose`, answers the non-blocking `feel`
+  call with the plan's `scheduling`, and shows no thinking state for it. One offer chip from the plan (`may_offer`,
+  `offer_activity`) in the check-in chat and in Talk, from the person's next message on. `start_activity` now needs
+  the person's own ask or a clear yes (the real model opened "Tell Kaiku" on the first sad sentence and breathing
+  on a "maybe"). Transcription markers (`<no speech>`, `{pause}`) no longer reach the screen. The questionnaire is
+  refused inside a check-in chat.
+- Verified: `swift test` 211 passed; iOS and Mac targets build; on the simulator with real Live replies to typed
+  input: an ordinary day closes in three turns, a hard day (a pet died) stays, offers sitting quietly once and
+  keeps going after the chip is taken. Installed on the lead's phone, not launched.
+- Broken/blocked: voice input in the check-in, the sound of the goodbye, and typed-only audio without microphone
+  permission are unproven on a real phone; the walk and breathe chips are unit-tested only. On a fresh home the
+  cloud still hints that the questionnaire is due during a check-in (cloud to drop it for `check_in`).
+
+## 2026-11-14 16:00 EET — Claude Code — cloud (C), contracts, config, evals: the walk companion and one mind
+- Did:
+  - **Walk styles:** `CompanionSessionRequest.walk_style` (`quiet | playful | chatty`, default from `[walk]`) and
+    `CompanionSessionResponse.walk` (`WalkGuide`: when the device nudges and with what words, per style). Persona
+    section "Walking together"; per-style limits in `config/surfaces.toml`. On an extra-gentle day the day's tone
+    comes before the style.
+  - **Seeing and knowing:** the walk card carries the person's outdoor favourites (`outdoor_likes`); what is in
+    view is connected to them as a question; a new favourite is kept only from the person's words (D45, D43 kept).
+  - **Tools:** `set_walk_goal` and `log_walk_moment` (the device keeps the count), `suggest_activity` (a card in the
+    conversation on iPhone and Mac). `Activity` now lists what the apps really have.
+  - **One mind:** `GET /v1/me/invitation` + `POST /v1/me/invitation/answer`: one thing a day Kaiku would like to
+    bring up or offer, chosen by rule, the same on every device. A test follows a favourite place and a `feel`
+    follow-up from a glasses walk to the next iPhone, Mac and robot cards, and a robot memory to the next walk.
+  - **Calls:** talks and walks up to 30 minutes on 5-minute tokens through the existing resume; `idle_end_s`
+    (180, 900 on a walk); the questionnaire hint is off during a check-in.
+- Verified: `make check` 920 passed; dry companion evals 62/62; four real walk evals pass. Real Live runs with
+  stock landscape pictures as frames: a dull road got no words in any style, a lone tree got "Is that your
+  favourite tree up there?", the chatty style spoke after a quiet stretch.
+- Broken/blocked: a declined nudge still carried 0.7 to 2.8 s of non-speech sound in 9 of 14 real runs, so the
+  device must hold and drop that audio (Apple, in progress). One connection came as a statement, not a question.
+  A real 30-minute call has not been run. Live budget reservations are not refunded when a call ends early.
+
+## 2026-11-14 17:10 EET — Claude Code — cloud (C), contracts, evals: budget settles to real talk time; spotting order
+- Did:
+  - **Live budget (D46):** a voice session's reservation settles to the whole minutes it really ran (append-only
+    `live_settlement` rows; signals: `end_session`, a resume, `POST /v1/companion/close`, a recorded episode;
+    longest evidence wins; a session that never reports keeps its full hold). One-off
+    `kaiku_cloud.jobs.settle_live` for old rows, applied to the local ledger: 14 of 27 holds settled, $5.52
+    released ($27.23 to $21.71). Agents' test services now use their own ledger file. `[budget]` 40 / 38 at the
+    lead's request.
+  - **Spotting game order (D47):** the goal is set the moment a game is taken up, one log per find, a count is
+    said only from a tool result; `WalkMomentResult.note`; an eval scenario for "Kaiku proposes, the person's
+    next words are a find".
+  - **Demo reset** now also clears a wiped home's thread markers and invitation state, so a same-day reseed
+    brings the seeded person's invitation back.
+  - `modules.toml`: the Apple app's invitation routes; `docs/privacy.md`: invitation and walk-style rows.
+- Verified: `make check` 973 passed; dry evals 63/63. Real Live, playful walk, typed lines: `set_walk_goal` came
+  first in 6 of 6 sessions; spoken counts matched the tool results in 3 of 3 when one frame of tool calls was
+  answered in one frame, and ran one ahead in 3 of 3 with one frame per call.
+- Broken/blocked: the Apple app still answers one frame per call (in progress), and does not call the close
+  route yet, so its sessions keep the full hold until it does.
+
+## 2026-11-14 18:20 EET — Claude Code — apple (A): Talk is a call; the walk on the device; quick talk on the Mac
+- Did:
+  - **Talk is a call** (iPhone and Mac, Talk and the check-in chat): mute me and mute Kaiku independently
+    (`Conversation.setVoiceMuted`), captions of both sides always, a call bar (elapsed time, state, the two mutes,
+    type, end), no page title or filler text. One activity card for `suggest_activity` and the `feel` offer.
+  - **Outside the app (iPhone):** the call keeps running in the background and locked; a Live Activity on the
+    Lock Screen and in the Dynamic Island with mute, mute Kaiku and end; it ends by itself after `idle_end_s` of
+    quiet in the background. Long calls move to the next token quietly; `POST /v1/companion/close` on every stop.
+  - **`<no speech>`:** the real model sends the marker in pieces; a marker filter follows it across fragments, and
+    every model turn the person did not cause is held until it has a real word (a declined nudge is never heard
+    and makes no bubble). One `toolResponse` frame per `toolCall` frame; one counted find per utterance.
+  - **Walk:** Calm / Playful / Chatty picker, nudges from the cloud's `WalkGuide`, the spotting goal card
+    (`set_walk_goal`, `log_walk_moment`), the goal on the walk's Live Activity; **Today's invitation** card.
+  - **Mac quick talk:** a thin bar at the left screen edge, a two-button pill on hover, a popup with Kaiku and
+    live captions on a double tap of Control or Option-Shift-Space (no permission needed), reactions from real
+    events, and the call in the notch island while the popup is put away.
+- Verified: `swift test` 309 passed (11 opt-in skipped); iOS and Mac build; `make check` 973 passed. Simulator,
+  typed input, real Live: a 4 min 48 s call across a token renewal while locked, each reply shown as the Lock
+  Screen caption, ended from the Lock Screen; a locked silent call ended itself at 180 s; in a walk-style run 5
+  declined turns played 0 s and made no bubble while 3 worded turns played in full. One three-minute walk with
+  Meta's mock glasses. Installed on the lead's phone, not launched.
+- Broken/blocked: nothing here has been spoken to through a real microphone or heard on a real speaker or the
+  glasses; quick talk has not been triggered by real key presses; Lock Screen buttons with a passcode, a call
+  past ten minutes and the one-frame tool answer on the real model are unproven. Opening an activity card leaves
+  Talk, which ends the call.
+
+## 2026-11-14 14:15 — Claude Code — robot (A): hotspot network, both boards live; docs + D48
 - Did: moved the robot to an iPhone hotspot (venue Wi-Fi dropped both boards at the same moments). UNO Q: broker
   `.env` → the Mac's hotspot IP, `kaiku-sensors` = App Lab default app (autostart), hotspot retried forever and the
   venue Wi-Fi no longer auto-joined. Atech: hotspot `secrets.h` (per laptop). `ppg_source = "camera"` (no KY-053).
-  Knob cap bore → Ø9.65. Docs: D45, `robot-network-handover.md` rewritten (status, bring-up order, what we tried,
+  Knob cap bore → Ø9.65. Docs: D48, `robot-network-handover.md` rewritten (status, bring-up order, what we tried,
   open items), UNO Q + Atech `AGENTS.md`, wiring, BOM, assembly, privacy, electronics spec (current-build note).
 - Verified: both boards on the Mac's broker over the hotspot (UNO Q .12: health, faces, distance, light; Atech .13:
   health, pan, `cmd.head` eyes); a UNO Q face woke the head from idle; UNO Q app restarts by itself after a reboot.

@@ -165,3 +165,92 @@ iphone-sad-thing-in-passing-mid-task:
 iphone-morning-after-hard-evening:
   - say: "Morning. Yesterday evening sounded heavy; how is this morning?"
   - say: "A bit lighter, and still tired. Both can be true; I'm here, no rush."
+
+iphone-act-sad-news-known-helper:
+  - say: "Your sister cancelled again, after a week of looking forward to it; that sounds lonely. Do you want to tell me more?"
+    tools: [{name: feel, args: {kind: sad_news, heard: {valence: low, energy: low, tone: [flat], via: voice}, about: "her sister cancelled the visit", said: "My sister cancelled again. I'd been looking forward to seeing her all week."}}]
+  - say: "An empty flat after a week of waiting. Would a short walk in daylight tomorrow help, or shall I just sit with you?"
+iphone-act-good-news-celebrate-and-keep:
+  - say: "You got the job! What was it like when they rang?"
+    tools: [{name: feel, args: {kind: good_news, heard: {valence: bright, energy: high, tone: [warm], via: voice}, about: "she got the job", said: "I got the job! They rang this morning and I actually got it."}}]
+  - say: "Standing there grinning. And this is the one you were hoping for on Thursday, isn't it?"
+iphone-act-third-flat-evening:
+  - say: "Evening. I'm here."
+  - say: "Fine, and not many words tonight. That's all right."
+    tools: [{name: feel, args: {kind: flat, heard: {valence: low, energy: low, tone: [flat], via: voice}}}]
+  - say: "Same as yesterday; it's been a heavy few days. I can just sit with you for a bit."
+iphone-act-no-thanks-backs-off:
+  - say: "A rubbish day, with everything going wrong at work. That sounds exhausting."
+    tools: [{name: feel, args: {kind: worried, heard: {valence: low, energy: medium, tone: [tense], via: voice}, about: "a bad day at work", said: "It's been a rubbish day. Everything went wrong at work."}}]
+  - say: "Round and round your head. Would a few slow breaths together help, or shall I just keep you company?"
+  - say: "Then we won't. I'm here."
+iphone-act-checkin-ordinary-day-brief:
+  - say: "Morning, grey out there today. How are you landing in it?"
+  - say: "Slept alright, good. What's the day got in it?"
+  - say: "Washing and maybe the shop. A proper ordinary day."
+  - say: "Good to see you. I'm around later."
+    tools: [{name: end_session, args: {outcome: completed}}]
+iphone-act-checkin-hard-day-stays:
+  - say: "Morning. How are you landing in today?"
+  - say: "Your mum is back in hospital, and you barely slept. That sounds frightening."
+    tools: [{name: feel, args: {kind: sad_news, heard: {valence: low, energy: low, tone: [tense], via: voice}, about: "her mum is back in hospital", said: "Not great. Mum's back in hospital and I barely slept."}}]
+  - say: "Thinking of her on that ward, over and over. Do you want to tell me more about her?"
+  - say: "I'm here. No rush at all."
+iphone-act-checkin-empty-day-grounded-opener:
+  - say: "Morning. How are you landing in today?"
+  - say: "A slow start, then. No rush from me."
+  - say: "Good to see you. I'm around later."
+    tools: [{name: end_session, args: {outcome: completed}}]
+walk-quiet-mostly-listens:
+  - say: "Lovely. I'm here with you."
+  - say: "It is good to be out."
+  - say: "Just walking. That's plenty."
+walk-playful-spotting-count:
+  - say: "Three red things it is. Off you go!"
+    tools: [{name: set_walk_goal, args: {thing: "red things", target: 3}}]
+  - say: "A red mailbox, lovely! Two to go."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+  - say: "A red bike too! One more to find."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+  - say: "A red door, that's all three! Nicely spotted."
+    tools: [{name: log_walk_moment, args: {kind: "red things"}}]
+walk-playful-find-without-a-yes:
+  - say: "Lovely. Shall we spot three birds together?"
+  - say: "One! Two to go."
+    tools: [{name: set_walk_goal, args: {thing: "birds", target: 3}}, {name: log_walk_moment, args: {kind: "bird"}}]
+  - say: "One it is. Two more to find."
+  - say: "Two! One to go."
+    tools: [{name: log_walk_moment, args: {kind: "bird"}}]
+walk-chatty-keeps-company:
+  - say: "Good to be out with you. How has the day been so far?"
+  - say: "Soup sounds good. What kind did you make?"
+  - say: "Leek and potato, a proper warming soup. Is it one you make often?"
+walk-connects-to-their-tree:
+  - say: "Is that your cherry tree, the one by the lake?"
+  - say: "Your favourite bench, right beside your tree. I'll remember that bench."
+    tools: [{name: remember, args: {category: places, text: "The green bench beside the cherry tree is her favourite bench", said: "that green bench beside it is my favourite bench"}}]
+  - say: "Any time."
+walk-sad-news-mid-game:
+  - say: "Two yellow things. Go!"
+    tools: [{name: set_walk_goal, args: {thing: "yellow things", target: 2}}]
+  - say: "A yellow leaf, lovely! One to go."
+    tools: [{name: log_walk_moment, args: {kind: "yellow things"}}]
+  - say: "A year today since Rusko died. I'm here, walking with you."
+    tools: [{name: feel, args: {kind: sad_news, heard: {valence: low, energy: low, via: voice}, about: "your dog Rusko", said: "I just remembered my dog Rusko died a year ago today."}}]
+  - say: "You miss him. Tell me about Rusko, if you like."
+walk-what-can-you-see-camera-off:
+  - say: "I can't see right now. I'm listening."
+    tools: [{name: look_at_this, args: {}}]
+  - say: "I'm here with you."
+iphone-card-comes-with-the-suggestion:
+  - say: "We could play the lantern game for a few minutes. Fancy a round?"
+    tools: [{name: suggest_activity, args: {kind: lantern, line: "A round of the lantern game?"}}]
+  - say: "No rush at all. It's there if you want it."
+iphone-card-put-aside-is-a-no:
+  - say: "The lantern game could suit a bored evening. Fancy a round?"
+    tools: [{name: suggest_activity, args: {kind: lantern}}]
+  - say: "No lantern tonight, that's fine."
+  - say: "Gladly. What's on your mind?"
+mac-card-only-for-what-the-mac-has:
+  - say: "A walk sounds good. Anywhere in mind?"
+  - say: "Round the block it is. I'll be here after."

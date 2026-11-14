@@ -86,7 +86,7 @@ class StubCamera:
 
 async def test_pulse_ky039_first_then_camera_backup(broker, monkeypatch):
     monkeypatch.setenv("KAIKU_UNOQ_PPG_FALLBACK_S", "0.6")
-    monkeypatch.setenv("KAIKU_UNOQ_PPG_SOURCE", "auto")   # the auto routing under test (this build uses camera, D45)
+    monkeypatch.setenv("KAIKU_UNOQ_PPG_SOURCE", "auto")   # the auto routing under test (this build uses camera, D48)
     from kaiku_contracts.config import load_config
     load_config.cache_clear()
     bridge = FakeBridge()

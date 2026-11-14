@@ -30,5 +30,11 @@ free ports with a temp DB, so they run beside other dev servers.
   `scripts/record_web_demo.sh [OUT]` runs it against its own throwaway cloud seeded with the one person.
 - `apps/apple/scripts/record_app_demo.sh ios|mac|mac-snap|post` (`apps/apple/AGENTS.md` → Recording a demo): the
   five iPhone flows as clips with chapter time codes; Mac video needs screen permission, `mac-snap` gives stills.
+- `scripts/record_gifs.py [name ...]` → the README GIFs in `docs/media/` from those clips (pieces listed in the
+  script); `scripts/record_voice.py --url <service>` → `recordings/voice/*.wav`, the lines the app plays (cached
+  lines are free, a new one is a capped TTS call); `draft_cut.py` (`uv run --with pillow python demo/draft_cut.py`)
+  → `recordings/kaiku-draft-cut.mp4`: the pieces in narrative order with their titles, Kaiku's voice where it
+  speaks, a 2 s card per shot that still needs filming (replaced by `recordings/shot-NN-*.mp4` when present).
+  Narration by time code: `draft-cut-narration.md`.
 - Which clip covers which shot of the narrative, what still needs a person with the devices and how to record it:
   `video_shotlist.md`.

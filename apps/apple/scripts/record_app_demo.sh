@@ -5,7 +5,8 @@
 #        uv run python -m kaiku_cloud.jobs.single_person --url $KAIKU_TEST_CLOUD), KAIKU_TEST_HOME (default aino),
 #      TESTS (ios: space-separated method:clip pairs; default the five flows a–e; extras: testF_Firefly:iphone-6-firefly
 #        testG_GlassesWalkSimulated:iphone-7-glasses-walk-simulated), SPEED (post: default 1 = real time), SHOTS (dir
-#        for step screenshots, default $OUT/shots),
+#        for step screenshots, default $OUT/shots), KAIKU_BUILD_SERVICE=1 (ios: build with $KAIKU_TEST_CLOUD as the
+#        app's configured service: first run connects by itself and the hello line is spoken),
 #      SIM_UDID (a booted-or-bootable iPhone simulator; default: one named "Kaiku Demo 17 Pro", created if missing),
 #      OUT (default demo/recordings), DERIVED (xcodebuild derived data, default ~/Library/Caches/kaiku-record-dd).
 # ios : DemoTourTests (iOSUITests/DemoTourTests.swift), one raw simulator recording per test method. The cloud is
@@ -55,8 +56,10 @@ record_ios() {
   open -a Simulator --args -CurrentDeviceUDID "$udid" || true
   xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 || true
   (cd "$APPLE" && xcodegen -q)
+  # KAIKU_BUILD_SERVICE=1 builds the app with this cloud as its configured service (KAIKU_SERVICE_URL), so a fresh
+  # install connects by itself during setup and Kaiku's hello is spoken (cached voice lines cost nothing).
   xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" -destination "platform=iOS Simulator,id=$udid" \
-    -derivedDataPath "$DERIVED" build-for-testing -quiet
+    -derivedDataPath "$DERIVED" build-for-testing -quiet ${KAIKU_BUILD_SERVICE:+KAIKU_SERVICE_URL="$CLOUD"}
   # the recording cloud shows up on the "nearby services" step (Bonjour carries no home ID and no credentials)
   local port="${CLOUD##*:}"; port="${port%%/*}"
   dns-sd -R "$SERVICE_NAME" _kaiku-api._tcp local. "$port" service=kaiku-api path=/v1/discovery scheme=http v=1 >/dev/null 2>&1 & local adv=$!

@@ -111,7 +111,9 @@ python/kaiku_contracts/
                 (`category_min.communication`); per-metric `person_hard` sentence for /me
   api.py        cloud HTTP models: Consensus, SourceVerdict, Explanation, PatientSummary, Timeline, PHQ-9, Me (+ Mascot,
                 Highlight, Garden), VoiceLinesResponse, Eval, Criteria*
-  companion_tools.py  tool registry (schema + surfaces + executor), for_surface(), validate_args(), export()
+  companion_tools.py  tool registry (schema + surfaces + executor + optional `behavior: NON_BLOCKING`), for_surface(),
+                validate_args() (also arrays of enum strings with maxItems), export(); the tone enums
+                (Valence, Energy, Tone, FeelKind), Purpose, CheckinItem
   wording.py    wording linter (clinical terms, state talk/numbers, medical advice, promises, watch data, caps)
   safety.py     crisis phrase matcher (config/safety_phrases.toml) shared by cloud + evals
   topics.py     topic(), topic_for(), parse_topic(), QoS/retain
@@ -190,3 +192,38 @@ Conversation completion metadata: `TranscriptTurn.complete` is optional `bool | 
 readback. `true` means transcription explicitly finished; `false` means interrupted/not final; absent/null means
 unknown for legacy records. Audio `turnComplete` does not establish transcription completion. Producers retain
 the received words unchanged; completion metadata never authorises transcript retention or raw-media upload.
+
+## Notice and act, tone and the check-in shape (2026-11-14, additive)
+- Tool `feel` (cloud, every surface, `behavior: NON_BLOCKING`): `kind`, `heard {valence, energy?, tone[≤2]?, via?}`,
+  `about?`, `said?`. Its result is `api.FeelPlan {stance, depth: brief|stay, reflect_hint, recall?, may_offer?,
+  offer_note?, offer_activity?, follow_up_saved, scheduling}`.
+- `CompanionSessionRequest.purpose?` (`talk | check_in | walk | ritual`); `CompanionSessionResponse.chat_shape?`
+  (`ChatShape {purpose, depth, open_items[]}`); `CompanionTool.behavior?`; `ContextCard.purpose?`, `.chat_depth?`,
+  `.open_items[]` (`mood | energy | sleep`).
+- `HeardTone {valence?, energy?, tone[≤2], provenance: model_heard|model_read, moments}`; `LastReflection` and
+  `ReflectionDay` gain `tone[]`, `energy?`, `heard?`; `ReflectionOverview.tone_summary?`.
+- Tone is an observation by a model, never a state and never an input to the consensus.
+
+## Walk styles, activity cards, call length and the invitation (2026-11-14, additive, D45)
+- `companion_tools`: `Activity` = `breathe | tell | walk | lantern | seeds | watering | pebbles | firefly | drum |
+  light_hunt` (`ACTIVITIES`, the screens that exist; each surface lists its own in `config/surfaces.toml`);
+  `WalkStyle` = `quiet | playful | chatty` (`WALK_STYLES`). Both are in `export()` (`activities`, `walk_styles`).
+- Device tools: `suggest_activity {kind: Activity, line? ≤ 80}` (iphone, mac) → `api.ActivityCardResult {ok, shown}`;
+  `set_walk_goal {thing ≤ 30, target 1..5}` → `api.WalkGoalResult {thing, target, found, left}`; `log_walk_moment
+  {kind}` → `api.WalkMomentResult {ok, thing?, found?, target?, left?, note?}` (`note`: for the model when no goal
+  was set, so nothing was counted; glasses; iphone only on a walk:
+  `walk_only_on`, `for_surface(surface, walk=True|False|None)`).
+- `CompanionSessionRequest.walk_style?`; `CompanionSessionResponse.walk?` (`WalkGuide {style, look_every_s?,
+  look_prompt?, quiet_after_s?, quiet_prompt?}`) and `.idle_end_s?`; `ContextCard.walk_style?`, `.outdoor_likes[≤4]`.
+- `Invitation {id, kind: talk_about|activity, text ≤ 200, voice_key, topic?, activity?}`, `InvitationResponse
+  {home_id, invitation?}`, `InvitationAnswer {id, answer: yes|not_now}`.
+
+## Live reservations settle to real talk time (2026-11-14, additive, D46)
+- `api.SessionClose {home_id, session_id, elapsed_s 0..86400}` → `api.SessionCloseResult {ok, session_id, settled,
+  billed_minutes}` (`POST /v1/companion/close`).
+- `budget`: `charge` returns the row's `ts`; `reservation_units(minutes, session)`, `live_reservations(path?)`
+  (read-only), `bill` and `plan_session` (pure), `settle_session(session, end_ts|elapsed_s, floor_ts, via)`,
+  `settle(res_ts, used_s, via)`, `session_minutes(session)`. The `spend` table is unchanged (no new column: other
+  processes keep writing seven values); a settlement is one more row, task `live_settlement`, usd below zero for a
+  release and above for a correction. `charge` still refuses a negative amount.
+

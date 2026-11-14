@@ -279,15 +279,25 @@ class Store:
 
     def delete_sim(self, home_id: str | None = None) -> int:
         """Demo reset: drop simulated events (of one home, or all) and every derived row of homes left without
-        events. Other homes are untouched when `home_id` is given."""
+        events, with their thread markers and invitation state. Other homes are untouched when `home_id` is given."""
         with self._lock:
             if home_id is None:
                 n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
             else:
                 n = self._db.execute("DELETE FROM events WHERE sim=1 AND home_id=?", (home_id,)).rowcount
+            wiped = [r[0] for r in self._db.execute(
+                "SELECT home_id FROM homes UNION SELECT home_id FROM episodes UNION SELECT home_id FROM threads"
+                " EXCEPT SELECT DISTINCT home_id FROM events")]
             for table in ("homes", "explanations", "commands", "actions", "node_health", "memories", "episodes",
                           "threads"):
                 self._db.execute(f"DELETE FROM {table} WHERE home_id NOT IN (SELECT DISTINCT home_id FROM events)")
+            for home in wiped:
+                # Their episodes and threads are gone, so the "this episode already opened its thread" markers
+                # and the day's invitation must go too: a re-seed of the same days has the same episode ids, and
+                # with the markers left behind it would never open its threads again (seen 2026-11-14).
+                prefix = f"episode-thread:{home}:"
+                self._db.execute("DELETE FROM kv WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
+                self._db.execute("DELETE FROM kv WHERE key = ?", (f"invite:{home}",))
             self._db.execute("DELETE FROM explanations")  # cheap to regenerate
             self._db.execute("DELETE FROM kv WHERE key LIKE 'phq9_due:%'")
             self._db.execute("DELETE FROM kv WHERE key LIKE 'remember_off:%' AND substr(key, 14) NOT IN"

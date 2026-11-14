@@ -11,9 +11,9 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -44,6 +44,8 @@ from kaiku_contracts.api import (
     HealthOverview,
     Healthz,
     IntelligenceHealth,
+    InvitationAnswer,
+    InvitationResponse,
     LiveEventsResponse,
     MemoriesResponse,
     MemorySettings,
@@ -55,6 +57,8 @@ from kaiku_contracts.api import (
     Phq9History,
     PostcardRequest,
     PostcardResponse,
+    SessionClose,
+    SessionCloseResult,
     TaskObservationsResponse,
     TimelineResponse,
     Transcript,
@@ -72,6 +76,7 @@ from ..llm import ledger
 from ..mind import affect as mind_affect
 from ..mind import brief as mind_brief
 from ..mind import graph as mind_graph
+from ..mind import invite as mind_invite
 from ..mind import memory as mind_memory
 from ..mind import nightly as mind_nightly
 from ..mind import postcard as mind_postcard
@@ -272,12 +277,23 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         return mind.run_tool(store, settings, call)
 
     @app.post("/v1/companion/episode", response_model=EpisodeResult)
-    def companion_episode(ep: EpisodeIn) -> EpisodeResult:
+    def companion_episode(ep: EpisodeIn, background: BackgroundTasks) -> EpisodeResult:
         try:
             eid = mind.record_episode(store, ep)
-            return EpisodeResult(ok=True, id=eid, transcript_stored=store.transcript_exists(ep.home_id, eid))
+            kept = store.transcript_exists(ep.home_id, eid)
+            if kept:  # after the response: one Gemma call relabels this reflection's level, tone and themes
+                background.add_task(mind_affect.label_episode, store, ep.home_id, eid)
+            return EpisodeResult(ok=True, id=eid, transcript_stored=kept)
         except ValueError as e:  # includes MemoryRefused (thread topic)
             raise HTTPException(422, str(e)) from None
+
+    @app.post("/v1/companion/close", response_model=SessionCloseResult)
+    def companion_close(body: SessionClose) -> SessionCloseResult:
+        """A conversation stopped: settle its Live budget reservation to the time it really ran."""
+        try:
+            return mind.close_session(store, body)
+        except KeyError:
+            raise HTTPException(404, "no such session for this home") from None
 
     # "What Kaiku remembers" — person-facing only; no clinician route reads memories.
     @app.get("/v1/me/memories", response_model=MemoriesResponse)
@@ -297,7 +313,22 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     def me_forget_all(home_id: str) -> DeletedResponse:
         n = store.memory_delete(home_id)
         mind_graph.rebuild(store, home_id)
+        mind_affect.forget_heard(store, home_id)  # "forget everything" covers what the companion noted about tone
         return DeletedResponse(deleted=n)
+
+    # One thing Kaiku would like to bring up or offer today (the Today card). Chosen by code: mind/invite.py.
+    @app.get("/v1/me/invitation", response_model=InvitationResponse)
+    def me_invitation(home_id: str, surface: Literal["iphone", "mac"] = "iphone") -> InvitationResponse:
+        return InvitationResponse(home_id=home_id, invitation=mind_invite.current(store, home_id, surface))
+
+    @app.post("/v1/me/invitation/answer", response_model=InvitationResponse)
+    def me_invitation_answer(home_id: str, body: InvitationAnswer) -> InvitationResponse:
+        """yes: the device opens Talk or the activity. not_now: final. The item never returns; no other today."""
+        try:
+            mind_invite.answer(store, home_id, body.id, body.answer)
+        except KeyError:
+            raise HTTPException(404, "no such invitation today") from None
+        return InvitationResponse(home_id=home_id, invitation=None)
 
     # Opt-in conversation transcripts — person-facing only; no clinician route reads them (tested).
     @app.get("/v1/me/transcripts", response_model=TranscriptsResponse)
@@ -317,6 +348,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     @app.delete("/v1/me/transcripts", response_model=DeletedResponse)
     def me_transcripts_delete_all(home_id: str) -> DeletedResponse:
         mind_affect.forget(store, home_id)
+        store.kv_delete(f"feel:{home_id}")
         return DeletedResponse(deleted=store.transcript_delete(home_id))
 
     @app.get("/v1/me/constellation", response_model=ConstellationResponse)

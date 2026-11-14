@@ -1,6 +1,20 @@
 {
   "additionalProperties": false,
   "properties": {
+    "behavior": {
+      "anyOf": [
+        {
+          "const": "NON_BLOCKING",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Live asynchronous function calling: declare it so and answer with the result's `scheduling`",
+      "title": "Behavior"
+    },
     "description": {
       "title": "Description",
       "type": "string"

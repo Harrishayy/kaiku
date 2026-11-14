@@ -142,6 +142,7 @@ final class LiveIntegrationTests: XCTestCase {
             case .kaikuTranscriptComplete: o["ev"] = "kaiku_transcript_complete"
             case .toolCall(_, let n, let a): o["ev"] = "tool_call"; o["name"] = n; o["args"] = JSONValue.object(a).any
             case .toolCancelled(let ids): o["ev"] = "tool_cancelled"; o["n"] = ids.count
+            case .toolFrame(let ids): o["ev"] = "tool_frame"; o["n"] = ids.count
             case .resumable: o["ev"] = "resumption_handle"
             case .goAway: o["ev"] = "go_away"
             case .closed: o["ev"] = "closed"; o["reason"] = closeReason ?? ""

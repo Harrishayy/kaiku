@@ -1,0 +1,40 @@
+# Activity cards by tool call (phone and Mac): a suggested game, journal entry, breathing or walk comes with
+# `suggest_activity` in the same turn; it opens nothing, and a card put aside is a no for the whole conversation
+# (kaiku_cloud.mind.assemble.CARD_RULE). The device's context lines arrive the way the apps send them.
+# expect.cards keys: see run.check_walk. Scripted turns.
+scenarios:
+  - id: iphone-card-comes-with-the-suggestion
+    surface: iphone
+    skill: tiny_plan
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: talk, time_of_day: afternoon, tone: steady}
+    person: "At a loose end, open to an idea but not committed."
+    turns: ["I'm at a loose end. Is there something small we could do?", "Hmm, maybe in a bit."]
+    expect:
+      tools_any: [suggest_activity]
+      tools_forbidden: [start_activity]
+      cards: {same_turn: true, max: 1}
+
+  - id: iphone-card-put-aside-is-a-no
+    surface: iphone
+    skill: tiny_plan
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: talk, time_of_day: evening, tone: steady}
+    person: "Wonders about the lantern game, then puts the card aside and wants to talk instead."
+    turns: ["I'm bored. Maybe the lantern game? I'm not sure.", "(context from Kaiku's senses, not said by the person; react briefly only if it feels natural) The person put the lantern card aside.", "Let's just talk."]
+    expect:
+      tools_forbidden: [start_activity]
+      cards: {none_from_turn: 2, max: 1}
+
+  - id: mac-card-only-for-what-the-mac-has
+    surface: mac
+    skill: tiny_plan
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: talk, time_of_day: afternoon, tone: steady}
+    person: "At the computer, says they will go for a walk; the Mac has no walk screen."
+    turns: ["I think I'll go for a walk in a minute.", "Yes. Round the block."]
+    expect:
+      tools_forbidden: [start_activity, suggest_activity]

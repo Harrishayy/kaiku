@@ -290,10 +290,11 @@ class _Capture:
         from kaiku_contracts.jlog import get_logger
         self.events = []
         self.log = get_logger("sim-test")
+        self.node = "sensors"
 
-    async def publish(self, type_, payload, quality=None, **_kw):
+    async def publish(self, type_, payload, quality=None, source=None, **_kw):
         from kaiku_contracts import make
-        self.events.append(make(type_, payload, source="sensors", sim=True, quality=quality))
+        self.events.append(make(type_, payload, source=source or self.node, sim=True, quality=quality))
 
     def of(self, type_):
         return [e for e in self.events if e.type == type_]
@@ -376,3 +377,161 @@ async def test_head_pan_moves_only_on_targets_and_knocks_are_muted_while_moving(
     assert pans[0].payload.moving and not pans[-1].payload.moving and pans[-1].payload.deg == 80.0
     await head._on_cmd(None, make("cmd.head", {"gesture": "shake"}, source="hub"))
     assert head.target_deg == 0.0  # home after every gesture
+
+
+# ---------------------------------------------------------------- twin of the STANDALONE head firmware (D44)
+def _standalone(**kw):
+    from sim.nodes.head_sim import StandaloneHeadSim
+    head = StandaloneHeadSim(auto=False, time_scale=100.0, **kw)   # 10 real ms = 1 firmware second
+    head.bus = _Capture()
+    head.bus.node = "head"
+    return head
+
+
+async def _wait_mode(head, mode, real_s=3.0):
+    for _ in range(int(real_s / 0.005)):
+        await head._tick()
+        if head.mode == mode:
+            return True
+        await asyncio.sleep(0.005)
+    return False
+
+
+def _sent(head):
+    out = []
+    for e in head.bus.events:
+        p = e.payload.model_dump(exclude_none=True)
+        if e.type == "raw.head.ear":
+            out.append(("ear", p["value"], p["pressed"]))
+        elif e.type == "cmd.sensors":
+            out.append(("chime", p["chime"]))
+    return out
+
+
+async def test_standalone_head_sends_what_the_firmware_sends_in_the_same_order():
+    """main.cpp + kaiku_net.cpp: the press goes out before the step changes; chimes mark greet / drum / done;
+    turns are only reported while dialling; values are 1-10; no ritual result is ever published."""
+    from kaiku_contracts import make
+    head = _standalone()
+    await head.turn_ear(2)                                  # idle: the firmware reports no turn outside a dial
+    assert head.bus.events == []
+    await head.press_ear()                                  # idle press -> greeting
+    assert _sent(head) == [("ear", 5, True), ("chime", "wake")] and head.mode == "greet"
+    await head._tick()
+    assert head.bus.of("raw.head.pan")[-1].payload.moving   # the greeting purr runs the motor
+    await head.press_ear()                                  # start the ritual
+    assert head.mode == "mood" and head.dial_value == 5
+    await head.turn_ear(2)
+    await head.turn_ear(9)                                  # clamps at 10
+    await head.press_ear()                                  # confirms mood = 10
+    await head.turn_ear(-9)                                 # energy dial starts again at 5, clamps at 1
+    await head.press_ear()
+    await head.press_ear()                                  # sleep left at the default 5
+    assert head.mode == "breathe"
+    assert _sent(head)[2:] == [("ear", 5, True), ("ear", 7, False), ("ear", 10, False), ("ear", 10, True),
+                               ("ear", 1, False), ("ear", 1, True), ("ear", 5, True)]
+    assert head.results == {"mood": 10, "energy": 1, "sleep": 5}        # USB serial only on the real head
+    await head._on_tap(None, make("raw.head.tap", {"t_ms": 1, "src": "knock"}, source="sensors"))
+    await head._tick()
+    assert head.taps == 0                                   # a knock while breathing is not a drum tap
+    assert await _wait_mode(head, "drum")                   # 6 x (4 s in + 6 s out)
+    assert _sent(head)[-1] == ("chime", "start_drum") and head.results["breathe_completed"] is True
+    await head._on_tap(None, make("raw.head.tap", {"t_ms": 2, "src": "knock"}, source="head"))
+    await head._tick()
+    assert head.taps == 0                                   # its own messages are ignored (kaiku_net)
+    for i in range(5):
+        await head._on_tap(None, make("raw.head.tap", {"t_ms": 10 + i, "src": "knock"}, source="sensors"))
+        await head._tick()
+    assert head.taps == 5 and head.mode == "drum"
+    assert await _wait_mode(head, "done")                   # 20 s after the FIRST tap
+    assert _sent(head)[-1] == ("chime", "end_drum")
+    assert await _wait_mode(head, "idle")                   # goodbye lasts 8 s
+    await asyncio.sleep(0.05)                               # 3 s quiet after returning to idle
+    await head._on_face(None, make("raw.hub.face", {"x_norm": 0, "y_norm": 0, "size": 0.2, "confidence": 0.9},
+                                   source="sensors"))
+    await head._tick()
+    assert head.mode == "greet" and _sent(head)[-1] == ("chime", "wake")
+    assert await _wait_mode(head, "idle")                   # nobody pressed for 60 s
+    await head._health()
+    h = head.bus.of("health")[-1].payload
+    assert h.details["firmware"] == "standalone" and h.details["step"] == "idle" and h.version.startswith("atech-head-standalone")
+    types = {e.type for e in head.bus.events}
+    assert types == {"raw.head.ear", "cmd.sensors", "raw.head.pan", "health"}   # nothing else: no obs, no results
+
+
+async def test_standalone_head_obeys_cmd_head_like_the_firmware_and_knocks_are_muted_while_it_moves():
+    from kaiku_contracts import make
+    head = _standalone()
+    await head._on_cmd(None, make("cmd.head", {"pan": {"target_deg": -30.0, "speed": 0.4}, "eyes": "soft"}, source="hub"))
+    await head._tick()
+    assert head._moving and head._pan_speed == -40 and head.eyes == "calm"   # unknown eyes fall back to calm
+    await head.tap()
+    assert head.muted_knocks == 1 and not head.bus.of("raw.head.tap")
+    await asyncio.sleep(0.02)                               # the 600 ms burst is over
+    await head._tick()
+    assert not head._moving and [e.payload.moving for e in head.bus.of("raw.head.pan")] == [True, False]
+    await head.tap()
+    (knock,) = head.bus.of("raw.head.tap")
+    assert knock.source == "sensors" and knock.payload.src == "knock" and knock.payload.force is None
+
+
+async def test_follow_loop_on_a_real_broker_standalone_head_to_observations(broker, tmp_path, monkeypatch):
+    """Standalone head twin -> MQTT -> hub in follow mode -> the ritual's observations, stamped with the person's
+    record id while the robot keeps its own bus home; the hub never sends the head a command."""
+    from kaiku_hub.live.base import OffMusic, OffVoice
+    from kaiku_hub.main import Hub
+    from kaiku_hub.settings import Settings
+
+    from sim.nodes.head_sim import StandaloneHeadSim
+
+    monkeypatch.setenv("KAIKU_HOME_ID", "demo-aino")        # what the boards are flashed with
+    s = Settings.load()
+    s.cloud_url, s.home_id, s.robot_home_id = None, "aino", "demo-aino"
+    s.queue_path, s.state_path, s.store_path = tmp_path / "q.sqlite", tmp_path / "state.json", tmp_path / "s.sqlite"
+    s.face_source = "off"
+    seen, cmds = [], []
+
+    async def on_obs(t, env):
+        seen.append(env)
+
+    async def on_cmd(t, env):
+        cmds.append(env)
+
+    head = StandaloneHeadSim(mood=7, energy=4, sleep=5, tempo_bpm=220, seed=2, time_scale=12.0, health_s=0.5)
+    watch = Bus("sensors", home_id="demo-aino", sim=True, heartbeat=False)
+    watch.on("obs/#", on_obs)
+    watch.on("cmd/head", on_cmd)
+    hub = Hub(s, voice=OffVoice(), music=OffMusic(), read_stdin=False)
+    stop, head_stop = asyncio.Event(), asyncio.Event()
+    async with watch:
+        hub_task = asyncio.create_task(hub.run(stop))
+        head_task = asyncio.create_task(head.run(head_stop))
+        await asyncio.wait_for(hub.bus.connected.wait(), 5)
+        for _ in range(100):
+            if hub.following:
+                break
+            await asyncio.sleep(0.05)
+        assert hub.following and hub.start_ritual("button") is False
+        await watch.publish("raw.hub.face", {"x_norm": 0.0, "y_norm": 0.0, "size": 0.25, "confidence": 0.9})
+        for _ in range(600):
+            if any(e.type == "obs.ritual" and e.payload.step == "close" and e.payload.status == "completed" for e in seen):
+                break
+            await asyncio.sleep(0.05)
+        head_stop.set()
+        await asyncio.wait_for(head_task, 5)
+        await asyncio.sleep(0.3)
+        stop.set()
+        await asyncio.wait_for(hub_task, 5)
+    steps = [(e.payload.step, e.payload.status) for e in seen if e.type == "obs.ritual"]
+    assert steps[:10] == [("greet", "started"), ("greet", "completed"), ("dial", "started"), ("dial", "completed"),
+                          ("breathe", "started"), ("breathe", "completed"), ("drum", "started"), ("drum", "completed"),
+                          ("close", "started"), ("close", "completed")], steps
+    dial = {e.payload.item: (e.payload.value, e.payload.scale_10) for e in seen if e.type == "obs.self_report"}
+    assert dial == {"mood": (4, 7), "energy": (2, 4), "sleep": (3, 5)}
+    drum = next(e for e in seen if e.type == "obs.drum_session")
+    assert drum.payload.taps >= 4 and drum.payload.force_mean is None
+    assert not cmds                                          # the hub sent the head nothing
+    assert all(e.sim and e.home_id == "demo-aino" for e in seen)          # on the robot's bus ...
+    assert {e.home_id for e in hub.emitted} == {"aino"}                    # ... and "aino" towards the cloud
+    assert hub.uplink.size() == len(hub.emitted) >= len(seen)
+    assert head.results["mood"] == 7 and head.results["drum"]["taps"] >= drum.payload.taps

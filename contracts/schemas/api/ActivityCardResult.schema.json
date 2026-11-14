@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "description": "What the device returns for `suggest_activity`. shown=false: a card is already up, or they said no before.",
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "shown": {
+      "default": false,
+      "title": "Shown",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "title": "ActivityCardResult",
+  "type": "object"
+}

@@ -36,13 +36,51 @@ start_sensitivity = "START_SENSITIVITY_LOW"   # fewer false starts from room noi
 end_sensitivity = "END_SENSITIVITY_LOW"       # people pause mid-thought: don't cut them off
 prefix_padding_ms = 120
 silence_ms = 900                              # quiet this long = the person's turn is over
-affective_dialog = false                      # true breaks the session (1007 "invalid argument" on the first turn, real call 2026-11-14)
-context_compression = true                    # sliding window: long chats don't hit the context limit
+affective_dialog = false                      # the Live guide lists it as supported on gemini-3.8-live (v1beta, enable_affective_dialog), but true closes the session with 1007 "invalid argument" on the first turn (real calls 2026-11-14: SDK, raw key and token endpoint). Leave off until a real call passes.
+feel_scheduling = "WHEN_IDLE"                 # FunctionResponse scheduling for the non-blocking `feel` tool (INTERRUPT | WHEN_IDLE | SILENT). Real Live sessions 2026-11-14: the model calls `feel` before it speaks; with WHEN_IDLE it then answers using the plan, with SILENT it said nothing that turn.
+proactive_audio = true                        # setup.proactivity.proactiveAudio: "the model can reject responding to the last prompt" (Live API reference, ProactivityConfig): talk not meant for Kaiku can go unanswered. A declined walk nudge then has no words; the device drops its audio (see [walk]).
+context_compression = true                    # sliding window. Without it Gemini ends an audio-only session at 15 minutes and one with camera frames at 2 (Live session-management guide, 2026-11-14)
 session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
+talk_max_minutes = 30                        # a Talk on the phone or Mac is like a call: the person sets the length (purpose/intent talk)
+walk_max_minutes = 30                        # a walk with Kaiku in the ear
+token_minutes = 5                            # one ephemeral token and its budget reservation cover at most this long; a longer call resumes (resume_session_id) and gets the next token. Five keeps a short talk's reservation what it was before calls could run long; Gemini resets a Live connection after about ten minutes anyway (session-management guide)
+idle_end_s = 180                             # CompanionSessionResponse.idle_end_s: the device ends a conversation after this long with nobody speaking (an open microphone in a pocket)
+walk_idle_end_s = 900                        # ... on a walk, where long quiet stretches are normal
+settle_min_minutes = 1                       # a Live reservation never settles below this many started minutes (kaiku_contracts.budget)
+settle_grace_s = 10                          # seconds added when the cloud itself sees a conversation end (end_session, crisis): the goodbye is still being spoken
 reconnect_attempts = 2                       # bounded recovery during an explicitly started conversation
 mind_timeout_s = 120                       # bounded shared reasoning wait; audio receive remains responsive
 context_refresh_seconds = 15                 # active sessions receive bounded source-labelled activity updates
 hub_transcripts = false                     # explicit household opt-in before robot transcripts may be persisted
+
+[walk]
+# Walking together (cloud/kaiku_cloud/mind/walk.py; persona: "Walking together"). A Live session only answers input,
+# so the device nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on
+# and nobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Kaiku answers a
+# nudge in words only when there is something to say. A declined nudge is not always silent (real sessions
+# 2026-11-14: 9 of 14 carried a second or two of non-speech sound), so the device plays a nudge's reply only once
+# its output transcription has a real word. A `stay_quiet` tool call gave exact silence but made remarks arrive one
+# look late, about the previous view; it is not used. 0 = that nudge is not used.
+default_style = "quiet"                       # CompanionSessionRequest.walk_style when the device sends none
+outdoor_likes = 4                             # notebook places / outdoor likes carried on the walk card
+
+[walk.quiet]
+look_every_s = 30
+look_prompt = "A look around, not said by them. Only if something plainly worth it is in view (striking light, water, a tree in blossom, an animal, something that looks like one of their own places), say one short remark about it. Ordinary ground, road, wall or sky: answer with silence."
+quiet_after_s = 0
+quiet_prompt = ""
+
+[walk.playful]
+look_every_s = 20
+look_prompt = "A look around, not said by them. If a spotting game is on and one of the things may be in view, ask if that is one. If no game is on and something in view would make a small game, offer it. Something striking gets one bright remark. Nothing worth it: answer with silence."
+quiet_after_s = 60
+quiet_prompt = "It has been quiet for a while, not said by them. You may offer one small game from what is around, or one playful question about their own day. If they seem to want the quiet, answer with silence."
+
+[walk.chatty]
+look_every_s = 20
+look_prompt = "A look around, not said by them. Say one friendly thing about what is in view, or connect it to something of theirs as a question. Nothing worth a word: answer with silence."
+quiet_after_s = 40
+quiet_prompt = "It has been quiet for a while, not said by them. You may speak first: ask about their day, pick up what was left open, or bring up one thing they told you. One short turn."
 
 [attention]
 # Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
@@ -67,7 +105,7 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, pan motor; no LED grids) + UNO Q (KY-031 knock, Modulino Buzzer, USB camera; no KY-053, D45).
+# button, speaker, mic, pan motor; no LED grids) + UNO Q (KY-031 knock, Modulino Buzzer, USB camera; no KY-053, D48).
 # No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
@@ -90,7 +128,7 @@ light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
 exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
 lux_per_unit = 2.0       # camera light backup: lux_est = mean Y * this
-ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D45) | auto (KY-039 first) | ky039
+ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D48) | auto (KY-039 first) | ky039
 ppg_fallback_s = 4       # auto: switch to the camera after this long without a clean KY-039 batch
 ppg_min_range = 30       # KY-039 batch peak-to-peak (ADC counts) below this = flat / unwired (unused without the KY-053)
 ppg_max_value = 26000    # ... above this = pinned at the rail (3.3 V on the +-4.096 V range ~ 26400)
@@ -123,6 +161,11 @@ store_max_mb = 200          # then the oldest sessions go until the file is unde
 presence_leave_s = 6        # distance comes from the face box (D39): a face turned away this long = the person left
 presence_stale_s = 5        # no distance reading this long (camera off, UNO Q down) = presence unknown, not "here"
 engagement_enabled = true   # obs.engagement: multi-cue session summary, only for an accepted conversation
+head_mode = "auto"          # auto | follow | drive. auto: FOLLOW a head whose health/head says firmware = standalone
+                            # (the ritual runs on the head, D44; the hub records it), else DRIVE the ritual itself
+robot_home_id = ""          # home id the robot boards publish on (firmware secrets.h / UNO Q .env), if it differs from
+                            # the person's record (KAIKU_HOME_ID). Empty = the same. Env: KAIKU_HUB_ROBOT_HOME_ID
+head_stale_s = 15           # follow mode: no health/head this long (3 heartbeats) = the head is gone
 
 [ritual]
 enabled_nudges = ["breathe", "drum", "daylight_walk"] # No Friendlink or iCBT task is implemented in this build.
@@ -184,8 +227,10 @@ max_model_len = 8192
 # Allocate the approved $25 total / $23 daily ceiling: local ledgers $20/$18; the deployed API
 # uses KAIKU_BUDGET_TOTAL_USD=5 and KAIKU_BUDGET_DAILY_USD=5 in its runtime secret.
 # Over the cap every caller fails softly; this is an estimated spend ceiling, not a provider billing guarantee.
-total_usd = 20.0
-daily_usd = 18.0
+# Lead approved a further extension on 2026-11-14 (voice on recordings, real attunement and tone proofs): +$10.
+# Lead approved another +$10 on 2026-11-14 for the evening of real-device testing and filming (long calls, walks).
+total_usd = 40.0
+daily_usd = 38.0
 argon_per_home_day = 20                    # flagship calls per home per local day (ask_mind, reflection, consolidation, briefs); then Flash only
 images_per_home_day = 3                    # walk postcards per home per local day
 
@@ -257,3 +302,4 @@ usual_scale = 1.0          # this week's median within this many baseline scales
 help_early_tries = 3       # fewer attempts than this = too early to rely on
 help_consistent_tries = 8  # at least this many attempts and a narrow interval = consistent
 reflection_labels_per_night = 4  # reflections Gemma relabels per home in one nightly run (newest first)
+reflection_label_at_episode_end = true  # one Gemma call right after an opted-in conversation: level, themes, tone, energy (rules stand if it fails)

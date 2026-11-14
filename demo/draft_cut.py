@@ -1,15 +1,19 @@
-"""Assemble the draft cut of the demo video from the clips in demo/recordings (no voiceover, no invented footage).
+"""Assemble the draft cut of the demo video from the clips in demo/recordings (no invented footage).
 
-    uv run --with pillow python demo/draft_cut.py            # → demo/recordings/kaiku-draft-cut.mp4 (+ -sheet.png)
+    uv run --with pillow python demo/draft_cut.py     # → demo/recordings/kaiku-draft-cut.mp4, -sheet.png, -timeline.txt
 
-The order follows docs/demo-narrative.md. Each entry of CUT is either a card (a plain 2-second card naming a shot
-that still has to be filmed with real hardware or people) or a piece of an existing clip: (clip, chapter, offset
-into the chapter, seconds of source, speed). Chapters come from <clip>-steps.txt, so a re-recorded clip keeps
-working; chapter "@" means the offset is an absolute time in the clip (used for the first-run clip, whose chapter
-codes run several seconds late: check those pieces by eye after re-recording it). Long stretches are sped up; nothing is reordered inside a piece. Phone clips sit centred on the paper
-background; every piece carries a small caption saying what it is (simulator, simulated record).
-The printed table (also written to demo/recordings/kaiku-draft-cut-timeline.txt) gives each piece's place in
-the cut: copy it into demo/draft-cut-narration.md when the cut changes.
+The order follows docs/demo-narrative.md. CUT is the whole edit, top to bottom. An entry is either
+
+- a piece of a recorded clip: `clip` (file stem), `at` (seconds into the clip, picked by eye from its
+  `-sheet.png`, or "chapter+offset" from its `-steps.txt`), `take` (seconds of source), `speed`, a `title` (what
+  the judge is looking at, in a few words), and optionally `voice`: [(file in recordings/voice/, seconds into the
+  piece)]: Kaiku's own lines, saved by `scripts/record_voice.py`. A piece with a voice runs at 1x. A missing voice
+  file leaves the piece silent.
+- or a shot that needs people or hardware: `film` names the file to drop into demo/recordings/ (it then plays for
+  `seconds`, with its own sound); until it exists a plain card naming the shot stands in for `card_seconds`.
+
+Phone pieces sit beside their title; dashboard pieces sit above it. Every piece says where its picture comes
+from (simulator, simulated record). After re-recording a clip, check the `at` values against its new sheet.
 """
 
 from __future__ import annotations
@@ -25,44 +29,102 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
 REC = ROOT / "recordings"
+VOICE = REC / "voice"
 W, H, FPS = 1920, 1080, 30
 PAPER, INK, MUTED, CLAY = (246, 239, 228), (59, 47, 42), (122, 106, 96), (158, 75, 50)
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"
 FONT = "/System/Library/Fonts/Helvetica.ttc"
-PHONE = "iPhone simulator · simulated record · no model calls in this take"
-DASH = "Practitioner dashboard · simulated record"
-
-# kind, then: card → (title, what to film) | clip → (file stem, chapter, offset s, source s, speed, caption)
-CUT: list[tuple] = [
-    ("card", "Shot 1: cold open", "To film: kitchen table, appointment card with twenty dates crossed out, phone face down"),
-    ("clip", "iphone-1-first-run", "@", 0.2, 3.0, 1.0, PHONE),      # welcome
-    ("clip", "iphone-1-first-run", "@", 12.0, 6.0, 2.0, PHONE),     # nearby services → continue without connecting
-    ("clip", "iphone-1-first-run", "@", 24.0, 12.0, 2.0, PHONE),    # the choices, one switch each
-    ("clip", "iphone-1-first-run", "@", 41.0, 12.0, 3.0, PHONE),    # permissions asked from their own rows
-    ("clip", "iphone-1-first-run", "@", 60.0, 26.0, 4.0, PHONE),    # hello, practice dial, "You did it", Today
-    ("card", "Shot 3: Kaiku's voice", "To record on a real iPhone with sound: she says good morning, Kaiku answers aloud (Gemini Live)"),
-    ("clip", "iphone-4-talk", "typing", 0.0, 14.0, 2.0, PHONE + " · typed fallback, no voice"),
-    ("clip", "iphone-2-today-path", "lantern", 20.0, 16.0, 1.6, PHONE),
-    ("clip", "iphone-2-today-path", "rotating-game", -8.0, 4.0, 1.0, PHONE),
-    ("clip", "iphone-2-today-path", "rotating-game", 14.0, 8.0, 2.0, PHONE),
-    ("clip", "iphone-2-today-path", "all-done", 2.0, 4.0, 1.0, PHONE),
-    ("card", "Shot 5: walk with the glasses", "To film outdoors with the real Ray-Ban Meta (docs/glasses-test.md): voice in her ear, phone in her pocket"),
-    ("clip", "iphone-3-today-so-far", "today-so-far", 0.0, 7.5, 1.5, PHONE),
-    ("card", "Shot 6: the robot ritual", "To film: the robot on her desk. Eyes open, three turns of the ear dial, one breath, a drum"),
-    ("card", "Shot 7: Mac menu bar", "To record with QuickTime: category minutes, breaks and the pause switch"),
-    ("clip", "web-dashboard", "default-view", 0.0, 4.0, 1.0, DASH),
-    ("clip", "web-dashboard", "trends-hover", 0.0, 12.0, 1.6, DASH),
-    ("clip", "web-dashboard", "gemma-reading", -2.0, 12.0, 1.5, DASH + " · review written by Gemma (cached)"),
-    ("clip", "web-dashboard", "agent-trace", 0.0, 10.0, 2.0, DASH),
-    ("clip", "web-dashboard", "graph-node", -6.0, 14.0, 2.3, DASH),
-    ("clip", "web-dashboard", "reflections", -2.0, 12.0, 2.0, DASH),
-    ("clip", "web-dashboard", "collapse-and-move", 0.0, 10.0, 2.5, DASH),
-    ("card", "Shot 10: the follow-up", "To record on the dashboard: one click records a care action; the following days sit beside it"),
-    ("card", "Kaiku", "End card to film: robot, phone and glasses on the table. Research prototype, not a medical device"),
-]
+PHONE = "iPhone app on the simulator. Simulated record, no model calls in this take."
+DASH = "Practitioner dashboard, public deployment. Simulated record."
 CARD_SECONDS = 2.0
+LIMIT = 118.0
 
 
+def cut() -> list[dict]:
+    return [
+        {"film": "shot-01-cold-open.mp4", "seconds": 10, "card": "Shot 1: cold open",
+         "body": "To film: kitchen table, appointment card with twenty dates crossed out, phone face down"},
+        *FIRST_RUN,
+        {"film": "shot-03-voice.mp4", "seconds": 14, "card": "Shot 3: a conversation on a real iPhone",
+         "body": "To record with sound: she says good morning, Kaiku answers aloud and remembers the walk by the lake"},
+        *TALK,
+        *GAMES,
+        {"film": "shot-05-glasses.mp4", "seconds": 15, "card": "Shot 5: walk with the glasses",
+         "body": "To film outdoors with the real Ray-Ban Meta (docs/glasses-test.md): voice in her ear, phone in her pocket"},
+        *DAYS,
+        {"film": "shot-06-robot.mp4", "seconds": 15, "card": "Shot 6: the robot ritual",
+         "body": "To film: the robot on her desk. Eyes open, three turns of the ear dial, one breath, a drum"},
+        {"film": "shot-07-mac.mp4", "seconds": 6, "card": "Shot 7: Mac menu bar",
+         "body": "To record with QuickTime: category minutes, breaks and the pause switch"},
+        *DASHBOARD,
+        {"film": "shot-10-care-action.mp4", "seconds": 6, "card": "Shot 10: the follow-up",
+         "body": "To record on the dashboard: one click records a care action; the following days sit beside it"},
+        {"film": "shot-11-end.mp4", "seconds": 4, "card": "Kaiku",
+         "body": "End card to film: robot, phone and glasses on the table. Research prototype, not a medical device"},
+    ]
+
+
+# --- the pieces (edit these) ----------------------------------------------------------------------------------------
+VOICED = " Sound: the line the app played, from the service's voice cache."
+FIRST_RUN: list[dict] = [
+    {"clip": "iphone-1-first-run", "at": 1.5, "take": 3.5, "speed": 1.0, "note": PHONE,
+     "title": "First run: Kaiku says what it is"},
+    {"clip": "iphone-1-first-run", "at": 9.0, "take": 6.0, "speed": 3.0, "note": PHONE,
+     "title": "And what it is not: no medical opinion, not emergency care"},
+    {"clip": "iphone-1-first-run", "at": 27.5, "take": 12.5, "speed": 2.5, "note": PHONE,
+     "title": "Every signal is a choice, with its own switch"},
+    {"clip": "iphone-1-first-run", "at": 44.5, "take": 13.5, "speed": 4.5, "note": PHONE,
+     "title": "Each permission is asked where she can see why"},
+    {"clip": "iphone-1-first-run", "at": 60.2, "take": 9.6, "speed": 1.0, "note": PHONE + VOICED,
+     "title": "Kaiku has one voice", "voice": [("welcome.hello.wav", 0.6)]},
+    {"clip": "iphone-1-first-run", "at": 74.5, "take": 9.5, "speed": 1.9, "note": PHONE,
+     "title": "One practice check-in. Nothing is saved"},
+    {"clip": "iphone-1-first-run", "at": 95.5, "take": 2.5, "speed": 1.0, "note": PHONE,
+     "title": "Today: one path, four small stops"},
+]
+TALK: list[dict] = [
+    {"clip": "iphone-4-talk", "at": 19.0, "take": 6.2, "speed": 1.55, "note": PHONE,
+     "title": "Talk: she types, or speaks"},
+    {"clip": "iphone-4-talk", "at": 25.2, "take": 11.0, "speed": 1.0,
+     "note": "iPhone app on the simulator, typed path without a live voice: the app shows this reply as text. "
+             "Sound added: the same words in Kaiku's voice from the service (POST /v1/voice/say).",
+     "title": "Kaiku answers", "voice": [("say-thank-you-for-telling-me-i-m-listening.wav", 0.9)]},
+]
+GAMES: list[dict] = [
+    {"clip": "iphone-2-today-path", "at": 4.5, "take": 2.0, "speed": 1.0, "note": PHONE,
+     "title": "Today's path: first this, then this"},
+    {"clip": "iphone-2-today-path", "at": 15.0, "take": 13.5, "speed": 3.8, "note": PHONE,
+     "title": "Weather check: three dials, fifteen seconds"},
+    {"clip": "iphone-2-today-path", "at": 128.0, "take": 10.2, "speed": 1.7, "note": PHONE,
+     "title": "Lantern: a reaction-time reading inside a game"},
+    {"clip": "iphone-2-today-path", "at": 219.5, "take": 3.5, "speed": 1.0, "note": PHONE,
+     "title": "No score. The sky she lit"},
+    {"clip": "iphone-2-today-path", "at": 316.0, "take": 10.5, "speed": 3.0, "note": PHONE,
+     "title": "Seed shelf: speed, compared with her own usual"},
+    {"clip": "iphone-2-today-path", "at": 341.0, "take": 3.0, "speed": 1.0, "note": PHONE,
+     "title": "All done for today"},
+]
+DAYS: list[dict] = [
+    {"clip": "iphone-3-today-so-far", "at": 17.0, "take": 9.0, "speed": 2.5, "note": PHONE,
+     "title": "Your days: what was noticed, from which device, what is shared"},
+]
+DASHBOARD: list[dict] = [
+    {"clip": "web-dashboard", "at": "default-view", "take": 4.0, "speed": 1.0, "note": DASH,
+     "title": "One page: where Aino stands against her own usual"},
+    {"clip": "web-dashboard", "at": "trends-hover", "take": 12.0, "speed": 1.7, "note": DASH,
+     "title": "Each signal, day by day, beside her usual range"},
+    {"clip": "web-dashboard", "at": "gemma-reading-1", "take": 12.0, "speed": 1.7, "note": DASH + " Review cached.",
+     "title": "Gemma reads the whole record; code checks every number"},
+    {"clip": "web-dashboard", "at": "agent-trace", "take": 8.0, "speed": 2.0, "note": DASH,
+     "title": "The agent trace: each step, and what was rejected"},
+    {"clip": "web-dashboard", "at": "graph-node-6", "take": 14.0, "speed": 2.5, "note": DASH,
+     "title": "What Kaiku has learned, with the records behind it"},
+    {"clip": "web-dashboard", "at": "reflections-2", "take": 10.0, "speed": 2.2, "note": DASH,
+     "title": "The daily account, newest day first"},
+]
+
+
+# --- drawing --------------------------------------------------------------------------------------------------------
 def font(path: str, size: int) -> ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype(path, size)
@@ -93,24 +155,62 @@ def card_png(path: Path, title: str, body: str) -> None:
     im.save(path)
 
 
-def caption_png(path: Path, text: str) -> None:
-    f = font(FONT, 24)
-    probe = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
-    w = int(probe.textlength(text, font=f)) + 36
-    im = Image.new("RGBA", (w, 44), (0, 0, 0, 0))
+# where the picture goes: (x, y, box width, box height); the title is drawn on the paper around it
+PHONE_BOX = (250, 30, 520, 1020)
+WEB_BOX = (192, 14, 1536, 960)
+
+
+def backdrop_png(path: Path, kind: str, title: str, note: str) -> None:
+    """The frame around a piece: paper, the title (what the judge is seeing) and where the picture comes from."""
+    im = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle((0, 0, w - 1, 43), radius=12, fill=(59, 47, 42, 200))
-    d.text((18, 22), text, font=f, fill=(255, 250, 243, 255), anchor="lm")
+    if kind == "phone":
+        x, width = 900, 880
+        big, small, tag = font(FONT_BOLD, 64), font(FONT, 28), font(FONT_BOLD, 24)
+        lines = wrap(d, title, big, width)
+        y = H / 2 - (len(lines) * 78) / 2 - 40
+        d.text((x, y - 50), "IPHONE", font=tag, fill=CLAY, anchor="lm")
+        for i, line in enumerate(lines):
+            d.text((x, y + 20 + i * 78), line, font=big, fill=INK, anchor="lm")
+        for i, line in enumerate(wrap(d, note, small, width)):
+            d.text((x, y + 30 + len(lines) * 78 + 18 + i * 38), line, font=small, fill=MUTED, anchor="lm")
+    else:
+        big, small = font(FONT_BOLD, 40), font(FONT, 24)
+        d.text((WEB_BOX[0], 1012), title, font=big, fill=INK, anchor="lm")
+        d.text((WEB_BOX[0], 1056), note, font=small, fill=MUTED, anchor="lm")
     im.save(path)
 
 
+# --- timing ---------------------------------------------------------------------------------------------------------
 def chapters(stem: str) -> dict[str, float]:
     out: dict[str, float] = {}
-    for line in (REC / f"{stem}-steps.txt").read_text().splitlines():
-        m = re.match(r"\s*(\d+):([\d.]+)\s+(\S+)", line)
-        if m:
-            out.setdefault(m.group(3), int(m.group(1)) * 60 + float(m.group(2)))
+    steps = REC / f"{stem}-steps.txt"
+    if steps.exists():
+        for line in steps.read_text().splitlines():
+            m = re.match(r"\s*(\d+):([\d.]+)\s+(\S+)", line)
+            if m:
+                out.setdefault(m.group(3), int(m.group(1)) * 60 + float(m.group(2)))
     return out
+
+
+def start_of(stem: str, at: float | str) -> float:
+    if isinstance(at, (int, float)):
+        return float(at)
+    m = re.match(r"([a-z0-9-]+?)([+-][\d.]+)?$", at)
+    marks = chapters(stem)
+    if not m or m.group(1) not in marks:
+        sys.exit(f"{stem}: no chapter '{at}' in {stem}-steps.txt (have: {', '.join(marks) or 'none'})")
+    return max(0.0, marks[m.group(1)] + float(m.group(2) or 0))
+
+
+def stamp(t: float) -> str:
+    return f"{int(t // 60)}:{t % 60:04.1f}"
+
+
+def has_audio(ffprobe: str, path: Path) -> bool:
+    out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0",
+                          str(path)], capture_output=True, text=True).stdout
+    return bool(out.strip())
 
 
 def run(ffmpeg: str, *args: str) -> None:
@@ -119,51 +219,83 @@ def run(ffmpeg: str, *args: str) -> None:
 
 def main() -> None:
     ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+    ffprobe = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
     tmp = Path(tempfile.mkdtemp(prefix="kaiku-cut-"))
-    enc = ["-r", str(FPS), "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-an"]
+    enc = ["-r", str(FPS), "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-an"]
     parts: list[Path] = []
     rows: list[str] = []
+    sounds: list[tuple[Path, float, float | None]] = []      # file, starts at (s) in the cut, seconds to keep
+    silent: list[str] = []
     t = 0.0
-    for i, item in enumerate(CUT):
+    for i, item in enumerate(cut()):
         seg = tmp / f"{i:02d}.mp4"
-        if item[0] == "card":
-            _, title, body = item
-            png = tmp / f"{i:02d}.png"
-            card_png(png, title, body)
-            run(ffmpeg, "-loop", "1", "-t", f"{CARD_SECONDS}", "-i", str(png), *enc, str(seg))
-            length, what = CARD_SECONDS, f"PLACEHOLDER  {title}: {body}"
-        else:
-            _, stem, chapter, offset, source, speed, caption = item
-            if chapter == "@":                      # an absolute time in the clip, picked by eye
-                start = offset
+        if "film" in item:
+            film = REC / item["film"]
+            if film.exists():
+                length = float(item["seconds"])
+                run(ffmpeg, "-i", str(film), "-t", f"{length}", "-vf",
+                    f"scale={W}:{H}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
+                    f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,fps={FPS}", *enc, str(seg))
+                if has_audio(ffprobe, film):
+                    sounds.append((film, t, length))
+                what = f"FILMED       {item['film']} ({length:.0f} s, its own sound)"
             else:
-                marks = chapters(stem)
-                if chapter not in marks:
-                    sys.exit(f"{stem}: no chapter '{chapter}' in {stem}-steps.txt (have: {', '.join(marks)})")
-                start = max(0.0, marks[chapter] + offset)
-            cap = tmp / f"{i:02d}-cap.png"
-            caption_png(cap, caption)
-            fit = f"scale={W}:{H}:force_original_aspect_ratio=decrease:force_divisible_by=2"
-            graph = (f"[0:v]trim=start={start:.2f}:duration={source:.2f},setpts=(PTS-STARTPTS)/{speed},{fit},"
-                     f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0xF6EFE4,fps={FPS}[v];[v][1:v]overlay=28:H-h-24[o]")
-            run(ffmpeg, "-i", str(REC / f"{stem}.mp4"), "-i", str(cap), "-filter_complex", graph, "-map", "[o]", *enc, str(seg))
-            length = source / speed
-            what = f"{stem} · {chapter}{offset:+.0f}s · {source:.0f}s of source at {speed:g}x"
-        rows.append(f"{int(t // 60)}:{t % 60:04.1f}–{int((t + length) // 60)}:{(t + length) % 60:04.1f}  {what}")
+                png = tmp / f"{i:02d}.png"
+                card_png(png, item["card"], item["body"])
+                length = CARD_SECONDS
+                run(ffmpeg, "-loop", "1", "-t", f"{length}", "-i", str(png), *enc, str(seg))
+                what = f"PLACEHOLDER  {item['card']}: {item['body']}  (drop {item['film']} into demo/recordings/)"
+        else:
+            stem, take, speed = item["clip"], float(item["take"]), float(item["speed"])
+            start = start_of(stem, item["at"])
+            phone = stem.startswith("iphone")
+            x, y, bw, bh = PHONE_BOX if phone else WEB_BOX
+            back = tmp / f"{i:02d}-back.png"
+            backdrop_png(back, "phone" if phone else "web", item["title"], item["note"])
+            graph = (f"[0:v]trim=start={start:.2f}:duration={take:.2f},setpts=(PTS-STARTPTS)/{speed},"
+                     f"scale={bw}:{bh}:force_original_aspect_ratio=decrease:force_divisible_by=2,fps={FPS}[v];"
+                     f"[1:v][v]overlay={x}+({bw}-w)/2:{y}+({bh}-h)/2:shortest=1[o]")
+            run(ffmpeg, "-i", str(REC / f"{stem}.mp4"), "-loop", "1", "-i", str(back), "-filter_complex", graph,
+                "-map", "[o]", *enc, str(seg))
+            length = take / speed
+            said = []
+            for name, at in item.get("voice", []):
+                wav = VOICE / name
+                if wav.exists():
+                    sounds.append((wav, t + at, None))
+                    said.append(name)
+                else:
+                    silent.append(name)
+            what = (f"{stem} from {stamp(start)}, {take:.0f} s at {speed:g}x: {item['title']}"
+                    + (f"  [voice: {', '.join(said)}]" if said else ""))
+        rows.append(f"{stamp(t)}–{stamp(t + length)}  {what}")
         t += length
         parts.append(seg)
+
     listing = tmp / "list.txt"
     listing.write_text("".join(f"file '{p}'\n" for p in parts))
+    picture = tmp / "picture.mp4"
+    run(ffmpeg, "-f", "concat", "-safe", "0", "-i", str(listing), *enc, str(picture))
+    # the sound: silence for the whole length, Kaiku's lines and any filmed shot's own audio at their moments
+    inputs, graph, mix = ["-f", "lavfi", "-t", f"{t:.2f}", "-i", "anullsrc=r=48000:cl=stereo"], [], ["[0:a]"]
+    for k, (path, at, keep) in enumerate(sounds, start=1):
+        inputs += ["-i", str(path)]
+        cutoff = f"atrim=duration={keep:.2f}," if keep else ""
+        graph.append(f"[{k}:a]{cutoff}aresample=48000,aformat=channel_layouts=stereo,adelay={int(at * 1000)}:all=1[s{k}]")
+        mix.append(f"[s{k}]")
+    graph.append(f"{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first[a]")
     out = REC / "kaiku-draft-cut.mp4"
-    run(ffmpeg, "-f", "concat", "-safe", "0", "-i", str(listing), *enc, "-movflags", "+faststart", str(out))
+    run(ffmpeg, *inputs, "-i", str(picture), "-filter_complex", ";".join(graph), "-map", f"{len(sounds) + 1}:v", "-map", "[a]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{t:.2f}", "-movflags", "+faststart", str(out))
     run(ffmpeg, "-i", str(out), "-vf", f"fps=24/{t:.2f},scale=480:-2,tile=6x4:padding=6:color=white", "-frames:v", "1",
         str(REC / "kaiku-draft-cut-sheet.png"))
-    (REC / "kaiku-draft-cut-timeline.txt").write_text("\n".join(rows) + f"\n\ntotal {int(t // 60)}:{t % 60:04.1f}\n")
+    note = f"\ntotal {stamp(t)}\n" + (f"silent (voice file missing, run scripts/record_voice.py): {', '.join(silent)}\n" if silent else "")
+    (REC / "kaiku-draft-cut-timeline.txt").write_text("\n".join(rows) + "\n" + note)
     print("\n".join(rows))
-    print(f"\n{out}  {out.stat().st_size / 1e6:.1f} MB  {int(t // 60)}:{t % 60:04.1f}")
-    if t > 118:
-        sys.exit("longer than 1:58: shorten a piece")
+    print(f"{note}\n{out}  {out.stat().st_size / 1e6:.1f} MB")
     shutil.rmtree(tmp, ignore_errors=True)
+    if t > LIMIT:
+        sys.exit(f"{stamp(t)} is longer than 1:58: shorten a piece")
 
 
 if __name__ == "__main__":

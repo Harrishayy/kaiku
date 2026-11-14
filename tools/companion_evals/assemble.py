@@ -13,5 +13,6 @@ from kaiku_cloud.mind.assemble import (  # noqa: F401
     persona_version,
     render_card,
     render_surface,
+    styled,
     validate_card,
 )

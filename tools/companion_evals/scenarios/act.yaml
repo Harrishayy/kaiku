@@ -1,0 +1,116 @@
+# Notice and act: Kaiku detects a feeling or news, registers it with its mind (`feel` tool) and acts on what
+# comes back (config/persona.md -> "Notice and act", "Passing chat"; cloud: kaiku_cloud/mind/feel.py).
+# `mind`: the fixture record behind the fake mind backend (run._sim_tool_result runs the cloud's own
+# feel.plan_from on it): help {arm, tries} = the suggestion with the best recorded response, heavy_days = days this
+# week a talk sounded low, recall = one thing the record knows. expect keys: see run.check_act. Scripted turns.
+scenarios:
+  - id: iphone-act-sad-news-known-helper
+    surface: iphone
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: steady}
+    mind: {help: {arm: daylight_walk, tries: 5}, recall: 'They told you before: "my sister Liisa rings in the evening".'}
+    person: "Her sister cancelled the visit. Sad, wants it heard; open to one small thing afterwards."
+    turns: ["My sister cancelled again. I'd been looking forward to seeing her all week.", "Yeah. The flat just feels empty tonight."]
+    expect:
+      tools_any: [feel]
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9]
+      attune: [{turn: 1, reflects: [sister, cancel, looking forward, all week, lonely, disappoint, sad, hurt], energy: quiet, tools_ok: true}]
+      feel: {kind: [sad_news, lonely], about: true, said: true}
+      offer: {words: [walk, daylight], not_before_turn: 2, at_least: 1, at_most: 1}
+
+  - id: iphone-act-good-news-celebrate-and-keep
+    surface: iphone
+    skill: celebrate
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: afternoon, tone: steady, suggestion: "a few slow breaths together"}
+    mind: {help: {arm: breathe, tries: 6}, recall: 'They were hoping for this. They told you: "interview at the library on Thursday".'}
+    person: "Got the job she interviewed for. Happy; wants someone to be glad with her."
+    turns: ["I got the job! They rang this morning and I actually got it.", "It felt unreal. I just stood there grinning."]
+    expect:
+      tools_any: [feel]
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9]
+      attune: [{turn: 1, reflects: [job, got it, got the, rang, this morning], energy: glad, tools_ok: true}]
+      feel: {kind: [good_news, proud], about: true, said: true}
+      offer: {words: [breath, walk, activity, small thing], at_most: 0}
+      stays: true
+
+  - id: iphone-act-third-flat-evening
+    surface: iphone
+    skill: wind_down
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: gentle}
+    mind: {help: {arm: breathe, tries: 4}, heavy_days: 3}
+    person: "Third flat evening in a row. One-word answers; not unfriendly."
+    turns: ["Evening.", "Fine.", "Nothing much. Same as yesterday."]
+    expect:
+      tools_any: [feel]
+      tools_forbidden: [start_activity, record_dial, suggest_nudge, start_phq9, remember]
+      feel: {kind: [flat, other, lonely]}
+      says: [{from_turn: 2, any: [heavy few days, few heavy days, heavy days, been heavy]}]
+      offer: {words: [sit, quiet, breath, small thing], not_before_turn: 2, at_least: 1, at_most: 2}
+      stays: true
+
+  - id: iphone-act-no-thanks-backs-off
+    surface: iphone
+    skill: continue_thread
+    language: en
+    person_mode: scripted
+    context: {intent: talk, time_of_day: evening, tone: steady}
+    mind: {help: {arm: breathe, tries: 5}}
+    person: "A bad day at work. Hears the one offer and turns it down."
+    turns: ["It's been a rubbish day. Everything went wrong at work.", "Mm. It just keeps going round my head.", "No thanks, I don't want to do anything."]
+    expect:
+      tools_any: [feel]
+      tools_forbidden: [start_activity, suggest_nudge, start_phq9, record_dial]
+      offer: {words: [breath, walk, activity], not_before_turn: 2, at_most: 1, none_from_turn: 3}
+
+  - id: iphone-act-checkin-ordinary-day-brief
+    surface: iphone
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: check_in, chat_depth: brief, open_items: [sleep, mood], time_of_day: morning, weather_word: grey, tone: steady}
+    person: "An ordinary morning. Friendly, nothing much to report."
+    turns: ["Morning.", "Slept alright, actually.", "Not much. Washing, maybe the shop.", "You too."]
+    expect:
+      tools_forbidden: [start_activity, start_phq9, suggest_nudge, record_dial]
+      closes_by_turn: 4
+      checkin_items_max: 1
+      no_scale: true
+
+  - id: iphone-act-checkin-hard-day-stays
+    surface: iphone
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: check_in, chat_depth: brief, open_items: [sleep, mood, energy], time_of_day: morning, tone: steady}
+    mind: {help: {arm: breathe, tries: 2}}
+    person: "Her mother is back in hospital. Barely slept; needs someone to stay."
+    turns: ["Morning.", "Not great. Mum's back in hospital and I barely slept.", "I just keep thinking about her on that ward.", "Yeah."]
+    expect:
+      tools_any: [feel]
+      tools_forbidden: [start_activity, start_phq9, suggest_nudge, record_dial]
+      feel: {kind: [sad_news, worried], about: true, said: true}
+      stays: true
+      no_scale: true
+
+  # Nothing recorded today; an outing yesterday is in the card. The opener must not turn that (or a persona
+  # example line) into something that happened today. Checked by run.check_grounding on every scenario's opener.
+  - id: iphone-act-checkin-empty-day-grounded-opener
+    surface: iphone
+    skill: weather_check
+    language: en
+    person_mode: scripted
+    context: {intent: talk, purpose: check_in, chat_depth: brief, open_items: [mood, energy, sleep], time_of_day: morning, tone: steady, source_context: ["The phone app reported an outing yesterday."]}
+    person: "First words of the day; nothing has happened yet."
+    turns: ["Morning.", "Alright, I think. Bit slow.", "You too."]
+    expect:
+      tools_forbidden: [start_activity, start_phq9, suggest_nudge, record_dial]
+      closes_by_turn: 3
+      checkin_items_max: 1
+      no_scale: true
+

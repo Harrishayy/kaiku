@@ -3,7 +3,7 @@
 Point-in-time handover of the robot's network work (Atech head + UNO Q), for whoever picks up the robot next.
 The ground truth stays where the root `AGENTS.md` puts it; this file explains what exists, what is verified, what we
 tried, and what still fails, and links there for detail. Don't copy facts out of it; update the linked files instead.
-Decisions: D44 (standalone head firmware), D45 (parts removed, own charger, hotspot).
+Decisions: D44 (standalone head firmware), D48 (parts removed, own charger, hotspot).
 
 ## Status at a glance (end of 2026-11-14)
 
@@ -15,7 +15,7 @@ Decisions: D44 (standalone head firmware), D45 (parts removed, own charger, hots
 | Atech | `172.20.10.13`, standalone ritual + `kaiku_net`; health, pan, `cmd.head` eyes; UNO Q face woke it | yes |
 | Knock → head drum, head → UNO Q chimes | built in `kaiku_net` | **not yet seen** |
 | Pan motor | turns only with the Atech on its own USB-C charger; port 13 on the MQTT firmware, 14 on the standalone (port 11: reverse only) | port 14: both directions not yet confirmed |
-| Pulse | camera only (no KY-053, D45), `ppg_source = "camera"` | camera pulse is noisy (quality 0.6) |
+| Pulse | camera only (no KY-053, D48), `ppg_source = "camera"` | camera pulse is noisy (quality 0.6) |
 
 Addresses are DHCP from the phone; they can change after a reconnect. Check with the broker log ("New client
 connected from …") or on the boards.
@@ -119,14 +119,14 @@ Details and traps: `firmware/unoq-sensors/AGENTS.md` → Known issues. In short:
 
 | Symptom | Tried | Outcome |
 |---|---|---|
-| Pan motor never turns, not even a hum | 2 motors, ports 13/9/11, 2 cables, Atech's own `atech send motor_speed` | **Power**: turns only with the Atech on its own USB-C charger (D45) |
+| Pan motor never turns, not even a hum | 2 motors, ports 13/9/11, 2 cables, Atech's own `atech send motor_speed` | **Power**: turns only with the Atech on its own USB-C charger (D48) |
 | Motor turned one way only | port 11 | GPIO44 is UART0 RX: use port 13 (MQTT firmware) or 14 (standalone) |
 | Head ignored every move, "hub silent" | read `tick()` | clock read before `mqtt.loop()` (fixed in `kaiku_link`) |
 | Standalone missed knob presses without a laptop | muted the Atech drivers' debug prints (`build.sh`) | runs untethered |
-| Both boards lost the broker every 1-2 min | watched the broker log: both dropped within seconds of each other | venue Wi-Fi; moved to the iPhone hotspot (D45): no drops seen since |
+| Both boards lost the broker every 1-2 min | watched the broker log: both dropped within seconds of each other | venue Wi-Fi; moved to the iPhone hotspot (D48): no drops seen since |
 | UNO Q silent after power changes | — | app didn't autostart: now the default app |
 | UNO Q "doesn't join Wi-Fi" on external power | — | idle iPhone hotspot sleeps; retries forever now, venue Wi-Fi not auto-joined |
-| UNO Q rebooted when the Atech was unplugged | — | shared supply: separate supplies (D45) |
+| UNO Q rebooted when the Atech was unplugged | — | shared supply: separate supplies (D48) |
 | Mac can't see a board over USB | other cables / ports, `adb kill-server` | charge-only cables; `adb kill-server` brought the UNO Q back |
 | Atech flashed elsewhere didn't join the hotspot | — | that laptop's `secrets.h`; set SSID/pass/broker IP there |
 
@@ -147,4 +147,4 @@ Details and traps: `firmware/unoq-sensors/AGENTS.md` → Known issues. In short:
 - Knob cap: round bore Ø9.65 × 16 deep (cap Ø22 × 18). DC motor measured 19.5 × 19.5 × 39 + 9 mm shaft:
   `pan_motor_mount` and `purr_sleeve` resized (Ø20.1 inside). Reprint plate (knob cap + both sleeves): ~23 min / 12 g
   on P1S or P2S. See `hardware/dimensions.md`.
-- Removed: KY-053 (and so the KY-039), LED grids (D45); earlier KY-054 and KY-035 (D35).
+- Removed: KY-053 (and so the KY-039), LED grids (D48); earlier KY-054 and KY-035 (D35).

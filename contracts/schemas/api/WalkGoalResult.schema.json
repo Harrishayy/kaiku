@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "description": "What the device returns for `set_walk_goal`: the count it keeps.",
+  "properties": {
+    "found": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Found",
+      "type": "integer"
+    },
+    "left": {
+      "minimum": 0,
+      "title": "Left",
+      "type": "integer"
+    },
+    "target": {
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Target",
+      "type": "integer"
+    },
+    "thing": {
+      "maxLength": 30,
+      "title": "Thing",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thing",
+    "target",
+    "left"
+  ],
+  "title": "WalkGoalResult",
+  "type": "object"
+}

@@ -2,7 +2,12 @@
 
 Never the consensus state, scores, numbers or watch data. The only consensus-derived field is `tone`:
 stable -> steady · watch -> gentle · needs_call / safety -> extra-gentle · not enough data (no row yet, or
-`low_coverage`) -> steady (missing data never makes anyone look worse).
+`low_coverage`) -> steady (missing data never makes anyone look worse). A talk that sounded low (mind/affect.py)
+also makes a steady day gentle: that comes from their own conversation, not from the consensus.
+
+When the device names a `purpose`, the card also shapes the chat: `chat_depth` (brief: a passing chat; stay: the
+last talk was hard or it has been a heavy few days) and, for a check-in, `open_items`: the dials not answered
+today, of which at most one is woven into the conversation.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from kaiku_contracts.api import ContextCard, LastReflection
+from kaiku_contracts.companion_tools import CHECKIN_ITEMS
 
 from .. import service
 from ..companion import time_of_day
@@ -87,8 +93,18 @@ def today_facts(events: list[dict[str, Any]], now: datetime) -> list[str]:
     return facts[:4]
 
 
+def open_items(events: list[dict[str, Any]], now: datetime) -> list[str]:
+    """Check-in dials with no answer yet today, on any device. Last night's sleep first in the morning."""
+    today = now.astimezone(TZ).date()
+    answered = {e["payload"].get("item") for e in events if e["type"] == "obs.self_report"
+                and datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).astimezone(TZ).date() == today}
+    order = ("sleep", "mood", "energy") if now.astimezone(TZ).hour < 12 else ("mood", "energy", "sleep")
+    return [i for i in order if i in CHECKIN_ITEMS and i not in answered]
+
+
 def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = "talk", language: str | None = None,
-               others_present: bool = False, now: datetime | None = None) -> ContextCard:
+               others_present: bool = False, now: datetime | None = None, purpose: str | None = None,
+               walk_style: str | None = None) -> ContextCard:
     now = now or datetime.now(UTC)
     local = now.astimezone(TZ)
     known = home_id in store.home_ids()
@@ -101,7 +117,7 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
     keep = memory.remembering(store, home_id) and not others_present
     mems = graph.card_memories(store, home_id, intent, now) if keep else []
     thread = memory.current_thread(store, home_id, now)
-    arm = service.nudge(store, settings, home_id).arm
+    arm = service.suggest(store, home_id, data, now).arm  # after a low talk: the best recorded one, not a draw
     # This release is English-only, including requests from clients with a previously saved locale.
     lang = "en"
     from .router import source_facts
@@ -113,7 +129,9 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
         first_name=memory.first_name(store, home_id),
         done_today=done_today(events, store.episodes(home_id), now),
         source_context=list(prepared_sources.values())[:4],
-        suggestion=SUGGESTION.get(arm), phq9_due=service.phq9_due(data, settings.phq9_every_days, local.date()),
+        suggestion=SUGGESTION.get(arm),
+        # not in a check-in: it is a passing chat, and the device refuses start_phq9 there
+        phq9_due=purpose != "check_in" and service.phq9_due(data, settings.phq9_every_days, local.date()),
         memories=[m["text"] for m in mems], routines=memory.routines(store, home_id, now, TZ),
         open_thread=thread["topic"] if thread and not others_present else None,
         tone=tone_for(row), others_present=others_present, dont_remember=not memory.remembering(store, home_id))
@@ -128,6 +146,24 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
         last = affect.latest(store, home_id, now)
         card.last_reflection = LastReflection(**last) if last else None
         card.today_facts = today_facts(events, now)
+        hard = affect.last_was_low(store, home_id, now)
+        if hard and card.tone == "steady":
+            card.tone = "gentle"
+        if purpose in ("check_in", "talk"):
+            from .feel import HEAVY_DAYS
+
+            card.chat_depth = "stay" if hard or affect.heavy_days(store, home_id, now) >= HEAVY_DAYS else "brief"
+        if purpose == "check_in":
+            card.open_items = open_items(events, now)  # type: ignore[assignment]
+    if walk_style:
+        from . import walk
+
+        card.walk_style = walk_style  # type: ignore[assignment]
+        card.outdoor_likes = walk.outdoor_likes(store, home_id) if keep else []
+    if purpose:
+        card.purpose = purpose  # type: ignore[assignment]
+        if purpose in ("check_in", "talk") and card.chat_depth is None:
+            card.chat_depth = "brief"
     return card
 
 

@@ -1,0 +1,122 @@
+{
+  "additionalProperties": false,
+  "description": "Result of the `feel` tool: how to meet what the person just shared. Chosen by code from this person's own\nrecord; hints for the companion's own words, never a script. Nothing here is a state or changes one.",
+  "properties": {
+    "depth": {
+      "description": "brief: an ordinary moment, the chat may stay small. stay: a strong feeling either way, repeated heaviness, or they keep talking: never close first",
+      "enum": [
+        "brief",
+        "stay"
+      ],
+      "title": "Depth",
+      "type": "string"
+    },
+    "follow_up_saved": {
+      "default": false,
+      "description": "a thread to ask about next time was kept",
+      "title": "Follow Up Saved",
+      "type": "boolean"
+    },
+    "may_offer": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "one small thing to offer once, or null",
+      "title": "May Offer"
+    },
+    "offer_activity": {
+      "anyOf": [
+        {
+          "enum": [
+            "breathe",
+            "tell",
+            "walk",
+            "lantern",
+            "seeds",
+            "watering",
+            "pebbles",
+            "firefly",
+            "drum",
+            "light_hunt"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "start_activity kind, only after a clear yes",
+      "title": "Offer Activity"
+    },
+    "offer_note": {
+      "anyOf": [
+        {
+          "maxLength": 240,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "why that one, and how to offer it",
+      "title": "Offer Note"
+    },
+    "recall": {
+      "anyOf": [
+        {
+          "maxLength": 240,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "one thing the record knows that fits",
+      "title": "Recall"
+    },
+    "reflect_hint": {
+      "maxLength": 300,
+      "title": "Reflect Hint",
+      "type": "string"
+    },
+    "scheduling": {
+      "default": "WHEN_IDLE",
+      "description": "Live FunctionResponse scheduling for this non-blocking tool: send it as `response.scheduling` so the model answers with the plan as soon as it is idle",
+      "enum": [
+        "INTERRUPT",
+        "WHEN_IDLE",
+        "SILENT"
+      ],
+      "title": "Scheduling",
+      "type": "string"
+    },
+    "stance": {
+      "enum": [
+        "comfort",
+        "celebrate",
+        "steady",
+        "explore",
+        "give_space"
+      ],
+      "title": "Stance",
+      "type": "string"
+    }
+  },
+  "required": [
+    "stance",
+    "depth",
+    "reflect_hint"
+  ],
+  "title": "FeelPlan",
+  "type": "object"
+}

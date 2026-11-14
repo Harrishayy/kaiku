@@ -539,3 +539,59 @@ async def test_actual_mic_callback_emits_numeric_speech_and_persists_no_words(ri
     await hub.end_ritual()
     await hub.on_speech_features(features[0].payload.model_dump())
     assert len([e for e in hub.emitted if e.type == 'obs.speech_features']) == 1
+
+
+async def test_non_blocking_feel_is_answered_on_its_own_with_the_results_scheduling(rig):
+    """`feel` is declared NON_BLOCKING: a slower blocking tool in the same message never delays it, its response
+    carries `scheduling` (WHEN_IDLE) as a FunctionResponse field, and blocking responses carry none."""
+    from kaiku_hub.live.tools import TOOLS
+
+    hub, voice, client, audio, _ = rig
+    release = asyncio.Event()
+
+    async def tool(name, args):
+        if name == "feel":
+            return {"ok": True, "stance": "comfort", "depth": "stay", "scheduling": "WHEN_IDLE"}
+        await release.wait()
+        return {"ok": True, "scheduling": "INTERRUPT"}       # ignored for a blocking declaration
+
+    await voice.start(hub.on_utterance, tool)
+    assert await voice.open_session("persona", TOOLS)
+    assert voice._non_blocking == {"feel"}
+    session = client.connections[0].session
+    await session.incoming.put(NS(tool_call=NS(function_calls=[
+        NS(id="1", name="recall", args={"topic": "cat"}), NS(id="2", name="feel", args={"kind": "sad_news"})])))
+    await settle(lambda: bool(session.responses))
+    (first,) = session.responses[0]["function_responses"]     # feel answered while recall is still running
+    assert first.name == "feel" and first.id == "2" and first.scheduling.value == "WHEN_IDLE"
+    assert first.response == {"ok": True, "stance": "comfort", "depth": "stay"}
+    release.set()
+    await settle(lambda: len(session.responses) == 2)
+    (second,) = session.responses[1]["function_responses"]
+    assert second.name == "recall" and second.scheduling is None and second.response == {"ok": True}
+    await voice.close_session()
+
+
+async def test_platform_backend_forwards_feel_as_a_blocking_call(rig):
+    from kaiku_hub.live.tools import TOOLS
+
+    hub, voice, client, audio, _ = rig
+    client.vertexai = True                                    # no asynchronous function calling there
+    connects = []
+    real = client.connect
+    client.connect = lambda **kw: connects.append(kw) or real(**kw)
+
+    async def tool(name, args):
+        return {"ok": True, "stance": "steady", "scheduling": "WHEN_IDLE"}
+
+    await voice.start(hub.on_utterance, tool)
+    assert await voice.open_session("persona", TOOLS)
+    decls = connects[0]["config"]["tools"][0]["function_declarations"]
+    assert any(d["name"] == "feel" for d in decls) and all("behavior" not in d for d in decls)
+    assert voice._non_blocking == set()
+    session = client.connections[0].session
+    await session.incoming.put(NS(tool_call=NS(function_calls=[NS(id="7", name="feel", args={})])))
+    await settle(lambda: bool(session.responses))
+    (only,) = session.responses[0]["function_responses"]
+    assert only.scheduling is None and only.response == {"ok": True, "stance": "steady"}
+    await voice.close_session()

@@ -69,7 +69,7 @@ from .mind import graph as mind_graph
 from .settings import TZ, Settings
 from .store.db import Store
 
-REVIEW_VERSION = "insight-review-v11"
+REVIEW_VERSION = "insight-review-v12"
 _LOCKS: dict[str, threading.Lock] = defaultdict(threading.Lock)
 THEMES = ("change", "improvement", "steady", "routine", "what_helps", "coverage")
 THEME_TITLE = {"change": "Change from usual", "improvement": "Improved signs", "steady": "Holding steady",

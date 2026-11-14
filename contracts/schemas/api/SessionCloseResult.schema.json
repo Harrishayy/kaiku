@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "billed_minutes": {
+      "description": "started minutes now counted for this conversation",
+      "title": "Billed Minutes",
+      "type": "number"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "settled": {
+      "description": "Live reservations this call settled or corrected (0: nothing to change)",
+      "title": "Settled",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "ok",
+    "session_id",
+    "settled",
+    "billed_minutes"
+  ],
+  "title": "SessionCloseResult",
+  "type": "object"
+}

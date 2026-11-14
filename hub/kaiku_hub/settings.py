@@ -50,6 +50,9 @@ class Settings:
     store_retention_days: float = 30
     store_max_mb: float = 200
     engagement_enabled: bool = True
+    head_mode: str = "auto"  # auto | follow | drive ([hub]; follow = the standalone head runs the ritual, D44)
+    robot_home_id: str | None = None  # the home the robot boards publish on, when it is not the person's record id
+    head_stale_s: float = 15.0
     # ritual timings (s)
     greet_s: float = 20
     dial_s: float = 45
@@ -127,6 +130,10 @@ class Settings:
             store_retention_days=_f(c, "hub", "store_retention_days", 30),
             store_max_mb=_f(c, "hub", "store_max_mb", 200),
             engagement_enabled=bool(h.get("engagement_enabled", True)),
+            head_mode=(str(h.get("head_mode", "auto")).lower()
+                       if str(h.get("head_mode", "auto")).lower() in ("auto", "follow", "drive") else "auto"),
+            robot_home_id=str(h.get("robot_home_id") or "").strip() or None,
+            head_stale_s=_f(c, "hub", "head_stale_s", 15),
             presence_leave_s=_f(c, "hub", "presence_leave_s", 6),
             presence_stale_s=_f(c, "hub", "presence_stale_s", 5),
             quality_min=_f(c, "perception", "quality_min", 0.5),
