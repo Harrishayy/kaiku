@@ -1,16 +1,16 @@
 part = "buzzer"
 board = "unoq-mcu"
 program = "buzzer.ino"
-flash = "App Lab: new app (add library Arduino_Modulino >= 0.6.1), paste buzzer.ino into sketch/sketch.ino, Run"
+flash = "App Lab: new app (add library Arduino_Modulino >= 0.6.1, all its dependencies), paste buzzer.ino into sketch/sketch.ino, Run"
 steps = ["Listen: five chimes play once (wake, ok, start_drum, end_drum, alert)"]
 duration_s = 15
 
 [[check]]
-name = "Modulino Buzzer answers on Wire1 at 0x3C"
+name = "Modulino Buzzer answers on Wire1 at 0x1E (7-bit; 0x3C in 8-bit notation)"
 event = "i2c"
 field = "addr"
-all_min = 60
-all_max = 60
+all_min = 30
+all_max = 30
 [[check]]
 name = "buzzer.begin() ok"
 event = "buzzer"

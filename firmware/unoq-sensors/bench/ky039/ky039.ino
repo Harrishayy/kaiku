@@ -19,6 +19,7 @@ int16_t adsRead() {
 void setup() {
   Bridge.begin();
   Monitor.begin();
+  delay(3000);  // let the monitor attach before the first line
   Wire.begin();
   for (int a = 1; a < 127; a++) {
     Wire.beginTransmission(a);

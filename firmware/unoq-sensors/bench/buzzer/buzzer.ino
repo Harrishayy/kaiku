@@ -1,4 +1,4 @@
-// Bench: Modulino Buzzer alone on the Qwiic connector (Wire1, 0x3C). Scans the bus, then plays every chime.
+// Bench: Modulino Buzzer alone on the Qwiic connector (Wire1, 0x1E 7-bit = 0x3C 8-bit). Scans the bus, then plays every chime.
 #include <Arduino_RouterBridge.h>
 #include <Arduino_Modulino.h>
 #include <Wire.h>
@@ -12,6 +12,7 @@ const int lens[] = {2, 1, 3, 3, 3};
 void setup() {
   Bridge.begin();
   Monitor.begin();
+  delay(3000);  // let App Lab's monitor attach before the first line
   Wire1.begin();
   for (int a = 1; a < 127; a++) {
     Wire1.beginTransmission(a);

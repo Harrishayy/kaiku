@@ -41,7 +41,7 @@ def test_ky039_pass_and_flat_fail():
 
 def test_ask_checks_use_the_answer():
     res = _run("firmware/unoq-sensors/bench/buzzer", "knock_pass.log", answer=NO)
-    assert res["heard"] is False and res["Modulino Buzzer answers on Wire1 at 0x3C"] is False
+    assert res["heard"] is False and res["Modulino Buzzer answers on Wire1 at 0x1E (7-bit; 0x3C in 8-bit notation)"] is False
 
 
 def test_parse_lines_skips_noise_and_non_events():

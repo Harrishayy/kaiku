@@ -27,7 +27,7 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 | KY-054 light S / + / − | A0 / 3V3 / GND | 3.3 V | under the lid window | `bench/light` |
 | KY-053 ADS1115 SDA / SCL / + / − | header SDA / SCL (`Wire`) / 3V3 / GND | 3.3 V | address 0x48; not A4/A5, not Qwiic | `bench/ky039` |
 | KY-039 pulse S / + / − | KY-053 A0 / 3V3 / GND | 3.3 V | under the lid finger cradle | `bench/ky039` |
-| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x3C; ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
+| Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x1E 7-bit (0x3C 8-bit, verified 2026-11-14); ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
 | LED matrix | on board | — | hidden in the body: status only | — |
 
 ## Atech board (node `head`, 14-port), in the body; all 12 ports used

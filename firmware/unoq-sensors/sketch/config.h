@@ -33,5 +33,5 @@
 // UNO Q LED matrix: hidden in the body, status only (the eyes are the Atech Color Display)
 #define STATUS_LEVEL 3
 
-// Modulino Buzzer (ABX00108) on Qwiic = Wire1, default address 0x3C
+// Modulino Buzzer (ABX00108) on Qwiic = Wire1, default address 0x1E 7-bit (0x3C 8-bit; verified 2026-11-14)
 #define BUZZER_MAX_NOTES 6

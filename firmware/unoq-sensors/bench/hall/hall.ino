@@ -11,6 +11,7 @@ void setup() {
   Bridge.begin();
   Monitor.begin();
   analogReadResolution(14);
+  delay(3000);  // let the monitor attach before the first line
   long sum = 0;
   for (int i = 0; i < 200; i++) { sum += analogRead(PIN); delay(2); }   // magnet away from the sensor
   mid = sum / 200;
