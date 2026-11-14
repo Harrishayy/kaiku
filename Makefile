@@ -117,6 +117,15 @@ atech-setup: ## Atech SDK venv + pinned ESP32 toolchain, all inside firmware/ate
 	@# Atech's drivers target Arduino core 2.0 (espressif32 6.x); the SDK leaves the platform unpinned and 8.x breaks dc_motor
 	PLATFORMIO_CORE_DIR=$(CURDIR)/$(ATECH_VENV)/platformio $(ATECH_VENV)/bin/pio pkg install -g -p "platformio/espressif32@6.9.0"
 	@echo "done: source $(ATECH_VENV)/bin/activate, then atech build . in a bench/<part> folder (first build compiles the core)"
+.PHONY: atech-standalone atech-mqtt
+ATECH_PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*))
+atech-standalone: ## ACTIVE head firmware (USB-serial ritual, D44): build; FLASH=1 also uploads over USB data
+	firmware/atech-head/standalone/build.sh $(if $(FLASH),upload $(ATECH_PORT))
+atech-mqtt: ## MQTT/contract head firmware (next stage, D44): build; FLASH=1 also uploads over USB data
+	@set -e; . $(ATECH_VENV)/bin/activate; cd firmware/atech-head; atech build . > /dev/null; \
+	if [ -n "$(FLASH)" ]; then sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini; \
+	  python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text(); p.write_text(s if "--no-stub" in s else s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'; \
+	  pio run -d build -t upload --upload-port $(ATECH_PORT); else echo "built firmware/atech-head (FLASH=1 to upload)"; fi
 eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
 	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing

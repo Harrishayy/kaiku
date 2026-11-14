@@ -42,7 +42,7 @@
 #define LED_FRAME_MS 33
 
 // --- DC motor (pan, port 7, 12:40 gear, ~+-100 deg). No position feedback between homings: dead reckoning.
-#define MOTOR_RAMP_MS 100            // ramp speed instead of jumping (brown-outs on the shared rails)
+#define MOTOR_RAMP_MS 400            // ramp speed instead of jumping: 100 ms dropped the Wi-Fi on a hub USB port (bench 2026-11-14)
 #define MOTOR_MAX_RUN_MS 1000        // never drive longer than this per command
 #define MOTOR_DEG_PER_S_FULL 120.0f  // estimated head speed at |speed| = 255 (TUNE)
 #define HAS_HALL 0                   // 0 = no KY-035/magnet in this build (D39): home = head position at power-on,
@@ -51,9 +51,9 @@
 #define PAN_DEADBAND_DEG 3.0f
 #define HOME_SPEED 80                // slow toward the front; brake on the KY-035 edge (raw/sensors/hall)
 #define HOME_TRY_MS 2000             // give up after this per direction (then try the other way once)
-#define LOOK_MS 300                  // gesture look_left / look_right: one way, then home
+#define LOOK_MS 450                  // gesture look_left / look_right: one way, then home (longer at the lower speed)
 #define SHAKE_PULSE_MS 120           // gesture shake: two short alternating pulses each way, then home
-#define GESTURE_SPEED 160
+#define GESTURE_SPEED 110            // was 160: lower peak current (Wi-Fi brown-out, bench 2026-11-14)
 #define PAN_PUBLISH_MOVING_MS 200    // raw.head.pan while moving (the UNO Q mutes knocks on `moving`)
 #define PAN_PUBLISH_IDLE_MS 2000
 

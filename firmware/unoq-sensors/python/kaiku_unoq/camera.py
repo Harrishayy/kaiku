@@ -33,6 +33,22 @@ class CameraConfig:
     lux_per_unit: float = 2.0
 
 
+def resolve_index(index: int, by_id: str = "/dev/v4l/by-id") -> int | None:
+    """index >= 0: use it. index < 0 ("auto"): the first USB camera's capture node from its stable by-id name.
+    On the UNO Q the number moves between boots (/dev/video2 one boot, /dev/video0 the next; 0-3 also hold the
+    Qualcomm codec), so the robot uses auto. None = no camera found."""
+    if index >= 0:
+        return index
+    import glob
+    import os
+    import re
+    for link in sorted(glob.glob(f"{by_id}/*-video-index0")):
+        m = re.search(r"video(\d+)$", os.path.realpath(link))
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def _v4l2(index: int, *ctrls: str) -> bool:
     """Set v4l2 controls; fail soft (returns False) if v4l2-ctl is missing or the control name differs."""
     try:
@@ -65,6 +81,7 @@ class Camera:
         self._stop = threading.Event()
         self._light_now = threading.Event()
         self._thread: threading.Thread | None = None
+        self._dev: int | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="camera", daemon=True)
@@ -95,8 +112,12 @@ class Camera:
     def _sample_light(self, cap, cv2) -> None:  # noqa: ANN001
         """Mean luminance with auto-exposure off at a fixed exposure (the auto loop would hide a dark room)."""
         c = self.cfg
-        locked = _v4l2(c.index, "auto_exposure=1", f"exposure_time_absolute={c.exposure_absolute}") or _v4l2(
-            c.index, "exposure_auto=1", f"exposure_absolute={c.exposure_absolute}")  # names differ by kernel
+        locked = _v4l2(self._dev, "auto_exposure=1", f"exposure_time_absolute={c.exposure_absolute}") or _v4l2(
+            self._dev, "exposure_auto=1", f"exposure_absolute={c.exposure_absolute}")  # names differ by kernel
+        via_cv = False
+        if not locked:  # no v4l2-ctl (App Lab's container): the same UVC controls through OpenCV's V4L2 backend
+            via_cv = bool(cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1) and cap.set(cv2.CAP_PROP_EXPOSURE, c.exposure_absolute))
+            locked = via_cv
         time.sleep(0.4)  # let the sensor settle
         for _ in range(3):
             cap.read()  # drop frames taken before the lock
@@ -104,8 +125,10 @@ class Camera:
         if ok:
             y = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)[:, :, 0]
             self.on_light(light_payload(float(y.mean()), c.lux_per_unit))
-        if locked:
-            _v4l2(c.index, "auto_exposure=3") or _v4l2(c.index, "exposure_auto=3")
+        if via_cv:
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
+        elif locked:
+            _v4l2(self._dev, "auto_exposure=3") or _v4l2(self._dev, "exposure_auto=3")
         if not locked:
             self.on_error("light: exposure lock failed; value is auto-exposed")
 
@@ -118,13 +141,14 @@ class Camera:
         c = self.cfg
         backoff = 1.0
         while not self._stop.is_set():
-            cap = cv2.VideoCapture(c.index)
+            self._dev = resolve_index(c.index)
+            cap = cv2.VideoCapture(self._dev if self._dev is not None else -1)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, c.frame_w)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, c.frame_h)
             cap.set(cv2.CAP_PROP_FPS, c.fps)
-            if not cap.isOpened():
+            if self._dev is None or not cap.isOpened():
                 self.ok = False
-                self.on_error(f"camera /dev/video{c.index} not available (PD hub? see hardware/wiring.md)")
+                self.on_error(f"camera {c.index} (/dev/video{self._dev}) not available (PD hub data port? see hardware/wiring.md)")
                 time.sleep(backoff)
                 backoff = min(10.0, backoff * 2)
                 continue

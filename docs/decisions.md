@@ -358,3 +358,17 @@ flowchart LR
   the word on the sign. Not yet verified: real glasses frames, Wi-Fi/Bluetooth transport on the lead's phone, quality
   outdoors. Raw frames arrive only while the app is in the foreground; with the phone locked the voice continues
   and seeing pauses.
+
+## D44 — Atech head runs the standalone ritual firmware for now; the MQTT firmware is the next stage (2026-11-14, Edwin)
+- **Active:** `firmware/atech-head/standalone/` (written with the Atech website agent): the head runs the check-in
+  ritual itself (greet, mood/energy/sleep dial, breathing, drumming) and talks JSON lines over USB serial. No Wi-Fi,
+  MQTT, contracts or hub watchdog, so the hub, UNO Q and cloud don't see the head while it runs. Its layout: speaker
+  1-2, display 3-4, knob 5-6, LED grid 7, mic 9-10, motor 11, orientation sensor (ICM-40608/LSM6DSOX) 13; no button.
+  Its `src/` stays verbatim, so a new version from the website agent drops straight in. `make atech-standalone FLASH=1`.
+- **Next stage:** the MQTT/contract firmware (`firmware/atech-head/`, `kaiku_link/`) is kept intact and still builds;
+  going back is `make atech-mqtt FLASH=1`. Porting the standalone's good parts (ritual feel, eye shapes, purr nudge,
+  orientation-sensor taps) into `kaiku_link` happens then, behind the contracts (the hub keeps the ritual, D32).
+- **Why:** it works on the board today and gives a demo-able head while the motor and power questions are settled.
+- **Power (bench):** the motor only turned once the Atech had its own USB-C charger on port 8; hub charge-only and
+  Mac ports ran the logic but not the motor. Port 11's forward line is GPIO44 (UART0 RX) and only reverse turned
+  there; port 13 has no such conflict, but the standalone puts its orientation sensor on 13.

@@ -1,0 +1,15 @@
+# Standalone head firmware (from the Atech website agent, 2026-11-14): runs the check-in ritual on the head itself
+# and talks JSON lines over USB serial. No Wi-Fi/MQTT, no contracts, no hub safety stop.
+# This file only tells the Atech toolchain which drivers to fetch; the program is src/ (kept verbatim).
+# Build + flash: `make atech-standalone` (then `PORT=... make atech-standalone-upload`).
+# Back to the MQTT robot firmware: flash ../ (`make atech-mqtt-upload`).
+name: kaiku-head-standalone
+board: 14port
+modules:
+  - {id: speaker,        instance: speaker,             ports: [1, 2]}
+  - {id: st7735_tft,     instance: st7735_tft,          ports: [3, 4]}
+  - {id: rotary_encoder, instance: rotary_encoder_knob, ports: [5, 6]}
+  - {id: neopixel,       instance: neopixel_grid,       port: 7}
+  - {id: microphone,     instance: microphone,          ports: [9, 10]}
+  - {id: dc_motor,       instance: dc_motor,            port: 11}
+  - {id: icm40608,       instance: icm40608_imu,        port: 13}

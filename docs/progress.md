@@ -1077,3 +1077,49 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   citing reflections on the live record; public URL checked from outside (dashboard 200, admin 401).
 - Broken/blocked: nothing run on real glasses, robot, Atech board or a real microphone; no outside testers; the
   draft cut and deck carry placeholders; credential PDFs remain in older commits (history not rewritten).
+
+## 2026-11-14 06:30 — Claude Code — firmware (A): both boards together on the broker
+- Did: first joint run, both boards on the venue Wi-Fi, broker on the laptop, both powered from the PD hub.
+  Fixes: Atech `Serial.setTxTimeoutMs(0)` after `kaiku::begin` re-inits Serial (with no host reading USB, println
+  stalled the loop and MQTT keep-alive timed out); UNO Q `requirements.txt` without OpenCV/numpy (App Lab's container
+  ships its own OpenCV 4.13 build, and asking for one failed the whole install, so no aiomqtt); camera index
+  `-1` = auto via `/dev/v4l/by-id` (the UNO Q renumbers video0-3 between boots); exposure lock falls back to OpenCV
+  when `v4l2-ctl` is missing (container). Atech flashing on this Mac needs `--no-stub` at 115200 (esptool lost the
+  flash chip otherwise).
+- Verified on hardware: UNO Q health ok (camera_ok, mcu_ok), knock taps, faces + distance, room light, buzzer
+  chimes on `cmd.sensors`; Atech health, pan reports, button, knob press + turns, display eyes on `cmd.head`;
+  Atech stays connected powered from the hub's charge-only port.
+- Contract changes: none.
+- Broken/blocked: knob steps feel short (tune `KNOB_COUNTS_PER_STEP` with bench/knob). Camera ring light is only
+  switchable by its own touch button (datasheet §5.3), not from software. Not yet run together: pan motor (needs
+  `make hub`), LED grids (port 11 dark earlier), speaker, KY-039 in the cradle.
+- Next: `make hub` and the motor/LED/speaker round; tune the knob; pulse retest in the printed cradle.
+
+## 2026-11-14 09:30 — Claude Code — firmware (A): pan motor round
+- Did: two clock bugs in `kaiku_link` fixed: `tick()` read `now` before `mqtt.loop()`, so stamps set while handling
+  messages (lastHubSeen, segStart, homeStart) were newer than `now` and the unsigned difference wrapped: the head
+  called the hub "silent" after every heartbeat and skipped every motor segment as "already done". `now` is now read
+  after `mqtt.loop()`. Softer motor start (ramp 400 ms, gesture speed 110, look 450 ms) after the speed-160 run dropped
+  the Wi-Fi on the hub's charge-only port.
+- Verified: after the fix the firmware runs pan / home / look / shake (dead-reckoned deg moves to +-40 and back), no
+  Wi-Fi drop-outs, hub watchdog stays ok.
+- Broken/blocked (Xavier): **no motor turns at all, not even a hum.** Tried 2 DC Motor modules, ports 13 and 9
+  (mic unplugged, test build), 2 cables (one taken from the working button), board on the Mac's USB, and Atech's own
+  `atech send motor_speed 255 / -255 / motor_brake` (our code out of the loop; board answers ok each time). Your bench
+  is the only time a motor ran: how was the board powered and which port/cable/firmware? Next check needs a meter:
+  Line B to GND on the motor port during `motor_speed 255` (expect ~3.3 V). The button's light is always on, so it
+  can't serve as a test lamp.
+- Next: find the motor power/signal fault; then pan on the hub port with the softer start.
+
+## 2026-11-14 10:30 — Claude Code — firmware (A): standalone head firmware active (D44)
+- Did: the Atech website agent's firmware (was `firmware/temp/`) is now `firmware/atech-head/standalone/`, `src/`
+  verbatim; `project.yaml` lists its modules so `atech build` fetches every driver (incl. the orientation sensor and
+  `i2c_software`), `build.sh` overlays `src/` and adds include shims. `make atech-standalone [FLASH=1]` (active) and
+  `make atech-mqtt [FLASH=1]` (MQTT firmware, kept intact for the next stage). Both build.
+- Verified on the board: flashed (`make atech-standalone FLASH=1`); boot reports all 7 modules ok (orientation
+  sensor answers on 13); full ritual by hand: knob press -> greet -> mood/energy/sleep dials -> breathing -> drum ->
+  done. **Only while a USB host keeps reading its serial output**: with nobody reading, the drivers' debug prints
+  (`[NeoPixel] Brightness set...` many times a second) stall the loop and knob presses are missed. Opening the port
+  resets the board. MQTT firmware still builds; `make check` passes.
+- Broken/blocked: standalone expects an LED grid on port 7 (the button sits there now) and the motor on 11 (only
+  reverse turns there); the orientation sensor on 13 is unconfirmed (asked Atech's agent).

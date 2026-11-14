@@ -1,6 +1,6 @@
-# App Lab installs these on the board (VERIFY: App Lab reads python/requirements.txt).
+# App Lab installs these on the board, inside its Python container.
+# OpenCV and numpy are NOT listed: the container ships its own pinned OpenCV build (4.13.0+custom on App Lab 0.12),
+# and asking for one made the whole install fail (no aiomqtt -> no MQTT). Verified on the board 2026-11-14.
 # kaiku_contracts comes from ./vendor (make unoq-app), not from PyPI.
 pydantic>=2.7
 aiomqtt>=2.3
-opencv-python-headless>=4.10,<5   # 5.x dropped CascadeClassifier (Haar faces)
-numpy>=1.26

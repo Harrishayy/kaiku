@@ -98,6 +98,7 @@ void startSegs(Mode m, std::initializer_list<Seg> list) {
   segI = 0;
   segStart = millis();
   mode = m;
+  nextPan = 0;   // report the move now, not at the next 2 s idle tick (short moves went unreported)
 }
 
 void stopMotor() {
@@ -375,6 +376,7 @@ void begin(const HeadIO& headIo) {
   io = headIo;
   bootMs = millis();
   Serial.begin(115200);
+  Serial.setTxTimeoutMs(0);  // never block on USB: with no host reading, println stalled the loop (bench 2026-11-14)
   WiFi.mode(WIFI_STA);
   configTime(0, 0, NTP_SERVER);  // envelope ts is UTC
   mqtt.setBufferSize(1024);
@@ -387,9 +389,12 @@ void begin(const HeadIO& headIo) {
 }
 
 void tick() {
-  uint32_t now = millis();
-  netTick(now);
+  netTick(millis());
   mqtt.loop();
+  // Read the clock AFTER mqtt.loop(): messages handled in there stamp lastHubSeen / segStart with millis(), and an
+  // older `now` made the unsigned `now - stamp` wrap to ~49 days -> "hub silent" after every heartbeat and every
+  // motor segment "already finished" before it ran (bench 2026-11-14: head never moved).
+  uint32_t now = millis();
   if (!hubSilent && bootHomePending) { bootHomePending = false; home(); }  // first live hub: find the front
   if (!hubSilent && now - lastHubSeen > HUB_SILENCE_STOP_MS) {  // safety: hub gone -> stop everything
     hubSilent = true;
