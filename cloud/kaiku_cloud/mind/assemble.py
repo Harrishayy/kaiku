@@ -24,6 +24,9 @@ Context card (built deterministically by the cloud, ≤ 400 tokens). Allowed key
     open_items      check-in dials not answered today ("mood" | "energy" | "sleep"); at most one is woven in
     walk_style      "quiet" | "playful" | "chatty" (walk sessions; limits and rules: surfaces.toml glasses.styles)
     outdoor_likes   up to 4 places / outdoor things they told Kaiku they like, in their words
+    agreed          up to 3 activities they said yes to today on any device, each with done / not done yet (D50)
+    quieter_in      "games" | "check_in": today's kinds of task in which the face signs counted with their opt-in
+                    were clearly below their own usual (D52). An enum; rendered as a cue for manner only
 The shape of a check-in (`render_shape`) is its own short section, outside the card's token budget.
 Anything that looks like state, scores or data about the person is rejected: the model never sees it.
 """
@@ -44,6 +47,13 @@ ROOT = _PERSONA.parents[1] if _PERSONA else Path.cwd()
 CARD_KEYS = {"language", "intent", "time_of_day", "weather_word", "first_name", "done_today", "suggestion",
              "phq9_due", "source_context", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember",
              "recent_reflection", "last_reflection", "today_facts", "purpose", "chat_depth", "open_items", "walk_style", "outdoor_likes"}
+CARD_KEYS |= {"agreed", "quieter_in"}
+QUIETER_IN = {"games": "today's games", "check_in": "today's check-in"}
+# The only thing the voice model is ever told about the camera's numbers: how to carry itself. Not what was
+# counted, not a number, not a word about how they looked, and an order never to speak of it (D52).
+QUIET_LINE = ("For your manner only: they were quieter than their usual in {where}. Go gently: softer and slower, "
+              "shorter turns, ask less, and offer nothing unless they ask. Never say this or hint at it, never say "
+              "how they seem or look, and never mention their face or a camera.")
 WALK_STYLES = {"quiet", "playful", "chatty"}
 DEPTHS = {"brief", "stay"}
 OPEN_ITEMS = {"mood": "how they feel", "energy": "their energy", "sleep": "how they slept"}
@@ -56,10 +66,22 @@ FEEL_RULE = ("`feel`: call it once per clear shift in how they feel or clear new
              "answer shapes your next turns: how to meet it (`stance`, `reflect_hint`), one thing to bring in lightly "
              "(`recall`), at most one thing to offer once after they feel heard (`may_offer`; a no is final), and "
              "whether to keep it small or stay (`depth`).")
+# An activity agreed in one place shows up everywhere (D50). {elsewhere}: what this body cannot start itself.
+AGREE_RULE = ("`agree_activity`: when they clearly say yes to an activity that is not starting here and now on this "
+              "device, call it once, with the kind and their own words of that yes in `said`. That is something for "
+              "later today (\"a walk after lunch\"){elsewhere}. It appears on their phone and Mac at once. Then say "
+              "where it is in a few words, the way the result's `where` gives it (\"It's on your phone and your "
+              "Mac.\"). A maybe, a hesitation or a silence is not a yes: do not call it. If the result says nothing "
+              "was kept, never say it is anywhere. Not when `start_activity` starts it here, not for a card they "
+              "can simply tap, never for the questionnaire. It is for what they agreed to; it is never a reason "
+              "to offer something.")
+AGREED_LINE = ("They said yes to this today: {items}. If it is done, be glad about it in a few words. If it is not, "
+               "you may ask about it gently, once; whatever they answer is fine, and you never press.")
 TONES = {"steady", "gentle", "extra-gentle"}
 LANGUAGES = {"en", "fi", "sv"}
 FORBIDDEN_KEY = re.compile(r"state|score|verdict|consensus|needs_call|phq9_total|z_|baseline|metric|trend|risk|"
-                           r"sleep|heart|hrv|steps|watch|wearable", re.I)
+                           r"sleep|heart|hrv|steps|watch|wearable|face|facial|camera|smil|blink|brow|gaze|express",
+                           re.I)
 MAX_CARD_TOKENS = 400  # ~4 chars per token
 NOT_FOR_MODEL = {"About this file", "Examples", "Per-language notes"}
 WALK_ONLY = {"Walking together"}  # persona sections compiled only into a walk's prompt (the card has walk_style)
@@ -112,8 +134,10 @@ def styled(surfaces: dict[str, dict[str, Any]], surface: str, walk_style: str | 
     return {**s, **{k: v for k, v in style.items() if k != "rules"}, "rules": [*style.get("rules", []), *s.get("rules", [])]}
 
 
-def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None) -> str:
-    """`tools`: the tool names actually served on this surface (registry); default: the surface table's list."""
+def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None,
+                   elsewhere: list[str] | None = None) -> str:
+    """`tools`: the tool names actually served on this surface (registry); default: the surface table's list.
+    `elsewhere`: activities that have a screen on the phone or Mac but none on this body (for `agree_activity`)."""
     tools = list(s["tools"]) if tools is None else tools
     body = ", ".join(k.replace("_", " ") for k, v in s["body"].items() if v is True) or "voice only"
     lines = [
@@ -131,6 +155,9 @@ def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None)
     lines += [f"- {r}" for r in s.get("rules", [])]
     if "feel" in tools:
         lines.append(f"- {FEEL_RULE}")
+    if "agree_activity" in tools:
+        lines.append("- " + AGREE_RULE.format(elsewhere=(
+            ", or anything this body cannot start itself: " + ", ".join(elsewhere)) if elsewhere else ""))
     return "\n".join(lines)
 
 
@@ -155,6 +182,11 @@ def validate_card(card: dict[str, Any]) -> None:
         raise ValueError(f"walk_style must be one of {sorted(WALK_STYLES)}")
     if len(card.get("outdoor_likes", [])) > 4:
         raise ValueError("at most 4 outdoor likes")
+    if len(card.get("agreed", [])) > 3:
+        raise ValueError("at most 3 agreed activities")
+    quiet = card.get("quieter_in", [])
+    if not isinstance(quiet, list) or set(quiet) - set(QUIETER_IN) or len(quiet) != len(set(quiet)):
+        raise ValueError(f"quieter_in must be a list among {sorted(QUIETER_IN)}")
 
 
 def render_card(card: dict[str, Any]) -> str:
@@ -169,6 +201,8 @@ def render_card(card: dict[str, Any]) -> str:
         lines.append(f"This session: {c['intent']}.")
     if c.get("done_today"):
         lines.append("Already done today: " + "; ".join(c["done_today"]) + ".")
+    if c.get("agreed"):
+        lines.append(AGREED_LINE.format(items="; ".join(c["agreed"])))
     if c.get("source_context"):
         lines.append("Recent input context (presence only): " + " ".join(c["source_context"]))
     if c.get("suggestion"):
@@ -193,6 +227,8 @@ def render_card(card: dict[str, Any]) -> str:
     if c.get("others_present"):
         lines.append("Someone else is in the room: be friendly, ask nothing personal, remember nothing.")
     lines.append(TONE_TEXT[c.get("tone", "steady")])
+    if c.get("quieter_in") and not c.get("others_present"):
+        lines.append(QUIET_LINE.format(where=" and ".join(QUIETER_IN[k] for k in QUIETER_IN if k in c["quieter_in"])))
     if c.get("care_info"):
         lines.append(f'Care team information (the ONLY source for treatment facts): "{c["care_info"]}"')
     else:
@@ -303,8 +339,10 @@ def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: st
     out = [f"## {h}\n{b}" for h, b in p["sections"].items() if h not in skip]
     if lang in p["languages"]:
         out.append(f"## Language notes ({lang})\n{p['languages'][lang]}")
+    screens = [a for s in ("iphone", "mac") for a in surfaces.get(s, {}).get("activities", [])]
     out.append("## Your body right now\n" + render_surface(
-        surface, styled(surfaces, surface, card.get("walk_style")), tools))
+        surface, styled(surfaces, surface, card.get("walk_style")), tools,
+        elsewhere=[a for a in dict.fromkeys(screens) if a not in surfaces[surface].get("activities", [])]))
     out.append("## Today\n" + render_card(card))
     out.append("## What you may say as fact\n" + render_grounding(card))
     walking = render_walk(card)

@@ -394,6 +394,8 @@ def source_week(events: list[dict[str, Any]], week_start: date, end: date) -> li
             walk_days.add(d)
         elif t == "obs.play_session":
             c["games"] += 1
+        elif t == "obs.face_signs":
+            c["face"] += 1
         elif t == "obs.laptop_session":
             c["laptop"] += 1
         elif t == "obs.self_report" and p.get("channel") not in (None, "robot"):
@@ -414,7 +416,7 @@ def source_week(events: list[dict[str, Any]], week_start: date, end: date) -> li
         "glasses": [_count("outings", c["walks"]), _count("outing minutes", c["walk_min"]),
                     _count("minutes of daylight", c["daylight"])],
         "laptop": [_count("games", c["games"]), _count("laptop check-ins", c["laptop"]),
-                   _count("days of Mac rhythm", screen_days)],
+                   _count("days of Mac rhythm", screen_days), _count("camera readings during tasks", c["face"])],
         "wearable": [_count("nights of sleep", c["nights"]),
                      _count("steps a day", c["steps"] / c["step_days"] if c["step_days"] else 0)],
     }
@@ -500,8 +502,10 @@ def week(store: Store, settings: Settings, home_id: str, audience: str, now: dat
     crit = service.active_criteria(store)
     data = service.patient_data(store, home_id, crit)
     helps = bandit.help_stats(data.nudge_outcomes, data.interventions)
+    # the week view speaks of what the rule reads: a metric that is shown and not scored (camera face signs, D52)
+    # is in Trends, the course and the review, and is never a reason given here
     drifts = [(m, drift_for(m, data.series.get(m.name, {}), end, crit)) for m in crit.metrics
-              if m.enabled and data.series.get(m.name)]
+              if m.enabled and m.role == "scored" and data.series.get(m.name)]
     rule_version = None
     steps: list[NextStep] = []
     if audience == "person":

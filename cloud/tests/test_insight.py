@@ -213,6 +213,41 @@ def test_finding_checks_one_by_one():
     assert insight.check_finding("text", refs, tone) == "invalid_shape"
 
 
+def test_a_number_or_a_date_is_rejected_in_digits_and_in_words_and_the_prompt_shows_how_to_say_it_without():
+    """Real reviews lost Gemma's findings to a date or a count copied out of an item's detail ("on 6 Nov", "4 of 7
+    days"), and one accepted "over seven attempts" and "the sixth of November", which no code had printed. The
+    check now reads a number, a month or a weekday written as a word the same way as a digit; the prompt names
+    each kind beside a way of saying it without one. Nothing was loosened: the examples are tied to the check."""
+    for wrong, right in insight.NUMBER_PAIRS:
+        assert insight.prose_issue(wrong) == "numbers_in_prose", wrong
+        assert insight.prose_issue(right) is None, right
+        assert f'WRONG: "{wrong}" RIGHT: "{right}"' in insight._SYSTEM
+    wrongs = " ".join(w for w, _ in insight.NUMBER_PAIRS)
+    # every kind seen in the raw outputs has its example: dates, a date in words, counts, a date in a question
+    for seen in ("on 6 Nov", "by 12 Nov", "the sixth of November", "two days later", "4 of 7 days", "7 attempts",
+                 "around 6 Nov?"):
+        assert seen in wrongs, seen
+    for prose in ("Mood moved away since 7 November.", "Reflections sounded lighter from the tenth of November.",
+                  "It was back by Monday.", "Sleep was short on three nights.", "Twice this week the walk was skipped.",
+                  "The response was reported over seven attempts.", "Energy fell to 2 of 5.", "Back by 12 Nov.",
+                  "A third short night came before the call.", "Dozens of late minutes on the Mac."):
+        assert insight.prose_issue(prose) == "numbers_in_prose", prose
+    # order and vague amounts are words the model may use; ordinary words that only contain a number are untouched
+    for prose in ("Sleep moved first and mood followed the day after; a few days later both were back.",
+                  "Late-night screen time moved first and sleep shortened the next day; sleep is the one still lagging.",
+                  "The second week was quieter, and most routines were kept on several days.",
+                  "Often the tension eased and attention returned; she listened to the news on some days.",
+                  "Walks may have helped a little since the week before."):
+        assert insight.prose_issue(prose) is None, prose
+    refs = {"week:mood": insight.RecordCitation(id="week:mood", label="Mood dial", detail="x", metric="mood", source="robot")}
+    item = {"theme": "improvement", "cites": ["week:mood"], "consider": None}
+    assert insight.check_finding({**item, "meaning": "Mood ratings came back up on the tenth of November."},
+                                 refs, {"week:mood": "better"}) == "numbers_in_prose"
+    assert insight.check_overview({"text": "Sleep moved away from usual first on the sixth of November, and mood "
+                                           "followed the day after the first short night.", "cites": ["week:mood"]},
+                                  refs, False) == "numbers_in_prose"
+
+
 def test_one_switch_moves_every_gemma_call_to_the_modal_app(aino, monkeypatch):
     from kaiku_cloud.llm import gemma, gemma_vllm
     from kaiku_contracts.config import load_config

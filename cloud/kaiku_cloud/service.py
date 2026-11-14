@@ -241,7 +241,8 @@ def get_consensus(store: Store, settings: Settings, row: dict[str, Any], log: An
 
 
 def timeline(store: Store, home_id: str, metrics: list[str] | None, days: int = 30) -> list[MetricSeries]:
-    """Series for the criteria's enabled metrics (all, or the requested names) with the baseline band."""
+    """Series for the criteria's enabled metrics (all, or the requested names) with the baseline band. A metric
+    that is shown and not scored (`scored: false`) is charted like any other; it has no part in a verdict."""
     crit = active_criteria(store)
     data = patient_data(store, home_id, crit)
     end = today_local()
@@ -263,7 +264,7 @@ def timeline(store: Store, home_id: str, metrics: list[str] | None, days: int = 
                                      band_high=round(b.median + z * b.scale, 3) if b else None,
                                      early=bool(b and b.early)))
         out.append(MetricSeries(metric=m.name, label=m.label, unit=m.unit, source=m.source, worse_when=m.worse_when,
-                                points=pts))
+                                scored=m.votes, points=pts))
     return out
 
 

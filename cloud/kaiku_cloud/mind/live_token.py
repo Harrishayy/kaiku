@@ -54,8 +54,17 @@ def model_path(model: str) -> str:
     return model if model.startswith("models/") else f"models/{model}"
 
 
-def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str, Any]]) -> dict[str, Any]:
-    """The BidiGenerateContentSetup (REST camelCase) for one Kaiku session. VAD knobs: config/kaiku.toml [live]."""
+def proactive(purpose: str | None) -> bool:
+    """Whether a conversation opened for this purpose may leave an input unanswered (`[live].proactive_audio_purposes`,
+    D49). Only a walk: its own clock sends nudges that deserve silence. Anywhere else the person's words always get
+    an answer, so the model must not be allowed to decline them."""
+    return purpose is not None and purpose in (get("live", "proactive_audio_purposes", []) or [])
+
+
+def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str, Any]], *,
+          proactive_audio: bool = False) -> dict[str, Any]:
+    """The BidiGenerateContentSetup (REST camelCase) for one Kaiku session. VAD knobs: config/kaiku.toml [live].
+    `proactive_audio` is off unless the caller says this conversation's purpose has it (`proactive`)."""
     vad: dict[str, Any] = {"disabled": False}
     for key, field in (("start_sensitivity", "startOfSpeechSensitivity"), ("end_sensitivity", "endOfSpeechSensitivity"),
                        ("prefix_padding_ms", "prefixPaddingMs"), ("silence_ms", "silenceDurationMs")):
@@ -82,9 +91,10 @@ def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str,
     decls = [{k: t[k] for k in ("name", "description", "parameters", "behavior") if k in t} for t in tools]
     if decls:
         s["tools"] = [{"functionDeclarations": decls}]
-    if get("live", "proactive_audio", False):
+    if proactive_audio:
         # "If enabled, the model can reject responding to the last prompt" (Live API reference, ProactivityConfig):
-        # a walk nudge with nothing worth saying gets no audio back.
+        # a walk nudge with nothing worth saying gets no audio back. With it on, the model also declined plain
+        # statements in a check-in (real session, D49), so every other purpose leaves the field out.
         s["proactivity"] = {"proactiveAudio": True}
     if get("live", "context_compression", True):
         s["contextWindowCompression"] = {"slidingWindow": {}}  # sessions longer than the audio context limit

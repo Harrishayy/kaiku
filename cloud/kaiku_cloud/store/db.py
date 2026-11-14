@@ -253,12 +253,16 @@ class Store:
         with self._lock:
             return [self._row_to_env(r) for r in self._db.execute(q, args).fetchall()]
 
-    def task_observations(self, home_id: str, since: str, until: str, limit: int = 100) -> list[dict[str, Any]]:
-        """Newest aggregate task envelopes only; bounded time range, no raw media or private mind tables."""
+    def task_observations(self, home_id: str, since: str, until: str, limit: int = 100,
+                          kind: str = "obs.play_session") -> list[dict[str, Any]]:
+        """Newest aggregate task envelopes only; bounded time range, no raw media or private mind tables.
+        `kind`: obs.play_session (the task) or obs.face_signs (what the camera counted during one, D52)."""
+        if kind not in ("obs.play_session", "obs.face_signs"):
+            raise ValueError("task observations are play sessions or their face signs")
         with self._lock:
             rows = self._db.execute(
-                "SELECT * FROM events WHERE home_id=? AND type='obs.play_session' AND ts>=? AND ts<=?"
-                " ORDER BY ts DESC, id DESC LIMIT ?", (home_id, since, until, min(100, max(1, limit)))).fetchall()
+                "SELECT * FROM events WHERE home_id=? AND type=? AND ts>=? AND ts<=?"
+                " ORDER BY ts DESC, id DESC LIMIT ?", (home_id, kind, since, until, min(100, max(1, limit)))).fetchall()
         return [self._row_to_env(row) for row in rows]
 
     def home_ids(self) -> list[str]:
@@ -298,6 +302,8 @@ class Store:
                 prefix = f"episode-thread:{home}:"
                 self._db.execute("DELETE FROM kv WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
                 self._db.execute("DELETE FROM kv WHERE key = ?", (f"invite:{home}",))
+                # ... and what they had agreed to today, with which screens were seen (mind/agree.py, D50)
+                self._db.execute("DELETE FROM kv WHERE key IN (?, ?)", (f"agree:{home}", f"screens:{home}"))
             self._db.execute("DELETE FROM explanations")  # cheap to regenerate
             self._db.execute("DELETE FROM kv WHERE key LIKE 'phq9_due:%'")
             self._db.execute("DELETE FROM kv WHERE key LIKE 'remember_off:%' AND substr(key, 14) NOT IN"

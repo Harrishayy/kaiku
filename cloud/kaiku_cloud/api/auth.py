@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 
 from ..settings import Settings
 
+TEAM_ONLY = ("/v1/admin/", "/v1/debug/")  # the admin role only; closed on a deployed demo
+
 
 class Access:
     def __init__(self, settings: Settings):
@@ -49,8 +51,9 @@ class Access:
             return None
         header = request.headers.get("authorization", "")
         token = header[7:].strip() if header.lower().startswith("bearer ") else None
-        if self.demo and self.deployed and path.startswith("/v1/admin/"):
-            # A deployed demo is public: reset, criteria overrides and paid jobs always need the admin credential.
+        if self.demo and self.deployed and path.startswith(TEAM_ONLY):
+            # A deployed demo is public: reset, criteria overrides, paid jobs and the developers' day view (every
+            # stored envelope of a home) always need the admin credential.
             if not (self.admin and token and hmac.compare_digest(token, self.admin)):
                 return JSONResponse({"detail": "admin credential required on a deployed service"}, status_code=401)
             return None
@@ -60,7 +63,7 @@ class Access:
         role, own_home = identity
         if role == "demo":
             return None
-        if path.startswith("/v1/admin/"):
+        if path.startswith(TEAM_ONLY):
             allowed = role == "admin"
         elif path == "/v1/patients" or path.startswith("/v1/patients/") or path in (
                 "/v1/health", "/v1/health/intelligence", "/v1/eval"):

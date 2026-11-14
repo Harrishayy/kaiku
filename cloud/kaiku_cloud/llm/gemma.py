@@ -37,11 +37,15 @@ def provider_label() -> str:
     return {"hosted": "Gemma via the Gemini API", "modal": "Gemma on our Modal GPU (vLLM)"}[provider()]
 
 
-def generate(prompt: str, timeout_s: float | None = None, *, task: str = "explain", home_id: str | None = None) -> str:
+def generate(prompt: str, timeout_s: float | None = None, *, task: str = "explain", home_id: str | None = None,
+             max_output_tokens: int | None = None) -> str:
+    """`max_output_tokens`: a caller whose answer is longer than `[gemma_hosted].max_output_tokens` allows (the
+    developers' day read) says so; the hosted adapter reserves and asks for that much. The Modal app keeps its own cap."""
     if provider() == "modal":
         return gemma_vllm.generate(prompt, timeout_s=timeout_s or float(get("gemma_modal", "timeout_s", 60)), task=task,
                                    home_id=home_id)
-    return gemma_hosted.generate(prompt, timeout_s=timeout_s, task=task, home_id=home_id)
+    more = {"max_output_tokens": int(max_output_tokens)} if max_output_tokens else {}
+    return gemma_hosted.generate(prompt, timeout_s=timeout_s, task=task, home_id=home_id, **more)
 
 
 __all__ = ["LlmUnavailable", "generate", "model_name", "provider", "provider_label"]

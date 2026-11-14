@@ -69,7 +69,9 @@ def test_record_is_reproducible_valid_and_ends_yesterday_with_today_empty(rows):
         assert row["sim"] is True  # the envelope stays truthful
         assert row["type"] not in {"obs.light_level", "obs.laptop_session", "obs.friend_link", "obs.safety_flag",
                                "obs.hrv_session"}  # robot pulse is not measured yet: never guessed
-        assert not {"force_mean", "daylight_min", "cadence_spm", "camera_method", "hr_before_bpm"} & row["payload"].keys()
+        assert not {"force_mean", "cadence_spm", "camera_method", "hr_before_bpm"} & row["payload"].keys()
+        # daylight on a walk is not measured (no glasses camera): only the watch's whole-day total exists (D53)
+        assert "daylight_min" not in row["payload"] or row["type"] == "obs.wearable_daily"
         if row["type"] == "obs.outing":
             assert row["source"] == "phone" and row["payload"]["method"] == "steps"
         if row["type"] == "obs.screen_activity":
@@ -78,7 +80,8 @@ def test_record_is_reproducible_valid_and_ends_yesterday_with_today_empty(rows):
     assert {"obs.self_report", "obs.drum_session", "obs.presence", "obs.speech_features", "obs.outing",
             "obs.screen_activity", "obs.play_session", "obs.wearable_daily", "obs.phq9", "obs.ritual",
             "obs.nudge_offered", "obs.nudge_outcome", "obs.intervention_response"} <= {row["type"] for row in rows}
-    assert {r["payload"]["game"] for r in rows if r["type"] == "obs.play_session"} == {"firefly", "pebbles", "tell", "breathe"}
+    assert {r["payload"]["game"] for r in rows if r["type"] == "obs.play_session"} == {
+        "firefly", "pebbles", "tell", "breathe", "lantern", "seeds", "watering"}
 
 
 def test_nothing_a_screen_could_show_says_it_is_made_up():
@@ -370,3 +373,194 @@ def test_a_reset_and_reseed_on_the_same_day_brings_her_open_thread_and_invitatio
     assert topics == ["the long lake loop with Leena on Saturday"] and store.kv_get(other) == {"result": 9}
     single_person.seed("http://localhost:18061", rows, jobs=False)  # seeding again without a reset adds nothing
     assert _invitation(api) == again
+
+
+# ---------------------------------------------------------------------------------------------- today's path games
+MEASURED = ("lantern", "seeds", "watering", "pebbles")
+GAME_METRICS = ("lantern_speed", "lantern_variability", "seeds_throughput", "watering_effort", "pebble_span")
+
+
+def played(rows, game):
+    return [r for r in rows if r["type"] == "obs.play_session" and r["payload"]["game"] == game]
+
+
+def test_measured_games_are_in_the_record_as_the_apps_send_them(rows):
+    for game in MEASURED:
+        sessions = played(rows, game)
+        index = [r["payload"]["session_index"] for r in sessions]
+        assert index == list(range(1, len(sessions) + 1)), game           # counted per game, in order
+        assert [r["payload"]["warmup"] for r in sessions] == [n <= 3 for n in index], game  # the first three are practice
+    for game in ("lantern", "seeds", "watering"):
+        for r in played(rows, game):
+            p = r["payload"]
+            assert (r["source"], p["device"], p["input"], p["valid"]) == ("phone", "phone", "touch", True)
+            assert len(p["rt_ms"]) == len(p["trial_codes"]) == p["trials_n"] and "flags" not in p
+            assert r["quality"] == round(max(.6, min(1.0, p["valid_n"] / p["trials_n"])), 2)  # GameHistory.quality
+    lantern = played(rows, "lantern")
+    assert [day_index(r) for r in lantern] == [i for i in range(16) if i != 10]  # every day but the one spent in bed
+    for r in lantern:  # the summary is what the trial record gives (LanternGame.session)
+        p = r["payload"]
+        answered = [x for x, code in zip(p["rt_ms"], p["trial_codes"], strict=True) if code in "hl"]
+        assert p["trials_n"] == 24 and p["valid_n"] == len(answered) >= 16
+        assert all((code == "l") == (x >= 500) for x, code in zip(p["rt_ms"], p["trial_codes"], strict=True) if code in "hl")
+        assert all(x == 0 for x, code in zip(p["rt_ms"], p["trial_codes"], strict=True) if code in "ma")
+        assert p["lapses"] == sum(c in "lm" for c in p["trial_codes"]) and p["false_starts"] == p["trial_codes"].count("a")
+        assert p["response_speed"] == round(fmean(1000 / x for x in answered), 3)
+        assert p["reaction_ms_median"] == sorted(answered)[len(answered) // 2] or len(answered) % 2 == 0
+    # the second game of the day comes by the calendar, as on the phone (GameRotation): seed shelf, pebbles, watering
+    turn = {"seeds": 0, "watering": 2}
+    lantern_days = {day_index(r) for r in lantern}
+    for game, slot in turn.items():
+        sessions = played(rows, game)
+        assert 4 <= len(sessions) <= 6
+        for r in sessions:
+            assert (FIRST + timedelta(days=day_index(r))).timetuple().tm_yday % 3 == slot and day_index(r) in lantern_days
+    seeds = played(rows, "seeds")
+    assert all(r["payload"]["throughput_per_min"] == round(r["payload"]["valid_n"] / 1.5, 2) for r in seeds)
+    assert all(r["payload"]["hard_choice_ratio"] == r["payload"]["trial_codes"].count("H") / 8 for r in played(rows, "watering"))
+    # the first lantern rounds that count come before the short nights, so there is a usual to compare them with
+    counted = [day_index(r) for r in lantern if not r["payload"]["warmup"]]
+    assert counted[:5] == [3, 4, 5, 6, 7] and max(counted[:5]) < min(DIP)
+    speed = {day_index(r): r["payload"]["response_speed"] for r in lantern}
+    usual, short = [speed[i] for i in range(3, 8)], [speed[i] for i in DIP if i in speed]
+    assert max(short) < min(usual) - .2 and speed[15] > min(usual) - .05  # slower after short nights, back by the end
+
+
+def test_the_new_games_are_charted_and_decide_nothing(rows):
+    """Lantern, seed shelf and watering add measures to Trends and History. The story does not move: with these
+    sessions taken out again, the rule gives the same state and the same verdict for every group on every day."""
+    with_games, without = Store(":memory:"), Store(":memory:")
+    single_person.populate(with_games, rows, END)
+    single_person.populate(without, [r for r in rows if not (r["type"] == "obs.play_session"
+                                                             and r["payload"]["game"] in ("lantern", "seeds", "watering"))], END)
+
+    def story(store):
+        return [(r.day, r.state, r.raw, r.agreement, r.held, r.acknowledged_by, {v.source: v.verdict for v in r.verdicts})
+                for r in replay(store)]
+
+    assert story(with_games) == story(without)
+    crit = service.active_criteria(with_games)
+    data = service.patient_data(with_games, "aino", crit, TODAY)
+    assert set(GAME_METRICS) <= data.series.keys() and all(crit.metric(m).enabled for m in GAME_METRICS)
+    assert len(data.series["lantern_speed"]) == 12 and len(data.series["pebble_span"]) == 8
+    from kaiku_cloud.analytics.drift import drift_for
+    seen = set()
+    for i in range(17):
+        day = FIRST + timedelta(days=i)
+        for name in GAME_METRICS:
+            status = drift_for(crit.metric(name), data.series[name], day, crit).status
+            assert status in ("normal", "insufficient"), (name, day)  # never a vote in this record
+            seen.add((name, status))
+    assert ("lantern_speed", "normal") in seen                    # the lantern does have a usual and is compared
+    assert ("seeds_throughput", "normal") not in seen and ("watering_effort", "normal") not in seen  # too few rounds yet
+
+
+FACE_METRICS = ("face_range", "face_smiles", "face_blinks", "face_range_chat", "face_smiles_chat")
+# Pinned on purpose (D52): the states the real rule reaches on Aino's seventeen days. The camera's numbers are in
+# the record now; if a line here ever has to change because of them, face signs have started to decide something.
+STORY_STATES = ["watch"] * 11 + ["needs_call"] * 6
+STORY_WORSE = {10: {"laptop"}, 15: {"robot", "wearable"}}
+
+
+def test_face_signs_are_in_the_story_and_decide_nothing(rows):
+    """With "Camera during activities" on, every game and phone check-in also has what the camera counted of her
+    face: quieter on the low days, back toward her usual after. The rule cannot see any of it: the same state, the
+    same verdict, the same confidence and the same evidence for every group on every day with and without those
+    records, and under the same rule version."""
+    faces = [r for r in rows if r["type"] == "obs.face_signs"]
+    assert len(faces) == 57 and all(r["sim"] and r["source"] == "phone" for r in faces)
+    assert all(r["quality"] == r["payload"]["coverage"] for r in faces)
+    assert {r["payload"]["method"] for r in faces} == {"arkit_blendshapes"}
+    assert {r["payload"]["task"] for r in faces} == {"firefly", "pebbles", "lantern", "seeds", "watering", "tell", "check_in"}
+    games = {r["id"] for r in rows if r["type"] == "obs.play_session"}
+    assert all((r["payload"].get("ref") in games) == (r["payload"]["task"] != "check_in") for r in faces)
+    # the authored arc: a quieter face on story days 10-13, half-way back on day 14, her usual on days 15-16
+    smiles = by_day([r for r in faces if r["payload"]["task"] != "check_in" and r["payload"]["coverage"] >= .6],
+                    "obs.face_signs", "smile_share")
+    spread = by_day([r for r in faces if r["payload"]["task"] != "check_in" and r["payload"]["coverage"] >= .6],
+                    "obs.face_signs", "expression_range")
+    usual = fmean(smiles[i] for i in range(9))
+    assert all(smiles[i] < usual * .45 for i in DIP) and usual * .45 < smiles[13] < usual * .8
+    assert all(smiles[i] > usual * .8 for i in (14, 15)) and all(spread[i] < spread[0] * .7 for i in DIP)
+
+    with_faces, without = Store(":memory:"), Store(":memory:")
+    single_person.populate(with_faces, rows, END)
+    single_person.populate(without, [r for r in rows if r["type"] != "obs.face_signs"], END)
+
+    def story(store):
+        return [(r.day, r.state, r.raw, r.agreement, r.held, r.acknowledged_by,
+                 {v.source: (v.verdict, v.confidence, v.last_data_at, [e.model_dump() for e in v.evidence])
+                  for v in r.verdicts}) for r in replay(store)]
+
+    told = story(with_faces)
+    assert told == story(without)
+    assert [state for _day, state, *_rest in told] == STORY_STATES
+    assert all({s for s, v in told[i][6].items() if v[0] == "worse"} == want for i, want in STORY_WORSE.items())
+    crit = service.active_criteria(with_faces)
+    assert crit.rule_version == service.active_criteria(without).rule_version
+    assert service.patient_data(with_faces, "aino", crit, TODAY).source_days == \
+        service.patient_data(without, "aino", crit, TODAY).source_days  # no coverage, no freshness from the camera
+
+    # They ARE compared with her own usual, and what the comparison finds is the authored arc.
+    data = service.patient_data(with_faces, "aino", crit, TODAY)
+    assert set(FACE_METRICS) <= data.series.keys() and not any(crit.metric(m).votes for m in FACE_METRICS)
+    from kaiku_cloud import course
+    from kaiku_cloud.analytics.drift import drift_for
+    away = {name: sorted((d - FIRST).days for _d, _v, p in course.readings(crit.metric(name), data.series[name], crit,
+                                                                            FIRST, END)
+                         for d in [_d] if p is not None and p.z >= crit.param(crit.metric(name), "z_threshold"))
+            for name in ("face_range", "face_smiles", "face_blinks")}
+    assert away == {"face_range": [9, 10, 11, 12], "face_smiles": [9, 10, 11, 12], "face_blinks": [9, 10, 11, 12]}
+    assert drift_for(crit.metric("face_smiles"), data.series["face_smiles"], FIRST + timedelta(days=12), crit).status == "drifting"
+    assert drift_for(crit.metric("face_smiles"), data.series["face_smiles"], END, crit).status == "normal"
+    # five check-ins on the phone are too few for a usual: shown as numbers, compared with nothing
+    assert len(data.series["face_smiles_chat"]) == 5
+    assert drift_for(crit.metric("face_smiles_chat"), data.series["face_smiles_chat"], END, crit).status == "insufficient"
+    # the session with too little of her face in view is stored and feeds nothing; the game in which her face was
+    # never in view has no face record at all (the apps send nothing when coverage rounds to 0)
+    assert all(r["payload"]["coverage"] > 0 for r in faces)
+    games_day_3 = {r["payload"]["game"] for r in rows if r["type"] == "obs.play_session" and day_index(r) == 3}
+    faces_day_3 = {r["payload"]["task"] for r in faces if day_index(r) == 3}
+    assert "firefly" in games_day_3 and "firefly" not in faces_day_3
+    # a check-in has no task record to point at; a game's face record points at its obs.play_session
+    ids = {r["id"]: r for r in rows}
+    assert all("ref" not in r["payload"] for r in faces if r["payload"]["task"] == "check_in")
+    assert all(ids[r["payload"]["ref"]]["type"] == "obs.play_session"
+               and ids[r["payload"]["ref"]]["payload"]["game"] == r["payload"]["task"]
+               for r in faces if r["payload"]["task"] != "check_in")
+    thin = next(r for r in faces if 0 < r["payload"]["coverage"] < .6)
+    day = FIRST + timedelta(days=day_index(thin))
+    same_day = [r["payload"]["smile_share"] for r in faces if day_index(r) == day_index(thin)
+                and r["payload"]["task"] != "check_in" and r["payload"]["coverage"] >= .6]
+    assert data.series["face_smiles"][day] == pytest.approx(fmean(same_day))
+
+
+def test_any_face_record_at_all_leaves_every_verdict_alone(rows):
+    """Not only the authored ones: face records before the record starts, on days with nothing else, with any
+    quality, in bulk. The rule reads none of it."""
+    from kaiku_contracts.registry import FACE_EXAMPLES
+
+    def face(day, hour, payload, quality, n):
+        stamp = datetime.combine(day, time(hour, n % 60), TZ)
+        return validate({"home_id": "aino", "source": "phone", "type": "obs.face_signs", "payload": payload,
+                         "sim": True, "quality": quality, "ts": stamp}).model_dump(mode="json", exclude_none=True)
+
+    extra, n = [], 0
+    for back in range(-5, 17):  # five days before her first day, through the last
+        for payload, quality in ((FACE_EXAMPLES["check_in"], .97), (FACE_EXAMPLES["landmarks"], .5),
+                                 (FACE_EXAMPLES["no_face"], 0.0), ({**FACE_EXAMPLES["check_in"], "task": "lantern",
+                                                                   "expression_range": 0.0, "smile_share": 0.0}, 1.0)):
+            n += 1
+            extra.append(face(FIRST + timedelta(days=back), 6 + n % 16, payload, quality, n))
+    plain, loaded = Store(":memory:"), Store(":memory:")
+    single_person.populate(plain, [r for r in rows if r["type"] != "obs.face_signs"], END)
+    single_person.populate(loaded, [*rows, *extra], END)
+
+    def story(store):
+        return [(r.day, r.state, r.raw, r.agreement, r.held,
+                 {v.source: (v.verdict, v.confidence, [e.model_dump() for e in v.evidence]) for v in r.verdicts})
+                for r in replay(store)]
+
+    assert story(loaded) == story(plain)
+    crit = service.active_criteria(loaded)
+    assert service.patient_data(loaded, "aino", crit, TODAY).first_day == FIRST  # the record still starts with her

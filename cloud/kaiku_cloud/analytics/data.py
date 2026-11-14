@@ -36,8 +36,9 @@ class Phq9Point:
 @dataclass
 class PatientData:
     home_id: str
-    series: dict[str, Series]  # enabled metrics only (names from criteria)
-    source_days: dict[str, dict[date, list[float]]]  # source -> day -> qualities (for confidence)
+    series: dict[str, Series]  # enabled metrics only (names from criteria), scored and shown alike
+    source_days: dict[str, dict[date, list[float]]]  # source -> day -> qualities (for confidence); never from a
+    # type that only shown metrics read
     last_data_at: dict[str, datetime]
     rule_readings: dict[str, list[Reading]]  # rule name -> chronological readings of its obs.field
     safety_flags: list[datetime]
@@ -68,14 +69,19 @@ def build(home_id: str, events: list[dict[str, Any]], crit: Criteria, actions: l
     rule_readings: dict[str, list[Reading]] = defaultdict(list)
     d = PatientData(home_id=home_id, series={}, source_days={}, last_data_at=last_data_at, rule_readings={},
                     safety_flags=[], acks=[], last_activity_at=None, sim=False, first_day=None)
+    # Observation types that only `role = "shown"` metrics read (camera face signs, D52) are kept, charted and
+    # cited, but the rule must not be able to see them: no coverage, no freshness, no first day of the record.
+    shown_only = crit.shown_types
     for e in events:
         ts = parse_ts(e["ts"])
         day = observation_day(e, crit)
         if d.last_activity_at is None or ts > d.last_activity_at:
             d.last_activity_at = ts
+        d.sim = d.sim or bool(e.get("sim"))
+        if e["type"] in shown_only:
+            continue
         if d.first_day is None or day < d.first_day:
             d.first_day = day
-        d.sim = d.sim or bool(e.get("sim"))
         role = SOURCE_OF.get(e["type"])
         q = e.get("quality")
         if role in source_days and (q is None or q >= qmin):

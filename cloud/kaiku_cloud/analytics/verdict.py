@@ -96,6 +96,7 @@ def verdict_for(data: PatientData, source: str, day: date, crit: Criteria, now: 
     conf = 0.0 if stale else confidence(data, source, day, crit)
     drifting = [d for d in drifts if d.status == "drifting" and weight[d.metric] > 0]
     improved = [d for d in drifts if d.status == "improved" and d.metric in better_ok and weight[d.metric] > 0]
+    # `metrics_for` never returns a `role = "shown"` metric, so one cannot reach this function at all.
     # weight-0 metrics are observe-only: charted, never a vote, and never what makes a source "sufficient"
     usable = [d for d in drifts if d.status != "insufficient" and weight[d.metric] > 0]
 

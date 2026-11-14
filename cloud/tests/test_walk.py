@@ -350,7 +350,7 @@ def test_invitation_brings_up_what_was_left_open_in_their_own_words(client):
     assert got["voice_key"] == "invite.talk.hard" and got["id"].startswith("thread:")
     assert invitation(client, surface="mac") == got  # the same one on every device, all day
     assert answer(client, "thread:999", "yes").status_code == 404
-    assert answer(client, got["id"], "not_now").json() == {"home_id": HOME, "invitation": None}
+    assert answer(client, got["id"], "not_now").json() == {"home_id": HOME, "invitation": None, "agreed": []}
     assert invitation(client) is None  # a not-now is final, and there is no second invitation today
     store = client.app.state.store
     tomorrow = datetime.now(UTC) + timedelta(days=1)
@@ -425,3 +425,34 @@ def test_invitation_respects_dont_remember_and_unknown_homes(client):
     assert invitation(client) is None
     assert invitation(client, home="nobody") is None
     assert client.get("/v1/me/invitation", params={"home_id": HOME, "surface": "glasses"}).status_code == 422
+
+
+# ---------------------------------------------------------------- who may answer with silence (D49)
+def test_only_a_walk_may_leave_an_input_unanswered(client):
+    """Proactive audio lets the Live model decline to answer. Right for a walk's own nudges; in a real check-in it
+    left "it has been a hard day" unanswered. So the setup carries it for the walk purpose only, on every surface."""
+    assert load_config()["live"]["proactive_audio_purposes"] == ["walk"] and "proactive_audio" not in load_config()["live"]
+    walks = [session(client), session(client, surface="iphone"), session(client, surface="iphone", purpose="walk", intent="talk"),
+             session(client, walk_style="playful"), session(client, walk_style="chatty")]
+    for body in walks:
+        assert body["live_setup"]["proactivity"] == {"proactiveAudio": True}
+    others = [dict(surface=s, intent=i, **({"purpose": p} if p else {}))
+              for s in ("iphone", "mac", "glasses", "robot", "web")
+              for i, p in (("talk", "talk"), ("checkin", "check_in"), ("talk", None), ("ritual", "ritual"), ("breathe", None))]
+    for kw in others:
+        r = client.post("/v1/companion/session", json={"home_id": HOME, **kw})
+        if r.status_code != 200:  # a surface that does not open this kind of session at all
+            continue
+        setup = r.json()["live_setup"]
+        assert "proactivity" not in setup, kw
+        assert setup["realtimeInputConfig"]["activityHandling"] == "START_OF_ACTIVITY_INTERRUPTS"  # the rest is unchanged
+    assert sum(client.post("/v1/companion/session", json={"home_id": HOME, **kw}).status_code == 200 for kw in others) >= 12
+    for body in (session(client, surface="iphone", intent="talk", purpose="talk"),
+                 session(client, surface="iphone", intent="checkin", purpose="check_in"),
+                 session(client, surface="robot", intent="ritual")):
+        text = body["system_instruction"]
+        assert "Always answer what the person says" in text and "never nothing" in text
+    assert "never let one pass in silence" in session(client, surface="iphone", intent="checkin", purpose="check_in")["system_instruction"]
+    assert live_token.proactive("walk") and not any(live_token.proactive(p) for p in ("talk", "check_in", "ritual", None))
+    assert "proactivity" not in live_token.setup("gemini-3.8-live", "Sulafat", "x", [])  # off unless a caller turns it on
+    assert live_token.setup("gemini-3.8-live", "Sulafat", "x", [], proactive_audio=True)["proactivity"] == {"proactiveAudio": True}

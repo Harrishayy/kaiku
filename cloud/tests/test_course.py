@@ -188,7 +188,7 @@ def test_reflections_become_summary_evidence_only_when_shared(mira, monkeypatch)
     prompts = []
     monkeypatch.setattr(gemma_hosted, "generate", lambda p, **kw: prompts.append(p) or json.dumps({"findings": [
         {"theme": "steady", "cites": ["source:glasses", "reflect:recent"],
-         "meaning": "Walks held at their usual level while two of the evening reflections sounded low, with sleep "
+         "meaning": "Walks held at their usual level while some of the evening reflections sounded low, with sleep "
                     "coming up.", "consider": "Ask about the evenings."}]}))
     out = get(mira)
     r = out.reflections

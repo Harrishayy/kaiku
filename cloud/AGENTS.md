@@ -57,7 +57,12 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/me/transcripts?home_id=` | `TranscriptsResponse` — opt-in conversation transcripts, newest first (D33) |
 | `DELETE /v1/me/transcripts/{episode_id}?home_id=` · `DELETE /v1/me/transcripts?home_id=` | `DeletedResponse` (404 if not that home's) |
 | `PUT /v1/me/memory_settings?home_id=` | `MemorySettings {remember}` — false = no memory writes |
+| `GET /v1/me/history?home_id=&days=30` | `PersonHistory`: the person's own numbers by local day and by session, from every device, in six groups; the one person-facing place with numbers (D48), and numbers only — see "The person's own numbers: History" |
+| `GET /v1/debug/day?home_id=&date=&generate=false` | `DebugDay`: one local day of one home for developers (envelopes, metrics beside baselines, verdicts, consensus with reasons, conversations as enums, model calls, a cited read); a plain GET never calls a model (`generate=true` asks for Gemma's read); admin only, closed on a deployed demo — see "One day for developers: the debug day" |
 | `GET /v1/me/invitation?home_id=&surface=iphone\|mac` · `POST /v1/me/invitation/answer?home_id=` `InvitationAnswer {id, answer: yes\|not_now}` | `InvitationResponse {home_id, invitation\|null}`: at most one thing a day Kaiku would like to bring up or offer, chosen by code (`mind/invite.py`); answer → `invitation: null`, 404 for an id that is not today's — see "Walking together, cards, call length, invitation" |
+| the same `GET /v1/me/invitation` · `POST /v1/me/agreed/answer?home_id=&surface=iphone\|mac` `AgreedAnswer {id, answer: opened\|put_aside}` | `InvitationResponse.agreed: AgreedActivity[]`: what the person said yes to today on any device (`mind/agree.py`), each with a template sentence, where and when it was agreed and its state (`open\|started\|done\|put_aside`); while one is open or started `invitation` is null. The answer returns the fresh response, 404 for an id that is not one of today's — see "An activity agreed in one place" |
+| `POST /v1/companion/tool` `agree_activity` | `result` = `AgreedResult {agreed, id, kind, name, when, on, where, already, listening}`; refused: `ok: false`, `error` (a sentence for the model), `result {agreed: false, reason: no_words\|not_a_yes\|no_screen\|gentle_day\|too_many}` |
+| `GET /v1/me/stream?home_id=&surface=` (Server-Sent Events, home token; `Last-Event-ID` or `last_event_id=`) | frames `hello` (`StreamHello`), `agreed` (`StreamAgreed`), `day` (`StreamDay`), `invitation` (`StreamInvitation`), `ping`: what changed for this home, ids and kinds only (`stream.py`) — see "An activity agreed in one place" |
 | `POST /v1/companion/tool` `feel` | `result` = `FeelPlan` (stance, depth, reflect_hint, recall, may_offer, follow_up_saved, scheduling): how to meet a noticed feeling for this person, decided by code — see "Notice and act" |
 | `POST /v1/companion/tool` `ask_mind` | `result` = `MindAnswer` (route memory › gemma › Gemini fallback tiers › scripted fallback; grounded cites, tags stripped) — see "Gemma-primary mind" |
 | `GET /v1/me/constellation?home_id=` | `ConstellationResponse`: people/places/likes/what helps/plans/activities + edges (no health data, scores, states, evidence ids) |
@@ -66,7 +71,7 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/me/sharing?home_id=` · `PUT /v1/me/sharing?home_id=` | `CareSharing {share_with_care_team}` — default **off** (D34) |
 | `POST /v1/companion/postcard` · `GET /v1/me/postcards/{id}` | `PostcardResponse {id, url, cached, model}` (Nano Banana 2 Lite, cached) · the image; **503 + `{detail, reason, hint}`** without a key / over the daily cap |
 | `GET /v1/health/intelligence?days=7` | `IntelligenceHealth`: per day/model/task calls, ok, fallbacks, p50/p95 ms; ask_mind `routes`; fallback rate |
-| `GET /v1/patients/{id}/tasks?days=7` | `TaskObservationsResponse`: latest 100 `obs.play_session` envelopes within 1–30 days, newest first; aggregate-only reaction/speech and optional local camera features with device/method/coverage/samples/source/quality/sim provenance; clinician/admin only |
+| `GET /v1/patients/{id}/tasks?days=7` | `TaskObservationsResponse`: latest 100 `obs.play_session` envelopes within 1–30 days, newest first; aggregate-only reaction/speech and optional local camera features with device/method/coverage/samples/source/quality/sim provenance; `face_signs`: the `obs.face_signs` envelopes of the same window (D52), tied to a task by `payload.ref`; clinician/admin only |
 | `POST /v1/patients/{id}/ask` | `ClinicianAskResponse` — clinician/admin only, grounded Gemma record question with verifiable `RecordCitation` entries and human-unit details; explicit template fallback, evidence/question cache and cooldown |
 | `GET /v1/patients/{id}/insight?generate=true` | `PatientInsight`: the intelligence layer in one care-team payload — `review` (Gemma findings, each citing `evidence` ids; numbers rendered by code), `trace` (steps that really ran), `comparison` (this week / week before / usual), `routine` (routines + what helps with interval), `graph` (permitted nodes/edges), `coverage`. `generate=false` never calls a model. See "Practitioner insight" |
 | `GET /v1/patients/{id}/brief` | `ClinicianBrief` (latest `POST /v1/admin/weekly` while it still matches this week's state and rule version; otherwise the template). Never reads the notebook |
@@ -128,7 +133,10 @@ kaiku_cloud/
                           per-finding validators → code-rendered facts, completeness guard, cache/cooldown, trace;
                           week comparison, help intervals, permitted graph, coverage (all deterministic)
   course.py               the course of change by code: per measure first day away from usual, furthest day, back in
-                          range / still away; care actions + PHQ-9 on one timeline; phase; learned graph links
+                          range / still away; care actions + PHQ-9 on one timeline; phase; learned graph links;
+                          readings() / day_tone(): one day's reading against that day's usual (trends band, graph)
+  graph_map.py            the insight graph as a map: the declared neighbourhood of every node (`[graph]`), what an
+                          activity produces, what a theme is about, each node's reading per day, what changed per day
   account.py              generic citable records for any obs type no metric covers, reflection overview (shared
                           only), the per-day plain-language account
   mind/affect.py          reflection summaries (level, tone, energy, themes; never words): rules at episode end,
@@ -138,8 +146,17 @@ kaiku_cloud/
                           recall, one offer), save the follow-up thread; no model call
   mind/walk.py            a walk session: style (config default), the nudge guide (`WalkGuide`), outdoor favourites
   jobs/settle_live.py     one-off: settle old Live reservations from what cloud databases recorded (dry run first)
+  history.py              GET /v1/me/history: the person's own numbers by day and session from `[history]` + the
+                          criteria's own reading rules; numbers only (D48)
+  debug_day.py            GET /v1/debug/day: one local day for developers; facts by code, a cited Gemma read checked
+                          claim by claim, deterministic read otherwise; never writes a state
   mind/invite.py          the daily invitation: open thread first, else best-response activity or a game they come
                           back to; one a day, a not-now is final; template sentences (`invite.*`); no model call
+  mind/agree.py           an activity agreed in one place (D50): the `agree_activity` rules (their own yes, a screen
+                          this home uses, extra-gentle day, one per kind), today's `agreed` list, answers, completion
+                          by observation, a crisis clears it, what the next conversation is told; no model call
+  stream.py               GET /v1/me/stream: in-process fan-out of "what changed for this home" (SSE), per-home
+                          replay buffer for Last-Event-ID, heartbeat, a slow listener is closed, never waited for
   week.py                 D34 dashboard: routines from obs (+ episodes for the person / when shared), going well /
                           worth a look (drift_for per metric, verdicts, bandit, safety, PHQ-9), graph view + sharing
   api/dashboard.py        /v1/me/week|graph|sharing, /v1/patients/{id}/week|graph (registered by main.py)
@@ -175,6 +192,8 @@ kaiku_cloud/
 tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py,
                           test_companion.py (mascot, garden, highlights, voice 404/503/cache),
                           test_week.py (routines, week wording, sharing gate, graph evidence),
+                          test_graph_map.py (declared neighbourhoods complete; for the seeded person the graph's
+                          days agree with the timeline band, the daily account and the course; nothing private),
                           test_mind.py (session, tools, memory rules, thread across surfaces, routines, tone, token)
 ```
 
@@ -307,7 +326,9 @@ late-night minutes; glasses as usual with a sub-threshold cadence dip → disagr
 | `KAIKU_VOICE_CACHE` | `[voice].cache_dir` (`logs/voice_cache`; `/data/voice_cache` on Modal) | rendered audio |
 | `GEMINI_API_KEY` (mind) | unset → `live_token: null` | mints Gemini Live ephemeral tokens for `/v1/companion/session` |
 | `[week]` in `config/kaiku.toml` | see file | routine thresholds (usual weeks, daily/most-days share, kept/partly ratios, sleep shift, helped_min) for `week.py` |
+| `[graph]` in `config/kaiku.toml` | see file | the insight graph as a map for `graph_map.py` / `course.learned`: `days` (per-day window, 28), `follow_days` (3), `back_days` (7), `together` (6), `[graph.produces]`, `[graph.about]`, and the eight `[[graph.domain]]` neighbourhoods with their compass places. Read once per process; a malformed entry is skipped, never an error |
 | `KAIKU_VOICE_LINES` | `config/voice_lines.toml` | keyed script (re-read on change) |
+| `[agree]`, `[stream]` in `config/kaiku.toml` | see file | agreed activities (limits, the yes / ask / hedge / no word lists, names, which observation completes which kind) for `mind/agree.py`; the stream's heartbeat, replay buffer, listener limits and hidden types for `stream.py` (D50). Read once per process |
 
 Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
 PHQ-9 cadence/mode: `config/kaiku.toml [ritual] phq9_every_days`, `phq9_mode` (spoken|both → the cloud queues
@@ -464,6 +485,9 @@ readable but cannot cause an unavailable activity to be selected.
 - Clinician record-chat citations may describe task participation and usable-face coverage/sample provenance;
   expressivity and movement index values are excluded from the model's evidence. `task:<event UUID>` citations
   link back to the aggregate inspection record. Camera opt-in and on-device capture are implemented by app owners.
+  (D52 changes this for the new `obs.face_signs` record: its counted movements are metrics, shown and not scored,
+  and record chat states them as counts; see "Face signs" below. The older `PlaySession` camera fields stay as
+  described here.)
 - `tests/test_task_observations.py` covers web/phone round trips, roles/home isolation, newest-first/date/100-row
   bounds, optional/zero-face metadata, raw-media rejection, unchanged analytic inputs and bounded model evidence.
 
@@ -557,7 +581,8 @@ readable but cannot cause an unavailable activity to be selected.
   code-computed direction (better/worse/similar/unknown) and a `sustained` flag (rule engine: source verdict
   worse, metric drifting, routine slipped). Gemma returns findings `{theme, cites, meaning, consider}`. Code
   rejects a finding one by one, by content-free category shown in the trace: `invalid_shape`, `unknown_citation`,
-  `numbers_in_prose` (any digit), `wording` (banned terms, wording linter, state talk), `causal_claim`,
+  `numbers_in_prose` (any digit, and since v15 any number, month or weekday written as a word), `wording` (banned
+  terms, wording linter, state talk), `causal_claim`,
   `direction_mismatch` (theme vs recorded direction; `change` needs a sustained record, so a week-to-week dip
   inside the usual range can never be called a change from usual), `duplicate`. Titles, facts, numbers and the
   headline are rendered by code. A signal group with a sustained change that no accepted finding covers gets its
@@ -643,11 +668,37 @@ readable but cannot cause an unavailable activity to be selected.
 - **Facts** are one plain sentence each ("Mood dial 3 of 5 this week, down from 4 of 5 the week before and below
   their usual 4 of 5; away from usual on 3 of the last 5 scored days."). Dates print as "9 Nov" everywhere a
   practitioner reads them; source verdicts read "Sustained change from their usual." etc.
-- **Graph layers**: every node/edge has `layer: learned|structure`. Learned: `moved_first`, `followed` (order,
-  not cause), `moved_together` (away on the same days, different groups), `kept_through` / `slipped_during`
-  (routine days while measures were away), `after` (care action → what came back, at most six), `helped`
-  (attempts + certainty), `keeps`, `talked_about`, and `shared_topic` count nodes. With sharing on, notebook
+- **Graph layers**: every node/edge has `layer: learned|structure`. Learned (`course.learned`): `moved_first`
+  (every measure that moved on the first day, the most marked first), `followed` (from the measures the course
+  summary names to each one whose first day away came within `[graph].follow_days`; order, not cause),
+  `moved_together` (away on the same days, different groups; the closest overlaps, `[graph].together`),
+  `kept_through` / `slipped_during` (routine days while measures were away), `after` (a care action → every
+  measure back within its usual in the `[graph].back_days` after it; a care action is a node even when nothing
+  moved), `helped` (attempts + certainty), `keeps`, `talked_about`, and `shared_topic` count nodes. Dated links
+  carry `on[]` (the days they speak of) and a short `tag` ("+1 day", "4 days"). With sharing on, notebook
   categories appear as counts only ("People in their notebook · 3"): never a name, place or sentence.
+- **Graph map** (`graph_map.py`, declared in `config/kaiku.toml [graph]`; nothing in it is guessed by the browser
+  or learned by a model, and nothing in it touches the consensus):
+  - *Neighbourhoods*: `[[graph.domain]]` lists the parts of a life (`id`, `label`, `short`, a compass `place`)
+    and what belongs to each: `activities`, `obs` types, `measures` (a metric name overrides its obs type),
+    reflection `themes`, notebook `topics`, node `kinds`. Every node gets `domain`; `InsightGraph.domains` carries
+    the list. A new metric, activity or theme without a neighbourhood fails `tests/test_graph_map.py`.
+  - *`produces`* (activity or routine → measure): `[graph.produces]` names the observation types (or metric
+    names) a session of the activity yields; `criteria.toml` says which metric reads which type. The edge exists
+    only for days both were recorded (`evidence` = those days; a night's sleep counts with the morning after).
+  - *`about`* (theme → activity or routine): `[graph.about]`, declared.
+  - *Days*: `InsightNode.days[] {date, tone, value, text}` over the last `[graph].days`. A measure's tone is that
+    day's reading against that day's usual: `course.readings()` + `course.day_tone()`, the same baseline,
+    threshold and "prints the same as the usual" rule as the trends band and the course. An activity carries the
+    time it was done, a routine kept / missed (missed only for the daily routines the daily account names, on
+    recorded days), a theme the days it came up (a count), a care action the day it was logged.
+  - *What changed*: `InsightGraph.days[] {date, recorded, away, changes[]}` for every calendar day of the window:
+    `care`, `moved_away`, `came_back`, `better`, `missed`, `first`, `kept`, each with the node, a sentence and a
+    `tag` taken from the course ("first to move", "2 days after the first change", "1 day after the care team
+    follow-up"). A single day outside the usual that the course does not count as a spell is tagged "this day
+    only" and its return is not announced.
+  `tests/test_graph_map.py` proves for the seeded person that the graph, the timeline band, the daily account
+  and the course agree day by day, and that no notebook or reflection words reach the graph.
 - **Reflections** (`mind/affect.py`): per finished conversation `{valence: low|neutral|bright, themes ≤ 3 of a
   fixed list, declined}` in `kv affect:<home>`. Text is read only when the device sent a transcript (the person's
   opt-in); otherwise only `declined` from the outcome. Crisis conversations get none. Rules at episode end;
@@ -672,7 +723,8 @@ readable but cannot cause an unavailable activity to be selected.
 5. With no cloud code it becomes a citable record `obs:<name>` (`account.generic_records`: days recorded, who
    sent it, the latest payload's numbers / yes-no / short enums), is sent to Gemma, can be cited in findings,
    and sits in the graph under its signal group. Add a display name in `insight.OBS_LABEL` if the type name
-   reads badly.
+   reads badly, and name the type in a `[[graph.domain]]` of `config/kaiku.toml` so the map shows it in its part
+   of life (without that it is listed under "Other records"; a metric without one fails `test_graph_map.py`).
 6. To make it count toward the verdict, the course and week comparison: add a `[[metric]]` block in
    `config/criteria.toml` (still no code). It then gets a personal usual, onset / back-in-range events and
    `moved_first` / `followed` links like every other measure.
@@ -796,8 +848,13 @@ decides in code what to do about it.
   the outdoor favourites with "say it as a question", `remember` category places for a favourite they point out,
   the spotting game tools, and how to treat the walk's own clock lines (answer only when worth it, otherwise no
   sound). On an `extra-gentle` day a playful or chatty walk also gets "today's tone comes before the style": no
-  game and no suggestion unless they ask. `live_setup.proactivity.proactiveAudio` (`[live].proactive_audio`) is what lets the model decline; the
+  game and no suggestion unless they ask. `live_setup.proactivity.proactiveAudio` is what lets the model decline; the
   device drops a nudge reply's audio until its transcription has a real word (measured: D45).
+- **Only a walk may answer with silence (D49).** `live_setup` carries `proactivity` only when the session's purpose
+  is in `[live].proactive_audio_purposes` (`["walk"]`; `live_token.proactive`, any surface). For a talk, a
+  check-in, the ritual and a session with no purpose the field is absent, because with it the Live model left
+  plain statements unanswered in a real check-in. The persona ("How Kaiku speaks", "Passing chat") says to always
+  answer the person's own words. Tested per purpose and surface in `tests/test_walk.py`; real Live runs in D49.
 - **Tools**: `set_walk_goal`, `log_walk_moment` (device; glasses always, phone only on a walk: registry
   `walk_only_on`, `for_surface(surface, walk=)`), `suggest_activity` (device; phone and Mac). The cloud validates
   and logs the tool name only; nothing is stored or derived from a walk game or a card. `assemble.CARD_RULE` is in
@@ -854,3 +911,456 @@ decides in code what to do about it.
 - Tests: `tests/test_live_settle.py`, `contracts/tests/test_budget.py`. Every cloud test gets its own ledger file
   (`conftest.own_spend_ledger`): no test opens `logs/spend.sqlite`.
 
+## The person's own numbers: History (2026-11-14, D48)
+- `GET /v1/me/history?home_id=&days=` (default `[history].default_days` 30, 1 to `max_days` 90; home credential,
+  like every `/v1/me` route) → `PersonHistory {home_id, days, first_day, last_day, timezone, groups[], sim}`.
+  Groups in a fixed order (`robot, games, walks, checkins, sleep_body, mac, camera`); a group or measure with nothing in
+  the window is left out. `history.py`, no model call.
+- **Which measures:** `config/kaiku.toml [history]`. A `[[history.measure]]` whose `key` is a criteria metric is
+  read with that metric's obs type, field, filter and aggregation through `analytics.metrics.extract`, the same
+  quality gate and `observation_day`, so its days are the practitioner side's numbers (tested against
+  `service.patient_data` and, on the wire, against `/v1/patients/{id}/timeline`). A measure with its own `obs` /
+  `field` / `agg` is a stored reading no metric scores (drum taps, ritual steps, heart rhythm after breathing,
+  breathing pace, the watch's exercise minutes, Mac breaks, breathing and telling time).
+- **Per measure:** `key`, `title`, `unit`, `format` (`clock` = minutes after local midnight; since D53 `percent`
+  and `duration`, see "How a value is to be read" below), `decimals`,
+  `per_day` (how a day is made from its sessions), `devices` (from the real envelope source: `head`, `sensors`,
+  `hub`, `friendlink` are `robot`; the watch summary relayed by the phone is `watch`; a dial is its channel),
+  `days[] {date, value, sessions, sim}`, `usual {low, high}` (their own baseline for today, median plus and minus
+  `[history].usual_scale` spreads, never below zero; null without a baseline), `sessions[]` newest first, at most
+  `sessions_per_measure`, each `{id, ts, device, sim, warmup?, label?, values[]}` with the numbers of that session
+  from `[history.session]`. A practice round is listed with `warmup: true` and is not in the day's value; a
+  measure whose only sessions are practice rounds has sessions and no days.
+- **Differs from the practitioner's chart on purpose:** a day without a reading is absent (the rule counts some
+  measures as zero that day and still does when the usual range is worked out); today's running total is shown
+  as it stands; and since D53 a total of the day before from an Apple Health summary stands on that day, where
+  the timeline keeps the summary's date (see "Which day a Health number stands under" in the D53 section).
+- **Never in it** (D48; `tests/test_history.py` checks the response of a home in "needs a call", again with a
+  safety flag, the config and the contract): state, verdicts, z, flags, weights, thresholds, direction words,
+  the review, care actions, safety flags, PHQ-9, engagement, suggestions and responses. Since D52 the camera's
+  counts of face movement are in it, in a group of their own (`camera`, "Camera during activities"), as numbers
+  with plain titles: never a feeling word, never mixed into another group (tested).
+  The module reads no verdict and no consensus.
+- **Tap it back (D51):** `obs.tap_back` (the robot's rhythm game) is consumed here and nowhere else. Two measures
+  in group `robot`, both stored readings no metric scores: `tap_back_songs` ("Tap it back: songs on the beat",
+  `levels_passed`, the day's highest) and `tap_back_timing` ("Tap it back: timing", `error_pct` in "% from the
+  song's tempo", the day's average); a session lists songs on the beat, songs played, timing, steadiness, taps and
+  time. Numbers only: no band word, no "missed", nothing about a level she did not match. It is in no verdict, no
+  baseline of the drum's, no consensus and no review prompt as a metric (`config/criteria.toml` has no metric for
+  it; `insight.OBS_LABEL` only names the record, and `[graph]` lists it under the morning ritual so the record
+  count is right). Checked on a throwaway cloud on 2026-11-14: one posted observation → both measures on that day
+  in `GET /v1/me/history`. Tests: `tests/test_history_tap_back.py`.
+
+## One day for developers: the debug day (2026-11-14)
+- `GET /v1/debug/day?home_id=&date=YYYY-MM-DD&generate=false` → `DebugDay`. Default date: today in the home's
+  timezone. **`generate` defaults to false: a plain GET never calls a model**; `generate=true` asks for Gemma's
+  read. 404 unknown home, 422 a day that has not happened. **Admin only, and closed on a deployed demo**
+  (`api/auth.py TEAM_ONLY`, the same rule as `/v1/admin/*`); open in a local credential-free demo. `debug_day.py`.
+- **What it holds for the local day [day_start, day_end):** `first_day` (the record's first local day, for a day
+  picker); `events` (every envelope stamped in the day, plus a
+  daily summary that measures this day but arrived later; payload compacted, with the metrics it counted toward
+  and `day`, the local day it counts toward);
+  `metrics` (every criteria metric of an active group beside its baseline: value, readings, median, spread, days,
+  z, worse-signed z, direction, threshold, beyond today, drift status and counts, weight, enabled, scored =
+  not observe-only, flagged, `partial` for today's running total); `verdicts` (per group: verdict, confidence
+  against its minimum, worse and better weight against what the rule needs, rules fired, evidence, the day
+  before, and `insufficient_reason` in the rule's own order: `stale | low_confidence | no_usable_metric`);
+  `consensus` (state, the day alone, held, agreement, rule version, reasons by code, what changed since
+  the day before: the state's own changes first, then groups, then measures); `conversations` started that day
+  (surface, intent, outcome, tool names with `tools_in_order`, `feel` moments as enums
+  with the plan's stance and depth, counted Live minutes, whether a transcript is kept: never a word);
+  `model_calls` (this home's `model_calls` rows with provider, and the spend ledger's estimate when one row
+  matches by model, task and time; tokens and cache hits are not recorded: null); `facts`; `read`.
+- **A past day** is recomputed with today's criteria over the record as it stands: the values are the
+  practitioner chart's, the verdicts and state are `consensus.replay` ending that day, with acknowledgements and
+  flags counted up to the day's end.
+- **The read** (`DebugRead`): code decides `reading` (`as_usual | slight_shift | clear_shift | not_enough_data`,
+  `[debug_day].slight_z`, `clear_beyond`, `min_scored`) and writes the citable `facts` (`metric:`, `source:`,
+  `consensus:state`, `missing:`, `tomorrow:`, `event:`; `tomorrow:` facts add one more scored day to each window,
+  beyond or within; `tomorrow:state` says what the replay does next: an acknowledgement ends the hold, so an
+  acknowledged needs_call follows the day's own result). A fact is never cut inside an item: each list in it has
+  its own cap (`[debug_day].changed_max`). Each fact carries `numbers` and `flags`, the yes/no facts a sentence
+  citing it may state: `held`, `acknowledged`, `safety` (consensus, `tomorrow:state`), `enough_data` (a group),
+  `scored` (a measure), `beyond` / `within` (a measure's side of its threshold on this day; on the consensus:
+  some scored measure is). Gemma (`[debug_day].prompt`, task `debug_read`, its own `max_output_tokens`) writes
+  `summary`, `moved`, `missing`, `tomorrow`, `rule_check` as sentences citing fact ids, and is told which
+  measures moved (`DAY.moved`, code's list). Code keeps a sentence only
+  if: the ids exist and are at most eight (`unknown_citation`, `too_many_cites`; the instruction asks for six),
+  it cites a fact of its section (`wrong_section`), a line about tomorrow that speaks of the state cites the
+  state's own fact (`state_not_cited`), every number in it is written in a fact it cites, to the decimals it
+  writes (`number_not_in_data`), and, when the sentence is about one measure, a number before "above / below" is
+  the distance, the spreads or the percentage on the right side, "A of the last B scored days" are its counts and
+  a weight is its weight (`number_in_wrong_role`) and a status word is its status (`status_mismatch`); every yes
+  or no the sentence states is what a cited fact carries, and held / acknowledged / safety are stated only on a
+  fact that carries them (`yes_no_mismatch`: a "not" in the same clause turns the statement, a condition such as
+  "until it is acknowledged" states nothing); it does not call the day another reading (`reading_mismatch`); no
+  id or metric key is written in the text (`id_in_text`; a bracketed citation is taken out instead); and the
+  practitioner review's wording checks pass (`wording`, `overclaim`, `filler`). One corrective retry whenever
+  something was rejected or left out (`[debug_day].retry_note`); the fuller of the two answers is shown and
+  `rejected` counts both attempts. **A read is Gemma's when its summary stands.** Every measure in `DAY.moved`,
+  the state's and each group's line about tomorrow and the rule check are then always present: the model's
+  sentence when it passed, otherwise code's own line marked `by_code` (`moved_left_out`, `tomorrow_left_out`
+  count them). Without a valid summary the same shape is written by code with `by: deterministic` and
+  `fallback_reason` (`not_requested | cooldown | provider_unavailable | over_budget | invalid_json |
+  no_valid_claims`). `attempts`, `latency_ms` and `est_usd` (the spend ledger's rows for this task while the ask
+  ran; about half a cent a call) describe the ask.
+- **Cache:** `kv debug-read:<home>:<date>`, valid while the digest of read version, the instruction, rule version,
+  model, date, reading and every fact is unchanged. A generated read is stored, and so is **a failed ask the model
+  answered** (`invalid_json`, `no_valid_claims`): it comes back as the deterministic read with `failed: true`,
+  `cached: true`, its reason, rejection counts, attempts and cost, and the model is not asked again until the
+  digest changes (the day's data, the rule, the instruction). A provider or budget failure is not kept.
+  `[debug_day].cooldown_s` per home and date.
+- **Never changes anything:** it writes no summary, verdict or state (tested: the stored summary and the day's
+  consensus are the same before and after a read that argues with the rule).
+- **Limits:** the checks read set phrases (a number before "above / below", "A of the last B scored days", the
+  status words, the yes/no words), not every way a sentence can misuse a real number or name the wrong state,
+  which is why the facts are returned beside the read. `feel` moments exist only for conversations whose timeline
+  is kept (remembering on, no crisis; the latest 30), and carry stance and depth only from this change on. Tool
+  names are in call order while a conversation is open and one of each, sorted, after the device uploads it:
+  `mind/session.py record_episode` leaves `kv episode-uploaded:<home>:<id>`, and `tools_in_order` is true, false,
+  or null for a conversation uploaded before that marker existed.
+- `llm.gemma.generate(..., max_output_tokens=)` lets a caller ask for a longer answer than
+  `[gemma_hosted].max_output_tokens`; the estimate reserved is for that cap. Only the day read uses it.
+- Tests: `tests/test_debug_day.py`.
+
+## Today's path games in the authored record (2026-11-14)
+- `jobs/single_person.py` now carries Lantern (every evening but the one spent in bed: 15 sessions), Seed shelf
+  (4) and Watering (6) by the calendar rotation the phone uses (`ROTATION`, day of year modulo 3), and Pebble path
+  sessions carry `session_index` and `warmup` too. Trials, validity and envelope quality are as the apps send
+  them; the lantern's summary numbers are computed from its trial record. 404 observations for a record ending
+  13 Nov (the rotation follows the calendar, so the count can differ by one or two for another end date).
+- The lantern has a usual from its rounds on days 4 to 8 and is compared from 9 Nov: beyond its threshold on 9 and
+  10 Nov (two days, never the three a drift takes), back within it from 11 Nov. Seed shelf and Watering have too
+  few counted rounds for a usual. `test_the_new_games_are_charted_and_decide_nothing` pins that the rule gives the
+  same state and the same verdict per group on every day with and without these sessions.
+- `clinician_chat.human_value` prints a generic value with at most three decimals (the timeline's precision), so
+  a median of two readings prints the same in every panel.
+
+## An activity agreed in one place (2026-11-14, D50)
+Say yes to the robot or on a walk, and the phone and the Mac have it at once.
+- **Tool `agree_activity`** (cloud, every surface, blocking): `{kind: Activity, said?, line? ≤ 80, when?: now|later}`.
+  The voice calls it when the person clearly said yes to an activity that is not starting here and now on that
+  device. `session.run_tool` runs the crisis gate first as for every tool; `mind/agree.py` then decides:
+
+  | case | outcome |
+  |---|---|
+  | no `said`, or it carries a hedge or a no (`[agree] hedge / no`), or neither a yes nor their own ask (`yes / ask`) | refused `no_words` / `not_a_yes` |
+  | the kind has no screen on a phone or Mac this home uses | refused `no_screen` |
+  | the card tone would be `extra-gentle` and their words are not their own ask | refused `gentle_day` |
+  | that kind is already open today | the same item, `already: true`, nothing added |
+  | `[agree].max_open` items already open | refused `too_many` |
+  | the questionnaire | not an `Activity`: refused by the tool schema |
+
+  A refusal is `ok: false` with an `error` written for the model ("Not kept: … do not say it is on a device") and
+  `result {agreed: false, reason}`. Kept: `AgreedResult` with `where` ("your phone and your Mac") for the voice
+  to say, and `listening` (screens whose stream is open this second). `said` is checked and never stored;
+  `line` is kept only if it passes the wording linter and the health-detail check.
+- **The person's screens** (`agree.screens`, kv `screens:<home>`): `iphone` / `mac` count when that app asked for
+  the home's invitation or opened its stream, or the home has observations from `phone` / `laptop`, within
+  `[agree].screen_days`. A home with neither gets `no_screen`: the voice never says something is on a device
+  nobody has.
+- **State** (kv `agree:<home>`): `open` → `started` (`POST /v1/me/agreed/answer` `opened`) → `done`, or `put_aside`
+  (final). `done` comes only from an observation: `agree.ingested` runs for every home after `POST /v1/events`
+  stored something new (and after the cloud's own crisis flag); a row of `[[agree.done_by]]` that matches, stamped
+  the same local day and not more than `[agree].clock_slack_s` before the yes, completes it. Items belong to their
+  local day (`settings.TZ`): after midnight they are not listed, completed, answered or mentioned. A crisis
+  (a crisis phrase in any tool call, or an ingested `obs.safety_flag`) removes every open item.
+  `store.delete_sim` drops both kv rows with a wiped home.
+- **One read:** `GET /v1/me/invitation` = `agree.response`: `agreed` (today's items, every state, oldest first; `text`
+  from `config/voice_lines.toml` `agreed.<surface where it was agreed>`, names from `[agree.names]`; `opens_here`
+  for the asking surface) and `invitation`, which is null and not picked while an item is open or started.
+- **The next conversation** (`session.start_session` → `agree.card_lines` → `ContextCard.agreed`, rendered by
+  `assemble.AGREED_LINE`): "a walk (they said yes with the robot): not done yet" / "… done since", once per phase
+  per item, on whichever surface talks next. Not the item agreed in the same session (a resumed call), not one put
+  aside, nothing with `others_present`.
+- **Prompt:** `assemble.AGREE_RULE` is compiled into every surface that serves the tool, with the activities that
+  body cannot start (phone and Mac screens minus its own). `feel` plans carry `offer_elsewhere` when the offer has
+  no screen on this body but one on the phone or Mac. Persona: one line under "Tools", one under "How Kaiku makes
+  someone comfortable".
+- **Stream** (`stream.py`, `GET /v1/me/stream?home_id=&surface=`): one `Hub` per API process (`stream.of(store)`),
+  `publish(home, name, data)` from any thread, never blocking. Events: `agreed {id, kind, state: open|started|done|
+  put_aside|removed, surface, when, on, day}`, `day {day, types, sources}` after every ingest that stored
+  something (`[stream].hide_types` are never named), `invitation {id, state: answered}`. `hello` first (no id),
+  `ping` every `[stream].heartbeat_s` of quiet. Ids are `<epoch>-<n>`: `Last-Event-ID` (or `last_event_id=`) gets
+  what was missed from the home's buffer (`[stream].replay`); another process's id or one older than the buffer
+  gets `hello.resync: true`. A listener whose queue (`[stream].queue`) fills is closed; the oldest goes beyond
+  `[stream].max_listeners` per home. Authorization is the ordinary home rule (`api/auth.py`: `home_id` in the
+  query). Events carry ids and kinds, never words, values or states of the person (pinned by tests).
+- **Measured locally** (uvicorn, 2026-11-14): tool call → `agreed` frame on two open streams in about 0.04 s; a
+  closed client is forgotten within 0.03 s; the stream also runs behind the `after_write` middleware the Modal app
+  installs. **Stopping a server:** uvicorn waits for open responses, so a server with a stream open does not stop
+  on SIGTERM until its clients leave (measured: still up after 11 s); `make cloud-local` now passes
+  `--timeout-graceful-shutdown [local_api].graceful_shutdown_s` (3 s). Start any other server the apps stream
+  from with that flag.
+- **Modal** (read in the docs on 2026-11-14, not run): the app is one ASGI container, so in-process fan-out is
+  correct there too. Modal's streaming guide describes FastAPI `StreamingResponse` and says `text/event-stream`
+  is returned as it is produced; it shows this for its FastAPI endpoints and does not name `asgi_app`. Its
+  request-timeout page gives web functions (`asgi_app` included) a 150 s HTTP limit followed by a 303 redirect,
+  and does not say whether a response that has already started is cut. Expect therefore: a stream may be ended
+  after 150 s, or at the function `timeout` (600 s) at the latest, and the app reconnects with `Last-Event-ID`
+  (same process, so nothing is missed). An open stream is a request in flight, so it very likely holds one of
+  the `@modal.concurrent(max_inputs=50)` slots for as long as it is open (Modal says so for WebSockets): more
+  than a few dozen open apps needs a higher `max_inputs`, or a separate stream function with a shared channel
+  (see `stream.py`). None of this has been tried on a deployment.
+- **Real Live check** (2026-11-14, `gemini-3.8-live`, glasses, chatty walk, typed lines, a home with both apps'
+  streams open): Kaiku offered "a few slow breaths together when you get back home"; on "Yes, let's do that when
+  I'm home." it called `agree_activity {kind: breathe, said: "Yes, let's do that when I'm home.", when: later}`
+  once and said "It's on your phone and your Mac." In a second session it offered something for the evening,
+  heard "Maybe. I'll see how I feel.", called nothing and said "Sounds completely fine. I'm here if you decide
+  you'd like to do it later." One run each; a spoken yes through the microphone was not tried, and neither was
+  a refusal reaching the live model (what it says after "Not kept" is covered by the text evals only).
+- **A session that never talks still uses up the mention:** `ContextCard.agreed` is marked as told when a
+  session is opened, not when Kaiku has said it. A bootstrap that never becomes a conversation (seen with a
+  script that opened a session only to read the card) leaves the next real conversation without the line.
+- **Not done here:** no push service. A suspended phone has no open stream: it shows the item when the app next
+  opens and reads the invitation. Nothing schedules a reminder at a time for `when: later`.
+- Tests: `tests/test_agree.py`, `tests/test_stream.py` (the hub alone and through a real uvicorn server),
+  `hub/tests/test_agree.py`, `tools/tests/test_agree_evals.py`. Evals: `tools/companion_evals/scenarios/agree.yaml`.
+
+
+## Face signs: shown, citable, not scored (2026-11-14, D52)
+- **What arrives:** `obs.face_signs` (contract: `contracts/AGENTS.md` → "Face signs"): what the phone or Mac camera
+  counted during one game or check-in chat, as numbers, after the person turned on "Camera during activities".
+  Movements of the face, never an emotion. Nothing is recorded: the cloud has no field a frame could arrive in, and
+  ingest rejects one.
+- **The state "shown, not scored"** (`config/criteria.toml`, `role = "shown"`): a face metric is extracted with
+  the same quality gate and `at_least` minimums, gets a baseline, a z and a chart like any other, and can be
+  cited. It is never read by a verdict (`Criteria.metrics_for` leaves it out), and its observation type adds no
+  coverage, freshness or first day to the Apps group (`analytics/data.py` skips `crit.shown_types`). `rule_version`
+  is the hash the file had before the face metrics (`consensus-v1+db93b715`, tested). One line of config lets one
+  vote later: delete its `role = "shown"` line (the rule version then changes, and the record is replayed).
+- **Pinned by tests:** `tests/test_single_person.py::test_face_signs_are_in_the_story_and_decide_nothing` (the
+  seeded record with and without its 57 face records: same daily states, same verdicts, confidence, evidence,
+  `last_data_at`, source days and rule version) and `::test_any_face_record_at_all_leaves_every_verdict_alone`
+  (extreme face records on every day change nothing); `tests/test_face_signs.py` for everything below.
+- **Where it shows.** Practitioner: `/timeline` series with `scored: false` (Trends), the week comparison
+  (its sentence ends "Shown only: no vote in the consensus."; group counts and
+  trend come from scored measures, plus "N more are shown without a vote."), the course of change (own events with
+  the same note; the summary, phase, counts, status line and first movers use scored measures only, then one
+  sentence "Shown, not scored: …"), the knowledge graph (`[graph.produces]`, edge label "…, shown not scored"),
+  `/tasks` (`face_signs`), record chat (`clinician_chat.face_detail`: capture, then counts, then "not an emotion
+  or wellbeing measure, and no vote in the consensus"), the developers' day (`scored: false`, "observe-only,
+  never a vote", the day's face envelopes listed first). Person: History group `camera` (numbers only).
+- **Gemma's review** (`insight.py`, `REVIEW_VERSION` v15): up to `[insight].max_shown_evidence` (12) records of
+  shown measures (face signs and, since D53, more of the day from Apple Health) ride
+  along after the 60 scored ones, each marked `"scored": false`. Validators: a finding may cite them only beside
+  a scored record (`unscored_only`), they never set a theme's direction, and prose that names an emotion
+  (`emotion_label`) or says how the person felt, seemed or looked in a sentence about the face or camera
+  (`face_inference`) is rejected. The deterministic review never builds on one.
+- **The companion's cue** (`mind/face_cue.py`, `[face_cue]` in `config/kaiku.toml`): a kind of task (`games`,
+  `check_in`) is "quieter" today when, among its cue metrics with a reading today and an established usual (full
+  baseline, at least `min_baseline_days` of her own days), one is `z` spreads or more below it and none is above.
+  It reaches the voice as `ContextCard.quieter_in` (an enum; a steady tone becomes gentle), one fixed sentence in
+  the prompt ("For your manner only … never mention their face or a camera") and `FeelPlan.manner`. Never with
+  someone else in the room, never a number. `assemble.FORBIDDEN_KEY` rejects any card key about a face or camera;
+  `config/persona.md` → "Hard limits" has the rule and the honest answer when asked.
+- **Seeded record** (`jobs/single_person.py`): 57 `obs.face_signs` on the phone beside games, "tell" and the
+  check-in chat (`sim: true`, method `arkit_blendshapes`, `samples` at its real 30 looks a second), quieter on 7 to 10 Nov; one game with thin coverage
+  (kept, counted toward nothing) and one in which her face was never in view, which has no face record at all,
+  as the apps do. `today_events("rough")` adds a quiet firefly.
+- **Which measures exist** (one method and one kind of task each; nothing pools the two methods, tested in
+  `tests/test_face_signs.py::test_each_measure_reads_one_method_and_one_kind_of_task…`):
+
+  | measure | method | tasks | field |
+  |---|---|---|---|
+  | `face_range` | `arkit_blendshapes` | firefly, pebbles, lantern, seeds, watering | `expression_range` |
+  | `face_smiles` | `arkit_blendshapes` | the same five games | `smile_share` |
+  | `face_blinks` (weight 0 even if scored) | `arkit_blendshapes` | the same five games | `blinks_per_min` |
+  | `face_range_chat` | `arkit_blendshapes` | `check_in` | `expression_range` |
+  | `face_smiles_chat` | `arkit_blendshapes` | `check_in` | `smile_share` |
+  | `face_range_landmarks` | `vision_landmarks` | the same five games | `expression_range` |
+  | `face_range_chat_landmarks` | `vision_landmarks` | `check_in` | `expression_range` |
+
+  Every one needs `coverage ≥ 0.6`, `duration_s ≥ 20` and half the frames its method takes in those 20 s:
+  `samples ≥ 300` for `arkit_blendshapes` (30 looks a second), `samples ≥ 150` for `vision_landmarks` (15 a
+  second). **Stored and listed per session, read by
+  no measure:** anything from `tell` and `breathe` (speaking and slow breathing move the face by design);
+  `mouth_open_share` (mostly speech in `tell` and the check-in), `brow_*`, `gaze_on_share`, `smiles`,
+  `head_movement` (degrees a second on ARKit, face widths a second on Vision); the landmark method's
+  `blinks_per_min` (another scale). The landmark method never sends a smile, brow or gaze sign.
+- **What the apps send** (Apple agent, 2026-11-14): no observation at all when coverage rounds to 0; no
+  `blinks_per_min` under 20 s of face time, no `head_movement` under 2 s, no `expression_range` under 10 face
+  frames; `ref` = the game's `obs.play_session` id, a check-in has none (record chat then lists it as a task
+  record of its own). On ARKit phones the older `obs.play_session` camera fields are still filled; no measure
+  reads them.
+- **Seen on a scratch local API with the real models (2026-11-14, one seeded record):** Trends, History, the
+  debug day and record chat returned the numbers above. Four real Gemma reviews returned output, each with the
+  face records in its evidence. No accepted finding cited them. One raw output was kept and read: it cited them
+  in one finding ("Expressiveness in games, smiling in games, and blink rate in games have also been away from
+  usual since 7 November, though these were not scored."), which was rejected for the date written in prose. So
+  no Gemma sentence about face signs has reached the review yet; the code-written course summary carries them
+  every time. Three more asks ended as `provider_unavailable` (the deterministic review was shown).
+- **Not shown:** real capture from a device (the Apple apps are the producer), real day-to-day spread of any face
+  sign (every `min_mad` is argued, not measured), any relation between these counts and how a person is. The
+  check-in chat metrics had 5 days in the seeded record and no usual yet.
+- **Known trap: a running API and a criteria file that names a type it does not know.** A process started before
+  a contract change keeps the old contracts in memory but re-reads `config/criteria.toml` when the file changes.
+  If the file then names an observation type or payload field the process does not know (as the face metrics did
+  for a process started before `obs.face_signs`), criteria validation fails and every route that needs the
+  criteria breaks until the process is restarted. Develop against a copy (`KAIKU_CRITERIA=<file>`), write the real
+  file last, and restart the API (`make cloud-local` without `--reload` does not restart by itself).
+
+## More of the day from Apple Health: shown, not scored (2026-11-14, D53)
+- **What arrives:** seven optional fields on `obs.wearable_daily` (contract: `contracts/AGENTS.md`):
+  `distance_km`, `daylight_min`, `walking_hr_bpm`, `sleep_deep_min`, `sleep_rem_min`, `sleep_core_min`,
+  `sleep_awake_min`. Daily totals and averages; a day without a watch has none of the watch's. No sleep score:
+  Apple gives apps none and the cloud computes none.
+- **Six measures, all `role = "shown"`** (`config/criteria.toml`, argued in its comment; none validated here):
+
+  | measure | field | charted as away from usual when | unit |
+  |---|---|---|---|
+  | `day_distance` | `distance_km` | lower | km |
+  | `day_daylight` | `daylight_min` | lower | min |
+  | `walking_hr` | `walking_hr_bpm` | higher | bpm |
+  | `deep_sleep` | `sleep_deep_min` | lower | min |
+  | `rem_sleep` | `sleep_rem_min` | lower (a charting convention, weight 0) | min |
+  | `awake_night` | `sleep_awake_min` | higher | min |
+
+  `sleep_core_min` is stored and listed in History; no measure reads it (it is the rest of the night once deep and
+  REM are taken out). The five watch measures that vote (`watch_sleep`, `sleep_midpoint`, `resting_hr`,
+  `hrv_sdnn`, `daily_steps`) are untouched, the Watch group's rule is untouched, and the rule version stays
+  `consensus-v1+db93b715`. `obs.wearable_daily` still counts toward the Watch group's coverage and freshness,
+  because scored measures read it (`Criteria.shown_types` holds only types that shown measures alone read).
+- **Pinned by tests** (`tests/test_health_fields.py`): the seeded record with the seven fields stripped, as
+  seeded, and with extreme values in them gives the same daily states, verdicts, confidence, evidence and rule
+  version; contract side in `contracts/tests/test_wearable_health.py`.
+- **Where each shows.** Practitioner: `/timeline` series with `scored: false` (Trends; the web's measure picker
+  marks them "shown, not scored" and leaves them out of the per-day counts of measures away from usual), the week
+  comparison ("… Shown only: no vote in the consensus."; the Watch group still counts its five scored measures and
+  adds "6 more are shown without a vote."), the course of change (own events with the same note, and the one
+  sentence "Shown, not scored: …"), the knowledge graph (`[graph.produces] sleep` and the `movement` domain; edge
+  label "…, shown not scored"), the debug day (`scored: false`; a day's "moved" lists rank scored measures first,
+  so shown ones cannot crowd them out of the read), record chat (`metric:` and `pattern:` details end with the
+  note; `SELECTION_VERSION` v5), and Gemma's review evidence (below). Person: History group `sleep_body`.
+- **Gemma's review:** the records of these measures are citable like any other and marked `"scored": false`;
+  a finding may cite one only beside a scored record (`unscored_only`), and one never sets a theme's direction.
+  Shown records share `[insight].max_shown_evidence` = 12 places after the 60 scored ones, course onsets first.
+- **The companion is told none of it:** no cue, nothing on the context card (tested: the card of a seeded rough
+  day, as rendered into the prompt and on the wire, carries none of the new fields or measures).
+- **History (`history.py`, `[history]`).** In `sleep_body` ("Sleep and body"), in this order: Sleep, Deep sleep,
+  REM sleep, Core sleep, Awake in the night, Middle of the night's sleep, Resting heart rate, Walking heart rate,
+  Heart rate variability, Steps, Distance walked, Time in daylight, Exercise. They sit there because that is
+  where a person already looks for last night and for the day's steps; `walks` holds single walks with their own
+  "Daylight on walks", which is a different number (the glasses' count on one walk, not the watch's day).
+- **How a value is to be read** (`HistoryFormat`, on `HistoryMeasure.format` and `HistoryValue.format`; the value
+  on the wire is unchanged and `usual.low/high` are in the same format):
+
+  | format | wire value | the app shows | measures |
+  |---|---|---|---|
+  | `duration` | minutes | "7 h 20 min" from 60 on, else "45 min"; `unit` is empty | `watch_sleep`, `deep_sleep`, `rem_sleep`, `core_sleep`, `awake_night`, `day_daylight`, `active_min` |
+  | `percent` | a share 0..1 | ×100 with "%", `decimals` (0) applies to the percent; `unit` says of what ("of the time") | `speech_pauses`, `face_smiles`, `face_smiles_chat` |
+  | `clock` | minutes after local midnight | a time of day | `getup`, `sleep_midpoint` |
+  | `number` | as is | the number with `unit` | everything else; `day_distance` is km with 1 decimal, `walking_hr` bpm; the face-movement measures (`face_range*`) are "out of 1" with 2 decimals |
+
+  Session rows (`[history.session]`, `["field", "Title", "unit", decimals, "format"]`) follow the same rule. A
+  percent keeps two more decimals on the wire than its `decimals`, so 0.137 is still 14 %. No row is cut short:
+  `[history].session_values` is 16, the contract's own limit (`HistorySession.values` ≤ 16), and a test keeps
+  every `[history.session]` list within it (the longest, `obs.play_session`, has 16 names, of which one game
+  fills a few; a Health summary has 13 numbers and its rows list 7 or 6, see below).
+- **Which day a Health number stands under** (D53; `[[history.measure]] day_offset`, `history.py`). A summary is
+  dated the morning it was made (`WearableDaily.date`). Its sleep is the night that ended that morning. Its
+  steps, distance, daylight, exercise, resting and walking heart rate and HRV are the day before's, midnight to
+  midnight (`apps/apple/.../WearableDailyBuilder.swift`). In History the six night measures (`watch_sleep`,
+  `deep_sleep`, `rem_sleep`, `core_sleep`, `awake_night`, `sleep_midpoint`) stand on the summary's date and the
+  seven others (`resting_hr`, `walking_hr`, `hrv_sdnn`, `daily_steps`, `day_distance`, `day_daylight`,
+  `exercise_min`, each with `day_offset = -1`) on the day before, so yesterday's walking is never "today so far".
+  A session row follows its measure: a night measure lists the summary at the time it arrived with the six night
+  numbers; a day-before measure lists the same summary (same `id`) stamped at the end of the day it is of
+  (23:59:59 local; when the phone sent that morning's summary more than once, each earlier one a second earlier,
+  so the day's latest stays the latest) with the seven numbers of that day. A daily total has no other moment,
+  and the app places a row by its `ts`. `HistoryDay.sessions` still counts the summaries.
+  **Known difference, on purpose:** the rule engine, `/timeline`, the week comparison, the course, the debug day
+  and record chat keep every number on the summary's date, as before: a day's walking is read there one day
+  after it happened. Moving the rule's day would change which days it scores. The usual range in History is
+  still the rule engine's (for `exercise_min`, which no metric reads, it is worked out from History's own days).
+  Tested with one posted summary: `tests/test_history.py::test_one_health_summary_puts_the_night_on_its_morning…`.
+- **What the iPhone sends** (Apple agent, 2026-11-14): never `sleep_regularity` (the contract has the field; only
+  the simulators fill it). The app cannot write walking heart rate or exercise minutes as sample data (Apple
+  Health forbids it), so a summary built from the app's own sample data never carries them, and such a summary
+  goes out `sim: true`. iOS is asked for the new kinds when You → Sharing or History is opened, never at launch.
+- **Seeded record:** 15 watch days carry all seven fields (`health_extras`): shorter distance, less daylight,
+  less deep sleep and more time awake on the harder days, back toward usual on 12 and 13 Nov; `today_events` too.
+  **Limit:** each seeded summary was authored with the walking and heart numbers of its own date (and is stamped
+  23:40 that evening), not of the day before as the phone sends them. The practitioner side is as it was. In her
+  History those numbers now stand a day earlier than the walks and check-ins of the same authored day: the
+  lowest steps (2400) read on 6 Nov, where the walk of 6 Nov alone has 3333. Authoring the summaries exactly as
+  the phone sends them (the night of that morning, the totals of the day before, stamped twenty minutes after
+  she wakes, the first morning without totals, the charger morning with the day before's totals and no night)
+  was built, run and taken out again (2026-11-14), because it changes more than dates. With it her History
+  agrees with her walks on every day (lowest steps, distance and daylight on 7 Nov, the day without a walk; on no
+  day fewer watch steps than walk steps; 13 Nov's totals wait for the next morning's summary). On the
+  practitioner side every day's state and the Watch group's verdict stay the same, and these do not: the Watch
+  group's confidence is one step higher from 8 Nov on (0.664, 0.731, 0.797, 0.864 become 0.731, 0.797, 0.864,
+  0.93; today 0.797 becomes 0.864), because no morning is left without a summary; daily steps, heart rate
+  variability and resting heart rate first move on 8 Nov instead of 7 Nov and are still away on the last day,
+  so the status line says 15 of 18 measures are back instead of 18 of 18; and a good day today
+  (`today_events`) leaves the Watch group at "worse" (the shown state is still "watch"; the raw reading is
+  "watch" instead of "stable"), because the watch's totals arrive a morning late. It needs a decision, not a
+  rule change, so the seed is as it was.
+- **Seen on a scratch local API on the reseeded record (2026-11-14, `sim: true`):** History `sleep_body`: Deep
+  sleep usual 61 to 81 min, 40 min on 7 Nov, 67 on 13 Nov; Awake in the night usual 32 to 48 min, 61 on 10 Nov,
+  38 on 13 Nov; and, on the day before their summary's date, Distance walked usual 4.43 to 5.23 km, 1.61 on
+  6 Nov, 4.78 on 12 Nov; Time in daylight usual 42 to 62 min, 3 on 6 Nov, 59 on 12 Nov (the timeline has the
+  same numbers on 7 and 13 Nov). One summary posted for a fresh home, dated 13 Nov: the six night measures on
+  13 Nov with the row at its own time, the seven others on 12 Nov with the row at 23:59:59 of 12 Nov, and the
+  timeline with all of them on 13 Nov. Timeline: the six series with `scored: false`. Course: "Deep sleep first
+  below their usual on 7 Nov: 40 min (usual 1 h 11 min). Shown only: no vote in the consensus." and the matching
+  back-in-range events on 11 and 12 Nov. Debug day 9 Nov: all six rows, `scored: false`, verdicts and consensus
+  as before. One real Gemma review was given 72 of 180 citable records, 12 of them shown (five onsets and one
+  return of these measures, six of face signs); its accepted findings cited scored records only, so no Gemma
+  sentence about these measures has been seen. One real record-chat question about deep sleep and daylight was
+  answered from `metric:` and `pattern:` records of both, each ending with the note.
+- **Not shown:** real Apple Health data through the cloud; real spread for any floor (every `min_mad` is argued);
+  any relation between these numbers and how a person is; a walking heart rate record reaching Gemma (it had no
+  onset in the seeded record).
+
+## What the review does with a rejected finding, and fewer lost to the number check (2026-11-14, REVIEW v15)
+- **What happens to a rejected finding.** It is dropped, whole: code never repairs, trims or rewrites model prose,
+  and there is no repair call. The trace's `validate` step counts it under its category. If nothing passes (or the
+  JSON is invalid) the review asks once more with the whole prompt and the list of categories that failed; if that
+  fails too, or the provider is unavailable or times out, the rule-written review is shown with `fallback_reason`.
+  When some findings pass, a signal group whose sustained change no accepted finding covers gets its rule-written
+  finding appended (`by: template`). The overview is checked the same way; when it is rejected, the code-written
+  course summary stands in its place.
+- **What was going wrong.** In five fresh reviews of the seeded record on v14, 17 of the 22 findings of a first
+  call were rejected as `numbers_in_prose`, and the overview in five of five: the model copied a date or a count
+  out of an item's detail ("on 6 Nov", "by 12 Nov", "on 4 of 7 days", "over 7 attempts"). Twice nothing was left
+  and the whole prompt was sent again (47 s instead of 24 s). One accepted finding said "over seven attempts": a
+  number in words, which the digit check did not see.
+- **What changed (prompt and one check, nothing loosened).** (1) `numbers_in_prose` now also rejects a number, a
+  month or a weekday written as a word (`_NUMBER_WORD`: "seven attempts", "the sixth of November", "two days
+  later", "on Monday"; the order words first, second, next and vague amounts such as several, a few, most stay).
+  (2) The prompt says what trips the check and shows each kind seen in the raw outputs beside a way to say it
+  without a number (`NUMBER_PAIRS`, WRONG / RIGHT); `tests/test_insight.py` keeps every WRONG line rejected and
+  every RIGHT line accepted by `prose_issue`, so the examples cannot drift from the validator. (3) It also says
+  that `cites` is cut after the fourth id, asks for a short meaning, and names the words the consistency check
+  reads as "still away" (remain, persist, lag), so a routine that held is not written as "remained steady".
+- **Measured** (five fresh reviews each, seeded record, real hosted Gemma, 65 s apart, the same function the
+  route calls on a private store and ledger):
+
+  | | v14 | v15 |
+  |---|---|---|
+  | raw findings, all calls | 32 | 25 |
+  | Gemma findings shown | 12 (4, 3, 2, 2, 1) | 23 (5, 4, 4, 5, 5) |
+  | rejected as `numbers_in_prose` | 17 | 0 |
+  | other rejections | directive 1, direction_mismatch 1, contradiction 1 | thin 1, unknown_citation 1 |
+  | overview shown | 2 of 5 | 5 of 5 |
+  | rule-written findings appended | 8 | 0 |
+  | reviews that needed a second call | 2 | 0 |
+  | fallback to the rule-written review | 0 | 0 |
+  | seconds, mean (each) | 33.9 (47.5, 47.4, 23.9, 24.7, 26.1) | 19.9 (16.2, 18.3, 18.2, 23.9, 23.0) |
+
+  One more v15 review over HTTP on a scratch local API: by Gemma, one call, 17 s, five findings, none rejected.
+- **Tried on the way and not kept:** telling the model only "no digit" with digit examples. It then wrote the
+  date in words ("the sixth of November"), which passed the digit check: that is why the check was widened first.
+  A repair call for rejected findings was not added: after the prompt change nothing was left for it to repair
+  in these runs, and it would cost a second call.
+- **Limits.** One record, five runs a side: the direction is clear, the exact shares are not. The model reuses
+  the RIGHT phrasings ("over several attempts", "on only some days this week"); they are rewordings of what it
+  was about to write from the detail, and the detail is printed under the sentence, but no code checks a vague
+  amount. Still lost now and then: an id typed wrongly (`unknown_citation`), a one-sentence finding (`thin`),
+  a "what moved first" finding whose cites are all back within usual (`direction_mismatch`). The hosted model
+  allows few tokens a minute: reviews asked back to back (three in a row in one test) were refused within half a
+  second and fell back to the rule-written review; `[insight].cooldown_s` = 60 keeps one person's reviews apart,
+  several people opened in the same minute can still meet it. A single call takes 16 to 26 s against
+  `[insight].timeout_s` = 30; one call in an earlier run of this evening timed out at 30 s.

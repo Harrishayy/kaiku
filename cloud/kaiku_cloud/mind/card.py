@@ -3,7 +3,9 @@
 Never the consensus state, scores, numbers or watch data. The only consensus-derived field is `tone`:
 stable -> steady · watch -> gentle · needs_call / safety -> extra-gentle · not enough data (no row yet, or
 `low_coverage`) -> steady (missing data never makes anyone look worse). A talk that sounded low (mind/affect.py)
-also makes a steady day gentle: that comes from their own conversation, not from the consensus.
+also makes a steady day gentle: that comes from their own conversation, not from the consensus. So does a face
+that was clearly quieter than their own usual in today's games or check-in (mind/face_cue.py, D52): the card then
+carries which kind of task as an enum (`quieter_in`), never a number and never a word about how they looked.
 
 When the device names a `purpose`, the card also shapes the chat: `chat_depth` (brief: a passing chat; stay: the
 last talk was hard or it has been a heavy few days) and, for a check-in, `open_items`: the dials not answered
@@ -148,6 +150,11 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
         card.today_facts = today_facts(events, now)
         hard = affect.last_was_low(store, home_id, now)
         if hard and card.tone == "steady":
+            card.tone = "gentle"
+        from . import face_cue
+
+        card.quieter_in = face_cue.quieter(crit, data, now)  # type: ignore[assignment]
+        if card.quieter_in and card.tone == "steady":
             card.tone = "gentle"
         if purpose in ("check_in", "talk"):
             from .feel import HEAVY_DAYS

@@ -1,7 +1,7 @@
 """Daily metric extraction, driven entirely by `Criteria` (config/criteria.toml). No metric is defined in code.
 
 For each enabled [[metric]]: take its obs type's events, drop readings below its quality_min, apply its `where`
-filters (equality / any-of), read `field` (a payload key, or derived "@count" / "@local_minutes"), aggregate per
+filters (equality / any-of) and its `at_least` payload minimums, read `field` (a payload key, or derived "@count" / "@local_minutes"), aggregate per
 local day with `agg`, and — for missing = "zero" — fill days without data with 0 over the span in which the
 metric's source sent anything. The consensus source comes from the obs type (kaiku_contracts.sources).
 """
@@ -61,6 +61,10 @@ def extract(m: MetricSpec, p: dict[str, Any], t_local: datetime) -> float | None
     """One reading's value for metric m (None = this reading doesn't count)."""
     if not _passes(m.where, p):
         return None
+    for key, least in m.at_least.items():  # payload minimums (coverage, samples): too thin to be a reading
+        have = p.get(key)
+        if isinstance(have, bool) or not isinstance(have, (int, float)) or have < least:
+            return None
     if m.field == "@count":
         return 1.0
     if m.field == "@local_minutes":

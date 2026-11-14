@@ -9,18 +9,19 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from kaiku_contracts import SCHEMA_VERSION, UPLINKABLE, ContractError, make, validate
 from kaiku_contracts.api import (
     ActionRequest,
     ActionResult,
+    AgreedAnswer,
     APIDiscoveryResponse,
     ClinicianAskRequest,
     ClinicianAskResponse,
@@ -36,6 +37,7 @@ from kaiku_contracts.api import (
     CriteriaPreview,
     CriteriaResponse,
     CriteriaUpdate,
+    DebugDay,
     DeletedResponse,
     EpisodeIn,
     EpisodeResult,
@@ -54,6 +56,7 @@ from kaiku_contracts.api import (
     NudgeResponse,
     PatientInsight,
     PatientsResponse,
+    PersonHistory,
     Phq9History,
     PostcardRequest,
     PostcardResponse,
@@ -67,13 +70,16 @@ from kaiku_contracts.api import (
     VoiceLinesResponse,
     VoiceSayRequest,
 )
+from kaiku_contracts.companion_tools import Surface
 from kaiku_contracts.jlog import get_logger
 
-from .. import clinician_chat, service, voice
+from .. import clinician_chat, debug_day, history, service, voice
 from .. import insight as patient_insight
+from .. import stream as home_stream
 from ..jobs import nightly
 from ..llm import ledger
 from ..mind import affect as mind_affect
+from ..mind import agree as mind_agree
 from ..mind import brief as mind_brief
 from ..mind import graph as mind_graph
 from ..mind import invite as mind_invite
@@ -213,6 +219,8 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         if inserted:
             for home in sorted({e["home_id"] for e in ok}):
                 service.recompute_home(store, settings, home)
+                # agreed activities complete by their own observation; open screens hear the day changed (D50)
+                mind_agree.ingested(store, home, [e for e in ok if e["home_id"] == home])
         if any(e["type"] == "obs.safety_flag" for e in ok):
             log.warning("safety_flag_received", "priority event ingested",
                         homes=sorted({e["home_id"] for e in ok if e["type"] == "obs.safety_flag"}))
@@ -316,19 +324,54 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         mind_affect.forget_heard(store, home_id)  # "forget everything" covers what the companion noted about tone
         return DeletedResponse(deleted=n)
 
+    # The person's own numbers by day, as a health app shows them (the History tab; D48): history.py.
+    @app.get("/v1/me/history", response_model=PersonHistory)
+    def me_history(home_id: str, days: int = Query(default=int(history.cfg().get("default_days", 30)), ge=1,
+                                                   le=int(history.cfg().get("max_days", 90)))) -> PersonHistory:
+        return history.build(store, home_id, days)
+
     # One thing Kaiku would like to bring up or offer today (the Today card). Chosen by code: mind/invite.py.
     @app.get("/v1/me/invitation", response_model=InvitationResponse)
     def me_invitation(home_id: str, surface: Literal["iphone", "mac"] = "iphone") -> InvitationResponse:
-        return InvitationResponse(home_id=home_id, invitation=mind_invite.current(store, home_id, surface))
+        """Also `agreed`: what they said yes to today on any device (D50). While one is open the invitation waits."""
+        return mind_agree.response(store, home_id, surface)
 
     @app.post("/v1/me/invitation/answer", response_model=InvitationResponse)
-    def me_invitation_answer(home_id: str, body: InvitationAnswer) -> InvitationResponse:
+    def me_invitation_answer(home_id: str, body: InvitationAnswer,
+                             surface: Literal["iphone", "mac"] = "iphone") -> InvitationResponse:
         """yes: the device opens Talk or the activity. not_now: final. The item never returns; no other today."""
         try:
             mind_invite.answer(store, home_id, body.id, body.answer)
         except KeyError:
             raise HTTPException(404, "no such invitation today") from None
-        return InvitationResponse(home_id=home_id, invitation=None)
+        home_stream.publish(store, home_id, "invitation", {"id": body.id, "state": "answered"})
+        return mind_agree.response(store, home_id, surface)  # no invitation any more today; `agreed` as it stands
+
+    # An activity agreed in one place shows up everywhere (D50): mind/agree.py. Done needs no answer: the
+    # activity's own observation, arriving through POST /v1/events the same local day, completes it.
+    @app.post("/v1/me/agreed/answer", response_model=InvitationResponse)
+    def me_agreed_answer(home_id: str, body: AgreedAnswer,
+                         surface: Literal["iphone", "mac"] = "iphone") -> InvitationResponse:
+        """opened: this device opened the activity's screen. put_aside: final for today."""
+        try:
+            mind_agree.answer(store, home_id, body.id, body.answer)
+        except KeyError:
+            raise HTTPException(404, "no such agreed activity today") from None
+        return mind_agree.response(store, home_id, surface)
+
+    # What changed for this home, pushed to every screen that is open (Server-Sent Events; stream.py, D50).
+    @app.get("/v1/me/stream", response_class=StreamingResponse,
+             responses={200: {"content": {"text/event-stream": {}}}})
+    async def me_stream(request: Request, home_id: str, surface: Surface | None = None,
+                        last_event_id: str | None = None) -> StreamingResponse:
+        """Frames: `hello` (StreamHello), then `agreed` (StreamAgreed), `day` (StreamDay), `invitation`
+        (StreamInvitation) as they happen and `ping` when quiet. Ids and kinds only. Reconnect with the
+        `Last-Event-ID` header (or `last_event_id`) to get what was missed."""
+        await asyncio.to_thread(mind_agree.saw_screen, store, home_id, surface)
+        last = request.headers.get("last-event-id") or last_event_id
+        return StreamingResponse(
+            home_stream.frames(home_stream.of(store), home_id, surface, last, gone=request.is_disconnected),
+            media_type="text/event-stream", headers=home_stream.HEADERS)
 
     # Opt-in conversation transcripts — person-facing only; no clinician route reads them (tested).
     @app.get("/v1/me/transcripts", response_model=TranscriptsResponse)
@@ -449,9 +492,10 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     def patient_tasks(patient_id: str, days: int = Query(default=7, ge=1, le=30)) -> TaskObservationsResponse:
         known_home(patient_id)
         now = datetime.now(UTC)
-        observations = store.task_observations(patient_id, norm_ts((now - timedelta(days=days)).isoformat()),
-                                               norm_ts(now.isoformat()))
-        return TaskObservationsResponse(patient_id=patient_id, observations=observations, computed_at=now)
+        since, until = norm_ts((now - timedelta(days=days)).isoformat()), norm_ts(now.isoformat())
+        return TaskObservationsResponse(
+            patient_id=patient_id, observations=store.task_observations(patient_id, since, until),
+            face_signs=store.task_observations(patient_id, since, until, kind="obs.face_signs"), computed_at=now)
 
     @app.post("/v1/patients/{patient_id}/ask", response_model=ClinicianAskResponse)
     def patient_ask(patient_id: str, req: ClinicianAskRequest) -> ClinicianAskResponse:
@@ -488,6 +532,19 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         log.info("clinician_action", req.action, patient=patient_id)
         row = service.recompute_home(store, settings, patient_id)  # acknowledge can release needs_call / safety
         return ActionResult(ok=True, patient_id=patient_id, action=req.action, state=row["summary"]["state"])
+
+    # ------------------------------------------------------------------ developers (closed like /v1/admin: auth.py)
+    @app.get("/v1/debug/day", response_model=DebugDay)
+    def debug_day_route(home_id: str, day: Annotated[date | None, Query(alias="date")] = None,
+                        generate: bool = False) -> DebugDay:
+        """Everything about one local day of one home: envelopes, metrics beside baselines, verdicts, consensus,
+        conversations (enums only), model calls and a cited read of the day. A plain GET never calls a model;
+        `generate=true` asks for Gemma's read (once per day's data: a kept read or a kept failed ask is returned)."""
+        if home_id not in store.home_ids():
+            raise HTTPException(404, f"unknown home {home_id!r}")
+        if day is not None and day > service.today_local():
+            raise HTTPException(422, "that day has not happened yet")
+        return debug_day.build(store, settings, home_id, day, generate=generate)
 
     # ------------------------------------------------------------------ admin / eval
     @app.post("/v1/admin/recompute")

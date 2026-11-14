@@ -35,7 +35,7 @@ from kaiku_contracts.safety import version as safety_version
 from .. import service
 from ..settings import Settings
 from ..store.db import Store
-from . import affect, assemble, feel, graph, live_token, memory, router, walk
+from . import affect, agree, assemble, feel, graph, live_token, memory, router, walk
 from .card import SUGGESTION, build_card, card_dict, done_today
 
 log = get_logger("cloud.mind")
@@ -74,6 +74,8 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
     style = walk.style_of(req.walk_style) if walking else None
     card = build_card(store, settings, req.home_id, intent=req.intent, language=req.language,
                       others_present=req.others_present, now=now, purpose=req.purpose, walk_style=style)
+    if not req.others_present:  # what they said yes to today on any device, and whether it is done (D50): once
+        card.agreed = agree.card_lines(store, req.home_id, now, session_id=req.resume_session_id)
     feel.prepare(store, req.home_id, now)  # so the `feel` tool answers without scanning the record mid-conversation
     persona, surfaces = assemble.load_files()
     tools = for_surface(req.surface, walk=walking)
@@ -84,7 +86,9 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
                               "start": memory.iso(now), "tools": []})
     model, voice = models()
     pv = assemble.persona_version(persona)
-    setup = live_token.setup(model, voice, instruction, tools)
+    # Only a walk may answer an input with silence (its own nudges); a talk, a check-in and the ritual always answer.
+    setup = live_token.setup(model, voice, instruction, tools,
+                             proactive_audio=live_token.proactive("walk" if walking else req.purpose))
     # Robot is a trusted server-side adapter with its own budgeted key; apps receive one reserved token.
     # One token and its budget reservation cover at most `token_minutes`; a longer call resumes and gets the next.
     token_minutes = min(max_seconds / 60, float(live.get("token_minutes", 10)))
@@ -127,6 +131,8 @@ def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang:
                home_id=call.home_id)
     store.insert_events([env.model_dump(mode="json", exclude_none=True)])
     service.recompute_home(store, settings, call.home_id)
+    # every open agreed activity leaves every screen at once, and the screens are told the day changed (D50)
+    agree.ingested(store, call.home_id, [env.model_dump(mode="json", exclude_none=True)])
     ep = store.episode(call.session_id) if call.session_id else None
     if ep:
         store.episode_upsert({**ep, "end": memory.iso(datetime.now(UTC)), "outcome": "crisis"})
@@ -194,6 +200,8 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
             res = {"arm": n.arm, "suggestion": SUGGESTION.get(n.arm)}
         elif name == "feel":
             res = feel.act(store, home, call.surface, call.session_id, episode, a, now)
+        elif name == "agree_activity":  # a yes becomes a fact every screen shows (D50); the rules are in agree.py
+            res = agree.act(store, home, call.surface, call.session_id, a, now)
         elif name == "end_session":
             res = end_session(store, call, a, now)
             feel.close(store, home, call.session_id)
@@ -204,6 +212,8 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
             return CompanionToolResult(ok=False, name=name, error="not implemented")
     except memory.MemoryRefused as e:
         return CompanionToolResult(ok=False, name=name, error=str(e))
+    except agree.Refused as e:  # nothing was kept; the error tells the model what it may say
+        return CompanionToolResult(ok=False, name=name, error=str(e), result={"agreed": False, "reason": e.code})
     return CompanionToolResult(ok=True, name=name, result=res)
 
 
@@ -264,6 +274,8 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
     store.episode_upsert({"id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
                           "start": memory.iso(ep.start), "end": memory.iso(end), "outcome": "crisis" if crisis else ep.outcome,
                           "tools": sorted({*(old["tools"] if old else []), *ep.tools_used})})
+    # From here on the tool list is one of each, sorted: no longer the call order (the developers' day says which).
+    store.kv_set(f"episode-uploaded:{ep.home_id}:{eid}", {"ts": memory.iso(end)})
     if not crisis:
         def close_threads():
             if ep.close_thread:

@@ -55,7 +55,7 @@ from kaiku_contracts.api import (
 from kaiku_contracts.config import get
 from kaiku_contracts.sources import CONSENSUS_SOURCES, SOURCE_LABELS, SOURCE_OF
 
-from . import account, clinician_chat, service, week
+from . import account, clinician_chat, graph_map, service, week
 from . import course as course_mod
 from .analytics import bandit
 from .analytics import consensus as consensus_rule
@@ -65,12 +65,31 @@ from .clinician_chat import compared, human_value
 from .llm import gemma, ledger
 from .llm.errors import LlmUnavailable
 from .llm.explain import contains_banned
+from .mind import affect
 from .mind import graph as mind_graph
 from .settings import TZ, Settings
 from .store.db import Store
 
-REVIEW_VERSION = "insight-review-v12"
+REVIEW_VERSION = "insight-review-v15"
 _LOCKS: dict[str, threading.Lock] = defaultdict(threading.Lock)
+# What tripped `numbers_in_prose` in real reviews (2026-11-14): the model copied a date or a count out of an item's
+# detail ("on 6 Nov", "by 12 Nov", "on 4 of 7 days", "over 7 attempts"), in a meaning, a consider line or the
+# overview; told not to write digits, it wrote the same date in words ("the sixth of November"). The prompt shows
+# each kind beside a way of saying the same thing without a number. A test keeps every WRONG line rejected and
+# every RIGHT line accepted by `prose_issue`, so the examples cannot drift away from the validator.
+NUMBER_PAIRS = (
+    ("Sleep moved away from usual on 6 Nov, followed by mood on 7 Nov.",
+     "Sleep moved away from usual first, and mood followed the day after."),
+    ("Sleep moved away first on the sixth of November.", "Sleep moved away from usual first."),
+    ("Mood was back within usual by 12 Nov, after the care team's call on 10 Nov.",
+     "Mood came back within usual after the care team's call."),
+    ("Energy followed two days later.", "Energy followed a few days later."),
+    ("Drum sessions were recorded on 4 of 7 days this week.", "Drum sessions were recorded on only some days this week."),
+    # two sentences on purpose: shown as one, the model shortened its own finding to one and it was rejected as thin
+    ("The person reported an early response to walks. This was reported over 7 attempts.",
+     "The person reported an early response to walks. This was reported over several attempts."),
+    ("What was happening around 6 Nov?", "What was happening on the first days away from usual?"),
+)
 THEMES = ("change", "improvement", "steady", "routine", "what_helps", "coverage")
 THEME_TITLE = {"change": "Change from usual", "improvement": "Improved signs", "steady": "Holding steady",
                "routine": "Routine", "what_helps": "What seems to help", "coverage": "Data coverage"}
@@ -82,13 +101,14 @@ CLOCK_UNITS = ("min after midnight", "min from midnight")
 OBS_LABEL = {
     "obs.self_report": "Mood, energy and sleep check-ins", "obs.presence": "Presence at the robot",
     "obs.hrv_session": "Pulse during breathing", "obs.drum_session": "Drum sessions",
+    "obs.tap_back": "Tap it back (robot rhythm game)",
     "obs.speech_features": "Speech pace and pauses", "obs.light_level": "Room light",
     "obs.friend_link": "Friend lamp", "obs.outing": "Walks and outings", "obs.laptop_session": "Laptop check-ins",
     "obs.screen_activity": "Mac usage rhythm", "obs.play_session": "Games and tasks",
     "obs.wearable_daily": "Watch daily summary", "obs.phq9": "PHQ-9 questionnaire", "obs.ritual": "Ritual steps",
     "obs.intervention_response": "Before/after activity ratings", "obs.nudge_offered": "Suggestions offered",
     "obs.nudge_outcome": "Suggestion outcomes", "obs.safety_flag": "Safety flags",
-    "obs.engagement": "Robot session engagement summary",
+    "obs.engagement": "Robot session engagement summary", "obs.face_signs": "Camera face signs during tasks",
 }
 _SYSTEM = (
     "You are reviewing one person's record for their practitioner after TMS treatment. Say what THIS record shows: "
@@ -103,13 +123,15 @@ _SYSTEM = (
     "\"consider\": \"...\"}]}.\n"
     "overview: three or four sentences for the whole record: what moved first, what followed, what has come back, "
     "what has not, and how sure the record is (say early baseline when RECORD says early). Cite the course: items "
-    "you use.\n"
+    "you use, at most eight. No date in it either: write first, the day after, since the care team's call.\n"
     "findings: three to five, each about a different part of the picture (what moved first; what followed; what is "
     "back; what lags; which routines held or slipped; what the person reported helped). meaning = two sentences that "
     "add what a single fact line cannot: the order, the timing against the care team's call, which measures moved "
     "together, which one lags. Never just restate one item ('Energy is still away from usual' is rejected as "
-    "thin). Combine two to four related items per finding. consider = one concrete question or check that follows "
-    "from that pattern.\n"
+    "thin). Combine two to four related items per finding. cites holds at most four ids, the ones your meaning "
+    "names: anything after the fourth id is cut and never shown, so do not list every item that moved. Keep meaning "
+    "under sixty words and name a few measures, not all of them. consider = one concrete question or check that "
+    "follows from that pattern.\n"
     "GOOD meaning: \"Late-night screen time moved first and sleep shortened the next day; mood and outings "
     "followed. Mood and walks are back within her usual, sleep is the one still lagging.\"\n"
     "GOOD consider: \"Ask what the late nights before the dip were about, and whether sleep is still short.\"\n"
@@ -118,8 +140,13 @@ _SYSTEM = (
     "Rules:\n"
     "- No filler: never write overall, vitality, interconnected, well-being, areas, may impact, daily life. Every "
     "sentence names a measure from the cited items or their order in time.\n"
-    "- Never write digits, dates, times, percentages or scores: the server prints them beside your words. Say "
-    "'the day after', 'since the care team's call', 'this week'.\n"
+    "- Never write a number or a date, in digits or in words, anywhere in meaning, consider or the overview: no "
+    "date ('6 Nov', 'the sixth of November', 'on Monday'), no time, no count ('4 of 7 days', 'seven attempts', 'two "
+    "days later'), no percentage, no score. One of them and that whole finding is thrown away. The dates and "
+    "values in each detail are there so you can see the order; the server prints the cited item's detail, with "
+    "its date and value, right under your sentence. So cite the item and say the order without a number: first, "
+    "the day after, a few days later, the same days, since the care team's call, this week, several, most.\n"
+    + "".join(f"  WRONG: \"{wrong}\" RIGHT: \"{right}\"\n" for wrong, right in NUMBER_PAIRS) +
     "- Order in time is not cause. Allowed: first, then, followed, came before, since, still, back. Never: because, "
     "caused, due to, led to, results in.\n"
     "- theme change is only for a sustained change from the person's own usual: it needs a cited item with "
@@ -130,7 +157,9 @@ _SYSTEM = (
     "or a personal baseline that is still forming (skip it otherwise).\n"
     "- status:line, course:back and course:still_away are the reconciled truth. A measure with now = back within "
     "usual is back: never write that it remains, lags or is still away. A measure with now = still away has not "
-    "returned. Never say both about one measure. 'Still flagged by the rule' is different from 'still away': "
+    "returned. Never say both about one measure. The check reads remain, persist and lag as 'still away from "
+    "usual': for a routine or a measure that held, write held, kept, or was recorded on most days, never "
+    "'remained steady'. 'Still flagged by the rule' is different from 'still away': "
     "sustained true on a measure that is back means the rule still counts the last several scored days, so say "
     "'the rule still counts those days', not that the measure remains changed.\n"
     "- consider is a question to explore or something to check with the person. Never tell anyone to increase, "
@@ -141,8 +170,28 @@ _SYSTEM = (
     "is proven; say it is an early or reported response.\n"
     "- Give every signal group whose direction is worse a change finding of its own, citing that source: item "
     "and its most telling measures. Do not repeat the same cites in two findings.\n"
+    "- An item with scored false is shown beside the record and has no vote in the consensus (for example the "
+    "camera's counts of face movement during games and chats: smiling, expressiveness, blink rate; or more of the "
+    "day from Apple Health: distance walked, time in daylight, deep sleep, time awake in the night). Cite it only as "
+    "supporting detail next to a scored measure, and never build a finding on such items alone. When a scored "
+    "false item has direction worse or better, include it once: put its id in the cites of the finding about "
+    "the same days, beside at least one scored item, and name it in that meaning as moving on the same days. Say "
+    "only what moved and when ('smiling in games dropped the same days'). A face does not show what a person "
+    "feels: never name an emotion or a mood from it, never write sad, happy, emotion, affect, or that they looked "
+    "or seemed any way.\n"
 )
 _DIGIT = re.compile(r"\d")
+# A number or a date written out is still one the code did not print: "the sixth of November", "seven attempts",
+# "two days later", "on Monday". The order words stay ("first", "second", "next") and so does "one" (a pronoun far
+# more often than a count); vague amounts stay too (several, a few, most, some).
+_NUMBER_WORD = re.compile(
+    r"\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
+    r"eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|dozens?|twice|thrice|"
+    r"third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
+    r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|"
+    r"january|february|march|april|june|july|august|september|october|november|december|"
+    r"jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec|"
+    r"mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?)\b", re.I)
 _CAUSAL = re.compile(r"\b(because|caus\w*|due to|leads? to|led to|results? in|as a result|driver|driven by|"
                      r"trigger\w*|responsible for|thanks to|explains?)\b", re.I)
 _STATE = re.compile(r"\b(needs[_ ]a?[_ ]?call|safety state|watch state|consensus (?:is|state|says)|(?:state|status) is)\b", re.I)
@@ -158,6 +207,20 @@ _SEQUENCE = re.compile(r"\b(first|then|follow\w*|before|after|since|earlier|late
 _LABEL_NOISE = {"this", "week", "before", "time", "dial", "response", "their", "from", "with", "last", "night",
                 "nights", "middle", "daily", "record", "taking", "shape", "course", "change", "care", "team", "apps"}
 _BAD_LINT = {"clinical_term", "promise", "medical_advice"}
+# D52: face signs are movements, never emotions. No practitioner-facing sentence a model writes may name an emotion
+# (anywhere), and a sentence that speaks of the face may not say how the person felt or seemed.
+_EMOTION = re.compile(
+    r"\b(emotion\w*|sad(?:ness|der|ly)?|happy|happier|happiness|unhappy|unhappiness|angry|anger|fear(?:ful)?|"
+    r"disgust\w*|joy(?:ful|less)?|cheerful\w*|gloom\w*|miserable|tearful|(?:flat|blunted|flattened|restricted) "
+    r"affect|affect(?:ive)?|anhedoni\w*|expressionless)\b", re.I)
+_FACE = re.compile(r"\b(face|faces|facial|smil\w*|frown\w*|brows?|eyebrows?|blink\w*|gaze|expressive\w*|"
+                   r"expressions?|camera)\b", re.I)
+_FACE_STATE = re.compile(
+    r"\b(look(?:s|ed|ing)? (?!at\b|for\b|into\b|back\b)|seem(?:s|ed|ing)?\b|appear(?:s|ed|ing)?\b|"
+    r"feel(?:s|ing|ings)?\b|felt\b|mood(?! dial)\b|low spirits|withdrawn|withdrawal|distress\w*|"
+    r"unwell|struggl\w*|suffer\w*|anxi\w*|stress\w*|content(?:ed|ment)?\b|engag\w*|bored|interest(?:ed)?\b|"
+    r"motivat\w*|flat(?:ter|tened|ness)?\b|blunt\w*|numb\w*)", re.I)
+_SENTENCES = re.compile(r"(?<=[.!?;])\s+")
 
 
 def cfg(key: str, default: Any) -> Any:
@@ -213,15 +276,21 @@ def week_sentence(m: Any, a: float | None, b: float | None, usual: float | None,
         out += f"; away from usual on {d.worse_days} of the last {d.scored_days} scored days"
     elif d.status == "improved":
         out += f"; better than usual on {d.better_days} of the last {d.scored_days} scored days"
-    return out + "."
+    return out + "." + (course_mod.SHOWN_NOTE if course_mod.shown_only(m) else "")
 
 
 # ------------------------------------------------------------------ period comparison
+def shown_names(crit: Any) -> set[str]:
+    """Metrics that are shown and not scored (criteria `role = "shown"`, D52): cited beside the record, never a vote."""
+    return {m.name for m in crit.metrics if course_mod.shown_only(m)}
+
+
 def comparison(crit: Any, data: Any, c: Consensus, end: date) -> tuple[PeriodComparison, dict[str, MetricDrift]]:
     start, prev_start, prev_end = end - timedelta(days=6), end - timedelta(days=13), end - timedelta(days=7)
     need = int(cfg("min_days_per_week", 2))
     drifts: dict[str, MetricDrift] = {}
     by_source: dict[str, list[MetricComparison]] = defaultdict(list)
+    shown = shown_names(crit)  # shown, not scored: listed with the note, left out of every count and trend
     for m in crit.metrics:
         series = data.series.get(m.name)
         if not m.enabled or not series:
@@ -251,7 +320,9 @@ def comparison(crit: Any, data: Any, c: Consensus, end: date) -> tuple[PeriodCom
     for v in c.sources:
         ms = by_source.get(v.source, [])
         days = data.source_days.get(v.source, {})
-        n = Counter(m.vs_previous for m in ms)
+        # a group's week counts and trend are about the measures its verdict reads; shown ones are listed beside them
+        n = Counter(m.vs_previous for m in ms if m.metric not in shown)
+        beside = sum(1 for m in ms if m.metric in shown)
         trend = "worse" if n["worse"] > n["better"] else "better" if n["better"] > n["worse"] else \
             "similar" if n["similar"] and not n["worse"] else "unknown"
         reading = {"worse": "Change from this person's usual", "better": "Better than this person's usual",
@@ -260,6 +331,8 @@ def comparison(crit: Any, data: Any, c: Consensus, end: date) -> tuple[PeriodCom
         if ms:
             weeks = (f"This week against the week before: {n['better']} improved, {n['worse']} moved away from usual, "
                      f"{n['similar']} about the same, {n['unknown']} not comparable.")
+            if beside:
+                weeks += f" {beside} more {'are' if beside > 1 else 'is'} shown without a vote."
         else:
             weeks = "No measures recorded for this group."
         groups.append(GroupComparison(
@@ -267,7 +340,7 @@ def comparison(crit: Any, data: Any, c: Consensus, end: date) -> tuple[PeriodCom
             days_this_week=sum(1 for d in days if start <= d <= end),
             days_previous_week=sum(1 for d in days if prev_start <= d <= prev_end),
             trend=trend, meaning=f"{reading}. {weeks}", metrics=ms))  # type: ignore[arg-type]
-    flat = [m for g in groups for m in g.metrics]
+    flat = [m for g in groups for m in g.metrics if m.metric not in shown]
     improved = [m.metric for m in flat if m.vs_previous == "better"]
     changed = [m.metric for m in flat if m.vs_previous == "worse"]
     comparable = [m for m in flat if m.vs_previous != "unknown"]
@@ -399,7 +472,8 @@ def coverage(events: list[dict[str, Any]], c: Consensus, data: Any, drifts: dict
 def graph(patient_id: str, c: Consensus, comp: PeriodComparison, cov: DataCoverage, r_list: list[Routine],
           helps: list[HelpEffect], events: list[dict[str, Any]], episodes: list[dict[str, Any]], shared: bool,
           now: datetime, found: dict[str, Any] | None = None, actions: list[dict[str, Any]] | None = None,
-          topics: dict[str, int] | None = None, end: date | None = None) -> InsightGraph:
+          topics: dict[str, int] | None = None, end: date | None = None,
+          shown: set[str] | None = None) -> InsightGraph:
     nodes: dict[str, InsightNode] = {}
     edges: list[InsightEdge] = []
     nodes["person"] = InsightNode(id="person", kind="person", label=service.display_name(patient_id, cov.first_day),
@@ -420,7 +494,9 @@ def graph(patient_id: str, c: Consensus, comp: PeriodComparison, cov: DataCovera
             n_days = m.days_this_week + m.days_previous_week
             nodes[mid] = InsightNode(id=mid, kind="measure", label=m.label, detail=m.meaning[:240], evidence=n_days,
                                      tone=tone)  # type: ignore[arg-type]
-            edges.append(InsightEdge(src=gid, dst=mid, rel="measures", label=m.sustained.replace("_", " "),
+            edges.append(InsightEdge(src=gid, dst=mid, rel="measures",
+                                     label=m.sustained.replace("_", " ")
+                                     + (", shown not scored" if m.metric in (shown or ()) else ""),
                                      weight=round(m.days_this_week / 7, 3), evidence=n_days))
     since = now - timedelta(days=mind_graph.EPISODE_DAYS)
     occ = week.occurrences([e for e in events if parse_ts(e["ts"]) >= since], None)
@@ -465,7 +541,7 @@ def graph(patient_id: str, c: Consensus, comp: PeriodComparison, cov: DataCovera
             "group:wearable" if r.activity == "sleep" and "group:wearable" in nodes else None
         if target:
             edges.append(InsightEdge(src=rid, dst=target, rel="of", label="pattern of", weight=1.0, evidence=r.this_week))
-    if found:
+    if found is not None:  # the course ran: care actions become nodes whether or not anything moved
         all_occ = week.occurrences(events, None)
         edges += course_mod.learned(found, actions or [], r_list, all_occ, end or now.astimezone(TZ).date(), nodes)
         for mc in found.values():  # a measure that took part in the course is something learned about this person
@@ -548,8 +624,11 @@ def review_evidence(refs: list[RecordCitation], c: Consensus, comp: PeriodCompar
     return out, tone
 
 
-def shortlist(refs: list[RecordCitation], tone: dict[str, str], limit: int) -> list[RecordCitation]:
-    """What the model reads: everything with a recorded change first, then context, bounded."""
+def shortlist(refs: list[RecordCitation], tone: dict[str, str], limit: int, shown: set[str] | None = None,
+              beside: int = 0) -> list[RecordCitation]:
+    """What the model reads: everything with a recorded change first, then context, bounded. Records of metrics
+    that are shown and not scored (`shown`) never take one of those `limit` places: up to `beside` of them ride
+    along after it (course events first), so what the model is told about the scored record is what it was."""
     def rank(ref: RecordCitation) -> tuple[int, int]:
         kind = ref.id.split(":", 1)[0]
         if kind in ("consensus", "source", "course") or ref.id == "pattern:collection":
@@ -562,7 +641,9 @@ def shortlist(refs: list[RecordCitation], tone: dict[str, str], limit: int) -> l
     # A measure on the course timeline is already described twice (course + week): its latest-point and
     # first-vs-latest-week records would only repeat it.
     keep = [r for r in refs if not (r.id.split(":", 1)[0] in ("metric", "pattern") and r.metric in in_course)]
-    return sorted(keep, key=rank)[:limit]
+    extra = [r for r in keep if r.metric in (shown or ()) or r.id == "obs:face_signs"]
+    scored = [r for r in keep if r not in extra]
+    return [*sorted(scored, key=rank)[:limit], *sorted(extra, key=rank)[:beside]]
 
 
 # ------------------------------------------------------------------ findings: validation + template
@@ -581,11 +662,15 @@ def _finding(theme: str, cites: list[RecordCitation], meaning: str, consider: st
                          cites=[r.id for r in cites], by=by)  # type: ignore[arg-type]
 
 
-def sustained_ids(refs: list[RecordCitation], tone: dict[str, str], drifts: dict[str, MetricDrift]) -> set[str]:
-    """Records that stand for a sustained change from usual by the rule engine (not a one-week difference)."""
+def sustained_ids(refs: list[RecordCitation], tone: dict[str, str], drifts: dict[str, MetricDrift],
+                  shown: set[str] | None = None) -> set[str]:
+    """Records that stand for a sustained change from usual by the rule engine (not a one-week difference).
+    `shown`: metrics the rule does not read (criteria `role = "shown"`): never sustained, whatever they do."""
     out = set()
     for r in refs:
         kind = r.id.split(":", 1)[0]
+        if r.metric in (shown or ()):
+            continue
         if kind in ("source", "routine") and tone.get(r.id) == "worse":
             out.add(r.id)
         elif kind in ("metric", "week", "pattern", "course") and r.metric in drifts and drifts[r.metric].status == "drifting" \
@@ -594,10 +679,25 @@ def sustained_ids(refs: list[RecordCitation], tone: dict[str, str], drifts: dict
     return out
 
 
+def face_issue(prose: str) -> str | None:
+    """`emotion_label`: an emotion is named. `face_inference`: a sentence that speaks of the face (or the camera)
+    also says how the person felt, seemed or was. Movements may be described; nothing may be read off them."""
+    if _EMOTION.search(prose):
+        return "emotion_label"
+    for sentence in _SENTENCES.split(prose):
+        if _FACE.search(sentence) and _FACE_STATE.search(sentence):
+            return "face_inference"
+    return None
+
+
 def prose_issue(prose: str) -> str | None:
-    """Checks every sentence the model writes must pass, as a content-free category."""
-    if _DIGIT.search(prose):
+    """Checks every sentence the model writes must pass, as a content-free category. `numbers_in_prose`: any
+    digit, and any number, month or weekday written as a word."""
+    if _DIGIT.search(prose) or _NUMBER_WORD.search(prose):
         return "numbers_in_prose"
+    face = face_issue(prose)
+    if face:
+        return face
     if contains_banned(prose) or _STATE.search(prose) or \
             wording.codes(wording.lint(prose, max_questions=None)) & _BAD_LINT:
         return "wording"
@@ -687,8 +787,11 @@ def check_overview(item: Any, allowed: dict[str, RecordCitation], needs_course: 
 
 def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str, str],
                   sustained: set[str] | None = None,
-                  truth: tuple[set[str], set[str], dict[str, str]] | None = None) -> ReviewFinding | str:
-    """One model finding → a rendered finding, or the content-free category it was rejected for."""
+                  truth: tuple[set[str], set[str], dict[str, str]] | None = None,
+                  shown: set[str] | None = None) -> ReviewFinding | str:
+    """One model finding → a rendered finding, or the content-free category it was rejected for.
+    `shown`: metrics that are shown and not scored. Their records may be cited beside scored ones; they never
+    decide a finding's theme, and a finding that cites nothing else is rejected (`unscored_only`)."""
     if not isinstance(item, dict):
         return "invalid_shape"
     theme, cites, meaning, consider = item.get("theme"), item.get("cites"), item.get("meaning"), item.get("consider")
@@ -707,15 +810,19 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
         return "directive"  # a consider line is a question to explore with the person, never an instruction
     if not specific(meaning, [allowed[i] for i in ids]):
         return "generic"
+    beside = {i for i in ids if allowed[i].metric in (shown or ()) or i == "obs:face_signs"}
+    if beside and len(beside) == len(ids):
+        return "unscored_only"  # a finding cannot rest on shown-only records (camera face signs) alone
     if len(meaning.split()) < 8 or (len(meaning.split()) < 12 and not _SEQUENCE.search(meaning)):
         return "thin"  # restates one fact line: adds no order, timing or comparison
     # Where a measure started is history: it does not make a finding about what has come back a "worse" one.
     history = {i for i in ids if i.startswith("course:onset:")} if any(tone.get(i) == "better" for i in ids) else set()
     # Reflections and other recorded signals are supporting detail: they never decide a finding's theme.
-    tones = [tone.get(i, "unknown") for i in ids if i not in history
+    tones = [tone.get(i, "unknown") for i in ids if i not in history and i not in beside
              and not i.startswith(("reflect:", "obs:", "course:reflection_"))]
     if sustained is None:
-        sustained = {i for i in ids if tone.get(i) == "worse" and i.split(":", 1)[0] in ("source", "metric", "routine")}
+        sustained = {i for i in ids if tone.get(i) == "worse" and i.split(":", 1)[0] in ("source", "metric", "routine")
+                     and i not in beside}
     ok = {"change": any(i in sustained for i in ids),
           "improvement": "better" in tones and "worse" not in tones,
           "steady": "worse" not in tones and ("similar" in tones or "better" in tones),
@@ -735,7 +842,7 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
 
 def validate(raw: str, allowed: dict[str, RecordCitation], tone: dict[str, str], sustained: set[str] | None = None,
              needs_course: bool = False, parsed: dict[str, Any] | None = None,
-             truth: tuple[set[str], set[str], dict[str, str]] | None = None
+             truth: tuple[set[str], set[str], dict[str, str]] | None = None, shown: set[str] | None = None
              ) -> tuple[list[ReviewFinding], dict[str, int]]:
     """Findings that pass, and rejection counts. `parsed` receives the checked overview under "overview"
     (a (text, cites) pair, or the category it was rejected for)."""
@@ -752,7 +859,7 @@ def validate(raw: str, allowed: dict[str, RecordCitation], tone: dict[str, str],
     rejected: Counter[str] = Counter()
     seen: set[tuple[str, ...]] = set()
     for item in items[:8]:
-        result = check_finding(item, allowed, tone, sustained, truth)
+        result = check_finding(item, allowed, tone, sustained, truth, shown)
         if isinstance(result, str):
             rejected[result] += 1
         elif tuple(sorted(result.cites)) in seen:
@@ -764,7 +871,8 @@ def validate(raw: str, allowed: dict[str, RecordCitation], tone: dict[str, str],
 
 
 def template_findings(refs: list[RecordCitation], tone: dict[str, str], c: Consensus, comp: PeriodComparison,
-                      routine: LearnedRoutine, cov: DataCoverage, arc: Course | None = None) -> list[ReviewFinding]:
+                      routine: LearnedRoutine, cov: DataCoverage, arc: Course | None = None,
+                      shown: set[str] | None = None) -> list[ReviewFinding]:
     by_id = {r.id: r for r in refs}
     metrics = {m.metric: m for g in comp.groups for m in g.metrics}
     out: list[ReviewFinding] = []
@@ -787,7 +895,8 @@ def template_findings(refs: list[RecordCitation], tone: dict[str, str], c: Conse
             "change", pick(f"source:{v.source}", *[f"week:{n}" if f"week:{n}" in by_id else f"metric:{n}" for n in names]),
             meaning, "Ask how the days around the change were, and whether it feels over; the record cannot say why."
             if back else "Worth a check-in about how these days have been; the record cannot say why.", "template"))
-    better = [m for m in metrics.values() if m.sustained == "better_than_usual" or m.vs_previous == "better"][:3]
+    better = [m for m in metrics.values() if m.metric not in (shown or ())
+              and (m.sustained == "better_than_usual" or m.vs_previous == "better")][:3]
     if better:
         out.append(_finding(
             "improvement", pick(*[f"week:{m.metric}" if f"week:{m.metric}" in by_id else f"metric:{m.metric}" for m in better]),
@@ -845,14 +954,16 @@ def headline(c: Consensus) -> str:
 def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs: list[RecordCitation],
            tone: dict[str, str], template: list[ReviewFinding], now: datetime, *, generate: bool, gen: Any = None,
            sustained: set[str] | None = None, day_n: int = 0, early: bool = False, needs_course: bool = False,
-           truth: tuple[set[str], set[str], dict[str, str]] | None = None
+           truth: tuple[set[str], set[str], dict[str, str]] | None = None, shown: set[str] | None = None
            ) -> tuple[PatientReview, list[AgentStep]]:
     model = gemma.model_name()
-    sent = shortlist(refs, tone, int(cfg("max_evidence", 60)))
+    shown = shown or set()
+    sent = shortlist(refs, tone, int(cfg("max_evidence", 60)), shown, int(cfg("max_shown_evidence", 8)))
     sustained = sustained or set()
     back_now, away_now, _names = truth or (set(), set(), {})
     context = [{"id": r.id, "label": r.label, "detail": r.detail, "direction": tone.get(r.id, "unknown"),
                 "sustained": r.id in sustained,
+                **({"scored": False} if r.metric in shown or r.id == "obs:face_signs" else {}),
                 **({"now": "back within usual" if r.metric in back_now else "still away from usual"}
                    if r.metric in back_now | away_now else {})} for r in sent]
     record = {"day_of_record": day_n, "baseline": "early, lower confidence" if early else "established"}
@@ -902,7 +1013,7 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
             attempts = attempt
             try:
                 raw = gen(prompt, timeout_s=float(cfg("timeout_s", 30)), task="insight_review", home_id=patient_id)
-                findings, bad = validate(raw, allowed, tone, sustained, needs_course, parsed, truth)
+                findings, bad = validate(raw, allowed, tone, sustained, needs_course, parsed, truth, shown)
                 rejected.update(bad)
                 if findings:
                     reason = None
@@ -916,7 +1027,9 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
                 rejected["invalid_json"] += 1
             prompt += ("\nYour previous response failed validation (" + ", ".join(sorted(rejected)) + "). Return one "
                        "complete JSON object, cite only the given ids, keep each theme consistent with the recorded "
-                       "direction, name the measures and their order, and write no digits and no filler.")
+                       "direction, name the measures and their order, and write no filler and no number or date "
+                       "at all, in digits or in words: no '6 Nov', no 'sixth of November', no '4 of 7 days' (say "
+                       "first, the day after, since the care team's call).")
         latency = _ms(t0)
         interpret = AgentStep(
             step="interpret", label="Gemma review", actor="gemma" if findings else "template",
@@ -927,9 +1040,9 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
         check = AgentStep(
             step="validate", label="Check every finding", actor="code",
             status="ok" if findings else "rejected", items=len(findings), rejected=dict(rejected),
-            detail="Known citation ids, no digits, permitted wording, no causal claim, no filler, names a cited "
-                   "measure or its timing, agrees with which measures are back or still away, consider is a "
-                   "question not an instruction, theme consistent with the recorded direction.")
+            detail="Known ids, no digits, permitted wording, no causal claim, no filler, names a cited measure or "
+                   "its timing, agrees with what is back or still away, consider is a question, theme fits the "
+                   "recorded direction, no emotion read off a face, nothing built on unscored records alone.")
         seen = parsed.get("overview")
         overview = seen if isinstance(seen, tuple) and findings else None
         about = AgentStep(
@@ -945,7 +1058,8 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
         if findings:
             # The model interprets; it cannot leave a recorded change out. Any signal group with a change from
             # usual that no accepted finding covers gets its deterministic finding.
-            covered = {allowed[i].source for f in findings if f.theme == "change" for i in f.cites if i in allowed}
+            covered = {allowed[i].source for f in findings if f.theme == "change" for i in f.cites
+                       if i in allowed and allowed[i].metric not in shown}  # a shown record covers no group
             for t in template:
                 source = next((refs_by_id[i].source for i in t.cites if i.startswith("source:")), None)
                 if t.theme == "change" and source not in covered and len(findings) < 8:
@@ -1065,8 +1179,10 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
     steps.append(AgentStep(
         step="course", label="Work out the course of change", actor="code", status="ok", latency_ms=_ms(t_course),
         items=len(arc.events),
-        detail=f"Phase {arc.phase}: {len(found)} measure{'s' if len(found) != 1 else ''} moved away from usual; "
-               "first day away, furthest day and return to range per measure, with care actions and PHQ-9 in order."))
+        detail=(f"Phase {arc.phase}: {arc.moved} measure{'s' if arc.moved != 1 else ''} moved away from usual"
+                + (f" (and {len(found) - arc.moved} shown without a vote)" if len(found) > arc.moved else "")
+                + "; first day away, furthest day and return to range per measure, with care actions and PHQ-9 in "
+                  "order.")[:300]))
     extra = [(r, "unknown") for r in account.generic_records(events, crit, data, end, OBS_LABEL)]
     if talk_record:
         extra.append((talk_record, talk_tone))
@@ -1090,15 +1206,17 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                                      detail=f"Still away from their usual: {listed(away_now)}."),
                       "worse" if away_now else "unknown"))
     all_refs, tone = review_evidence(refs, c, comp, drifts, r_list, helps, end, arc, extra)
-    template = template_findings(all_refs, tone, c, comp, routine, cov, arc)
+    shown = shown_names(crit)  # cited beside the record, never a theme
+    template = template_findings(all_refs, tone, c, comp, routine, cov, arc, shown)
     result, review_steps = review(store, settings, patient_id, c, all_refs, tone, template, now, generate=generate,
-                                  gen=gen, sustained=sustained_ids(all_refs, tone, drifts),
+                                  gen=gen, sustained=sustained_ids(all_refs, tone, drifts, shown),
                                   day_n=cov.day_of_record, early=early, needs_course=bool(found),
-                                  truth=(back_now, away_now, names))
+                                  truth=(back_now, away_now, names), shown=shown)
     steps += review_steps
     t2 = time.perf_counter()
     topics = dict(Counter(m["category"] for m in store.memories(patient_id))) if shared else {}
-    g = graph(patient_id, c, comp, cov, r_list, helps, events, episodes, shared, now, found, actions_raw, topics, end)
+    g = graph(patient_id, c, comp, cov, r_list, helps, events, episodes, shared, now, found, actions_raw, topics, end,
+              shown)
     extra_nodes, extra_edges = [], []
     for record, _direction in extra:
         if record.id.startswith("obs:") and f"group:{record.source}" in {n.id for n in g.nodes}:
@@ -1106,15 +1224,16 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                                            evidence=1))
             extra_edges.append(InsightEdge(src=f"group:{record.source}", dst=record.id, rel="measures",
                                            label="recorded, not scored", weight=0.3, evidence=1))
-    for theme in (overview.themes if overview else []):
-        tid = f"talk:{theme.label}"
-        extra_nodes.append(InsightNode(id=tid, kind="shared_topic", layer="learned", label=f"Talked about: {theme.label}",
-                                       detail="Came up in their reflections with Kaiku. A theme only; the words stay "
-                                              "private.", evidence=int(theme.value)))
-        extra_edges.append(InsightEdge(src="person", dst=tid, rel="talked_about", layer="learned",
-                                       label=f"in {int(theme.value)} reflection{'s' if theme.value != 1 else ''}",
-                                       weight=round(min(1.0, theme.value / 5), 3), evidence=int(theme.value)))
-    g = g.model_copy(update={"nodes": [*g.nodes, *extra_nodes], "edges": [*g.edges, *extra_edges]})
+    # Reflection themes over the graph's own window, so a theme's count and the days it came up are one set of rows.
+    graph_days = max(1, int(get("graph", "days", 28)))
+    graph_rows = [r for r in affect.recent(store, patient_id, now, days=graph_days + 1)
+                  if end - timedelta(days=graph_days - 1) <= r["day"] <= end] if shared else []
+    theme_nodes, theme_edges = graph_map.theme_nodes(graph_rows)
+    g = g.model_copy(update={"nodes": [*g.nodes, *extra_nodes, *theme_nodes],
+                             "edges": [*g.edges, *extra_edges, *theme_edges]})
+    g = graph_map.enrich(g, crit=crit, data=data, events=events, r_list=r_list, actions=actions_raw,
+                         talk_rows=graph_rows, end=end, shown=human_value, found=found,
+                         rows_cover_record=bool(cov.first_day and cov.first_day >= end - timedelta(days=graph_days - 1)))
     steps.append(AgentStep(step="graph", label="Organise the permitted graph", actor="code", status="ok",
                            latency_ms=_ms(t2), items=len(g.nodes),
                            detail=f"{len(g.nodes)} nodes and {len(g.edges)} links from "
@@ -1129,8 +1248,8 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                                     early=bool(min_stable) and (day.day - data.first_day).days + 1 < min_stable))
     # One truth about provenance: the envelopes' sim flag, on every record a practitioner can open.
     all_refs = [r.model_copy(update={"simulated": bool(data.sim)}) for r in all_refs]
-    if found:
-        moved = {name: mc for name, mc in found.items()}
+    if arc.moved:
+        moved = {name: mc for name, mc in found.items() if not course_mod.shown_only(mc.metric)}
         since = (f"{arc.back} of {arc.moved} measures that moved away are back within their usual"
                  + (f" since the low on {course_mod.human_date(arc.low_date)}." if arc.low_date else "."))
         comp = comp.model_copy(update={
