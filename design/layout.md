@@ -38,8 +38,12 @@ applies all four at once. Check it before you call a screen done.
 - Composer: the text field takes the width, and actions are 40 pt icon buttons (send, mic) with accessible labels.
 
 ## Scrolling
-- The screen body scrolls vertically (`ScrollView`). Children never shrink to fit (`flex-shrink: 0`, the
-  `.scr > *` rule). Shrinking clipped the consent list in testing.
+- **One viewport first.** Every app screen and game fits without scrolling at the default Mac window (980 × 720)
+  and on a 6.1–6.3″ iPhone at default text size: compact headers (title + pill on one row), two columns on the
+  Mac pane (≥ 600 pt), section gaps of 16–24 pt, no giant empty areas. Scrolling is the fallback only (accessibility
+  text sizes, iPhone SE, the 720 × 480 minimum window) and never bounces when the content fits.
+- The screen body is still a vertical `ScrollView` for that fallback. Children never shrink to fit (`flex-shrink: 0`,
+  the `.scr > *` rule). Shrinking clipped the consent list in testing.
 - Fixed elements: the tab bar, game fields and the crisis screen. Game screens fit their field into what's left
   between the header and the bottom bar. Crisis scrolls if it must, and its buttons stay full width.
 - Horizontal scrolling only in content rails (postcards) and the dense clinician table. Never on the page.
@@ -47,6 +51,11 @@ applies all four at once. Check it before you call a screen done.
 
 ## Colour and theme
 - Only token colours. Light and dark are both designed. The Dynamic Island and the glasses card are black in both.
+- Colour roles: `bg` paper behind everything, `surface` cards with a `line` hairline, `clay` = the one primary
+  action, soft fills by category (`sky-soft` check-ins/calm, `sage-soft` breath/garden/going well, `honey-soft`
+  fireflies/sun/warmth, `clay-soft` Kaiku's ear/voice and "me"). Icon tiles are the tone's ink on its soft fill;
+  tinted cards are borderless. Game scenes: `night-*` + `firefly` + `moth` (Firefly, dark in both themes, text
+  `night-ink`), `pond-*` + `pebble*` (Pebble path).
 - Text-colour pairs meet 4.5:1 (enforced by `design/tests`). The crisis button uses `crisis` + `crisis-ink`.
 
 ## Mac notch island

@@ -1,13 +1,13 @@
 import SwiftUI
 
 /// Buttons from the design library. Labels always wrap (never truncate); primary is ≥ 52 pt tall and full width on
-/// iPhone; every target is ≥ 44 pt.
-public enum KButtonKind { case primary, secondary, ghost, crisis }
+/// iPhone; every target is ≥ 44 pt. Press = 0.97 scale within a frame (no scale on crisis); hover on Mac shades the
+/// fill and shows the pointing hand. `night` / `nightGhost` are for the Firefly night scene.
+public enum KButtonKind { case primary, secondary, ghost, crisis, night, nightGhost }
 
 public struct KButtonStyle: ButtonStyle {
     let kind: KButtonKind
     let fullWidth: Bool
-    @Environment(\.isEnabled) private var enabled
 
     public init(_ kind: KButtonKind, fullWidth: Bool = true) {
         self.kind = kind
@@ -15,30 +15,60 @@ public struct KButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        let (bg, fg): (Color, Color) = {
-            switch kind {
-            case .primary: return (KaikuTokens.Colors.clay, KaikuTokens.Colors.clayInk)
-            case .secondary: return (KaikuTokens.Colors.surface2, KaikuTokens.Colors.ink)
-            case .ghost: return (.clear, KaikuTokens.Colors.clay)
-            case .crisis: return (KaikuTokens.Colors.crisis, KaikuTokens.Colors.crisisInk)
-            }
-        }()
+        KButtonBody(kind: kind, fullWidth: fullWidth, configuration: configuration)
+    }
+}
+
+private struct KButtonBody: View {
+    let kind: KButtonKind
+    let fullWidth: Bool
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var rm
+    @State private var hover = false
+
+    var colors: (Color, Color) {
+        switch kind {
+        case .primary: return (KaikuTokens.Colors.clay, KaikuTokens.Colors.clayInk)
+        case .secondary: return (KaikuTokens.Colors.surface2, KaikuTokens.Colors.ink)
+        case .ghost: return (.clear, KaikuTokens.Colors.clay)
+        case .crisis: return (KaikuTokens.Colors.crisis, KaikuTokens.Colors.crisisInk)
+        case .night: return (KaikuTokens.Colors.firefly, KaikuTokens.Colors.nightA)
+        case .nightGhost: return (.clear, KaikuTokens.Colors.nightInk)
+        }
+    }
+
+    var ghost: Bool { kind == .ghost || kind == .nightGhost }
+    var lifted: Bool { kind == .primary || kind == .night }
+
+    var body: some View {
+        let (bg, fg) = colors
+        let pressed = configuration.isPressed
         configuration.label
-            .kText(kind == .ghost ? .body : .callout, weight: .semibold)
+            .kText(ghost ? .body : .callout, weight: .semibold)
             .multilineTextAlignment(.center)
             .wraps()
             .foregroundStyle(fg)
             .padding(.horizontal, KaikuTokens.Space.s5)
             .padding(.vertical, KaikuTokens.Space.s3)
-            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: kind == .ghost ? KaikuTokens.Size.tapMin : 52)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: ghost ? KaikuTokens.Size.tapMin : 52)
             .background(
-                RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
-                    .fill(bg)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous).fill(bg)
+                    // Hover/press shade: a darker veil on filled buttons, a wash of the label colour on ghosts.
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(ghost ? fg.opacity(pressed ? 0.12 : hover ? 0.07 : 0)
+                                    : Color.black.opacity(pressed ? 0.12 : hover ? 0.05 : 0))
+                }
+                .shadow(color: lifted && enabled ? bg.opacity(0.28) : .clear, radius: pressed ? 2 : 8, y: pressed ? 1 : 4)
             )
-            .contentShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
-            .opacity(enabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
-            .scaleEffect(configuration.isPressed && kind != .crisis ? 0.98 : 1)
-            .animation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast), value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .opacity(enabled ? 1 : 0.42)
+            .scaleEffect(pressed && kind != .crisis && !rm ? 0.97 : 1)
+            .animation(.easeOut(duration: pressed ? 0.1 : 0.18), value: pressed)
+            .animation(.easeOut(duration: 0.15), value: hover)
+            .kPointer(enabled && kind != .crisis)
+            .onHover { hover = $0 && enabled && kind != .crisis }
     }
 }
 
@@ -52,20 +82,24 @@ public extension ButtonStyle where Self == KButtonStyle {
 /// "I'm not OK" — on every screen (header on iPhone, sidebar on Mac). Never shrinks; opens Crisis. No haptics.
 public struct NotOKPill: View {
     @Environment(AppModel.self) private var app
-    public init() {}
+    var onDark = false
+    public init(onDark: Bool = false) { self.onDark = onDark }
     public var body: some View {
         Button { app.crisis(trigger: "manual") } label: {
             Text(T("common.notok"))
                 .kText(.footnote, weight: .semibold)
-                .foregroundStyle(KaikuTokens.Colors.clay)
+                .foregroundStyle(onDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.clay)
                 .lineLimit(1)
                 .fixedSize()
                 .padding(.horizontal, KaikuTokens.Space.s4)
+                .frame(minHeight: 38)
+                .background(Capsule().fill(onDark ? Color.clear : KaikuTokens.Colors.claySoft))
+                .overlay(Capsule().strokeBorder(onDark ? KaikuTokens.Colors.nightInk.opacity(0.35) : .clear, lineWidth: 1.5))
                 .frame(minHeight: KaikuTokens.Size.tapMin)
-                .background(Capsule().fill(KaikuTokens.Colors.claySoft))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .kPointer()
         .accessibilityHint(T("help.body"))
     }
 }
@@ -88,7 +122,7 @@ public struct IconButton: View {
                 .background(Circle().fill(filled ? KaikuTokens.Colors.clay : KaikuTokens.Colors.surface2))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.kPress)
         .accessibilityLabel(label)
     }
 }

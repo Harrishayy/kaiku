@@ -11,38 +11,44 @@ public struct YouView: View {
 
     public var body: some View {
         @Bindable var app = app
-        KScreen(T("tab.you")) {
-            KSection {
-                KToggleRow(icon: "pause.circle.fill", title: T("you.pauseall"), detail: T("you.pauseall.d"), isOn: $app.pausedAll)
-            }
-            KSection {
-                link(.memories, "brain.head.profile", KaikuTokens.Colors.clay, "you.remembers")
-                KDivider()
-                link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
-            }
-            KSection {
-                link(.voice, "globe", KaikuTokens.Colors.sky, "you.voice")
-                KDivider()
-                link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
-                KDivider()
-                link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
-                if app.notificationsOn == false {
-                    KDivider()
-                    NotificationsOffRow()
+        KScreen(T("tab.you"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
+                KSection {
+                    KToggleRow(icon: "pause.fill", tint: KaikuTokens.Colors.honey, title: T("you.pauseall"),
+                               detail: T("you.pauseall.d"), isOn: $app.pausedAll)
                 }
-            }
-            KSection {
-                link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
-            }
-            KSection {
-                KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
-                     detail: app.queued > 0 ? T("you.queued", n: app.queued) : nil, accessory: .none)
-                if app.isPaired {
+                KSection {
+                    link(.memories, "sparkles", KaikuTokens.Colors.clay, "you.remembers")
                     KDivider()
-                    Button { confirmUnpair = true } label: {
-                        KRow(title: T("you.unpair"), accessory: .none)
+                    link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
+                    KDivider()
+                    link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
+                }
+            } trailing: {
+                KSection {
+                    link(.voice, "globe", KaikuTokens.Colors.sky, "you.voice")
+                    KDivider()
+                    link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
+                    KDivider()
+                    link(.devices, "dot.radiowaves.left.and.right", KaikuTokens.Colors.honey, "you.devices")
+                    KDivider()
+                    KToggleRow(icon: "speaker.wave.2.fill", tint: KaikuTokens.Colors.sage, title: T("you.sounds"), isOn: $app.sounds)
+                    if app.notificationsOn == false {
+                        KDivider()
+                        NotificationsOffRow()
                     }
-                    .buttonStyle(.plain)
+                }
+                KSection {
+                    HStack(spacing: 0) {
+                        KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
+                             detail: app.queued > 0 ? T("you.queued", n: app.queued) : nil, accessory: .none)
+                        if app.isPaired {
+                            Button(T("you.unpair.short")) { confirmUnpair = true }
+                                .buttonStyle(KButtonStyle(.ghost, fullWidth: false))
+                                .fixedSize()
+                                .padding(.trailing, KaikuTokens.Space.s1)
+                        }
+                    }
                 }
             }
         }
@@ -55,7 +61,7 @@ public struct YouView: View {
     }
 
     private func link(_ r: KaikuRoute, _ icon: String, _ tint: Color, _ key: String) -> some View {
-        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.plain)
+        NavigationLink(value: r) { KRow(icon: icon, tint: tint, title: T(key)) }.buttonStyle(.kPressRow())
     }
 }
 

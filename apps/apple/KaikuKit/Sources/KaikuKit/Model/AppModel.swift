@@ -63,6 +63,8 @@ public final class AppModel {
     public var quietWeekend: Bool { didSet { defaults.set(quietWeekend, forKey: "kaiku.quietWeekend") } }
     public var weatherDoneDay: String? { didSet { defaults.set(weatherDoneDay, forKey: "kaiku.weatherDone") } }
     public var breathHaptics: Bool { didSet { defaults.set(breathHaptics, forKey: "kaiku.breathHaptics") } }
+    /// Tiny UI sounds (games, dials). Respects the silent switch (iOS) and system mute. Default on.
+    public var sounds: Bool { didSet { defaults.set(sounds, forKey: KSound.enabledKey) } }
     /// Days the person marked in Your days (local only: no contract carries day marks yet).
     public var marks: [String: HighlightKind] { didSet { saveDict(marks.mapValues(\.rawValue), "kaiku.marks") } }
     /// Name override for layout stress tests (`-kaikuName Annemarie-Kristiina`); otherwise from memories.
@@ -93,6 +95,7 @@ public final class AppModel {
         quietWeekend = defaults.object(forKey: "kaiku.quietWeekend") as? Bool ?? true
         weatherDoneDay = defaults.string(forKey: "kaiku.weatherDone")
         breathHaptics = defaults.bool(forKey: "kaiku.breathHaptics")
+        sounds = defaults.object(forKey: KSound.enabledKey) as? Bool ?? true
         let m = defaults.dictionary(forKey: "kaiku.marks") as? [String: String] ?? [:]
         marks = m.compactMapValues { HighlightKind(rawValue: $0) }
         nameOverride = defaults.string(forKey: "kaikuName")

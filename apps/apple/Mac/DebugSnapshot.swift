@@ -3,18 +3,35 @@ import AppKit
 import KaikuKit
 import SwiftUI
 
-/// Layout check without screen-recording permission: `-kaikuSnapshot /path.png` renders the Mac pane for the
-/// selected tab/route at the minimum window's pane size (720 × 480 window − 220 pt sidebar) with ImageRenderer,
-/// writes a PNG and quits. Debug builds only.
+/// Layout check without screen-recording permission: `-kaikuSnapshot /path.png` renders the Mac window for the
+/// selected tab/route with ImageRenderer (a drawn sidebar + the pane), writes a PNG and quits. Debug builds only.
+/// `-kaikuSnapshotSize 980x720` picks the window size (default: the minimum, 720 × 480). The pane lays out
+/// statically (no ScrollView), so anything that would need scrolling shows up clipped at the bottom edge.
 enum DebugSnapshot {
+    static var isSnapshot: Bool { UserDefaults.standard.string(forKey: "kaikuSnapshot") != nil }
+
+    /// Snapshot runs never touch the Keychain: the pairing comes from `-kaikuSnapshotPair <link>`, in memory only.
+    @MainActor static func model() -> AppModel {
+        AppModel(pairing: UserDefaults.standard.string(forKey: "kaikuSnapshotPair").flatMap(Pairing.parse))
+    }
+
     @MainActor static func runIfAsked(app: AppModel) {
         guard let path = UserDefaults.standard.string(forKey: "kaikuSnapshot") else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            let view = KaikuPanePreview(tab: app.selectedTab, route: UserDefaults.standard.string(forKey: "kaikuRoute").flatMap(KaikuRoute.init(rawValue:)))
-                .environment(app)
-                .environment(\.kaikuStaticLayout, true)
-                .frame(width: 500, height: 480)
-                .clipped()
+        let dims = (UserDefaults.standard.string(forKey: "kaikuSnapshotSize") ?? "720x480")
+            .split(separator: "x").compactMap { Double($0) }
+        let w = dims.count == 2 ? dims[0] : 720, h = (dims.count == 2 ? dims[1] : 480) - 28   // minus the title bar
+        let delay = UserDefaults.standard.double(forKey: "kaikuSnapshotDelay")
+        DispatchQueue.main.asyncAfter(deadline: .now() + (delay > 0 ? delay : 4)) {
+            let route = UserDefaults.standard.string(forKey: "kaikuRoute").flatMap(KaikuRoute.init(rawValue:))
+            let view = HStack(spacing: 0) {
+                MacSidebarSnapshot(selected: route?.tab ?? app.selectedTab).frame(width: 220)
+                NavigationStack { KaikuPanePreview(tab: app.selectedTab, route: route) }
+                    .frame(width: w - 220, height: h)
+                    .clipped()
+            }
+            .environment(app)
+            .environment(\.kaikuStaticLayout, true)
+            .frame(width: w, height: h)
             let r = ImageRenderer(content: view)
             r.scale = 2
             if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
@@ -95,5 +112,32 @@ private struct MenuBarSlice: View {
         .frame(width: w, height: winH)
         .clipped()
     }
+}
+/// A drawn stand-in for the List sidebar (ImageRenderer can't draw NSTableView-backed lists).
+private struct MacSidebarSnapshot: View {
+    let selected: KaikuTab
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(KaikuTab.allCases) { tab in
+                HStack(spacing: 10) {
+                    Image(systemName: tab.symbol).frame(width: 20)
+                    Text(tab.title).kText(.body, weight: .medium)
+                }
+                .foregroundStyle(KaikuTokens.Colors.ink)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(tab == selected ? KaikuTokens.Colors.clay.opacity(0.16) : .clear))
+            }
+            Spacer()
+        }
+        .padding(.top, 34).padding(.horizontal, 10)
+        .background(KaikuTokens.Colors.surface2)
+    }
+}
+#else
+import KaikuKit
+enum DebugSnapshot {
+    static let isSnapshot = false
+    @MainActor static func model() -> AppModel { AppModel() }
 }
 #endif

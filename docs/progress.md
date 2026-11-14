@@ -376,3 +376,36 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `SurfaceViews.swift` (`SurfaceSize`), not tokens — move to `design/layout.md` if you want them as ground truth.
 - Next: DAT on real Ray-Ban Display (Developer Mode registration), camera brightness → daylight, interactive mood
   widget (STRETCH), notification content extension (STRETCH).
+
+## 2026-11-14 02:40 — Claude Code — apple + design (UX polish of the main window, tabs and games)
+- Audit (before; iPhone 16 Pro + SE sims, Mac via ImageRenderer at 980×720 and 720×480): header wasted a row
+  (pill above the title); Play, Your days, You and the weather check needed scrolling on a 16 Pro (Done button and
+  last rows below the tab bar); Mac panes were one 680 pt column with a tiny Kaiku and an empty right half; icon
+  tiles used `tint.opacity(0.14)` instead of the soft tokens and the weather icon was honey not sky; no surface
+  depth (flat cards, flat bg); Firefly was a grey-blue box with a beige moth and no feedback at all on a catch;
+  Pebble path was flat ellipses on sky-soft with no right/wrong feedback; games kept the tab bar, had no "how to
+  play" demo; no hover/pointer states or keyboard in games on Mac; no sounds.
+- Did: tokens: game scene colours (`night-a/b`, `night-ink`, `firefly`, `moth`, `pond-a/b`, `pebble`,
+  `pebble-edge`, from the look book) in `design/tokens.json` (+ gen + sync). Components: `KTone` soft fills for
+  icon tiles/tinted cards, `KPressStyle` (0.98 press, hover shade, pointing hand), KButton press 0.97 + hover +
+  lifted primary, `KBackdrop` (paper + time-of-day glow wash), `MascotHalo`/`GlowingMascot`, `KAdaptiveColumns`
+  (two columns ≥ 600 pt), compact `ScreenHeader` (title + pill one row; round back button, Esc), scroll only when
+  needed (`scrollBounceBehavior(.basedOnSize)`), new `WeatherDial` (value chip, tick marks, grip knob, open hand,
+  ←/→, tick sound). Screens: Today (glowing Kaiku + bubble, sky/sage rows, look-book garden), Play (illustrated game
+  tiles, minutes chips, 2×2 on Mac), Weather check, Your days, You (+ "Little sounds" switch), Talk halo,
+  onboarding backdrop. Games: `GameShell` = scene + top bar (tab bar hidden) → intro with a looping demo → play →
+  warm end. Firefly: night scene, catch burst + flight into a live jar + chime + haptic, moth wobble + puff,
+  missed trail, Space. Pebble path: pond, lumpy pebbles with press/glow/ripple/shake, Kaiku hops in arcs, rising
+  pentatonic notes, 1–9/arrows. Breathe: glow pool, phase countdown ring + seconds, breath dots, soft tones. Tell
+  Kaiku: tap-to-start/tap-to-stop (hold still works), mic-level halo, 30 s ring, Space. `KSound`: synthesised soft
+  tones (no assets), ambient session, You switch. Reduce Motion fallbacks for all of it. Docs: `design/layout.md`
+  (one-viewport rule, colour roles), `design/motion.md` (direct-feedback exception, game feedback table, RM), apple
+  AGENTS.md. Mac `-kaikuSnapshotSize` / `-kaikuSnapshotPair` (in-memory pairing, no Keychain).
+- Verified (after, same sizes): every tab, the weather check and every game fit one viewport on the 16 Pro and at
+  980×720 on Mac; SE and the 720×480 window fall back to scrolling. `swift test` 70 green, both builds green,
+  `ui_copy_check` clean, `make check` 509 passed, iOS UI tests 5/5 (incl. pebbles + weather + A2 extras).
+- Contract changes: none.
+- Broken/blocked: design (D) — upstream `tell.tap/start/done`, `you.sounds(.d)`, `you.unpair.short` from
+  `copy.apple.json`. Mac snapshots draw the sidebar themselves and can't render toggles/text fields; the 720×480
+  static render clips the header (real window scrolls). Menu bar popover / island untouched (owned by A3).
+- Next: real-device pass on haptics + sound levels; iPhone tilt → eyes.

@@ -39,6 +39,15 @@ public enum KaikuTokens {
         public static let mascotScarfStripe = SwiftUI.Color(kaikuLight: 0xE9A286, dark: 0xE9A286)
         public static let mascotOutline = SwiftUI.Color(kaikuLight: 0xD9C3A5, dark: 0xB59C7C)
         public static let mascotSparkle = SwiftUI.Color(kaikuLight: 0xE9B44C, dark: 0xF0C870)
+        public static let nightA = SwiftUI.Color(kaikuLight: 0x1B2033, dark: 0x14182A)
+        public static let nightB = SwiftUI.Color(kaikuLight: 0x2A2638, dark: 0x221F30)
+        public static let nightInk = SwiftUI.Color(kaikuLight: 0xEDE6F5, dark: 0xEDE6F5)
+        public static let firefly = SwiftUI.Color(kaikuLight: 0xFFE07A, dark: 0xFFE07A)
+        public static let moth = SwiftUI.Color(kaikuLight: 0xB9A893, dark: 0x9C8D7A)
+        public static let pondA = SwiftUI.Color(kaikuLight: 0xCFE0E8, dark: 0x24343C)
+        public static let pondB = SwiftUI.Color(kaikuLight: 0xB8D0DA, dark: 0x1C2A31)
+        public static let pebble = SwiftUI.Color(kaikuLight: 0xE8DCCB, dark: 0x4A4038)
+        public static let pebbleEdge = SwiftUI.Color(kaikuLight: 0xC9B79F, dark: 0x6A5C50)
         public static var accent: SwiftUI.Color { clay }
         public static var goingWell: SwiftUI.Color { sage }
         public static var calm: SwiftUI.Color { sky }

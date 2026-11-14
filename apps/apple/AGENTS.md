@@ -78,14 +78,15 @@ KaikuKit/Sources/KaikuKit/
   Net/Pairing.swift         ?home=&t= link parser; Keychain storage (file fallback for unsigned sim builds)
   Safety/SafetyGate.swift   port of kaiku_contracts/safety.py + a tiny TOML reader
   Mascot/                   MascotSpec (decodes mascot.spec.json, SVG paths, easings), MascotView (Canvas)
-  Components/               buttons, NotOK pill, screen/header, cards, rows, toggles, segmented, dial, toast,
-                            bubbles, empty/loading/offline/error states, RingStage
+  Components/               buttons, NotOK pill, screen/header, cards, rows, toggles, segmented, WeatherDial, toast,
+                            bubbles, empty/loading/offline/error states, RingStage; Polish.swift (KTone soft fills,
+                            KPressStyle press/hover, KBackdrop time-of-day wash, MascotHalo, KAdaptiveColumns)
   Screens/                  Screens.swift (tabs, routes, parity list, root/tab bar/sidebar), Today, Weather check,
                             Play, Your days, You (+ remembers, saw today, voice, quiet hours, devices, help),
                             Crisis, Onboarding, MenuBarPopover
   Games/                    Firefly, Pebble path, Breathe, Tell Kaiku (+ Composer, mic card)
   Talk/                     TalkView/TalkModel, LiveSession (Gemini Live WS), AudioCapture (+ SpeechFeatures VAD)
-  Platform/                 Haptics, platform constants, QR scanner (iOS)
+  Platform/                 Haptics, platform constants, QR scanner (iOS), Sound (synthesised soft UI tones)
   Mac/                      pure Mac-extras logic (tested): MacIslandGeometry/Shape/Layout (the island), MacUsage (bundle-id → category table, aggregator,
                             ScreenActivity payload, MacUsageStore = the local aggregate), MacPeek (peek rules +
                             ledger, invitation time)
@@ -178,6 +179,12 @@ One screen list (`KaikuScreen` in `Screens/Screens.swift`) rendered by both targ
 - Widgets and Live Activities never call the network: they read the App Group snapshot / activity state.
 - Layout holds `design/layout.md`'s stress case (fi + long name + large text + 320 pt): text wraps, rows stack at
   accessibility sizes, headings cap their growth, fixed game screens give the field the room.
+- One viewport: every tab, the weather check and every game fit without scrolling at the default Mac window
+  (980 × 720, two columns ≥ 600 pt) and on iPhone 16 Pro at default text; scrolling is only the fallback (SE,
+  accessibility sizes, the minimum window). Games: intro with a looping demo → play (scene, thin progress, no
+  score) → warm end; every tap answered in ≤ 100 ms (design/motion.md → Game feedback), hover + keyboard on Mac
+  (Space catches a firefly / toggles Tell Kaiku, 1–9 or arrows + Space on pebbles, ←/→ on dials, Return starts,
+  Esc goes back). Sounds respect You → Little sounds and the silent switch.
 
 ## Run standalone
 ```
@@ -191,7 +198,9 @@ the typed scripted path. Launch arguments for dev/screenshots (UserDefaults argu
 `-kaikuSkipOnboarding YES`, `-kaikuPairLink "http://127.0.0.1:8000/?home=demo-aino"`, `-kaiku.lang fi`,
 `-kaikuTab play`, `-kaikuRoute firefly`, `-kaikuAutostart YES` (skip a game intro), `-kaikuName Annemarie-Kristiina`
 (layout stress), `-kaikuShowCrisis YES`, `-kaikuOnboardingStep 2`; Mac only: `-kaikuSnapshot /tmp/x.png`
-(ImageRenderer PNG of the pane at the minimum window size; text fields/switches render as placeholders there),
+(ImageRenderer PNG of a drawn sidebar + the pane; `-kaikuSnapshotSize 980x720` for the window size, default the
+720 × 480 minimum; `-kaikuSnapshotPair <link>` pairs in memory only, never touching the Keychain or pairing file;
+text fields/switches render as placeholders there),
 `-kaikuSimulateLate YES` (the 01:10 peek + a sim screen_activity), `-kaikuIslandSnapshot /tmp/i.png` (PNG of a menu-bar slice
 with the island collapsed, peeking and expanded, 2× + `.1x.png`, once it has peeked).
 iPhone (A2): `-kaikuRoute walk -kaikuAutostart YES` (start a walk), `-kaikuGlasses mock|datmock|dat|none`,

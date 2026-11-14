@@ -22,30 +22,49 @@ public struct DaysView: View {
     }
 
     public var body: some View {
-        KScreen(T("tab.days")) {
-            KCard(tint: KaikuTokens.Colors.sageSoft) {
-                GardenPatch(plants: app.me?.garden?.plants ?? 0, resting: app.me?.garden?.resting ?? false, height: 120)
-                Text((app.me?.garden?.resting ?? false) ? T("days.resting") : T("days.garden"))
-                    .kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-            }
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
-                Text(T("days.week")).kText(.title3).foregroundStyle(KaikuTokens.Colors.ink).wraps().accessibilityAddTraits(.isHeader)
-                WeekStrip(days: week, kind: kind) { marking = $0 }
-                Text(T("days.mark")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-            }
-            if let hs = app.me?.highlights, !hs.isEmpty {
-                KSection(T("days.highlights")) {
-                    ForEach(Array(hs.prefix(7).enumerated()), id: \.offset) { i, h in
-                        if i > 0 { KDivider() }
-                        KRow(icon: h.kind == .good ? "sun.max.fill" : "cloud.drizzle.fill",
-                             tint: h.kind == .good ? KaikuTokens.Colors.honey : KaikuTokens.Colors.sky,
-                             title: h.text, detail: DayName.long(h.date), accessory: .none)
+        KScreen(T("tab.days"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
+                WideAware { wide in
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                        GardenPatch(plants: app.me?.garden?.plants ?? 0, resting: app.me?.garden?.resting ?? false, height: wide ? 150 : 76)
+                        Text((app.me?.garden?.resting ?? false) ? T("days.resting") : T("days.garden"))
+                            .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                    }
+                    .padding(.horizontal, KaikuTokens.Space.s4)
+                    .padding(.top, KaikuTokens.Space.s4)
+                    .padding(.bottom, KaikuTokens.Space.s4)
+                    .background(GardenWash())
+                }
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                    Text(T("days.week")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps().accessibilityAddTraits(.isHeader)
+                    WeekStrip(days: week, kind: kind) { marking = $0 }
+                    Text(T("days.mark")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                }
+            } trailing: {
+                WideAware { wide in
+                    if let hs = app.me?.highlights, !hs.isEmpty {
+                        KSection(T("days.highlights")) {
+                            ForEach(Array(hs.prefix(wide ? 5 : 2).enumerated()), id: \.offset) { i, h in
+                                if i > 0 { KDivider() }
+                                KRow(icon: h.kind == .good ? "sun.max.fill" : "cloud.drizzle.fill",
+                                     tint: h.kind == .good ? KaikuTokens.Colors.honey : KaikuTokens.Colors.sky,
+                                     title: h.text, detail: DayName.long(h.date), accessory: .none)
+                            }
+                        }
                     }
                 }
-            }
-            VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
-                Text(T("days.postcards")).kText(.title3).foregroundStyle(KaikuTokens.Colors.ink).wraps().accessibilityAddTraits(.isHeader)
-                KCard { EmptyState(T("empty.postcards")) }
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                    Text(T("days.postcards")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                        .padding(.horizontal, KaikuTokens.Space.s1).accessibilityAddTraits(.isHeader)
+                    HStack(spacing: KaikuTokens.Space.s3) {
+                        MascotView(state: .cozy, size: 52, tappable: false)
+                        Text(T("empty.postcards")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(KaikuTokens.Space.s3)
+                    .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
+                        .strokeBorder(KaikuTokens.Colors.line, style: StrokeStyle(lineWidth: 1.5, dash: [5, 5])))
+                }
             }
         }
         .sheet(item: Binding(get: { marking.map(IdentDate.init) }, set: { marking = $0?.date })) { d in
@@ -80,20 +99,20 @@ struct WeekStrip: View {
                         Text(i < letters.count ? letters[i] : "").kText(.caption).foregroundStyle(KaikuTokens.Colors.muted)
                             .lineLimit(1).minimumScaleFactor(0.8)
                         ZStack {
-                            Circle().fill(k == .good ? KaikuTokens.Colors.sageSoft : k == .hard ? KaikuTokens.Colors.skySoft : KaikuTokens.Colors.surface)
-                            Circle().strokeBorder(isToday ? KaikuTokens.Colors.clay : KaikuTokens.Colors.line, lineWidth: isToday ? 2.5 : 1)
+                            Circle().fill(k == .good ? KaikuTokens.Colors.honeySoft : k == .hard ? KaikuTokens.Colors.skySoft : KaikuTokens.Colors.surface)
+                            Circle().strokeBorder(isToday ? KaikuTokens.Colors.clay : KaikuTokens.Colors.line, style: StrokeStyle(lineWidth: isToday ? 2 : 1.5, dash: isToday ? [4, 3] : []))
                             if let k {
                                 Image(systemName: k == .good ? "sun.max.fill" : "cloud.fill")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(k == .good ? KaikuTokens.Colors.sage : KaikuTokens.Colors.sky)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(k == .good ? KaikuTokens.Colors.honey : KaikuTokens.Colors.sky)
                             }
                         }
-                        .frame(width: 38, height: 38)
+                        .frame(width: 42, height: 42)
                     }
                     .frame(maxWidth: .infinity, minHeight: 64)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.kPress)
                 .disabled(future)
                 .opacity(future ? 0.45 : 1)
                 .accessibilityLabel(DayName.long(AppModel.dayKey(d)))
@@ -129,7 +148,7 @@ struct MarkDaySheet: View {
                             .fill(choice == v ? KaikuTokens.Colors.claySoft : KaikuTokens.Colors.surface))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.kPress)
                     .accessibilityAddTraits(choice == v ? .isSelected : [])
                 }
                 Button(T("common.done")) { done(choice == 1 ? .good : choice == 2 ? .hard : nil) }.buttonStyle(.kPrimary)

@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Today: greeting + not-OK, Kaiku with the one suggestion, primary + "not today", Weather check + Breathe rows,
-/// garden strip. Mascot mood from /v1/me; loading → thinking; offline → sky banner.
+/// Today: greeting + not-OK, Kaiku in its time-of-day glow with the one suggestion, primary + "not today", Weather
+/// check (sky) + Breathe (sage) rows, garden. One viewport: two columns on the Mac window, a compact stack on
+/// iPhone. Mascot mood from /v1/me; loading → thinking; offline → sky banner.
 public struct TodayView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.kaikuPaneWidth) private var width
     @State private var declined = false
 
     public init() {}
-
-    var greeting: String { app.greeting }
 
     var arm: NudgeArm? { app.nudge?.arm }
 
@@ -20,34 +20,52 @@ public struct TodayView: View {
     }
 
     public var body: some View {
-        KScreen(greeting) {
+        KScreen(app.greeting, maxWidth: 1000) {
             if app.offline { OfflineBanner() }
-            MascotWithBubble(state: app.ambientState, text: bubble)
-            if let arm, !declined {
-                VStack(spacing: KaikuTokens.Space.s2) {
-                    suggestionButton(arm)
-                    Button(T("common.nottoday")) {
-                        withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.base)) { declined = true }
+            KAdaptiveColumns(minWidth: 600, leadingFraction: 0.48) {
+                WideAware { wide in
+                    if wide {
+                        VStack(spacing: KaikuTokens.Space.s4) {
+                            GlowingMascot(state: app.ambientState, size: 176)
+                            Bubble(bubble, big: true, centered: true)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        MascotWithBubble(state: app.ambientState, text: bubble, size: 144, big: true)
                     }
-                    .buttonStyle(.kGhost)
                 }
+                actions
+            } trailing: {
+                KSection {
+                    NavigationLink(value: KaikuRoute.weather) {
+                        KRow(icon: "sun.max.fill", tint: KaikuTokens.Colors.sky, title: T("today.card.weather.t"),
+                             detail: app.weatherDoneToday ? T("today.card.weather.done") : T("today.card.weather.d"),
+                             accessory: app.weatherDoneToday ? .check : .chevron)
+                    }
+                    .buttonStyle(.kPressRow())
+                    KDivider()
+                    NavigationLink(value: KaikuRoute.breathe) {
+                        KRow(icon: "wind", tint: KaikuTokens.Colors.sage, title: T("today.card.breathe.t"), detail: T("today.card.breathe.d"))
+                    }
+                    .buttonStyle(.kPressRow())
+                }
+                GardenStrip(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
             }
-            KSection {
-                NavigationLink(value: KaikuRoute.weather) {
-                    KRow(icon: "cloud.sun.fill", tint: KaikuTokens.Colors.honey, title: T("today.card.weather.t"),
-                         detail: app.weatherDoneToday ? T("today.card.weather.done") : T("today.card.weather.d"),
-                         accessory: app.weatherDoneToday ? .check : .chevron)
-                }
-                .buttonStyle(.plain)
-                KDivider()
-                NavigationLink(value: KaikuRoute.breathe) {
-                    KRow(icon: "wind", tint: KaikuTokens.Colors.sky, title: T("today.card.breathe.t"), detail: T("today.card.breathe.d"))
-                }
-                .buttonStyle(.plain)
-            }
-            GardenStrip(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
         }
         .refreshable { await app.refresh() }
+    }
+
+    @ViewBuilder private var actions: some View {
+        if let arm, !declined {
+            VStack(spacing: KaikuTokens.Space.s1) {
+                suggestionButton(arm)
+                Button(T("common.nottoday")) {
+                    withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { declined = true }
+                }
+                .buttonStyle(.kGhost)
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+        }
     }
 
     @ViewBuilder private func suggestionButton(_ arm: NudgeArm) -> some View {
@@ -68,29 +86,54 @@ public struct TodayView: View {
     }
 }
 
-/// A row of sprouts (one per interaction in the last 14 days, max 14); rests (sleeps) after 3 quiet days.
+/// Gives its content whether the pane is in the two-column (wide) layout.
+struct WideAware<Content: View>: View {
+    @ViewBuilder let content: (Bool) -> Content
+    @Environment(\.kaikuPaneWidth) private var width
+    @Environment(\.dynamicTypeSize) private var dts
+    var body: some View { content(KAdaptiveColumns<EmptyView, EmptyView>.isWide(width, dts)) }
+}
+
+/// The garden (artifact `.garden`): a sky-to-paper wash, sprouts on a soft mound (one per interaction in the last
+/// 14 days, max 14); rests after 3 quiet days, never wilts. Opens Your days.
 struct GardenStrip: View {
     let garden: Garden
+    var height: CGFloat = 64
     let open: () -> Void
     var body: some View {
         Button(action: open) {
-            KCard(tint: KaikuTokens.Colors.sageSoft) {
-                HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
-                    GardenPatch(plants: garden.plants, resting: garden.resting, height: 46)
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                HStack(alignment: .bottom, spacing: KaikuTokens.Space.s3) {
+                    GardenPatch(plants: garden.plants, resting: garden.resting, height: height)
                         .frame(maxWidth: .infinity)
-                    Image(systemName: "chevron.right").foregroundStyle(KaikuTokens.Colors.sage)
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(KaikuTokens.Colors.sage).padding(.bottom, 14)
                 }
                 Text(garden.resting ? T("days.resting") : T("days.garden"))
-                    .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                    .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
             }
+            .padding(.horizontal, KaikuTokens.Space.s4)
+            .padding(.top, KaikuTokens.Space.s3)
+            .padding(.bottom, KaikuTokens.Space.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(GardenWash())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.kPress)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(T("tab.days"))
     }
 }
 
-/// Garden drawing: sprouts that grow by index; resting = sprouts droop slightly with a moon (never wilts).
+struct GardenWash: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
+            .fill(LinearGradient(colors: [KaikuTokens.Colors.skySoft, KaikuTokens.Colors.sageSoft.opacity(0.7)],
+                                 startPoint: .top, endPoint: .bottom))
+    }
+}
+
+/// Garden drawing: sprouts that grow by index on a soft mound; some carry a bud or a bloom. Resting = sprouts lean
+/// a little with a moon (never wilts).
 struct GardenPatch: View {
     let plants: Int
     let resting: Bool
@@ -98,30 +141,47 @@ struct GardenPatch: View {
     var body: some View {
         Canvas { ctx, size in
             let n = max(0, min(14, plants))
-            let ground = Path(roundedRect: CGRect(x: 0, y: size.height - 8, width: size.width, height: 8), cornerRadius: 4)
-            ctx.fill(ground, with: .color(KaikuTokens.Colors.sage.opacity(0.25)))
+            var mound = Path()
+            mound.move(to: CGPoint(x: 0, y: size.height - 4))
+            mound.addQuadCurve(to: CGPoint(x: size.width, y: size.height - 4), control: CGPoint(x: size.width / 2, y: size.height - 16))
+            mound.addLine(to: CGPoint(x: size.width, y: size.height))
+            mound.addLine(to: CGPoint(x: 0, y: size.height))
+            mound.closeSubpath()
+            ctx.fill(mound, with: .color(KaikuTokens.Colors.mascotShade.opacity(0.7)))
             guard n > 0 else {
-                // a single seed mound
-                ctx.fill(Path(ellipseIn: CGRect(x: size.width / 2 - 6, y: size.height - 12, width: 12, height: 6)),
-                         with: .color(KaikuTokens.Colors.mascotShade))
+                ctx.fill(Path(ellipseIn: CGRect(x: size.width / 2 - 6, y: size.height - 16, width: 12, height: 6)),
+                         with: .color(KaikuTokens.Colors.mascotOutline))
                 return
             }
             let gap = size.width / CGFloat(n + 1)
             for i in 0..<n {
                 let x = gap * CGFloat(i + 1)
-                let hgt = (size.height - 12) * (0.45 + 0.55 * CGFloat((i * 37) % 10) / 10)
+                let base = size.height - 6 - 10 * sin(.pi * x / size.width)
+                let hgt = (base - 8) * (0.42 + 0.5 * CGFloat((i * 37) % 10) / 10)
+                let lean: CGFloat = resting ? 5 : 0
                 var stem = Path()
-                stem.move(to: CGPoint(x: x, y: size.height - 8))
-                let lean: CGFloat = resting ? 4 : 0
-                stem.addQuadCurve(to: CGPoint(x: x + lean, y: size.height - 8 - hgt), control: CGPoint(x: x - 3, y: size.height - 8 - hgt / 2))
+                stem.move(to: CGPoint(x: x, y: base))
+                stem.addCurve(to: CGPoint(x: x + lean, y: base - hgt), control1: CGPoint(x: x - 2, y: base - hgt / 2),
+                              control2: CGPoint(x: x + 2, y: base - hgt / 2))
                 ctx.stroke(stem, with: .color(KaikuTokens.Colors.sage), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                let top = CGPoint(x: x + lean, y: size.height - 8 - hgt)
-                let leafL = Path(ellipseIn: CGRect(x: top.x - 10, y: top.y - 3, width: 10, height: 6))
-                let leafR = Path(ellipseIn: CGRect(x: top.x, y: top.y - 6, width: 10, height: 6))
-                ctx.fill(leafL, with: .color(KaikuTokens.Colors.sage))
-                ctx.fill(leafR, with: .color(KaikuTokens.Colors.sage.opacity(0.8)))
-                if i % 4 == 2 && !resting {
-                    ctx.fill(Path(ellipseIn: CGRect(x: top.x - 3, y: top.y - 10, width: 6, height: 6)), with: .color(KaikuTokens.Colors.honey))
+                // two leaves (artifact plant shape)
+                var l1 = Path()
+                let a = CGPoint(x: x, y: base - hgt * 0.45)
+                l1.move(to: a); l1.addQuadCurve(to: CGPoint(x: a.x - 12, y: a.y - 9), control: CGPoint(x: a.x - 12, y: a.y - 1))
+                l1.addQuadCurve(to: a, control: CGPoint(x: a.x - 3, y: a.y - 10))
+                ctx.fill(l1, with: .color(KaikuTokens.Colors.sage))
+                if (i * 7) % 3 != 0 {
+                    var l2 = Path()
+                    let b = CGPoint(x: x + lean * 0.6, y: base - hgt * 0.72)
+                    l2.move(to: b); l2.addQuadCurve(to: CGPoint(x: b.x + 12, y: b.y - 9), control: CGPoint(x: b.x + 12, y: b.y - 1))
+                    l2.addQuadCurve(to: b, control: CGPoint(x: b.x + 3, y: b.y - 10))
+                    ctx.fill(l2, with: .color(KaikuTokens.Colors.sage.opacity(0.85)))
+                }
+                let top = CGPoint(x: x + lean, y: base - hgt)
+                if !resting, i % 3 == 1 {
+                    let r: CGFloat = i % 2 == 0 ? 5 : 3.5
+                    ctx.fill(Path(ellipseIn: CGRect(x: top.x - r, y: top.y - r - 2, width: r * 2, height: r * 2)),
+                             with: .color(i % 2 == 0 ? KaikuTokens.Colors.mascotSparkle : KaikuTokens.Colors.mascotBlush))
                 }
             }
             if resting {

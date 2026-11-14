@@ -271,7 +271,7 @@ public struct TalkView: View {
 
     public init() {}
 
-    var holdSize: CGFloat { dts.isAccessibilitySize ? 72 : 104 }
+    var holdSize: CGFloat { dts.isAccessibilitySize ? 72 : 124 }
 
     var mascotState: MascotState {
         switch model.mode {
@@ -284,7 +284,7 @@ public struct TalkView: View {
     }
 
     public var body: some View {
-        KScreen(T("tab.talk"), scrolls: false) {
+        KScreen(T("tab.talk"), scrolls: false, maxWidth: 760) {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: KaikuTokens.Space.s3) {
@@ -332,6 +332,7 @@ public struct TalkView: View {
                 let p = model.holdStart.map { tl.date.timeIntervalSince($0) / 30 } ?? 0
                 ZStack {
                     ProgressRing(progress: p, width: 5).frame(width: holdSize + 14, height: holdSize + 14).opacity(model.hasLive ? 1 : 0)
+                    MascotHalo(size: holdSize)
                     MascotView(state: mascotState, size: holdSize, tappable: !model.hasLive)
                 }
                 .onChange(of: p >= 1) { _, full in if full { model.release() } }

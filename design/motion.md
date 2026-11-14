@@ -6,7 +6,9 @@ If a number here and in those files ever disagree, the JSON wins. Fix this file.
 
 ## Principles
 - **Slow, soft, springy.** Character and UI motion is never faster than 300 ms (`motion.duration.fast`). Blinks
-  (240 ms) are the only exception because a real blink is that quick.
+  (240 ms) are one exception because a real blink is that quick; **direct feedback** is the other: a press scales to
+  0.97 (0.98 for rows/cards) within 100 ms and settles in ~180 ms, hover shades in 150 ms, so every tap is answered
+  in the same frame.
 - **Gentle overshoot, never a bounce-fest.** Use `overshoot` (`cubic-bezier(.34,1.36,.64,1)`) or
   `Spring.gentle` (response 0.55 s, damping 0.72) for arrivals, and `soft-in-out` for loops.
 - **Nothing flashes.** No strobing, no colour flicker. Glow changes fade over at least 700 ms.
@@ -92,6 +94,21 @@ yawns). Auto-hides after 20 s (hovering holds it). Reduce Motion: crossfade (`cr
 | breath guide turn (in ↔ out) | `.soft` impact, intensity 0.3 (only if the person turned it on) | none |
 | crisis button | none (no playful feedback) | none |
 
+## Game feedback (every interaction answered in ≤ 100 ms)
+| moment | what you see | sound | haptic (iPhone) |
+|---|---|---|---|
+| firefly caught | ring + 8 sparks burst (350 ms), a glow dot arcs into the jar (800 ms), Kaiku smiles | bright two-note chime | rigid 0.6 |
+| moth tapped | the moth wobbles and drifts off in a soft dust puff (550 ms); never red | low soft puff | soft 0.45 |
+| firefly missed | it sinks and fades with a 4-dot trail (700 ms) | — | — |
+| pebble right | ripple ring, the pebble glows, Kaiku hops onto it (450 ms arc + landing squash) | next note up (pentatonic) | rigid 0.6 |
+| pebble wrong | gentle shake (450 ms) + "Let's try that one again" | low two-step | soft 0.45 |
+| dial step | knob springs to the stop, ear turns | tiny tick | light |
+| breath turn | ring restarts, cue word cross-fades, glow swells/settles | very soft tone | soft 0.3 (if on) |
+
+Sounds are synthesised soft sine tones (no bundled audio), quiet, behind You → Little sounds, the iPhone silent
+switch (ambient session) and the system mute. Never on the crisis screen. Every game opens with a one-screen
+intro that shows a tiny looping demo of what to do; progress is a thin line/dots, never a number.
+
 ## Reduce Motion
 When `prefers-reduced-motion: reduce` (web, `--k-motion: 0`) or `accessibilityReduceMotion` (SwiftUI):
 1. **No tracks, no blinks, no events.** Each state shows its pose only.
@@ -101,6 +118,8 @@ When `prefers-reduced-motion: reduce` (web, `--k-motion: 0`) or `accessibilityRe
 4. **Ear on the dial**: still follows the value (it is direct manipulation, not decoration), but without spring.
 5. **Peek**: appears in its final pose with a 300 ms fade.
 6. Cursor/tilt following is off.
+7. Game feedback keeps its meaning without movement: no sparks, shakes, hops, wobbles or press scaling; the caught
+   firefly fades in at the jar, rings and glows only change opacity, intro demos show one still frame.
 
 ## Robot parity
 The head's eye display draws `eye-l`, `eye-r`, `lid-l`, `lid-r` from the spec (crop `robot_eye_display.crop`), with

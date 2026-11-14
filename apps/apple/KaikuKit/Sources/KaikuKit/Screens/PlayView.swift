@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Play: game cards (icon, title, one line, minutes under the title), today's suggested game first.
+/// Play: one card per game with a little scene tile (night jar, pond, ear, breath rings), title, one line and
+/// minutes; today's suggested game first. iPhone: a compact list that fits one screen. Mac: a 2 × 2 grid.
 public struct PlayView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dynamicTypeSize) private var dts
@@ -9,21 +10,20 @@ public struct PlayView: View {
     struct Card: Identifiable {
         let route: KaikuRoute
         let key: String
-        let symbol: String
-        let tint: Color
+        let tone: KTone
         let minutes: Int
         var id: String { key }
     }
 
     var cards: [Card] {
         var c = [
-            Card(route: .firefly, key: "firefly", symbol: "sparkle", tint: KaikuTokens.Colors.honey, minutes: 1),
-            Card(route: .pebbles, key: "pebbles", symbol: "circle.grid.3x3", tint: KaikuTokens.Colors.sky, minutes: 2),
-            Card(route: .tell, key: "tell", symbol: "ear", tint: KaikuTokens.Colors.clay, minutes: 1),
-            Card(route: .breathe, key: "breathe", symbol: "wind", tint: KaikuTokens.Colors.sage, minutes: 1),
+            Card(route: .firefly, key: "firefly", tone: .honey, minutes: 1),
+            Card(route: .pebbles, key: "pebbles", tone: .sky, minutes: 2),
+            Card(route: .tell, key: "tell", tone: .clay, minutes: 1),
+            Card(route: .breathe, key: "breathe", tone: .sage, minutes: 1),
         ]
         if KaikuPlatform.isPhone {
-            c.append(Card(route: .walk, key: "lighthunt", symbol: "figure.walk", tint: KaikuTokens.Colors.sage, minutes: 15))
+            c.append(Card(route: .walk, key: "lighthunt", tone: .sage, minutes: 15))
         }
         let first: String? = switch app.nudge?.arm {
         case .breathe?: "breathe"
@@ -36,84 +36,305 @@ public struct PlayView: View {
     }
 
     public var body: some View {
-        KScreen(T("play.title")) {
+        KScreen(T("play.title"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
             Text(T("play.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-            ForEach(cards) { card in
-                NavigationLink(value: card.route) {
-                    KCard {
-                        HStack(alignment: .top, spacing: KaikuTokens.Space.s3) {
-                            if !dts.isAccessibilitySize { RowIcon(symbol: card.symbol, tint: card.tint) }
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(T("game.\(card.key).t")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                                Text(T("game.\(card.key).d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-                                Text(T("game.time", n: card.minutes)).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(KaikuTokens.Colors.muted).padding(.top, 8)
-                        }
+            WideAware { wide in
+                if wide {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: KaikuTokens.Space.s4), GridItem(.flexible())],
+                              spacing: KaikuTokens.Space.s4) {
+                        ForEach(cards) { card in link(card, tall: true) }
+                    }
+                } else {
+                    VStack(spacing: KaikuTokens.Space.s3) {
+                        ForEach(cards) { card in link(card, tall: false) }
                     }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
+
+    private func link(_ card: Card, tall: Bool) -> some View {
+        NavigationLink(value: card.route) { GameCard(card: card, tall: tall) }
+            .buttonStyle(.kPress)
+    }
 }
 
-/// Every game: intro → play → gentle end (Kaiku cheering then happy; "Play again" / "That's enough for today").
-/// `play` gets a `finish` callback with the session to record (nil = ended early, nothing recorded).
-struct GameShell<Field: View, EndArt: View>: View {
+struct GameCard: View {
+    let card: PlayView.Card
+    let tall: Bool
+    @Environment(\.dynamicTypeSize) private var dts
+
+    var body: some View {
+        Group {
+            if tall {
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                    GameTile(key: card.key, tone: card.tone).frame(height: 104)
+                    text
+                }
+            } else {
+                HStack(alignment: .center, spacing: KaikuTokens.Space.s4) {
+                    if !dts.isAccessibilitySize { GameTile(key: card.key, tone: card.tone).frame(width: 64, height: 64) }
+                    text.frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(KaikuTokens.Colors.muted)
+                }
+            }
+        }
+        .padding(tall ? KaikuTokens.Space.s3 : KaikuTokens.Space.s3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.surface)
+                .shadow(color: KaikuTokens.Colors.ink.opacity(0.05), radius: 10, y: 4)
+        )
+        .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(T("game.\(card.key).t")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+            Text(T("game.\(card.key).d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+            Text(T("game.time", n: card.minutes))
+                .kText(.caption).foregroundStyle(card.tone.ink)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(card.tone.soft))
+                .padding(.top, 4)
+        }
+        .padding(.horizontal, tall ? KaikuTokens.Space.s1 : 0)
+    }
+}
+
+/// A small illustrated scene per game, in its tone (no stock icons): a jar of light at night, stones on a pond,
+/// Kaiku's ear on clay, breath rings on sage.
+struct GameTile: View {
+    let key: String
+    let tone: KTone
+    var body: some View {
+        ZStack {
+            switch key {
+            case "firefly":
+                LinearGradient(colors: [KaikuTokens.Colors.nightA, KaikuTokens.Colors.nightB], startPoint: .top, endPoint: .bottom)
+                Canvas { ctx, s in
+                    for (x, y, r) in [(0.25, 0.32, 5.0), (0.62, 0.22, 4.0), (0.45, 0.62, 6.0), (0.8, 0.55, 3.5)] {
+                        let p = CGPoint(x: s.width * x, y: s.height * y)
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - r * 3, y: p.y - r * 3, width: r * 6, height: r * 6)),
+                                 with: .radialGradient(Gradient(colors: [KaikuTokens.Colors.firefly.opacity(0.6), .clear]),
+                                                       center: p, startRadius: 0, endRadius: r * 3))
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - r / 2, y: p.y - r / 2, width: r, height: r)), with: .color(KaikuTokens.Colors.firefly))
+                    }
+                }
+            case "pebbles":
+                LinearGradient(colors: [KaikuTokens.Colors.pondA, KaikuTokens.Colors.pondB], startPoint: .top, endPoint: .bottom)
+                Canvas { ctx, s in
+                    let pts = [(0.22, 0.66), (0.48, 0.38), (0.76, 0.62)]
+                    var line = Path()
+                    for (i, (x, y)) in pts.enumerated() {
+                        let p = CGPoint(x: s.width * x, y: s.height * y)
+                        if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
+                    }
+                    ctx.stroke(line, with: .color(KaikuTokens.Colors.sky.opacity(0.5)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4]))
+                    for (i, (x, y)) in pts.enumerated() {
+                        let r = CGRect(x: s.width * x - 11, y: s.height * y - 7, width: 22, height: 14)
+                        ctx.fill(Path(ellipseIn: r), with: .color(i == 1 ? KaikuTokens.glowColor : KaikuTokens.Colors.pebble))
+                        ctx.stroke(Path(ellipseIn: r), with: .color(KaikuTokens.Colors.pebbleEdge), lineWidth: 1.5)
+                    }
+                }
+            case "breathe":
+                tone.soft
+                ForEach(0..<3, id: \.self) { i in
+                    Circle().strokeBorder(tone.ink.opacity(0.55 - Double(i) * 0.15), style: StrokeStyle(lineWidth: 2, dash: i == 2 ? [3, 4] : []))
+                        .padding(CGFloat(10 + i * -6) + 6)
+                }
+                Circle().fill(tone.ink.opacity(0.25)).padding(22)
+            default:
+                tone.soft
+                Image(systemName: key == "lighthunt" ? "figure.walk" : "ear.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(tone.ink)
+                    .rotationEffect(.degrees(-12))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+extension KaikuTokens {
+    /// The current time-of-day glow colour (a lit pebble, Kaiku's chest).
+    static var glowColor: Color { GlowClock.current().0 }
+}
+
+/// The scene a game is played in (design artifact: night for Firefly, pond for Pebble path; calm washes for the
+/// others). Night is dark in both themes, so its text uses `night-ink`.
+enum GameScene {
+    case night, pond, calm, warm
+
+    var isDark: Bool { self == .night }
+    var ink: Color { isDark ? KaikuTokens.Colors.nightInk : KaikuTokens.Colors.ink }
+    var ink2: Color { isDark ? KaikuTokens.Colors.nightInk.opacity(0.78) : KaikuTokens.Colors.ink2 }
+}
+
+struct SceneBackground: View {
+    let scene: GameScene
+    var body: some View {
+        ZStack {
+            switch scene {
+            case .night:
+                LinearGradient(colors: [KaikuTokens.Colors.nightA, KaikuTokens.Colors.nightB], startPoint: .top, endPoint: .bottom)
+                Canvas { ctx, s in
+                    var rng = SeededRandom(seed: 11)
+                    for _ in 0..<28 {
+                        let p = CGPoint(x: rng.next() * s.width, y: rng.next() * s.height * 0.6)
+                        let r = 0.6 + rng.next() * 1.1
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
+                                 with: .color(KaikuTokens.Colors.nightInk.opacity(0.18 + Double(rng.next()) * 0.3)))
+                    }
+                    // a low hill
+                    var hill = Path()
+                    hill.move(to: CGPoint(x: 0, y: s.height - 70))
+                    hill.addQuadCurve(to: CGPoint(x: s.width, y: s.height - 50), control: CGPoint(x: s.width * 0.45, y: s.height - 120))
+                    hill.addLine(to: CGPoint(x: s.width, y: s.height)); hill.addLine(to: CGPoint(x: 0, y: s.height)); hill.closeSubpath()
+                    ctx.fill(hill, with: .color(Color.black.opacity(0.22)))
+                }
+            case .pond:
+                LinearGradient(stops: [.init(color: KaikuTokens.Colors.bg, location: 0), .init(color: KaikuTokens.Colors.pondA, location: 0.22),
+                                       .init(color: KaikuTokens.Colors.pondB, location: 1)], startPoint: .top, endPoint: .bottom)
+            case .calm:
+                LinearGradient(colors: [KaikuTokens.Colors.sageSoft, KaikuTokens.Colors.bg], startPoint: .top, endPoint: .bottom)
+            case .warm:
+                LinearGradient(colors: [KaikuTokens.Colors.honeySoft, KaikuTokens.Colors.bg], startPoint: .top, endPoint: .center)
+                KaikuTokens.Colors.bg.opacity(0.001)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+/// Every game: intro (a tiny animated demo of what to do) → play (the field gets the room; a quiet progress
+/// line, no score) → a warm end (Kaiku cheering, the game's art, "Play again" / "That's enough for today").
+/// `field` gets a `finish` callback with the session to record (nil = ended early, nothing recorded). The tab bar
+/// hides while a game is open; Esc / the back button leaves; Return starts.
+struct GameShell<Demo: View, Field: View, EndArt: View>: View {
     enum Phase { case intro, play, end }
     let titleKey: String
+    var scene: GameScene = .warm
     let introText: String
     let introState: MascotState
     let endText: String
+    @ViewBuilder let demo: () -> Demo
     @ViewBuilder let field: (_ finish: @escaping (PlaySession?) -> Void) -> Field
     @ViewBuilder let endArt: () -> EndArt
     var onStart: () -> Void = {}
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var rm
+    @Environment(\.dynamicTypeSize) private var dts
     @State private var phase: Phase = .intro
     @State private var round = 0
 
     var body: some View {
-        switch phase {
-        case .intro:
-            KScreen(T(titleKey), back: { dismiss() }) {
-                // Dev hook for screenshots (`-kaikuAutostart YES`): skip the intro once.
-                let _ = autostartOnce()
-                MascotView(state: introState, size: 170).frame(maxWidth: .infinity)
-                Text(introText).kText(.title3, weight: .regular).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                VStack(spacing: KaikuTokens.Space.s2) {
-                    Button(T("game.start")) { start() }.buttonStyle(.kPrimary)
-                    Button(T("common.nottoday")) { dismiss() }.buttonStyle(.kGhost)
-                }
-            }
-        case .play:
-            KScreen(T(titleKey), back: { phase = .intro }, scrolls: false) {
-                field { session in
-                    if let s = session {
-                        Haptics.finished()
-                        Task { await app.recordPlay(s) }
-                        withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.base)) { phase = .end }
-                    } else {
-                        phase = .intro
+        ZStack {
+            SceneBackground(scene: scene)
+            VStack(spacing: KaikuTokens.Space.s3) {
+                topBar
+                Group {
+                    switch phase {
+                    case .intro: intro
+                    case .play: play
+                    case .end: end
                     }
                 }
-                .id(round)
+                .frame(maxWidth: 720, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .transition(rm ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
             }
-        case .end:
-            KScreen(T(titleKey), back: { dismiss() }) {
-                MascotView(state: .cheering, size: 150).frame(maxWidth: .infinity)
-                endArt().frame(maxWidth: .infinity)
-                Text(endText).kText(.title3, weight: .regular).foregroundStyle(KaikuTokens.Colors.ink)
-                    .multilineTextAlignment(.center).wraps().frame(maxWidth: .infinity)
-                VStack(spacing: KaikuTokens.Space.s2) {
-                    Button(T("game.again")) { start() }.buttonStyle(.kSecondary)
-                    Button(T("game.enough")) { dismiss() }.buttonStyle(.kGhost)
+            .padding(.horizontal, KaikuPlatform.sidePadding)
+            .padding(.top, KaikuPlatform.isPhone ? KaikuTokens.Space.s2 : KaikuTokens.Space.s4)
+            .padding(.bottom, KaikuTokens.Space.s4)
+        }
+        .environment(\.colorScheme, scene.isDark ? .dark : colorSchemeFallback)
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        #endif
+    }
+
+    @Environment(\.colorScheme) private var colorSchemeFallback
+
+    private var topBar: some View {
+        HStack(spacing: KaikuTokens.Space.s3) {
+            BackButton(onDark: scene.isDark) { if phase == .play { withAnimation(fade) { phase = .intro } } else { dismiss() } }
+            if !dts.isAccessibilitySize || phase != .play {
+                Text(T(titleKey)).kText(.title3, weight: .semibold).foregroundStyle(scene.ink)
+                    .lineLimit(2).layoutPriority(1).accessibilityAddTraits(.isHeader)
+            }
+            Spacer(minLength: 0)
+            if KaikuPlatform.isPhone { NotOKPill(onDark: scene.isDark) }
+        }
+    }
+
+    private var fade: Animation { KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast) }
+
+    private var intro: some View {
+        VStack(spacing: KaikuTokens.Space.s5) {
+            Spacer(minLength: 0)
+            // Dev hook for screenshots (`-kaikuAutostart YES`): skip the intro once.
+            let _ = autostartOnce()
+            demo()
+                .frame(maxWidth: 360, maxHeight: 230)
+                .frame(minHeight: 150)
+                .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.xl, style: .continuous)
+                    .fill(scene.isDark ? KaikuTokens.Colors.nightInk.opacity(0.06) : KaikuTokens.Colors.surface.opacity(0.7)))
+                .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.xl, style: .continuous)
+                    .strokeBorder(scene.isDark ? KaikuTokens.Colors.nightInk.opacity(0.14) : KaikuTokens.Colors.line, lineWidth: 1))
+            Text(introText).kText(.title3, weight: .medium).foregroundStyle(scene.ink)
+                .multilineTextAlignment(.center).wraps().frame(maxWidth: 440)
+            Spacer(minLength: 0)
+            VStack(spacing: KaikuTokens.Space.s1) {
+                Button(T("game.start")) { start() }
+                    .buttonStyle(KButtonStyle(scene.isDark ? .night : .primary))
+                    .keyboardShortcut(.defaultAction)
+                Button(T("common.nottoday")) { dismiss() }.buttonStyle(KButtonStyle(scene.isDark ? .nightGhost : .ghost))
+            }
+            .frame(maxWidth: 420)
+        }
+    }
+
+    private var play: some View {
+        field { session in
+            if let s = session {
+                Haptics.finished()
+                KSound.play(.done)
+                Task { await app.recordPlay(s) }
+                withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.base)) { phase = .end }
+            } else {
+                withAnimation(fade) { phase = .intro }
+            }
+        }
+        .id(round)
+    }
+
+    private var end: some View {
+        VStack(spacing: KaikuTokens.Space.s4) {
+            Spacer(minLength: 0)
+            ZStack {
+                MascotHalo(size: 150)
+                HStack(alignment: .bottom, spacing: KaikuTokens.Space.s2) {
+                    MascotView(state: .cheering, size: 130)
+                    endArt()
                 }
             }
+            .frame(maxWidth: .infinity)
+            Text(endText).kText(.title3, weight: .medium).foregroundStyle(scene.ink)
+                .multilineTextAlignment(.center).wraps().frame(maxWidth: 440)
+            Spacer(minLength: 0)
+            VStack(spacing: KaikuTokens.Space.s1) {
+                Button(T("game.again")) { start() }
+                    .buttonStyle(KButtonStyle(scene.isDark ? .night : .secondary))
+                    .keyboardShortcut(.defaultAction)
+                Button(T("game.enough")) { dismiss() }.buttonStyle(KButtonStyle(scene.isDark ? .nightGhost : .ghost))
+            }
+            .frame(maxWidth: 420)
         }
     }
 
@@ -127,18 +348,20 @@ struct GameShell<Field: View, EndArt: View>: View {
     private func start() {
         round += 1
         onStart()
-        withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { phase = .play }
+        KSound.play(.start)
+        withAnimation(fade) { phase = .play }
     }
 }
 
-/// A thin progress ring (time left in a game, the hold ring in Tell Kaiku). Never shows a number.
+/// A thin progress ring (the hold ring in Tell Kaiku, the breath phase). Never shows a number.
 struct ProgressRing: View {
     let progress: Double
     var color: Color = KaikuTokens.Colors.clay
     var width: CGFloat = 6
+    var track: Color = KaikuTokens.Colors.line
     var body: some View {
         ZStack {
-            Circle().stroke(KaikuTokens.Colors.line, lineWidth: width)
+            Circle().stroke(track, lineWidth: width)
             Circle().trim(from: 0, to: max(0, min(1, progress)))
                 .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
                 .rotationEffect(.degrees(-90))

@@ -6,7 +6,7 @@ import SwiftUI
 /// usage-rhythm sampler, daily invitation — `MacCompanion`). All share one AppModel.
 @main
 struct KaikuMacApp: App {
-    @State private var app = AppModel()
+    @State private var app = DebugSnapshot.isSnapshot ? DebugSnapshot.model() : AppModel()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {

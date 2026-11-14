@@ -31,6 +31,15 @@
   --k-mascot-scarf-stripe: #E9A286;
   --k-mascot-outline: #D9C3A5;
   --k-mascot-sparkle: #E9B44C;
+  --k-night-a: #1B2033;
+  --k-night-b: #2A2638;
+  --k-night-ink: #EDE6F5;
+  --k-firefly: #FFE07A;
+  --k-moth: #B9A893;
+  --k-pond-a: #CFE0E8;
+  --k-pond-b: #B8D0DA;
+  --k-pebble: #E8DCCB;
+  --k-pebble-edge: #C9B79F;
   --k-accent: var(--k-clay);
   --k-going-well: var(--k-sage);
   --k-calm: var(--k-sky);
@@ -127,6 +136,15 @@
     --k-mascot-scarf-stripe: #E9A286;
     --k-mascot-outline: #B59C7C;
     --k-mascot-sparkle: #F0C870;
+    --k-night-a: #14182A;
+    --k-night-b: #221F30;
+    --k-night-ink: #EDE6F5;
+    --k-firefly: #FFE07A;
+    --k-moth: #9C8D7A;
+    --k-pond-a: #24343C;
+    --k-pond-b: #1C2A31;
+    --k-pebble: #4A4038;
+    --k-pebble-edge: #6A5C50;
     color-scheme: dark;
   }
 }
@@ -162,6 +180,15 @@
   --k-mascot-scarf-stripe: #E9A286;
   --k-mascot-outline: #B59C7C;
   --k-mascot-sparkle: #F0C870;
+  --k-night-a: #14182A;
+  --k-night-b: #221F30;
+  --k-night-ink: #EDE6F5;
+  --k-firefly: #FFE07A;
+  --k-moth: #9C8D7A;
+  --k-pond-a: #24343C;
+  --k-pond-b: #1C2A31;
+  --k-pebble: #4A4038;
+  --k-pebble-edge: #6A5C50;
   color-scheme: dark;
 }
 
