@@ -13,7 +13,7 @@ Decisions: D44 (standalone head firmware), D48 (parts removed, own charger, hots
 | Network | iPhone hotspot "Xavier’s iPhone" (curly ’), "Maximize Compatibility" on (2.4 GHz) | yes |
 | UNO Q | `172.20.10.12`, app `kaiku-sensors` = default app (starts at boot); health, faces, distance, light | yes |
 | Atech | `172.20.10.13`, standalone ritual + `kaiku_net`; health, pan, `cmd.head` eyes; UNO Q face woke it | yes |
-| Knock → head drum, head → UNO Q chimes | built in `kaiku_net` | **not yet seen** |
+| Taps (head orientation sensor → `raw.head.tap`, D49), head → UNO Q chimes | built in `kaiku_net` | taps and chime commands reach the broker; the buzzer sound **not yet confirmed** |
 | Pan motor | turns only with the Atech on its own USB-C charger; port 13 on the MQTT firmware, 14 on the standalone (port 11: reverse only) | yes: both directions on port 14 (standalone, over MQTT) |
 | Pulse | camera only (no KY-053, D48), `ppg_source = "camera"` | camera pulse is noisy (quality 0.6) |
 
@@ -80,10 +80,10 @@ they can be re-applied when the website agent sends a new `main.cpp`.
 | Direction | Message | What happens | Seen |
 |---|---|---|---|
 | UNO Q → head | `raw.hub.face` (camera) | from idle, wakes Kaiku (greeting) | yes |
-| UNO Q → head | `raw.head.tap` (knock sensor) | counts as a drum tap; from idle, wakes Kaiku | not yet |
+| head → hub | `raw.head.tap {t_ms, force, src: imu}` (orientation sensor; the KY-031 is removed, D49) | counts as a drum tap on the head; from idle, wakes Kaiku | yes (taps on the broker, wake) |
 | hub → head | `cmd.head` eyes / pan / gesture / purr | queued as the same actions as the USB-serial commands | eyes: yes |
 | head → UNO Q | `cmd.sensors {chime}` | `wake` on greeting, `start_drum` / `end_drum` (UNO Q buzzer) | not yet |
-| head → UNO Q | `raw.head.pan {moving}` | on change + every 2 s; the UNO Q ignores knocks while the motor runs | yes |
+| head → UNO Q | `raw.head.pan {moving}` | on change + every 2 s | yes |
 | head → all | `health/head` (5 s, retained), `raw.head.ear` | status (`details.step`, `firmware`), dial values + presses | health: yes |
 
 ### kaiku_link (MQTT firmware): fixed today, verified on the board

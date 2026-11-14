@@ -1,10 +1,10 @@
-// Kaiku UNO Q MCU sketch: KY-031 knock drum, KY-039 heartbeat (via KY-053 ADS1115), KY-054 light, KY-035 hall
+// Kaiku UNO Q MCU sketch: KY-039 heartbeat (via KY-053 ADS1115), KY-054 light, KY-035 hall
 // (pan homing), Modulino Buzzer chimes, LED-matrix status. Talks only to the Linux app (../python) through the Bridge.
 // Interface: ../AGENTS.md and ../python/kaiku_unoq/bridge.py.
 //
-// Provides (Linux calls): buzz_pattern(name) · motor_moving(0|1) · ppg_start() · ppg_stop() · light_read() -> int ·
+// Provides (Linux calls): buzz_pattern(name) · ppg_start() · ppg_stop() · light_read() -> int ·
 //                         status_set(name) · ping() -> version
-// Notifies (Linux provides): on_knock(t_ms) · on_ppg(t0_ms, fs_hz, "csv") · on_hall(at_home 0|1, t_ms) · mcu_ready()
+// Notifies (Linux provides): on_ppg(t0_ms, fs_hz, "csv") · on_hall(at_home 0|1, t_ms) · mcu_ready()
 // Chime names = contracts Chime: wake ok start_drum end_drum alert (alert = device fault only, never mood/safety).
 //
 // VERIFY on the board (App Lab, Arduino core on Zephyr): Bridge.provide with String / int args and int/String
@@ -57,21 +57,6 @@ static void tickBuzzer(uint32_t now) {
   // tone() is non-blocking and the buzzer never reports back, so we wait the duration ourselves (millis).
   if (n.hz > 0 && buzzerOk) buzzer.tone(n.hz, n.ms);
   noteEndsAt = now + n.ms;
-}
-
-// ------------------------------------------------------------------ knock
-static volatile int idleLevel = HIGH;
-static volatile uint32_t lastKnockAt = 0, pendingKnockAt = 0;
-static volatile bool pending = false, motorMoving = false;
-
-static void onKnockEdge() {
-  uint32_t now = millis();
-  if (digitalRead(KNOCK_PIN) == idleLevel) return;    // only edges away from idle
-  if (now - lastKnockAt < KNOCK_DEBOUNCE_MS) return;  // spring bounce
-  lastKnockAt = now;
-  if (motorMoving) return;                             // motor vibration is not a knock
-  pendingKnockAt = now;
-  pending = true;
 }
 
 // ------------------------------------------------------------------ hall (pan home)
@@ -127,7 +112,6 @@ static void tickPpg() {
 
 // ------------------------------------------------------------------ bridge handlers
 void buzz_pattern(String name) { patLen = loadPattern(name); patIdx = 0; noteEndsAt = 0; }
-void motor_moving(int moving) { motorMoving = moving != 0; }
 void ppg_start() { ppgOn = true; ppgN = 0; ppgNextUs = micros(); }
 void ppg_stop() { ppgOn = false; ppgN = 0; }
 int light_read() { return analogRead(LIGHT_PIN); }
@@ -137,7 +121,6 @@ String ping() { return String(KAIKU_SKETCH_VERSION) + (adsOk ? "" : " ads-missin
 void setup() {
   Bridge.begin();
   Bridge.provide("buzz_pattern", buzz_pattern);
-  Bridge.provide("motor_moving", motor_moving);
   Bridge.provide("ppg_start", ppg_start);
   Bridge.provide("ppg_stop", ppg_stop);
   Bridge.provide("light_read", light_read);
@@ -154,28 +137,11 @@ void setup() {
   Wire.begin();                                        // header SDA/SCL: the KY-053
   adsOk = adsWrite(0x01, ADS_CONFIG_HI, ADS_CONFIG_LO);
 
-  pinMode(KNOCK_PIN, KNOCK_USE_PULLUP ? INPUT_PULLUP : INPUT);
-  uint32_t t0 = millis(), highs = 0, n = 0;
-  while (millis() - t0 < KNOCK_CALIBRATE_MS) { highs += digitalRead(KNOCK_PIN); n++; delay(1); }  // head still
-  idleLevel = (highs * 2 >= n) ? HIGH : LOW;
-#if !KNOCK_POLL_FALLBACK
-  attachInterrupt(digitalPinToInterrupt(KNOCK_PIN), onKnockEdge, CHANGE);
-#endif
   Bridge.notify("mcu_ready");
 }
 
 void loop() {
   uint32_t now = millis();
-#if KNOCK_POLL_FALLBACK
-  onKnockEdge();
-#endif
-  if (pending) {
-    noInterrupts();
-    uint32_t t = pendingKnockAt;
-    pending = false;
-    interrupts();
-    Bridge.notify("on_knock", (int)t);
-  }
   tickPpg();
   tickHall(now);
   tickBuzzer(now);

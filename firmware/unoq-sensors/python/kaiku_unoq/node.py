@@ -2,13 +2,12 @@
 
 Consumes  cmd/sensors chime -> Modulino Buzzer · camera_enable -> camera on/off · ppg start|stop -> pulse
                       (KY-039 on the sketch; camera pulse as backup per [unoq] ppg_source = auto|ky039|camera)
-          raw/head/pan moving -> sketch ignores knocks while the motor runs (vibration)
-Emits     raw/head/tap {t_ms, src: knock}  (KY-031; no force)
-          raw/sensors/ppg {t0_ms, fs_hz, samples} (KY-039 100 Hz, quality 0.9 | camera ~15 Hz, quality 0.6)
+Emits     raw/sensors/ppg {t0_ms, fs_hz, samples} (KY-039 100 Hz, quality 0.9 | camera ~15 Hz, quality 0.6)
           raw/sensors/hall {at_home} (KY-035: the head faces front; the head firmware brakes on it while homing)
           raw/sensors/light {raw, lux_est} every light_every_s (KY-054; camera backup per [unoq] light_source)
           raw/hub/face (one per face, 5 Hz) · raw/sensors/distance (from face size)
-          health/sensors {camera_ok, mcu_ok, mcu_fw, knocks, ppg}
+          health/sensors {camera_ok, mcu_ok, mcu_fw, ppg}
+Taps are the Atech head's (its orientation sensor, raw/head/tap src imu): the KY-031 knock switch is gone (D49).
 The eyes, knob, LED grids and motor are the Atech head's (cmd/head). The UNO Q LED matrix is a hidden status display.
 Hub and broker run on the laptop today; set MQTT_HOST=localhost later to run them on this board (D32).
 """
@@ -48,14 +47,11 @@ class SensorsNode:
         self.bridge = bridge
         self.bus = Bus("sensors", version=VERSION, sim=sim, details=self._details)
         self.bus.on("cmd/sensors", self._on_sensors_cmd)
-        self.bus.on("raw/head/pan", self._on_pan)
         self.light_source = str(get("unoq", "light_source", "ky054"))  # ky054 | camera
         self.light_every_s = float(get("unoq", "light_every_s", 10))
         self.lux_per_count = float(get("unoq", "ky054_lux_per_count", 0.25))
         self.at_home: bool | None = None
         self.mcu_fw: str | None = None
-        self.motor_moving = False
-        self.knocks = 0
         self.ppg_source = str(get("unoq", "ppg_source", "auto"))  # auto | ky039 | camera
         self.ppg_fallback_s = float(get("unoq", "ppg_fallback_s", 4.0))
         self.ppg_min_range = int(get("unoq", "ppg_min_range", 30))
@@ -66,22 +62,18 @@ class SensorsNode:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.camera = Camera(camera_config(), self._faces_from_thread, self._light_from_thread,
                              self._error_from_thread, self._camera_ppg_from_thread) if camera else None
-        bridge.provide("on_knock", self._knock_from_bridge)
         bridge.provide("on_ppg", self._ppg_from_bridge)
         bridge.provide("on_hall", self._hall_from_bridge)
         bridge.provide("mcu_ready", self._ready_from_bridge)
 
     def _details(self) -> dict[str, Any]:
         return {"camera_ok": bool(self.camera and self.camera.ok), "mcu_ok": self.mcu_fw is not None,
-                "mcu_fw": self.mcu_fw, "knocks": self.knocks, "ppg": self.ppg_active, "at_home": self.at_home}
+                "mcu_fw": self.mcu_fw, "ppg": self.ppg_active, "at_home": self.at_home}
 
     # ------------------------------------------------------------ bridge (sketch -> us); router thread
     def _hop(self, coro_fn, *args) -> None:  # noqa: ANN001
         if self.loop is not None:
             self.loop.call_soon_threadsafe(lambda: self.loop.create_task(coro_fn(*args)))  # type: ignore[union-attr]
-
-    def _knock_from_bridge(self, t_ms: int) -> None:
-        self._hop(self.knock, int(t_ms))
 
     def _ppg_from_bridge(self, t0_ms: int, fs_hz: int, csv: str) -> None:
         self._hop(self.ky039_batch, int(t0_ms), float(fs_hz), str(csv))
@@ -109,10 +101,6 @@ class SensorsNode:
         while self.light_source == "ky054":
             await self.read_light()
             await asyncio.sleep(self.light_every_s)
-
-    async def knock(self, t_ms: int) -> None:
-        self.knocks += 1
-        await self.bus.publish("raw.head.tap", {"t_ms": max(0, t_ms), "src": "knock"})
 
     # ------------------------------------------------------------ pulse: KY-039 first, camera as backup
     async def ky039_batch(self, t0_ms: int, fs_hz: float, csv: str) -> None:
@@ -205,12 +193,6 @@ class SensorsNode:
             (self.camera.enabled.set() if c.camera_enable else self.camera.enabled.clear())
         if c.ppg is not None:
             await (self.ppg_start() if c.ppg == "start" else self.ppg_stop())
-
-    async def _on_pan(self, _t, env) -> None:  # noqa: ANN001
-        moving = bool(env.payload.moving)
-        if moving != self.motor_moving:
-            self.motor_moving = moving
-            self._call("motor_moving", int(moving))
 
     # ------------------------------------------------------------ run
     async def run(self, stop: asyncio.Event | None = None) -> None:

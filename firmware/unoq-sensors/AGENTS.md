@@ -5,7 +5,7 @@
 
 ## Purpose
 The robot's sensors on the Arduino UNO Q (in the body), as one App Lab app with two halves.
-- **STM32 sketch:** reads the KY-031 knock drum (under the head top), the KY-035 hall sensor (pan home; not fitted, `HAS_HALL 0`, D39), the KY-054 (not fitted)
+- **STM32 sketch:** reads the KY-035 hall sensor (pan home; not fitted, `HAS_HALL 0`, D39), the KY-054 (not fitted)
   room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D48**: the
   pulse comes from the camera, `ppg_source = "camera"`). It plays the Modulino Buzzer chimes and
   shows a status icon on the hidden LED matrix.
@@ -19,18 +19,18 @@ and the ritual. The eyes, knob, LEDs and motor belong to the Atech board. Camera
 
 ## Consumes (topics/endpoints)
 `cmd/sensors`: `chime: wake|ok|start_drum|end_drum|alert` · `ppg: start|stop` · `camera_enable`.
-`raw/head/pan` `moving` → the sketch ignores knocks while the motor runs.
+Taps are not this node's any more (D49): the KY-031 knock switch is removed; the Atech head publishes `raw/head/tap`.
 
 ## Emits (topics/endpoints)
-`raw/head/tap` `{t_ms, src: "knock"}` (no force) · `raw/sensors/hall` `{at_home}` on each edge ·
+`raw/sensors/hall` `{at_home}` on each edge ·
 `raw/sensors/light` `{raw, lux_est}` every 10 s (camera with locked exposure: `light_source = "camera"`, this build; KY-054 if fitted) ·
 `raw/sensors/ppg` `{t0_ms, fs_hz, samples}`: KY-039 100 Hz × 25 (quality 0.9), or the camera backup ~15 Hz (quality
 0.6) · `raw/hub/face` per face at 5 Hz · `raw/sensors/distance` `{cm}` from the biggest face (`far_cm` when nobody is
-there) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, knocks, ppg, at_home}`.
+there) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, ppg, at_home}`.
 
 ## Map
 ```
-sketch/sketch.ino     knock ISR (idle calibration, 40 ms debounce, motor mute), hall poller (200 Hz, hysteresis),
+sketch/sketch.ino     hall poller (200 Hz, hysteresis),
                       ADS1115 100 Hz sampler (raw I2C, no library), light_read, buzzer pattern player (millis),
                       status matrix, Bridge
 sketch/config.h       every MCU number (pins, debounce, hall threshold, ADS config, PPG rate/batch)
@@ -41,7 +41,7 @@ python/kaiku_unoq/
   camera.py           camera thread: Haar faces, forehead-green pulse, optional locked-exposure light; frames in memory
   vision.py           pure maths (face payload, distance, light, forehead box, PPG signal check)
 python/tests/         node on a real broker with FakeBridge, pulse fallback, vision maths (in `make test`)
-bench/<part>/         one-part tests: knock, hall, light, ky039, buzzer (sketches), camera (python), link (MQTT)
+bench/<part>/         one-part tests: knock (part not fitted, D49), hall, light, ky039, buzzer (sketches), camera (python), link (MQTT)
 ```
 
 ## Extension points
@@ -50,14 +50,14 @@ bench/<part>/         one-part tests: knock, hall, light, ky039, buzzer (sketche
 - Hub + broker on this board later: run them here and set `MQTT_HOST=localhost` (plan 07 §4).
 
 ## Invariants
-- Same topics + payloads as `sensors_sim` (and `head_sim`'s knock taps): the hub can't tell them apart.
+- Same topics + payloads as `sensors_sim`: the hub can't tell them apart.
 - No frame, audio or image is stored, logged or sent. Only the numbers above leave the camera thread (docs/privacy.md).
 - PPG only between `ppg start` and `ppg stop`, at a stable `fs_hz` (fixed micros grid on the sketch).
-- Knocks are ignored while the pan motor moves. `alert` chime = device fault only, never mood or safety.
+- `alert` chime = device fault only, never mood or safety.
 - A dead sketch or camera never kills the node: Bridge calls and the camera fail soft and show in `health/sensors`.
 
 ## Run standalone
-On a laptop: `uv run python firmware/unoq-sensors/python/main.py --fake-bridge` (webcam stands in; `k` knock, `r`
+On a laptop: `uv run python firmware/unoq-sensors/python/main.py --fake-bridge` (webcam stands in; `r`
 sketch ready). On the board: `make unoq-app`, open `firmware/unoq-sensors` in App Lab (python + sketch), Run.
 Without hardware: `make sim NODES=sensors`.
 

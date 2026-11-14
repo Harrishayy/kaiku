@@ -26,7 +26,7 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 ## UNO Q (node `sensors`), in the body
 | Part | Pin | Voltage | Notes | Check |
 |---|---|---|---|---|
-| KY-031 knock S / + / − | D2 / 3V3 / GND | 3.3 V | under the head top, 3 jumpers down the neck; interrupt on CHANGE, idle level calibrated at boot, `INPUT_PULLUP` | `bench/knock` |
+| ~~KY-031 knock S / + / −~~ | not fitted (D49): taps come from the Atech orientation sensor (port 13) | — | — | — |
 | ~~KY-035 hall~~ | — | — | **Not fitted** (no magnet; D39). Home = head position at power-on (`HAS_HALL 0` in both firmwares). If one turns up: out → **A1** (analog), magnet 6×3 mm in the turntable pocket, set `HAS_HALL 1` | `bench/hall` |
 | ~~KY-054 light~~ | — | — | **Not fitted** (D39): room light comes from the camera (`[unoq] light_source = "camera"`) | — |
 | ~~KY-053 ADS1115 SDA / SCL / + / −~~ | not fitted (D48) | — | — | — |

@@ -1327,3 +1327,29 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   locally; the file is gitignored). `arduino-app-cli app restart` stopped the app and then failed with "app is
   running": `app start` afterwards worked. The MQTT firmware and the wiring/BOM/decision docs still describe a display.
 - Next: decide whether the display is gone for good (then D44, wiring, BOM, MQTT firmware); set the pan sign.
+
+## 2026-11-14 22:30 — Claude Code — firmware (A), config, sim, docs: no KY-031; taps from the head's orientation sensor (D49)
+- Did: the KY-031 knock switch was removed from the robot. UNO Q sketch (0.3.0) + app: knock ISR, `on_knock`,
+  `motor_moving`, the `raw.head.pan` listener, `raw.head.tap` and `knocks` in health are gone. Standalone head: every
+  tap the orientation sensor feels is published as `raw.head.tap {t_ms, force, src: imu}`; it no longer listens for
+  taps on the bus; taps are ignored while the motor runs and 400 ms after, and at most one per 120 ms.
+  `[robot] drum_input = "imu"`. `modules.toml`, sensors sim health, link bench, wiring, BOM, assembly, handover, D49.
+- Verified: `make check` except one sim test (`test_follow_loop_on_a_real_broker...`) that failed once in the full
+  run with the live robot on the same broker and passes alone. Head built and flashed, back on the broker, and it
+  sends no taps when nobody touches it.
+- Contract changes: none (`src: "imu"` and `force` were already in `RawTap`).
+- Broken/blocked: taps not yet seen on the broker from a real tap; the UNO Q was off the network, so the board still
+  runs the old app with the knock code (redeploy over ssh: copy `python/` + `sketch/`, `arduino-app-cli app start`).
+  The hub (owner B) still has its knock handling and `drum_sway` comment; `tools/bench.py` keeps its knock checker.
+- Next: tap the head and watch `raw.head.tap`; redeploy the UNO Q; tune `shakeG` if taps are missed or doubled.
+
+## 2026-11-14 22:45 — Claude Code — firmware/atech-head (A): taps seen on the broker; USB stall fixed
+- Did: tap threshold 1.3 → 1.15 total g (the driver compares |g - 1| with `shakeG - 1`, so values ≤ 1 fire always:
+  the serial command now refuses them); reported force is never below the threshold. Serial lines are dropped when
+  the USB buffer has no room (TX buffer 2048).
+- Verified on the robot: with hand tapping, 47 `raw.head.tap {src: imu}` in 50 s (0.15-0.73 g, median 0.22) and the
+  head woke from idle; at 1.3 only 5 in ~12 s. On the Mac's USB with the port closed the head stayed on the broker
+  for 75 s with every heartbeat (before: silent after ~15 s). No taps in 15 s untouched (measured at 1.3 only).
+- Broken/blocked: false taps at 1.15 while the speaker plays or at rest not measured; UNO Q still on the old app.
+- Next: redeploy the UNO Q; a DRUM step end to end with the hub.
+

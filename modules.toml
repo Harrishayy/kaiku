@@ -118,20 +118,20 @@ name = "atech-head"
 path = "firmware/atech-head"
 owner = "A"
 kind = "firmware"
-summary = "Atech board: display eyes, knob ear dial, lid button, pan motor (power-on home, optional hall), speaker; standalone ritual or MQTT firmware (D44); MQTT on the LAN"
+summary = "Atech board: display eyes, knob ear dial, lid button, pan motor (power-on home, optional hall), speaker, taps from the orientation sensor (standalone); standalone ritual or MQTT firmware (D44); MQTT on the LAN"
 removable = true
-consumes = ["cmd.head", "raw.sensors.hall", "raw.head.tap", "raw.hub.face", "health"]
-emits = ["raw.head.ear", "raw.head.button", "raw.head.pan", "cmd.sensors", "health"]
+consumes = ["cmd.head", "raw.sensors.hall", "raw.hub.face", "health"]
+emits = ["raw.head.tap", "raw.head.ear", "raw.head.button", "raw.head.pan", "cmd.sensors", "health"]
 
 [[module]]
 name = "unoq-sensors"
 path = "firmware/unoq-sensors"
 owner = "A"
 kind = "firmware"
-summary = "UNO Q: knock drum, buzzer chimes, camera (faces, distance, room light, pulse); KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D48)"
+summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D48, D49)"
 removable = true
-consumes = ["cmd.sensors", "raw.head.pan"]
-emits = ["raw.head.tap", "raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
+consumes = ["cmd.sensors"]
+emits = ["raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
          "raw.hub.face", "health"]
 
 [[module]]

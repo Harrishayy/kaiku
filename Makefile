@@ -100,7 +100,7 @@ doctor: ## environment + live system health report
 	$(RUN) python tools/doctor.py
 bench-list: ## list the electronics bench tests (one per part; tools/bench.py)
 	$(RUN) python tools/bench.py --list
-bench: ## test ONE part alone: make bench PART=firmware/unoq-sensors/bench/knock [FROM=serial:/dev/tty.x | - | mqtt | file.log]
+bench: ## test ONE part alone: make bench PART=firmware/unoq-sensors/bench/buzzer [FROM=serial:/dev/tty.x | - | mqtt | file.log]
 	$(RUN) $(if $(findstring serial:,$(FROM)),--with pyserial,) python tools/bench.py $(PART) $(if $(FROM),--from '$(FROM)',)
 unoq-app: ## copy kaiku_contracts + config into the UNO Q App Lab app (python/vendor, gitignored)
 	rm -rf firmware/unoq-sensors/python/vendor && mkdir -p firmware/unoq-sensors/python/vendor/config

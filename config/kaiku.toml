@@ -105,12 +105,12 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, pan motor; no LED grids) + UNO Q (KY-031 knock, Modulino Buzzer, USB camera; no KY-053, D48).
+# button, speaker, mic, pan motor; no LED grids) + UNO Q (Modulino Buzzer, USB camera; no KY-053, D48; no KY-031 knock, D49).
 # No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
-drum_input = "knock"     # knock (KY-031: timing, no force) | imu (force in g) — what the sims send
-drum_sway = false        # no head sway while drumming: knocks are ignored while the pan motor moves
+drum_input = "imu"       # imu (the head's orientation sensor: force in g; this build, D49) | knock (KY-031: timing only) — what the sims send
+drum_sway = false        # no head sway while drumming: taps are ignored while the pan motor moves (it shakes the sensor)
 # Head-firmware numbers (motor pulses, homing, hub-silence stop, debounce): firmware/atech-head/kaiku_link/config.h
 
 [unoq]

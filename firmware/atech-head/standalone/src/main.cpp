@@ -60,7 +60,7 @@ static unsigned long drumMs = 20000;
 static int taps = 0;
 static unsigned long firstTap = 0, lastTap = 0;
 static float forceSum = 0, forceMax = 0, curForce = 0;
-static float shakeG = 1.3f;
+static float shakeG = 1.15f;          // kaiku: total g that counts as a tap (the driver compares |g - 1| with shakeG - 1: 0.15 g)
 
 // motor: pan for a while, or purr
 static int panSpeed = 0;             // -100..100
@@ -73,8 +73,17 @@ static bool pressedLatch = false;
 static int knobSteps = 0;
 static bool tapLatch = false;
 
+// kaiku: a line goes out only when the USB buffer has room for all of it. Plugged into a computer with nobody
+// reading the port, writes stalled the loop and the head fell off the broker after ~15 s (bench 2026-11-14).
+static void serialLine(const char* line, size_t n) {
+  if (n == 0 || Serial.availableForWrite() < (int)n) return;
+  Serial.write((const uint8_t*)line, n);
+}
+
 static void emit(const char* type, const char* payload) {
-  Serial.printf("{\"type\":\"%s\",\"payload\":%s}\n", type, payload);
+  static char line[1400];
+  int n = snprintf(line, sizeof line, "{\"type\":\"%s\",\"payload\":%s}\n", type, payload);
+  if (n > 0 && n < (int)sizeof line) serialLine(line, n);
 }
 
 static void setMode(Mode m) {
@@ -223,6 +232,7 @@ static const char* freeMotorPins() {
 
 void setup() {
   Serial.setRxBufferSize(8192);
+  Serial.setTxBufferSize(2048);   // kaiku: room for the boot line (see serialLine)
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);
   p2p_transport_setup();
@@ -245,7 +255,8 @@ void setup() {
   setMode(IDLE);
   kaiku_net::begin();   // kaiku_net
 
-  Serial.printf("{\"type\":\"boot\",\"payload\":{\"reset_reason\":\"%s\",\"free_heap\":%u,\"modules\":["
+  static char boot[1200];
+  int bn = snprintf(boot, sizeof boot, "{\"type\":\"boot\",\"payload\":{\"reset_reason\":\"%s\",\"free_heap\":%u,\"modules\":["
                 "{\"instance\":\"rotary_encoder_knob\",\"module\":\"rotary_encoder_knob\",\"ok\":true,\"detectable\":false},"
                 "{\"instance\":\"speaker\",\"module\":\"speaker\",\"ok\":true,\"detectable\":false},"
                 "{\"instance\":\"microphone\",\"module\":\"microphone\",\"ok\":true,\"detectable\":false},"
@@ -253,6 +264,7 @@ void setup() {
                 "{\"instance\":\"icm40608_imu\",\"module\":\"icm40608_imu\",\"ok\":%s,\"detectable\":false},"
                 "{\"instance\":\"neopixel_grid\",\"module\":\"neopixel_grid\",\"ok\":true,\"detectable\":false}]}}\n",
                 resetReason(), (unsigned)ESP.getFreeHeap(), imuOk ? "true" : "false");
+  if (bn > 0 && bn < (int)sizeof boot) serialLine(boot, bn);
 }
 
 void loop() {
@@ -275,7 +287,7 @@ void loop() {
     else if (!strcmp(a, "eyes")) { eyes = eyesFrom(cmd.value); dirty = true; }
     else if (!strcmp(a, "chirp")) chirp();
     else if (!strcmp(a, "threshold")) soundThreshold = (int16_t)constrain(atoi(cmd.value), 100, 32000);
-    else if (!strcmp(a, "tap_sensitivity")) { shakeG = constrain(atof(cmd.value), 0.5f, 3.0f); icm40608_imu.setShakeThreshold(shakeG); }
+    else if (!strcmp(a, "tap_sensitivity")) { shakeG = constrain(atof(cmd.value), 1.05f, 3.0f); icm40608_imu.setShakeThreshold(shakeG); }
     else if (!strcmp(a, "knob_reverse")) knobSign = -knobSign;
     else if (!strcmp(a, "help"))
       emit("help", "{\"commands\":[\"greet\",\"ritual\",\"next\",\"breathe [cycles]\",\"drum [seconds]\",\"idle\",\"pan -100..100\",\"purr [ms]\",\"eyes calm|happy|wide|sad|sleepy\",\"chirp\",\"threshold 100-32000\",\"tap_sensitivity 0.5-3.0\",\"knob_reverse\"]}");
@@ -287,7 +299,6 @@ void loop() {
   int32_t pos = rotary_encoder_knob.getPosition();
   if (pos != lastKnobPos) { knobSteps += knobSign * (int)(pos - lastKnobPos); lastKnobPos = pos; }
   tapLatch |= icm40608_imu.wasShaken();
-  if (kaiku_net::takeTaps()) { tapLatch = true; if (curForce < 1.0f) curForce = 1.0f; }   // kaiku_net: UNO Q knocks
   {
     float ax = icm40608_imu.readAccelX(), ay = icm40608_imu.readAccelY(), az = icm40608_imu.readAccelZ();
     float dev = fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f);
@@ -295,7 +306,7 @@ void loop() {
   }
 
   applyMotor();
-  kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: the UNO Q ignores knocks while the motor runs
+  kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: raw.head.pan
   if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera
 
   // knob
@@ -314,9 +325,17 @@ void loop() {
     else advance();   // skip breathing or end drumming early
   }
 
-  // drumming taps
+  // taps: felt by the orientation sensor (the only tap source; the KY-031 knock switch is gone, D49).
+  // kaiku: the motor (pan and purr nudges) shakes the sensor, so nothing counts while it runs or just after;
+  // one tap = one message (the jolt rings for a few readings).
+  static unsigned long motorQuietAt = 0, tapAgainAt = 0;
+  if (dc_motor.getSpeed() != 0) motorQuietAt = millis() + 400;
+  if (tapLatch && (millis() < motorQuietAt || millis() < tapAgainAt)) tapLatch = false;
   if (tapLatch) {
     tapLatch = false;
+    tapAgainAt = millis() + 120;
+    if (curForce < shakeG - 1.0f) curForce = shakeG - 1.0f;   // the driver saw at least the threshold; our own read can miss the peak
+    kaiku_net::tap(curForce);   // kaiku_net: raw.head.tap {src: imu}
     if (mode == DRUM) {
       unsigned long now = millis();
       if (!taps) firstTap = now;

@@ -11,7 +11,7 @@ Pulse fixtures (`ppg_fixture`, all explicit bench modes, never default demo data
   noisy   no pulse, just noise                            flicker  the D39 artefact: a metronomic ~117 bpm ripple
   camera  the backup: ~15 Hz at a wobbling measured rate, one batch a second, quality 0.6
   auto    flat KY-039 for `[unoq] ppg_fallback_s`, then the camera (the firmware's auto fallback)
-Health details mirror the firmware: camera_ok, mcu_ok, mcu_fw, knocks, ppg (active source), at_home."""
+Health details mirror the firmware: camera_ok, mcu_ok, mcu_fw, ppg (active source), at_home."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class SensorsSim:
         self._t0 = time.monotonic()
         self.bus = Bus("sensors", sim=True, details=lambda: {
             "sim": True, "near": self.is_near, "camera_ok": self.camera_ok and self.faces, "mcu_ok": True,
-            "mcu_fw": "sim", "knocks": None, "ppg": self.ppg_active if self.ppg_on else None, "at_home": None})
+            "mcu_fw": "sim", "ppg": self.ppg_active if self.ppg_on else None, "at_home": None})
         self.bus.on("cmd/sensors", self._on_cmd)
         self.bus.on("obs/ritual", self._on_ritual)
 

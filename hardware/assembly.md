@@ -35,7 +35,7 @@ So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on t
 stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
 module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
 
-The UNO Q side (D39: no KY-035 hall, no KY-054 light; D48: no KY-053, so no KY-039): KY-031 knock (D2) and the
+The UNO Q side (D39: no KY-035 hall, no KY-054 light; D48: no KY-053, so no KY-039): no KY-031 knock (D49: taps come from the Atech orientation sensor); the
 Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D48). Pin ground truth: `hardware/wiring.md`.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
@@ -65,10 +65,9 @@ Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D48). 
    glue if it's loose). Optional: drill the ear hole out to Ø26 to show the module's light ring.
 5. *Optional:* glue the **Microphone** module against the right inner wall behind the hole pattern, then glue the
    **right ear** grille on the outside.
-6. Glue the **KY-031 knock sensor** flat under the head top, behind the display, on foam tape. The top is where
-   you tap.
+6. (No KY-031 knock sensor in this build, D49: taps are felt by the Atech orientation sensor.)
 7. Push the skewer into the antenna socket on top and glue on the **antenna ball**.
-8. Plug every head cable in now (display ×2, knob ×2, mic ×2, three KY-031 jumper wires), and route them all
+8. Plug every head cable in now (display ×2, knob ×2, mic ×2, no KY-031 wires in this build), and route them all
    down through the floor
    slot. Fit the **back lid**: its two ribs push the camera forward against the lip.
 9. Feed the cable bundle through the turntable disc and down the hollow axle. Glue the head floor onto the

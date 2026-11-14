@@ -23,7 +23,6 @@ WiFiClient net;
 PubSubClient mqtt(net);
 char topicBuf[96];
 uint32_t bootMs = 0, nextNetTry = 0, backoff = BACKOFF_MIN_MS, nextHealth = 0, nextPan = 0, reconnects = 0;
-volatile uint32_t taps = 0;
 bool face = false, isMoving = false;
 char motorPinCheck[24] = "";
 const char* stepName = "idle";
@@ -134,8 +133,7 @@ void onMessage(char* topic, uint8_t* data, unsigned int len) {
   if (deserializeJson(env, data, len)) return;
   const char* type = env["type"] | "";
   if (!strcmp(env["source"] | "", "head")) return;                     // our own messages
-  if (!strcmp(type, "raw.head.tap")) taps++;                           // UNO Q knock sensor
-  else if (!strcmp(type, "raw.hub.face")) face = true;                 // UNO Q camera
+  if (!strcmp(type, "raw.hub.face")) face = true;                 // UNO Q camera
   else if (!strcmp(type, "cmd.head")) onCmdHead(env["payload"].as<JsonObject>());
 }
 
@@ -171,7 +169,6 @@ void netTick(uint32_t now) {
   snprintf(cid, sizeof(cid), "kaiku-head-%04x", (unsigned)(esp_random() & 0xFFFF));
   if (mqtt.connect(cid, user, pass, topicFor("health", "head"), 1, true, will)) {
     mqtt.subscribe(topicFor("cmd", "head"), 1);
-    mqtt.subscribe(topicFor("raw", "head/tap"), 0);
     mqtt.subscribe(topicFor("raw", "hub/face"), 0);
     backoff = BACKOFF_MIN_MS;
     reconnects++;
@@ -209,7 +206,13 @@ bool nextCommand(P2PCommand* out) {
   return true;
 }
 
-uint32_t takeTaps() { uint32_t n = taps; taps = 0; return n; }
+void tap(float force_g) {
+  JsonDocument p;
+  p["t_ms"] = (uint32_t)(millis() - bootMs);
+  p["force"] = roundf(max(force_g, 0.0f) * 100) / 100.0f;
+  p["src"] = "imu";
+  publish("raw.head.tap", "raw", "head/tap", p);
+}
 
 bool takeFace() { bool f = face; face = false; return f; }
 

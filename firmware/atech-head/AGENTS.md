@@ -41,7 +41,7 @@ kaiku_link/
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
 standalone/             ACTIVE (D44): website-agent firmware in src/ (main.cpp, pins.h, transport.*; our edit: drum clock from the first tap);
-                        src/kaiku_net.*: Wi-Fi + MQTT (UNO Q knocks/faces in, chimes + pan out; hooks marked `// kaiku_net`;
+                        src/kaiku_net.*: Wi-Fi + MQTT (UNO Q faces in, taps + chimes + pan out; hooks marked `// kaiku_net`;
                         handover: docs/robot-network-handover.md)
                         project.yaml only lists modules so `atech build` fetches drivers; build.sh overlays src/ +
                         include shims for its modules/<group>/x.h paths. `make atech-standalone [FLASH=1]`
@@ -128,7 +128,13 @@ configured network is in range (never the password). A `cmd.head` pan runs a fix
 `build.sh` clears its copied sources before `atech build` (a rebuild compiled them without their libraries).
 `kaiku_net` verified on the board (2026-11-14, iPhone hotspot): joins Wi-Fi, connects to the broker, `health/head`
 every 5 s + `raw.head.pan`, takes `cmd.head` eyes, and a face seen by the UNO Q woke the head from idle to greet.
-Not yet seen: the knock → drum path and the chimes reaching the UNO Q buzzer. **`secrets.h` is per laptop**
+Taps (D49): the orientation sensor on port 13 is the only tap source (`shakeG` 1.15 = total g, so 0.15 g
+above rest; serial `tap_sensitivity`, never ≤ 1); each tap is published as `raw.head.tap {t_ms, force, src: imu}` in every ritual step, counts in
+DRUM and wakes the head from idle; nothing counts while the motor runs or for 400 ms after. Seen on the robot
+(2026-11-14): hand taps arrive on the broker at about one a second (0.15-0.73 g) and wake the head; at 0.3 g most
+were missed. Not yet seen: taps counted in a DRUM step over the bus, the chimes sounding on the UNO Q buzzer.
+Serial output is dropped when the USB buffer has no room: on a computer's USB port with nobody reading, writes
+stalled the loop and the head left the broker after ~15 s. **`secrets.h` is per laptop**
 (gitignored): flashing from another machine uses that machine's Wi-Fi and broker IP; set all three
 (`WIFI_SSID` exactly as the phone shows it, curly ’ included; `WIFI_PASS`; `MQTT_HOST_IP` = the broker laptop).
 On the venue Wi-Fi the head (and the UNO Q, at the same moments) lost the broker every 1-2 min; on the hotspot not.

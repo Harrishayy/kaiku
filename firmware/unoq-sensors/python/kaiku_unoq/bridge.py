@@ -1,11 +1,11 @@
 """Bridge adapter: the UNO Q RPC router between this Linux app and the STM32 sketch.
 
 RouterBridge wraps `arduino.app_utils.Bridge` (only importable on the board, inside App Lab).
-FakeBridge stands in on a laptop (`--fake-bridge`): calls are logged, and `knock()` simulates the sketch.
+FakeBridge stands in on a laptop (`--fake-bridge`): calls are logged, and `ppg()`/`hall()`/`ready()` simulate the sketch.
 
-Sketch provides (we call):  buzz_pattern(name) · motor_moving(0|1) · ppg_start() · ppg_stop() · light_read() -> int ·
+Sketch provides (we call):  buzz_pattern(name) · ppg_start() · ppg_stop() · light_read() -> int ·
                             status_set(name) · ping() -> fw version
-Sketch notifies (we provide): on_knock(t_ms) · on_ppg(t0_ms, fs_hz, "csv samples") · on_hall(at_home, t_ms) ·
+Sketch notifies (we provide): on_ppg(t0_ms, fs_hz, "csv samples") · on_hall(at_home, t_ms) ·
                               mcu_ready()
 VERIFY on the board: argument types the router accepts (ints/strings are safe) and whether `provide` callbacks
 run on a router thread (we assume yes and hop onto the asyncio loop).
@@ -60,9 +60,6 @@ class FakeBridge:
 
     def provide(self, name: str, fn: Callable[..., Any]) -> None:
         self.provided[name] = fn
-
-    def knock(self, t_ms: int) -> None:
-        self.provided["on_knock"](t_ms)
 
     def ppg(self, t0_ms: int, samples: list[int], fs_hz: int = 100) -> None:
         self.provided["on_ppg"](t0_ms, fs_hz, ",".join(str(x) for x in samples))

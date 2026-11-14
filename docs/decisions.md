@@ -460,3 +460,17 @@ flowchart LR
   hotspot); moving it onto the UNO Q would take the laptop out of the robot entirely (plan 07 §4).
 - The UNO Q's `kaiku-sensors` app is the board's **default app** (starts at boot) and its network manager retries the
   hotspot forever and no longer auto-joins the venue Wi-Fi.
+
+## D49 — Taps come from the head's orientation sensor; the KY-031 knock switch is removed (2026-11-14, Edwin)
+- The KY-031 was taken off the robot. The UNO Q sketch and app no longer read it, publish `raw.head.tap` or follow
+  `raw.head.pan` (that link only muted knocks during motor vibration). `bench/knock` stays as a one-part test for a
+  spare KY-031 (the bench checker's tests use it).
+- The Atech head (standalone firmware, D44) publishes every tap its orientation sensor feels as
+  `raw.head.tap {t_ms, force, src: "imu"}`, ignores taps while the motor runs and for 400 ms after, and still uses
+  them itself (drum count, wake from idle). `[robot] drum_input = "imu"`, so the sims send force too.
+- The contract keeps `src: "knock"` and the hub keeps its knock handling: no breaking change, and old recordings replay.
+- **Why:** one fewer part and three fewer wires down the neck, and the orientation sensor gives force, which the
+  knock switch never did.
+- Open: the MQTT firmware (`kaiku_link`) has no orientation sensor code yet; the display was also removed from the head
+  on the same day and only the standalone firmware reflects that.
+

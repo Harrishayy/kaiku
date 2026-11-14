@@ -3,8 +3,7 @@ part = "unoq-link"
 board = "mqtt"
 program = ""
 flash = "App Lab: run the full app (make unoq-app first); hub laptop: make broker. No hub needed for this bench."
-steps = ["Within 20 s: tap the head top 3 times",
-         "Rest a finger in the lid cradle (the bench sends ppg start)",
+steps = ["Rest a finger in the lid cradle (the bench sends ppg start)",
          "Turn the head by hand past the front once (hall)", "Listen for the 'ok' chime"]
 duration_s = 20
 topic = "kaiku/v1/+/#"
@@ -16,10 +15,6 @@ name = "health/sensors ok with the sketch answering"
 event = "health"
 source = "sensors"
 min_count = 1
-[[check]]
-name = "knocks arrive as raw.head.tap"
-event = "raw.head.tap"
-min_count = 3
 [[check]]
 name = "pulse batches arrive"
 event = "raw.sensors.ppg"

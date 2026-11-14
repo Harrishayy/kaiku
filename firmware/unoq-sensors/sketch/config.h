@@ -2,14 +2,8 @@
 // Wiring ground truth: hardware/wiring.md (pins marked VERIFY there are confirmed on the board).
 #pragma once
 
-#define KAIKU_SKETCH_VERSION "unoq-sketch-0.2.0"
+#define KAIKU_SKETCH_VERSION "unoq-sketch-0.3.0"
 
-// KY-031 knock sensor (the drum, under the head top; 3 wires down the neck): S -> D2, + -> 3V3, - -> GND
-#define KNOCK_PIN 2
-#define KNOCK_DEBOUNCE_MS 40      // the spring bounces: one knock = everything within this window
-#define KNOCK_CALIBRATE_MS 500    // boot: read the idle level with the head still (sellers differ in polarity)
-#define KNOCK_USE_PULLUP 1        // INPUT_PULLUP if the idle reading floats
-#define KNOCK_POLL_FALLBACK 0     // 1 = poll at ~1 kHz if D2 has no interrupt on this core
 
 // KY-035 hall sensor (49E linear, analog) under the pan base; magnet in the turntable = head faces front
 #define HAS_HALL 0                // 0 = no KY-035/magnet fitted (D39): never poll A1 (a floating pin would fake edges)

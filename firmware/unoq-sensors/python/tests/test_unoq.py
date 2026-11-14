@@ -21,7 +21,7 @@ def test_face_payload_and_distance():
     assert light_payload(300.0, 2.0) == {"raw": 255, "lux_est": 510.0}
 
 
-async def test_node_bridges_knock_hall_light_and_chimes(broker, monkeypatch):
+async def test_node_bridges_hall_light_and_chimes(broker, monkeypatch):
     monkeypatch.setenv("KAIKU_UNOQ_LIGHT_EVERY_S", "0.2")
     monkeypatch.setenv("KAIKU_UNOQ_LIGHT_SOURCE", "ky054")   # this build uses the camera (D39); test the KY-054 path
     from kaiku_contracts.config import load_config
@@ -40,7 +40,6 @@ async def test_node_bridges_knock_hall_light_and_chimes(broker, monkeypatch):
     async with hub:
         await node.bus.connected.wait()
         await asyncio.sleep(0.2)
-        bridge.knock(1234)
         bridge.hall(True)
         await hub.publish("cmd.sensors", {"chime": "ok"})
         await hub.publish("raw.head.pan", {"deg": 5.0, "homed": True, "moving": True})
@@ -48,13 +47,12 @@ async def test_node_bridges_knock_hall_light_and_chimes(broker, monkeypatch):
     stop.set()
     await task
     load_config.cache_clear()
-    taps = [e for e in got if e.type == "raw.head.tap"]
-    assert len(taps) == 1 and taps[0].payload.src == "knock" and taps[0].payload.force is None
-    assert taps[0].source == "sensors"
+    assert not [e for e in got if e.type == "raw.head.tap"]   # taps are the head's (orientation sensor): no knock switch here
     assert [e.payload.at_home for e in got if e.type == "raw.sensors.hall"] == [True]
     light = [e for e in got if e.type == "raw.sensors.light"]
     assert light and light[0].payload.raw == 1200 and light[0].payload.lux_est == 300.0
-    assert ("buzz_pattern", ("ok",)) in bridge.calls and ("motor_moving", (1,)) in bridge.calls
+    assert ("buzz_pattern", ("ok",)) in bridge.calls
+    assert not any(c[0] == "motor_moving" for c in bridge.calls)   # that call only served the knock switch
     assert ("status_set", ("ok",)) in bridge.calls
     assert bridge.calls[0][0] == "ping" and node.mcu_fw == "fake-0.2.0"
     assert not any(c[0].startswith("eyes") for c in bridge.calls)  # the eyes are the Atech display now

@@ -2,7 +2,7 @@
 
 On the board:  App Lab runs this file; `make unoq-app` first copies kaiku_contracts + config into ./vendor.
 On a laptop:   uv run python firmware/unoq-sensors/python/main.py --fake-bridge [--no-camera]
-               (laptop webcam stands in for the USB camera; keys: k = knock, r = sketch ready, q = quit)
+               (laptop webcam stands in for the USB camera; keys: r = sketch ready, q = quit)
 Env: MQTT_HOST / MQTT_PORT / MQTT_USER / MQTT_PASS (broker on the hub laptop today), KAIKU_HOME_ID.
 """
 
@@ -21,18 +21,14 @@ for p in (HERE, HERE / "vendor"):  # vendor/ = copied kaiku_contracts + config (
         sys.path.insert(0, str(p))
 
 from kaiku_contracts.config import load_dotenv  # noqa: E402
-
 from kaiku_unoq.bridge import FakeBridge, RouterBridge  # noqa: E402
 from kaiku_unoq.node import SensorsNode  # noqa: E402
 
 
 def _keyboard(bridge: FakeBridge, stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> None:
-    t0 = time.monotonic()
     for line in sys.stdin:
         ch = line.strip()[:1]
-        if ch == "k":
-            bridge.knock(int((time.monotonic() - t0) * 1000))
-        elif ch == "r":
+        if ch == "r":
             bridge.ready()
         elif ch == "q":
             loop.call_soon_threadsafe(stop.set)
@@ -42,7 +38,7 @@ def _keyboard(bridge: FakeBridge, stop: asyncio.Event, loop: asyncio.AbstractEve
 def main() -> None:
     load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--fake-bridge", action="store_true", help="no STM32: log Bridge calls, knock from the keyboard")
+    ap.add_argument("--fake-bridge", action="store_true", help="no STM32: log Bridge calls, sketch-ready from the keyboard")
     ap.add_argument("--no-camera", action="store_true")
     a = ap.parse_args()
 
