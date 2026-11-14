@@ -31,3 +31,6 @@ logs/*
 # vendor datasheets (third-party copyright; fetch locally, see hardware/dimensions.md)
 hardware/datasheets/*
 !hardware/datasheets/SOURCES.md
+
+# CAD outputs (STL, STEP, sliced 3MF, renders, overview.html): regenerate, see hardware/cad/README.md
+hardware/cad/out/

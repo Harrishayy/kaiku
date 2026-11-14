@@ -88,3 +88,13 @@ their defaults are in handoff.md §12 — record the actual answer here when it'
   `.gemini/settings.json` `context.fileName = ["AGENTS.md"]`. Codex reads root → launch directory (open the module's
   `AGENTS.md` when launched at the root). Cursor: reads `AGENTS.md`; nested loading unverified.
 - Enforced by `tools/agents_sync.py` in `make test`.
+
+## D22 — Robot body: "cathedral radio", 2 motors, vision-only presence (2026-11-14, Edwin)
+- Decision: the head is built around the Arduino USB Camera (ring light = round grille, Color Display above =
+  eyes in a tuning window, Knob = left ear). Two Atech DC motors: **pan** (12:40 gear) and **purr** (eccentric
+  weight), as in handoff §8. **No tilt** (a 200 g head that sits in front of the motor would make it slip back under
+  load) and **no arms**. KY-050/051 dropped: presence comes from vision.
+- Why: fewer motors means less current and fewer Atech ports. The 12-port budget is display 2, knob 2, IMU 1,
+  LED ×2, button 1, motors 2, plus Microphone *or* Speaker (`hardware/assembly.md`).
+- Print budget: MVP (head + neck, cardboard body) about 3 h 20 min. Full printed robot about 5 h 50 min on a P1S
+  or P2S (`hardware/cad/README.md`).

@@ -12,8 +12,8 @@ Order of axes: **W × D × H**. For boards, W × D is the PCB outline and H is t
 
 | Part | SKU | Outline W × D | Height / thickness | Mounting | Weight | Notes |
 |---|---|---|---|---|---|---|
-| Arduino UNO Q | ABX00162 / ABX00173 | 68.58 × 53.34 | bottom-side parts < 2; top height MEASURE | 4× R1.6 holes, UNO R3 hole pattern | MEASURE | UNO R3 form factor, so UNO shields and standoff patterns fit. Datasheet §12 has the full drawing. |
-| Arduino USB Camera | TPX00246 | 70 × 40 | 90 | MEASURE (clip or stand) | 105 g | Body only. The USB-A cable is 1 m. Lens: F/2.0, FOV 80° diag / 63° H / 50° V, autofocus from 20 cm. **The plug is USB-A, so the UNO Q needs a USB-C hub or adapter.** |
+| Arduino UNO Q | ABX00162 / ABX00173 | 68.58 × 53.34 | ~12–14 overall: tallest headers ~10.6 above the PCB top (photo est., 2026-11-14); bottom-side parts < 2 | 4× R1.6 holes, UNO R3 hole pattern | MEASURE | UNO R3 form factor, so UNO shields and standoff patterns fit. Datasheet §12 has the full drawing. |
+| Arduino USB Camera | TPX00246 | 70 × 40 | 90 | stands on its own folded clip (~64 × 37 × 22, photo est.) | 105 g | Body only. The USB-A cable is 1 m. Lens: F/2.0, FOV 80° diag / 63° H / 50° V, autofocus from 20 cm. **The plug is USB-A, so the UNO Q needs a USB-C hub or adapter.** |
 | Modulino Buzzer | ABX00108 | 41 × 25.36 | PCB 1.6 ±0.2; stack height MEASURE | 4× Ø3.2 holes, hole spacing 32 (H) × 16 (V) | MEASURE | Connects over Qwiic/I²C. Buzzer: PKLCS1212E4001. |
 
 ## Atech kit
@@ -25,17 +25,17 @@ port), it is given in the Notes column.
 | Module | Atech ID | Chip | Outline W × D | Height | Mounting | Notes |
 |---|---|---|---|---|---|---|
 | Motherboard | — | ESP32-S3 | ~127 × 68 (est.†) | MEASURE | MEASURE | 12 module ports (1–7, 9–11, 13–14). Port 8 is USB-C and port 12 is reset. Leave clearance for the USB-C plug. |
-| Color Display | `st7735_tft` | ST7735S | MEASURE | MEASURE | MEASURE | 160×80 TFT. Measure the active area for the bezel cut-out. |
+| Color Display | `st7735_tft` | ST7735S | ~42 × 21 (photo est. against the mic, 2026-11-14) | ~10 | MEASURE | 160×80 TFT (0.96"). The visible screen (dark area) is ~28.8 × 13.7 and centred on the module front within ±0.3 mm; the CAD window is 28 × 13. Its connector pins run along one long edge, and the cable plugs need ~12 mm of room there (the CAD puts that edge at the top). |
 | Big Screen | `st7789_tft` | ST7789 | MEASURE | MEASURE | MEASURE | 320×240 TFT. Measure the active area for the bezel cut-out. |
-| LED Grid | `neopixel_grid` | WS2812B ×9 | ~22 × 22 (est.†) | MEASURE | MEASURE | Each LED is a 5050 package (5.0 × 5.0). A diffuser goes over the 3×3 grid. |
-| Orientation Sensor | `icm40608_imu` | LSM6DSOX | MEASURE | MEASURE | MEASURE | Mount it rigidly to the head for tap detection. |
+| LED Grid | `neopixel_grid` | WS2812B ×9 | ~22 × 22 (est.†) | 16 ASSUMED | MEASURE | Each LED is a 5050 package (5.0 × 5.0). A diffuser goes over the 3×3 grid. |
+| Orientation Sensor | `icm40608_imu` | LSM6DSOX | 22 × 22 ASSUMED | 16 ASSUMED | MEASURE | Mount it rigidly to the head for tap detection. |
 | Temp & Humidity | `aht20_sensor` | AHT20 | MEASURE | MEASURE | MEASURE | The shell needs a vent next to it. |
 | Air Quality | `scd40_air_quality` | SCD40 | MEASURE | MEASURE | MEASURE | Sensor body is 10.1 × 10.1 × 6.5. Needs airflow. |
 | Distance Sensor | `vl53l5cx_distance` | VL53L5CX | MEASURE | MEASURE | MEASURE | Sensor body is 6.4 × 3.0 × 1.5. FoV is 63° diagonal. The cover window must not clip the cone. |
-| Knob | `rotary_encoder_knob` | EC11 | MEASURE | MEASURE | MEASURE | 11 mm-size metal-shaft encoder. Measure the shaft length and diameter for the knob cap. |
-| Button | `button_module` | — | MEASURE | MEASURE | MEASURE | |
-| Speaker | `speaker` | MAX98357A | MEASURE | MEASURE | MEASURE | Measure the speaker driver's diameter and depth. The shell needs a grille. |
-| Microphone | `microphone` | ICS-43434 | MEASURE | MEASURE | MEASURE | Mic package is 3.50 × 2.65 × 0.98 and **bottom-ported**, so the sound hole goes through the PCB. Line it up with the shell's opening. |
+| Knob | `rotary_encoder_knob` | EC11 | ~42 × 42 square (photo est., 2026-11-14) | ~13 | MEASURE | The knob comes out of the big face: a metal bushing (~Ø8 × 9) and its own black knob (~Ø9.5 × 14), ~23 above the face in total. There is a translucent light ring (~Ø24) around it. The printed `knob_cap` slides over that black knob (9.8 mm bore): **check the knob's diameter**. |
+| Button | `button_module` | — | 22 × 22 ASSUMED | 16 ASSUMED | MEASURE | Sits in a 23.4 mm square hole in the lid. |
+| Speaker | `speaker` | MAX98357A | ~48 × 45 (photo est., 2026-11-14) | ~23 | MEASURE | "Speaker V2.2", two ports. Which face the sound leaves from is unknown; the CAD puts its big face against the body's right-side grille. |
+| Microphone | `microphone` | ICS-43434 | ~21 × 41 (photo est., 2026-11-14) | ~12 | MEASURE | Mic package is 3.50 × 2.65 × 0.98 and **bottom-ported**, so the sound hole goes through the PCB. Line it up with the shell's opening. |
 | DC Motor | `dc_motor` | DRV8833 | ~23 × 23 cross-section | ~44 long, excluding the shaft (est.†) | MEASURE | "DC Motor V2.3": a black enclosed gearmotor block with the driver inside, about two module-lengths long. Its 6-pin connector is on one long face. The shaft comes out of one short end, about 10 long and about 3 diameter (est.†). Check whether it's a D-shaft before designing the coupler. |
 | Soil Sensor | `soil_sensor` | CH32V003 | MEASURE | MEASURE | MEASURE | Not in Kaiku's design. Listed only because it's in the kit. |
 | Camera | `ov5640_camera` | OV5640 | MEASURE | MEASURE | MEASURE | Measure the lens barrel diameter and its FOV. |
