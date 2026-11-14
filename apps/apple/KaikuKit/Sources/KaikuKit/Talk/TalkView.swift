@@ -515,7 +515,8 @@ public struct TalkView: View {
                 }
             }
             CallBar(since: model.conversation.liveSince, status: model.status, micOn: model.micOn, voiceMuted: model.voiceMuted,
-                    typing: typing, toggleMic: micAction, toggleVoice: { model.toggleVoice() },
+                    typing: typing, level: { [conversation = model.conversation] in CallStatus.level(db: conversation.level) },
+                    toggleMic: micAction, toggleVoice: { model.toggleVoice() },
                     toggleTyping: { typing.toggle() }, end: { model.end() })
         } else {
             let s = Self.idleState(mode: model.mode, reason: model.conversation.unavailableReason, paired: app.isPaired,

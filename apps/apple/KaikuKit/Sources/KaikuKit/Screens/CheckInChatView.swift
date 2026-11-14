@@ -117,7 +117,9 @@ public struct CheckInChatView: View {
                 }
             }
             CallBar(since: chat.talk.conversation.liveSince, status: chat.talk.status, micOn: chat.micOn,
-                    voiceMuted: chat.talk.voiceMuted, typing: typing, toggleMic: micAction,
+                    voiceMuted: chat.talk.voiceMuted, typing: typing,
+                    level: { [conversation = chat.talk.conversation] in CallStatus.level(db: conversation.level) },
+                    toggleMic: micAction,
                     toggleVoice: { chat.talk.toggleVoice() }, toggleTyping: { typing.toggle() }, end: { chat.enough() })
         }
     }
@@ -153,7 +155,7 @@ public struct CheckInChatView: View {
     private var kaiku: some View {
         VStack(spacing: KaikuTokens.Space.s2) {
             ZStack {
-                if chat.micOn { ListeningRing(size: KaikuTokens.Size.mascotM + KaikuTokens.Space.s3, active: chat.phase == .hearing) }
+                if chat.micOn { ListeningRing(size: KaikuTokens.Size.mascotM + KaikuTokens.Space.s3, active: chat.phase == .hearing || chat.phase == .listening) }
                 GlowingMascot(state: mascotState, size: KaikuTokens.Size.mascotM,
                               dial: chat.activeDial.map { Double(chat.values[$0] ?? 3) }, tappable: false)
             }

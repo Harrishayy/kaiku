@@ -84,7 +84,8 @@ public struct QuickTalkSurface: View {
             : stage == .pill ? KaikuTokens.Elevation.card : KaikuShadow(radius: 0, y: 0, opacity: 0)
         return ZStack(alignment: .leading) {
             if popup {
-                QuickTalkCard(display: display, chrome: false, loopStart: loopStart, perform: perform)
+                QuickTalkCard(display: display, chrome: false, loopStart: loopStart,
+                              level: model.map { m in { m.meter.level } }, perform: perform)
                     .frame(width: card.width, height: card.height)
                     .transition(.opacity)
             } else if stage == .pill {
@@ -148,7 +149,8 @@ struct QuickTalkMeterView: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || quiet || at != nil)) { tl in
             let t = (at ?? tl.date).timeIntervalSinceReferenceDate
             let still = reduceMotion || quiet
-            let voice = meter.kaikuSpeaking ? max(meter.level, 0.6) : meter.level
+            // An open microphone in a quiet room still moves a little, so the bar visibly listens.
+            let voice = meter.kaikuSpeaking ? max(meter.level, 0.6) : (meter.micOpen ? max(meter.level, 0.22) : meter.level)
             VStack(spacing: 5) {
                 ForEach(0..<5, id: \.self) { i in
                     let wave = still ? 0.5 : 0.5 + 0.5 * sin(t * 6.5 + Double(i) * 1.3)
@@ -181,13 +183,17 @@ public struct QuickTalkCard: View {
     var chrome = true
     /// Layout snapshots pin Kaiku's loop.
     var loopStart: Date?
+    /// The person's voice, 0…1, for the moving lines beside the state.
+    var level: (() -> Double)?
     let perform: (QuickTalkCommand) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(display: QuickTalkDisplay, chrome: Bool = true, loopStart: Date? = nil, perform: @escaping (QuickTalkCommand) -> Void) {
+    public init(display: QuickTalkDisplay, chrome: Bool = true, loopStart: Date? = nil, level: (() -> Double)? = nil,
+                perform: @escaping (QuickTalkCommand) -> Void) {
         self.display = display
         self.chrome = chrome
         self.loopStart = loopStart
+        self.level = level
         self.perform = perform
     }
 
@@ -233,7 +239,7 @@ public struct QuickTalkCard: View {
     private var kaiku: some View {
         let m = QuickTalkLayout.mascot
         return ZStack {
-            if display.micLive { QuickTalkRing(size: m + KaikuTokens.Space.s2, active: display.state == .hearing) }
+            if display.micLive { QuickTalkRing(size: m + KaikuTokens.Space.s2, active: display.state == .hearing, pinned: loopStart != nil) }
             MascotView(state: display.mascot, size: m, tappable: false, cycleStart: loopStart)
         }
         .frame(width: m + KaikuTokens.Space.s3, height: m + KaikuTokens.Space.s3)
@@ -258,7 +264,10 @@ public struct QuickTalkCard: View {
     /// A sage dot = the microphone is open (the call bar's colour for it); no dot, muted words = it is not.
     private var status: some View {
         HStack(spacing: KaikuTokens.Space.s1 + 2) {
-            if display.micLive {
+            if display.micLive, display.state == .listening || display.state == .hearing || display.state == .speaking {
+                // The lines move with the person's voice (and a little in a quiet room): the microphone is open.
+                CallWave(status: display.state == .speaking ? .speaking : .listening, level: level, at: loopStart)
+            } else if display.micLive {
                 Circle().fill(KaikuTokens.Colors.sage).frame(width: 7, height: 7)
             }
             Text(T(display.statusKey)).kText(.micro)
@@ -417,15 +426,20 @@ public struct QuickTalkCard: View {
 /// A thin ring around Kaiku while the microphone is open; it breathes while the person is talking.
 private struct QuickTalkRing: View {
     let size: CGFloat
+    /// The person is being heard: the ring pulses faster and further. Otherwise it breathes slowly (listening).
     let active: Bool
+    /// Snapshots hold the ring still.
+    var pinned = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || !active)) { tl in
-            let pulse = reduceMotion || !active ? 0.5 : 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 2.4)
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || pinned)) { tl in
+            let still = reduceMotion || pinned
+            let pulse = still ? 0.5 : 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * (active ? 2.4 : 1.1))
+            let reach = active ? 1.0 : 0.5
             Circle()
-                .strokeBorder(KaikuTokens.Colors.clay.opacity(0.35 + 0.4 * pulse), lineWidth: 2)
+                .strokeBorder(KaikuTokens.Colors.clay.opacity(0.35 + 0.4 * pulse * reach), lineWidth: 2)
                 .frame(width: size, height: size)
-                .scaleEffect(1 + 0.04 * pulse)
+                .scaleEffect(1 + 0.04 * pulse * reach)
         }
         .accessibilityHidden(true)
     }
@@ -526,7 +540,7 @@ public struct QuickTalkPanelHost: View {
 /// `QuickTalkModel` in UserDefaults.
 struct QuickTalkSettingsSection: View {
     private let model = QuickTalkModel.shared
-    @State private var showMore = false
+    @State private var showMore = YouDebug.open
 
     var body: some View {
         @Bindable var model = model
