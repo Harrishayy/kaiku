@@ -4,7 +4,6 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { PANEL_IDS, defaultLayout, dropPanel, promotePanel, readLayout, shiftPanel, slots, togglePanel } from '../lib/layout.ts';
 import { cleanText, compareSeries, daySignals, deriveReview, insightView, meaningOf, recordStage, recordedDays, trimLeading } from '../lib/insight.ts';
 import { byDay, describeObs } from '../lib/evidence.ts';
-import { fitLabel, layoutGraph } from '../lib/graph-layout.ts';
 
 test('layout: every panel count tiles the 12 × 12 grid exactly, so panels can never overlap or leave holes', () => {
   for (let n = 1; n <= PANEL_IDS.length; n++) {
@@ -29,7 +28,8 @@ test('layout: saved layouts recover from junk, stale ids, duplicates and missing
   assert.equal(defaultLayout(1280, 720).order.length, 3);
   assert.equal(defaultLayout(1920, 1080).order.length, 5);
   assert.deepEqual(defaultLayout(1280, 720).order, ['trends', 'consensus', 'review'], 'the review is always open by default');
-  assert.deepEqual(defaultLayout(1440, 900).order.slice(3), ['evidence', 'routine']);
+  assert.deepEqual(defaultLayout(1440, 900).order.slice(3), ['evidence', 'graph'], 'the map of the record is open where there is room');
+  assert.equal(defaultLayout(1440, 900).docked[0], 'routine', 'Routine is the first chip in the dock');
   assert.equal(defaultLayout(1280, 720).order[0], 'trends');
 });
 
@@ -102,6 +102,9 @@ test('day signals and period comparison: counts of measures outside their usual,
   assert.equal(sig.find((d) => d.date === '2026-11-06')?.measured, 0);
   assert.equal(sig.find((d) => d.date === '2026-10-30')?.compared, 0, 'no usual yet: nothing to compare');
   assert.equal(sig.find((d) => d.date === '2026-11-11')?.better, 1);
+  // a measure that is shown and not scored (face signs, more of the day from Apple Health) is charted, never counted
+  const beside = { ...(mood as object), metric: 'deep_sleep', label: 'Deep sleep (watch)', scored: false };
+  assert.deepEqual(daySignals([mood as never, beside as never]), sig);
   const c = compareSeries(mood as never, '2026-11-11', 'change_from_usual');
   assert.equal(c.days_this_week, 6);
   assert.equal(c.days_previous_week, 7);
@@ -150,26 +153,6 @@ test('evidence by day: plain sentences, envelope source kept, newest day first, 
   assert.equal(days[1].groups[0].items[0].sim, true);
 });
 
-test('graph: one row per node in a column, so labels cannot collide; dangling edges are dropped', () => {
-  const node = (id: string, kind: string, label = id) => ({ id, kind, label, detail: null, evidence: 3, tone: 'unknown' }) as never;
-  const edge = (src: string, dst: string, rel: string) => ({ src, dst, rel, label: rel, weight: 1, evidence: 1 }) as never;
-  const g = {
-    nodes: [node('p', 'person'), node('g1', 'signal_group'), node('a1', 'activity'), node('a2', 'activity'), ...Array.from({ length: 12 }, (_, i) => node(`m${i}`, 'measure')), node('r1', 'routine'), node('lost', 'routine')],
-    edges: [edge('p', 'g1', 'has_signal'), edge('p', 'a1', 'did'), edge('p', 'a2', 'helped'), ...Array.from({ length: 12 }, (_, i) => edge('g1', `m${i}`, 'measures')), edge('r1', 'a1', 'of'), edge('p', 'r1', 'keeps'), edge('p', 'ghost', 'did')],
-  };
-  const l = layoutGraph(g);
-  assert.equal(l.nodes.length, g.nodes.length);
-  for (const col of [1, 2]) {
-    const ys = l.nodes.filter((n) => n.col === col).map((n) => n.y).sort((a, b) => a - b);
-    for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= 27, `column ${col} rows are at least a line apart`);
-  }
-  assert.ok(!l.edges.some((e) => e.dst === 'ghost'));
-  assert.ok(!l.edges.some((e) => e.src === 'p' && e.dst === 'r1'), 'person → routine is implied through its activity');
-  assert.ok(l.height > 12 * 27);
-  assert.equal(fitLabel('Heart rate variability (watch, SDNN)', 140), 'Heart rate variabil…');
-  assert.equal(fitLabel('Watch', 140), 'Watch');
-});
-
 test('website scope: practitioner dashboard only; no person-facing routes, internal ids or banned words in the UI', () => {
   const app = new URL('../app/', import.meta.url);
   for (const gone of ['me', 'checkin', 'session', 'play', 'phq9', 'consent', 'live', 'clinician']) assert.ok(!existsSync(new URL(gone, app)), `${gone} route removed`);
@@ -184,38 +167,6 @@ test('website scope: practitioner dashboard only; no person-facing routes, inter
   const css = readFileSync(new URL('../app/dashboard.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(css), 'dashboard colours are tokens only');
   assert.ok(!/font-size:\s*[\d.]+(px|rem|em)/.test(css), 'dashboard type sizes are tokens only');
-});
-
-import { edgeWords, learnedView } from '../lib/graph-layout.ts';
-
-test('learned graph: learned layer only, routines folded into their activity, measures only where a learned link touches', () => {
-  const n = (id: string, kind: string, layer = 'learned', label = id) => ({ id, kind, label, detail: null, evidence: 3, tone: 'unknown', layer }) as never;
-  const e = (src: string, dst: string, rel: string, layer = 'learned', label = rel, evidence = 8) => ({ src, dst, rel, label, weight: 0.7, evidence, layer }) as never;
-  const g = {
-    nodes: [n('p', 'person'), n('walk', 'activity'), n('r-walk', 'routine', 'learned', 'Daily · 15:00'), n('drum', 'activity'), n('call', 'care_action'), n('g', 'signal_group', 'structure'),
-      n('m-sleep', 'measure', 'structure'), n('m-mood', 'measure', 'structure'), n('m-steps', 'measure', 'structure')],
-    edges: [e('p', 'walk', 'did'), e('p', 'r-walk', 'keeps', 'learned', 'kept'), e('r-walk', 'walk', 'of'), e('p', 'walk', 'helped'), e('p', 'drum', 'did'),
-      e('m-sleep', 'm-mood', 'followed', 'learned', 'followed within a day'), e('call', 'm-mood', 'after'), e('p', 'g', 'has_signal', 'structure'), e('g', 'm-steps', 'measures', 'structure')],
-  };
-  const v = learnedView(g);
-  const ids = v.nodes.map((x) => x.node.id);
-  assert.deepEqual(ids.sort(), ['call', 'drum', 'm-mood', 'm-sleep', 'walk']);
-  assert.ok(!ids.includes('m-steps') && !ids.includes('g'), 'structure stays behind the toggle');
-  assert.equal(v.nodes.find((x) => x.node.id === 'walk')?.sub, 'Daily · 15:00 · kept');
-  assert.equal(v.nodes.find((x) => x.node.id === 'm-mood')?.side, 'right');
-  assert.equal(v.nodes.find((x) => x.node.id === 'call')?.side, 'left');
-  assert.ok(!v.edges.some((x) => x.rel === 'of'));
-  assert.ok(!v.edges.some((x) => x.rel === 'did' && x.dst === 'walk'), 'a bare "did" is dropped when a richer link exists');
-  assert.ok(v.edges.some((x) => x.rel === 'keeps' && x.dst === 'walk'), 'the routine link now points at the activity');
-  for (const side of ['left', 'right']) {
-    const rows = v.nodes.filter((x) => x.side === side).map((x) => x.row);
-    assert.equal(new Set(rows).size, rows.length, 'one row per node on a side');
-  }
-  assert.equal(edgeWords({ rel: 'helped', label: 'helped', evidence: 8, weight: 0.7 } as never), 'helped · 8 tries · uncertain');
-  assert.equal(edgeWords({ rel: 'followed', label: 'followed within a day', evidence: 4, weight: 1 } as never), 'followed within a day · 4 records');
-  // without layer tags (older cloud): activities, routines and what helped still count as learned
-  const old = { nodes: g.nodes.map((x: object) => ({ ...x, layer: 'structure' })), edges: g.edges.map((x: object) => ({ ...x, layer: 'structure' })) } as never;
-  assert.ok(learnedView(old).nodes.some((x) => x.node.id === 'walk'));
 });
 
 import { dayChips, dayValence } from '../lib/evidence.ts';

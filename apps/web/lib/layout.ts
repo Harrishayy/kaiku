@@ -26,13 +26,14 @@ export interface Layout {
   docked: PanelId[];
 }
 
-export const LAYOUT_KEY = 'kaiku.dashboard.layout.v5';
+export const LAYOUT_KEY = 'kaiku.dashboard.layout.v6';
 
-const PRIORITY: PanelId[] = ['trends', 'consensus', 'review', 'evidence', 'routine', 'graph', 'care', 'ask', 'coverage'];
+const PRIORITY: PanelId[] = ['trends', 'consensus', 'review', 'evidence', 'graph', 'routine', 'care', 'ask', 'coverage'];
 
 /**
  * Default layout for a viewport: Trends (main), Consensus now and Kaiku's review are always open, side by side;
- * the Daily account and Routine join them when the screen is at least 800 high. The rest wait in the dock.
+ * the Daily account and the Knowledge graph (as its small overview: the parts of life on the chosen day) join them
+ * when the screen is at least 800 high. The rest, Routine first, wait in the dock.
  */
 export const defaultLayout = (width = 1440, height = 900): Layout => {
   const open = width >= 1280 && height >= 800 ? 5 : 3;

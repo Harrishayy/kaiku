@@ -5,6 +5,7 @@ const TEAM = [
   { href: '/health/', label: 'System health' },
   { href: '/eval/', label: 'Evaluation' },
   { href: '/tune/', label: 'Tuning' },
+  { href: '/debug/', label: 'Debug day' },
 ];
 
 /** Frame for the internal team pages. The practitioner dashboard at `/` has its own full-viewport shell. */

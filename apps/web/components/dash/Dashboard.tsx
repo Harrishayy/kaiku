@@ -168,7 +168,7 @@ export function Dashboard() {
       case 'routine':
         return <RoutinePanel data={d} />;
       case 'graph':
-        return <GraphPanel data={d} onMetric={showMetric} maximised={maximised === 'graph'} onMaximise={() => setMaximised('graph')} />;
+        return <GraphPanel data={d} onMetric={showMetric} onDay={showDay} maximised={maximised === 'graph'} onMaximise={() => setMaximised('graph')} />;
       case 'evidence':
         return <EvidencePanel data={d} day={day} onDay={(x) => setDay(x || null)} onMetric={showMetric} />;
       case 'care':
@@ -282,6 +282,7 @@ export function Dashboard() {
             <Link href="/health/">System health</Link>
             <Link href="/eval/">Evaluation</Link>
             <Link href="/tune/">Tuning</Link>
+            <Link href="/debug/">Debug day</Link>
           </nav>
         </div>
       </footer>

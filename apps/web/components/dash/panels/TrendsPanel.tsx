@@ -132,7 +132,7 @@ export function TrendsPanel({
               <optgroup key={g.src} label={sourceLabel(g.src)}>
                 {g.list.map((s) => (
                   <option key={s.metric} value={s.metric}>
-                    {s.label}
+                    {s.scored === false ? `${s.label} · shown, not scored` : s.label}
                   </option>
                 ))}
               </optgroup>

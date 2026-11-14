@@ -112,10 +112,15 @@ export interface DaySignal {
   changedLabels: string[];
 }
 
-/** Per day: how many measures sat outside the person's usual. Descriptive only; the state comes from the consensus. */
+/**
+ * Per day: how many measures sat outside the person's usual. Descriptive only; the state comes from the consensus.
+ * A measure that is shown and not scored (`scored: false`: camera face signs, more of the day from Apple Health)
+ * is charted but left out of these counts, so a day's count speaks of the measures the rule reads.
+ */
 export function daySignals(series: MetricSeries[]): DaySignal[] {
   const days = new Map<string, DaySignal>();
-  for (const s of series)
+  for (const s of series) {
+    if (s.scored === false) continue;
     for (const p of s.points) {
       const d = days.get(p.date) ?? { date: p.date, measured: 0, compared: 0, changed: 0, better: 0, changedLabels: [] };
       days.set(p.date, d);
@@ -129,6 +134,7 @@ export function daySignals(series: MetricSeries[]): DaySignal[] {
         d.changedLabels.push(s.label);
       } else if (tone === 'better') d.better += 1;
     }
+  }
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -340,7 +346,7 @@ const REL_LABEL: Record<string, string> = { did: 'did', keeps: 'keeps', of: 'rou
 
 /** Care-team view of the older knowledge graph: activities, routines and what helped only. */
 export function deriveGraph(graph: KnowledgeGraph | null): Deep<InsightGraph> {
-  if (!graph) return { nodes: [], edges: [], shared: false, basis: [], note: '', layers: [] };
+  if (!graph) return { nodes: [], edges: [], shared: false, basis: [], note: '', layers: [], domains: [], days: [] };
   const kind = (t: string) => (t === 'me' ? 'person' : t === 'routine' ? 'routine' : t === 'activity' || t === 'helper' ? 'activity' : null);
   const nodes = graph.nodes.flatMap((n) => {
     const k = kind(n.type);
@@ -354,6 +360,8 @@ export function deriveGraph(graph: KnowledgeGraph | null): Deep<InsightGraph> {
       evidence: n.evidence,
       tone: 'unknown' as const,
       layer: 'learned' as const,
+      domain: '',
+      days: [],
     }];
   });
   const ids = new Set(nodes.map((n) => n.id));
@@ -367,11 +375,15 @@ export function deriveGraph(graph: KnowledgeGraph | null): Deep<InsightGraph> {
       weight: Math.max(0, Math.min(1, e.weight)),
       evidence: e.evidence,
       layer: 'learned' as const,
+      on: [],
+      tag: '',
     }));
   return {
     nodes,
     edges,
     layers: ['learned' as const],
+    domains: [],
+    days: [],
     shared: graph.shared,
     basis: graph.shared ? ['observations', 'shared_conversations'] : ['observations'],
     note: graph.shared
