@@ -21,10 +21,11 @@ on the priority uplink → consensus state **Safety** (overrides every source) w
 - **The robot on its own (D51).** When the hub runs on the robot with no screen of its own, the pre-written script
   is printed where nobody reads it and is never spoken: it is not sent to a voice model, by rule. What the person
   gets from the robot is: the conversation, its microphone and its speaker close at once, the ritual or game stops,
-  and the head shows the helpline's name and number and 112 on its own screen (`cmd.head {show: "help"}`, text
-  compiled into the firmware and checked against `config/kaiku.toml`). The flag still goes to the dashboard. That
-  screen is compiled and unit-checked, **not yet flashed or read on the real display**; until it is, keep the phone
-  app near a robot that talks (its "I'm not OK" screen works on its own).
+  and the hub asks the head to show the helpline's name and number and 112 (`cmd.head {show: "help"}`, text
+  compiled into the firmware and checked against `config/kaiku.toml`). The flag still goes to the dashboard.
+  **The robot as built has no display on its head (D54), so it cannot show that text** (its health message reports
+  `help_screen: none`). A robot that talks must have the phone app beside it: its "I'm not OK" screen works on its
+  own.
 - State **Safety** comes only from `safety_flag`. The consensus rule (deterministic, no LLM) can at most produce
   **needs a call**; Gemma only writes the explanation and never changes a state.
 

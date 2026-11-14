@@ -214,7 +214,7 @@ No clip of the robot in this README yet.
 
 - **It speaks first.** A three-minute morning ritual with no typing: three turns of an ear dial for mood, energy and sleep, one guided breath while the chest glows, and a short rhythm tapped on its head. The drum is inspired by research on improvisational music therapy; the chest light is not light therapy.
 - **Ran on the hardware twin.** The whole hub-driven ritual, its crisis gate and the upload of derived numbers run against software twins of the head and sensors over real MQTT (`make sim`, `make hub`). The twins speak the same messages as the boards, and their records are marked simulated.
-- **Ran on the boards.** The Atech head ran the full ritual by knob, without a laptop, on its standalone firmware (D44). Over MQTT its knob, button and screen eyes, and the UNO Q's knock drum, face camera and buzzer, were seen on the broker.
+- **Ran on the boards.** The Atech head ran the full ritual by knob, without a laptop, on its standalone firmware (D44). Over MQTT its knob and button, and the UNO Q's face camera, distance, room light and buzzer, were seen on the broker. On 14 Nov the head as built (no display, taps from its orientation sensor, D54 and D55) ran firmware `atech-head-standalone-0.4.0` on the laptop's broker beside the UNO Q, and the hub switched to follow mode with voice and music routed to the head.
 
 - **The head's ritual reaches the record.** In follow mode the hub shadows the standalone head: its dial answers become mood, energy and sleep check-ins and the knocks become a drum session, queued for the cloud and shown in the practitioner's daily account. The hub sends the head no commands, so the two never compete.
 
@@ -335,7 +335,7 @@ are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrat
 | iPhone app | Signed build installed on a real iPhone; 309 Swift tests passed (11 skipped); a real typed call kept going while the simulator was locked | Microphone, Kaiku's voice while locked and Apple Health on the device |
 | Mac app | Builds; a simulated late evening produced the notch peek and its hourly record; quick talk rendered in every state | Quick talk by real key presses and voice; a screen capture; real usage over days |
 | Meta glasses | Registration and connection on real Gen 2 glasses (Developer Mode); a three-minute walk with Meta's mock glasses and real Live | Voice, head motion, walk styles and opt-in seeing on the real glasses: one filmed walk |
-| Robot | Ritual by knob on the Atech board; knob, button, eyes, knock drum, face camera and buzzer seen over MQTT | Hub-driven ritual on the physical robot, its records on the dashboard, motor, pulse |
+| Robot | Ritual by knob on the Atech board; knob, button, face camera, distance, room light and buzzer seen over MQTT; head, UNO Q and hub together on one broker in follow mode | A whole ritual on the physical robot with its records on the dashboard, Tap it back and Kaiku's voice heard from the head's speaker, the head's microphone, motor, pulse |
 | People | Four logged sessions, all by the project lead | Testers outside the team; any clinical validation |
 
 Sources: the dated audit [`docs/track-readiness.md`](docs/track-readiness.md) and the latest entries of [`docs/progress.md`](docs/progress.md).
@@ -376,8 +376,8 @@ Every module has one doc, its `AGENTS.md`. New here? Read the root [`AGENTS.md`]
 | [`apps/apple/`](apps/apple/AGENTS.md) | SwiftUI iPhone and Mac apps: Today, Play, Talk, History, You; the glasses walk |
 | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | Instructions only for a glasses display web app; not part of the entry |
 | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | Instructions only for an optional Android camera app; not part of the entry |
-| [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | Atech board: screen eyes, knob ear dial, chest LEDs, neck motor, speaker |
-| [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | Arduino UNO Q: knock drum, camera (faces, distance), buzzer chimes, pulse sensor |
+| [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | Atech board: knob ear dial, lid button, neck motor, speaker and microphone, taps from the orientation sensor (no display on this robot) |
+| [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | Arduino UNO Q: camera (faces, distance, room light, pulse), buzzer chimes |
 | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | LoRa friend lamp, a stretch idea; not in the demo |
 | [`sim/`](sim/AGENTS.md) | Software twins of every hardware node, synthetic people, cloud seeder |
 | [`tools/`](tools/AGENTS.md) | Bus tail, record and replay, doctor, sync checkers, companion evals |

@@ -142,11 +142,15 @@ class Camera:
         backoff = 1.0
         while not self._stop.is_set():
             self._dev = resolve_index(c.index)
-            cap = cv2.VideoCapture(self._dev if self._dev is not None else -1)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, c.frame_w)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, c.frame_h)
-            cap.set(cv2.CAP_PROP_FPS, c.fps)
-            if self._dev is None or not cap.isOpened():
+            # No camera found: never hand OpenCV a missing device (it crashed the whole app on the board).
+            cap = cv2.VideoCapture(self._dev) if self._dev is not None else None
+            if cap is not None and cap.isOpened():
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, c.frame_w)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, c.frame_h)
+                cap.set(cv2.CAP_PROP_FPS, c.fps)
+            if cap is None or not cap.isOpened():
+                if cap is not None:
+                    cap.release()
                 self.ok = False
                 self.on_error(f"camera {c.index} (/dev/video{self._dev}) not available (PD hub data port? see hardware/wiring.md)")
                 time.sleep(backoff)
