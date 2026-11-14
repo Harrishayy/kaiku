@@ -5,6 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source ../.venv/bin/activate
+rm -f build/src/*.cpp build/src/*.h            # our sources from the last build: atech would compile them without their libraries
 atech build . > /dev/null                      # generates build/ with build/lib/atech_* drivers + platformio.ini
 if [ -z "${VERBOSE:-}" ]; then
   # Mute the Atech drivers' debug prints (e.g. "[NeoPixel] Brightness set" many times a second): on a charger with

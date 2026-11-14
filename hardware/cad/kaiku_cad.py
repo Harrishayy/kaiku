@@ -69,7 +69,7 @@ class P:
     knob: tuple = (42.0, 42.0, 13.0)       # Knob module: square face x height (photo est.); knob out of the face
     knob_out: float = 23.0                 # bushing (~8 mm) + its own black knob (~9.5 x 14 mm) above the face
     knob_d: float = 9.5                    # that knob's diameter: the printed cap slides over it
-    knob_bore: float = 9.3                 # cap bore (2026-11-14: Ø9.3 × 16 deep, tight on the black knob)
+    knob_bore: float = 9.65                # cap bore (2026-11-14: Ø9.65 × 16 deep, round)
     knob_bore_h: float = 16.0
     board: tuple = (127.0, 68.0, 6.0)      # Atech motherboard (photo estimate), thickness ASSUMED
     unoq: tuple = (53.34, 68.58, 13.5)     # Arduino UNO Q, datasheet; height incl. headers (photo est.)

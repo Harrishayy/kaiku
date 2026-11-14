@@ -35,8 +35,8 @@ So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on t
 stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
 module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
 
-The UNO Q side (D39: no KY-035 hall, no KY-054 light): KY-031 knock (D2), KY-053 ADC for the
-KY-039 pulse (SDA/SCL), and the Modulino Buzzer on Qwiic. Pin ground truth: `hardware/wiring.md`.
+The UNO Q side (D39: no KY-035 hall, no KY-054 light; D45: no KY-053, so no KY-039): KY-031 knock (D2) and the
+Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D45). Pin ground truth: `hardware/wiring.md`.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
 
@@ -95,7 +95,7 @@ panels directly from this table (4 mm board; the generator recomputes for other 
      rear top. Line the USB-C up with the back hole.
    - Tape the **UNO Q** to the floor at the rear, with its USB-C facing the cable slot.
    - Tape the **speaker** to the right wall, behind the grille.
-   - Tape the two **LED grids**, lit face forward, behind the chest window.
+   - (No LED grids in this build, D45.)
    - *Optional, only if it has a port:* glue the **purr_sleeve** to the floor at the front-left, shaft pointing
      left, slide a second motor in and press the **purr weight** onto its shaft.
    - Glue the **Modulino Buzzer** to the right wall above the speaker and run its Qwiic cable to the UNO Q.
@@ -103,10 +103,8 @@ panels directly from this table (4 mm board; the generator recomputes for other 
    - Glue **four cardboard strips** (10 mm wide) under the lid, 4 mm in from each edge, so it drops in and
      stays put.
    - Glue the neck's **pan base** on top, with the motor sleeve through the pan hole.
-   - Glue the **finger cradle** over the Ø9 hole, then tape the **KY-039** under that hole, LED facing up.
+   - Glue the **finger cradle** over the Ø9 hole (cosmetic now: no KY-039 in this build, D45).
    - Drop the **button** module into its square hole.
-   - Tape the **KY-053** ADC to the floor next
-     to the UNO Q.
 4. Pass all the cables to the board and the UNO Q, put the lid on, and plug the power and USB cables in through
    the back.
 

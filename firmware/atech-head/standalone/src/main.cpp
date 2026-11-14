@@ -18,6 +18,7 @@
 #include "modules/led/neopixel.h"
 #include "i2c_software.h"
 #include "kaiku_net.h"   // kaiku_net: Wi-Fi + MQTT to the UNO Q and hub (contracts)
+#include "driver/gpio.h"   // kaiku: motor pin check
 
 ST7735_TFT st7735_tft(PIN_ST7735_TFT_D, PIN_ST7735_TFT_B, PIN_ST7735_TFT_C, PIN_ST7735_TFT_A);
 RotaryEncoder rotary_encoder_knob(PIN_ROTARY_ENCODER_KNOB_A, PIN_ROTARY_ENCODER_KNOB_B, PIN_ROTARY_ENCODER_KNOB_C, PIN_ROTARY_ENCODER_KNOB_D);
@@ -255,6 +256,26 @@ static Eyes eyesFrom(const char* v) {
   return EYES_CALM;
 }
 
+// kaiku: the motor is on port 14 (GPIO36/35); port 11 only turned one way (its GPIO44 is UART0 RX). Only one of
+// port 14's lines was seen working before (LED bench), so check each can be driven high and low before LEDC attaches
+// them. Both lines move together (brake / coast), so the motor does not turn. Result: health details `motor_pins`.
+static const char* freeMotorPins() {
+  static char r[24];
+  const int pins[2] = {PIN_DC_MOTOR_A, PIN_DC_MOTOR_B};
+  for (int p : pins) { gpio_reset_pin((gpio_num_t)p); gpio_set_direction((gpio_num_t)p, GPIO_MODE_INPUT_OUTPUT); }
+  int hi[2], lo[2];
+  for (int p : pins) gpio_set_level((gpio_num_t)p, 1);
+  delay(3);
+  for (int i = 0; i < 2; i++) hi[i] = gpio_get_level((gpio_num_t)pins[i]);
+  for (int p : pins) gpio_set_level((gpio_num_t)p, 0);
+  delay(3);
+  for (int i = 0; i < 2; i++) lo[i] = gpio_get_level((gpio_num_t)pins[i]);
+  const char* w[2];
+  for (int i = 0; i < 2; i++) w[i] = (hi[i] && !lo[i]) ? "ok" : (!hi[i] && !lo[i]) ? "low" : (hi[i] && lo[i]) ? "high" : "odd";
+  snprintf(r, sizeof(r), "%d:%s %d:%s", pins[0], w[0], pins[1], w[1]);
+  return r;
+}
+
 void setup() {
   Serial.setRxBufferSize(8192);
   Serial.begin(115200);
@@ -266,6 +287,7 @@ void setup() {
   rotary_encoder_knob.begin();
   speaker.begin();
   microphone.begin();
+  kaiku_net::motorPins(freeMotorPins());   // kaiku: before LEDC takes the pins
   dc_motor.begin();
   bool imuOk = icm40608_imu.begin();
   icm40608_imu.setMountRotation(270);

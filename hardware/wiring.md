@@ -14,8 +14,12 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 
 - Power the UNO Q **through the PD hub, not VIN**: from VIN without USB-C negotiation its USB controller boots in
   device mode and the camera is not detected.
-- Atech ports share 12 V / 5 V / 3.3 V / GND (no published current ratings) between the motor, speaker, display and
-  LED grids: ramp the motor (100 ms), keep LED brightness ≤ 0.6, never run the motor and a loud speaker together.
+- Atech ports share 12 V / 5 V / 3.3 V / GND (no published current ratings) between the motor, speaker and display:
+  ramp the motor (400 ms in `kaiku_link`), never run the motor and a loud speaker together.
+- **The Atech needs its own USB-C charger on port 8** (D45). On the hub's charge-only port or a laptop port the logic
+  runs but the motor never turns. Keep it off the UNO Q's supply: unplugging the Atech rebooted the UNO Q.
+- Motor port: 13 (GPIO 38/39) on the MQTT firmware, 14 (GPIO 36/35) on the standalone firmware (its orientation
+  sensor has 13). On port 11 only reverse turns (forward = GPIO44, UART0 RX).
 - UNO Q headers + Qwiic = **3.3 V**; JCTL and bottom connectors = **1.8 V**: wire nothing there. A4/A5 are not `Wire`
   on the UNO Q; leave them free. Run every KY sensor at 3.3 V so its signal stays 3.3 V logic.
 
@@ -25,8 +29,8 @@ Update it the moment you wire something. Each row's "Check" is the bench test th
 | KY-031 knock S / + / − | D2 / 3V3 / GND | 3.3 V | under the head top, 3 jumpers down the neck; interrupt on CHANGE, idle level calibrated at boot, `INPUT_PULLUP` | `bench/knock` |
 | ~~KY-035 hall~~ | — | — | **Not fitted** (no magnet; D39). Home = head position at power-on (`HAS_HALL 0` in both firmwares). If one turns up: out → **A1** (analog), magnet 6×3 mm in the turntable pocket, set `HAS_HALL 1` | `bench/hall` |
 | ~~KY-054 light~~ | — | — | **Not fitted** (D39): room light comes from the camera (`[unoq] light_source = "camera"`) | — |
-| KY-053 ADS1115 SDA / SCL / + / − | header SDA / SCL (`Wire`) / 3V3 / GND | 3.3 V | address 0x48; not A4/A5, not Qwiic | `bench/ky039` |
-| KY-039 pulse S / + / − | KY-053 A0 / 3V3 / GND | 3.3 V | under the lid finger cradle | `bench/ky039` |
+| ~~KY-053 ADS1115 SDA / SCL / + / −~~ | not fitted (D45) | — | — | — |
+| ~~KY-039 pulse S / + / −~~ | not fitted (D45) | — | — | — |
 | Modulino Buzzer | Qwiic connector | 3.3 V | **`Wire1`**, not `Wire`; 0x1E 7-bit (0x3C 8-bit, verified 2026-11-14); ~6.4 mA; longer Qwiic cable if the 5 cm one doesn't reach | `bench/buzzer` |
 | LED matrix | on board | — | hidden in the body: status only | — |
 
@@ -41,7 +45,7 @@ Confirm GPIOs with `atech validate`; never hard-code them. Head modules are cabl
 | DC Motor V2.3 (pan, 12:40 gear) | 13 | body, under the pan base | `bench/motor` |
 | Microphone (ICS-43434) | 9–10 | head, right-ear grille (sound hole against it) | `bench/mic` |
 | Button (active low) | 7 | lid, square opening | `bench/button` |
-| LED Grid left / right (neopixel_grid) | 11 / 14 | body, behind the chest louvres | `bench/leds` |
+| ~~LED Grid left / right (neopixel_grid)~~ | not fitted (D45) | — | — |
 
 The neck carries 6 Atech cables, 3 jumpers and the camera cable through a 19 mm axle: feed the plugs through one at
 a time, the camera's USB-A plug first, and leave a service loop. Charge-only USB-C cables can't program the Atech board.

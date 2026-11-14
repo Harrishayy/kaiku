@@ -6,7 +6,8 @@
 ## Purpose
 The robot's sensors on the Arduino UNO Q (in the body), as one App Lab app with two halves.
 - **STM32 sketch:** reads the KY-031 knock drum (under the head top), the KY-035 hall sensor (pan home; not fitted, `HAS_HALL 0`, D39), the KY-054 (not fitted)
-  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz. It plays the Modulino Buzzer chimes and
+  room light and the KY-039 heartbeat through the KY-053 ADS1115 at 100 Hz (**neither fitted in this build, D45**: the
+  pulse comes from the camera, `ppg_source = "camera"`). It plays the Modulino Buzzer chimes and
   shows a status icon on the hidden LED matrix.
 - **Linux app:** bridges the sketch to MQTT and turns the USB camera (in the head) into numbers: face boxes,
   distance from face size, and backups for pulse and room light.
@@ -70,17 +71,36 @@ Without hardware: `make sim NODES=sensors`.
 
 ## Health signal
 `health/sensors` every 5 s. `mcu_ok` false = the sketch doesn't answer `ping` (its version string names a missing
-ADS1115 or buzzer). `camera_ok` false = no camera (check the PD hub).
+ADS1115 or buzzer; `ads-missing` is expected in this build, D45). `camera_ok` false = no camera (check the PD hub).
 
 ## Tests
 `make test` runs `python/tests`. Bench: `make bench PART=firmware/unoq-sensors/bench/<knock|hall|light|ky039|buzzer|camera>`
 (saved monitor log or `FROM=-`), then `bench/link` with `FROM=mqtt`.
 
 ## Known issues
-Sketch not compiled yet. VERIFY on the board: `Bridge.provide` with `String`/`int` args and `int`/`String`
-returns, `Monitor` for bench output, `Modulino.begin(Wire1)`, `Wire` = header SDA/SCL, `analogReadResolution(14)`,
-App Lab reading `python/requirements.txt`, `App.run(user_loop=...)`, v4l2 control names. The KY-035 is wired to A1
-(analog) if fitted; this build has none (`HAS_HALL 0`). Tune `distance_k_cm`. Verified on the board 2026-11-14: the sketch
-compiles (`arduino-cli compile --profile default -b arduino:zephyr:unoq`, libraries from `bench/sketch.yaml`); camera =
-`/dev/video2`; OpenCV must be < 5 (5.0 dropped `CascadeClassifier`); `Camera.stop()` joins the thread (exit abort).
-The camera pulse is noisy (quality 0.6).
+Verified on the board (2026-11-14): the sketch compiles and runs (`arduino-cli compile --profile default -b
+arduino:zephyr:unoq`, libraries pinned in `bench/sketch.yaml`); health ok with camera + sketch; knock taps, faces,
+distance, camera room light, buzzer chimes on `cmd.sensors`; works together with the Atech head over one broker.
+
+Board setup that is **not in the repo** (redo it on a fresh board):
+- `~/ArduinoApps/kaiku-sensors/.env`: `MQTT_HOST=<broker IP>` (the laptop on the hotspot: `172.20.10.11` today),
+  `MQTT_PORT=1883`, `KAIKU_HOME_ID=demo-aino`.
+- **Default app** = `kaiku-sensors`, so it starts at boot: `arduino-app-cli properties set default
+  ~/ArduinoApps/kaiku-sensors` (check with `properties get default`). Before that it never restarted after a power cut.
+- Wi-Fi (NetworkManager): the hotspot is saved with `autoconnect-priority 10` and `autoconnect-retries 0` (retry
+  forever); the venue `Junction2026` is saved with autoconnect off. iPhone hotspots stop broadcasting when nobody
+  is connected: keep the phone on Settings → Personal Hotspot while the UNO Q boots (~1-1.5 min to app running).
+
+Traps:
+- `python/requirements.txt` must not list OpenCV/numpy: App Lab's container ships its own OpenCV (4.13), asking for
+  another fails the whole install and then aiomqtt is missing (nothing publishes).
+- Camera: `camera_index = -1` = the stable `/dev/v4l/by-id/*-video-index0` name (the board renumbers video0-3
+  between boots). `v4l2-ctl` is not in the container, so exposure lock falls back to OpenCV and may log "exposure lock
+  failed" (light is then auto-exposed). OpenCV must be < 5 (5.0 dropped `CascadeClassifier`).
+- **Open bug:** with no camera attached (e.g. the UNO Q on the Mac's USB instead of the hub) the app quits instead
+  of reporting `camera_ok: false`.
+- USB to the Mac: if `adb devices` is empty, `adb kill-server` then retry; many USB-C cables are charge-only.
+- The App Lab serial relay garbles the sketch monitor: read it on the board (`socat` on 127.0.0.1:7500).
+- Unplugging another board from a shared supply rebooted the UNO Q: give it its own supply (PD hub + Arduino PSU).
+
+Still to do: tune `distance_k_cm`; KY-035 / KY-054 / KY-039 / KY-053 code stays for a future build (`HAS_HALL 0`).

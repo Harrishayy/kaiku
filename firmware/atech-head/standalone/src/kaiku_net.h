@@ -19,6 +19,7 @@ uint32_t takeTaps();                           // UNO Q knocks since the last ca
 bool takeFace();                               // a face was seen since the last call
 void step(const char* name);                   // ritual step, shown in health details
 void ear(int value, int delta, bool pressed);  // raw.head.ear
+void motorPins(const char* result);            // boot check of the motor lines, shown in health details
 void moving(bool m);                           // raw.head.pan (sent on change)
 void chime(const char* name);                  // cmd.sensors {chime} to the UNO Q
 }  // namespace kaiku_net

@@ -67,7 +67,7 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 
 [robot]
 # Robot build (docs/plans/07-robot-electronics.md, D31 + D32): Atech board in the body (Color Display eyes, Knob ear,
-# button, speaker, mic, 2 LED grids, pan motor) + UNO Q (KY-031 knock, KY-039 via KY-053, Modulino Buzzer, USB camera).
+# button, speaker, mic, pan motor; no LED grids) + UNO Q (KY-031 knock, Modulino Buzzer, USB camera; no KY-053, D45).
 # No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
@@ -90,9 +90,9 @@ light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
 exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
 lux_per_unit = 2.0       # camera light backup: lux_est = mean Y * this
-ppg_source = "auto"      # auto (KY-039, camera pulse if it stays flat/silent) | ky039 | camera
+ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D45) | auto (KY-039 first) | ky039
 ppg_fallback_s = 4       # auto: switch to the camera after this long without a clean KY-039 batch
-ppg_min_range = 30       # KY-039 batch peak-to-peak (KY-053 16-bit counts) below this = flat / unwired
+ppg_min_range = 30       # KY-039 batch peak-to-peak (ADC counts) below this = flat / unwired (unused without the KY-053)
 ppg_max_value = 26000    # ... above this = pinned at the rail (3.3 V on the +-4.096 V range ~ 26400)
 # MCU-side numbers (pins, debounce, ADS1115 rate): firmware/unoq-sensors/sketch/config.h
 

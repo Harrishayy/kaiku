@@ -25,6 +25,7 @@ char topicBuf[96];
 uint32_t bootMs = 0, nextNetTry = 0, backoff = BACKOFF_MIN_MS, nextHealth = 0, nextPan = 0, reconnects = 0;
 volatile uint32_t taps = 0;
 bool face = false, isMoving = false;
+char motorPinCheck[24] = "";
 const char* stepName = "idle";
 
 const int QN = 6;                 // small queue of cmd.head actions
@@ -93,6 +94,7 @@ void publishHealth(const char* status) {
   d["reconnects"] = reconnects;
   d["step"] = stepName;
   d["firmware"] = "standalone";
+  if (motorPinCheck[0]) d["motor_pins"] = motorPinCheck;
   publish("health", "health", "head", p, true);
 }
 
@@ -220,6 +222,8 @@ void ear(int value, int delta, bool pressed) {
   p["pressed"] = pressed;
   publish("raw.head.ear", "raw", "head/ear", p);
 }
+
+void motorPins(const char* result) { strlcpy(motorPinCheck, result, sizeof(motorPinCheck)); }
 
 void moving(bool m) {
   if (m == isMoving) return;

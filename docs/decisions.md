@@ -363,7 +363,7 @@ flowchart LR
 - **Active:** `firmware/atech-head/standalone/` (written with the Atech website agent): the head runs the check-in
   ritual itself (greet, mood/energy/sleep dial, breathing, drumming) and talks JSON lines over USB serial. No Wi-Fi,
   MQTT, contracts or hub watchdog, so the hub, UNO Q and cloud don't see the head while it runs. Its layout: speaker
-  1-2, display 3-4, knob 5-6, LED grid 7, mic 9-10, motor 11, orientation sensor (ICM-40608/LSM6DSOX) 13; no button.
+  1-2, display 3-4, knob 5-6, LED grid 7, mic 9-10, motor 14 (was 11, which only turned one way), orientation sensor (ICM-40608/LSM6DSOX) 13; no button.
   Its `src/` stays as the website agent wrote it (one edit: the drum clock starts at the first tap), so a new
   version drops straight in (re-apply that edit). `make atech-standalone FLASH=1`.
 - **Next stage:** the MQTT/contract firmware (`firmware/atech-head/`, `kaiku_link/`) is kept intact and still builds;
@@ -372,4 +372,21 @@ flowchart LR
 - **Why:** it works on the board today and gives a demo-able head while the motor and power questions are settled.
 - **Power (bench):** the motor only turned once the Atech had its own USB-C charger on port 8; hub charge-only and
   Mac ports ran the logic but not the motor. Port 11's forward line is GPIO44 (UART0 RX) and only reverse turned
-  there; port 13 has no such conflict, but the standalone puts its orientation sensor on 13.
+  there; port 13 has no such conflict, but the standalone puts its orientation sensor on 13, so its motor moved to
+  the free port 14 (GPIO36/35).
+
+## D45 — Robot after the joint bench day: no KY-053, no LED grids, own charger for the Atech, hotspot network (2026-11-14, Edwin)
+- **No KY-053 ADC** (removed, not to be integrated). Without it the KY-039 has no way into the sketch, so the robot's
+  pulse is the **camera pulse** (forehead green, quality 0.6): `[unoq] ppg_source = "camera"`. The sketch's
+  `ads-missing` in `health/sensors` is expected. HR/HRV stays "not measured" when the camera can't see a face, never
+  guessed.
+- **No LED grids** on the MQTT firmware (ports 11/14 free). The standalone firmware (D44) still drives one grid on
+  port 7 if one is plugged in.
+- **The Atech gets its own USB-C charger on port 8.** On the hub's charge-only port or a laptop port the logic runs
+  but the pan motor never turns; sharing a supply with the UNO Q also made the UNO Q reboot when the Atech was
+  unplugged. Give the two boards separate supplies.
+- **Demo network: an iPhone hotspot** ("Maximize Compatibility" on, so it's 2.4 GHz). On the venue Wi-Fi both boards
+  lost the broker at the same moment every few minutes. The broker stays on the laptop for now (the laptop joins the
+  hotspot); moving it onto the UNO Q would take the laptop out of the robot entirely (plan 07 §4).
+- The UNO Q's `kaiku-sensors` app is the board's **default app** (starts at boot) and its network manager retries the
+  hotspot forever and no longer auto-joins the venue Wi-Fi.

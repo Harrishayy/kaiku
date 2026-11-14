@@ -1168,3 +1168,29 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Verified: `make check` 805 passed after the merge; tree hashes compared before and after the fold.
 - Broken/blocked: every clone must reset to the new history (see the entry above); the standalone head's ritual
   results do not reach the cloud as `obs.*` yet (handover open item 3): hub follower mode is the next step.
+
+## 2026-11-14 14:15 — Claude Code — robot (A): hotspot network, both boards live; docs + D45
+- Did: moved the robot to an iPhone hotspot (venue Wi-Fi dropped both boards at the same moments). UNO Q: broker
+  `.env` → the Mac's hotspot IP, `kaiku-sensors` = App Lab default app (autostart), hotspot retried forever and the
+  venue Wi-Fi no longer auto-joined. Atech: hotspot `secrets.h` (per laptop). `ppg_source = "camera"` (no KY-053).
+  Knob cap bore → Ø9.65. Docs: D45, `robot-network-handover.md` rewritten (status, bring-up order, what we tried,
+  open items), UNO Q + Atech `AGENTS.md`, wiring, BOM, assembly, privacy, electronics spec (current-build note).
+- Verified: both boards on the Mac's broker over the hotspot (UNO Q .12: health, faces, distance, light; Atech .13:
+  health, pan, `cmd.head` eyes); a UNO Q face woke the head from idle; UNO Q app restarts by itself after a reboot.
+- Broken/blocked: knock → drum and the chimes not yet watched end to end; UNO Q app quits when no camera is attached;
+  the broker still needs the laptop on the hotspot.
+- Next: knock test; fix the no-camera exit; consider the broker on the UNO Q.
+
+## 2026-11-14 17:40 — Claude Code — firmware/atech-head (A): standalone motor to port 14, motor pin check
+- Did: over MQTT the head took `cmd.head` pans but the motor did not turn for positive ones: on port 11 the forward
+  line is GPIO44 (UART0 RX). Standalone firmware: motor moved to port 14 (GPIO36/35, `project.yaml` + `pins.h`); a
+  boot check drives both motor lines and reports `motor_pins` in `health/head` details; `build.sh` clears its copied
+  sources before `atech build` (a rebuild failed on a missing ArduinoJson). Docs: module `AGENTS.md`, wiring,
+  handover, D44.
+- Verified: build; flash (hash verified); the head boots and runs the ritual; over USB serial it ran pans at ±60 and
+  ±100 and reported them done. On port 11, before the move: a negative pan turned the motor, a positive one did not.
+- Contract changes: none (`motor_pins` is a free `health.details` key).
+- Broken/blocked: both directions on port 14 not confirmed on the robot (GPIO35 was never exercised before);
+  `motor_pins` not read yet (MQTT only, and both boards were off the hotspot after the flash). The standalone pan is
+  a fixed 600 ms pulse with no angle estimate or soft limit, so `raw.head.pan` always says `deg: 0`.
+- Next: confirm both directions on the charger, read `motor_pins`, set the pan sign for the robot.
