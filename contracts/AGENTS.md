@@ -111,7 +111,9 @@ python/kaiku_contracts/
                 (`category_min.communication`); per-metric `person_hard` sentence for /me
   api.py        cloud HTTP models: Consensus, SourceVerdict, Explanation, PatientSummary, Timeline, PHQ-9, Me (+ Mascot,
                 Highlight, Garden), VoiceLinesResponse, Eval, Criteria*
-  companion_tools.py  tool registry (schema + surfaces + executor), for_surface(), validate_args(), export()
+  companion_tools.py  tool registry (schema + surfaces + executor + optional `behavior: NON_BLOCKING`), for_surface(),
+                validate_args() (also arrays of enum strings with maxItems), export(); the tone enums
+                (Valence, Energy, Tone, FeelKind), Purpose, CheckinItem
   wording.py    wording linter (clinical terms, state talk/numbers, medical advice, promises, watch data, caps)
   safety.py     crisis phrase matcher (config/safety_phrases.toml) shared by cloud + evals
   topics.py     topic(), topic_for(), parse_topic(), QoS/retain
@@ -190,3 +192,15 @@ Conversation completion metadata: `TranscriptTurn.complete` is optional `bool | 
 readback. `true` means transcription explicitly finished; `false` means interrupted/not final; absent/null means
 unknown for legacy records. Audio `turnComplete` does not establish transcription completion. Producers retain
 the received words unchanged; completion metadata never authorises transcript retention or raw-media upload.
+
+## Notice and act, tone and the check-in shape (2026-11-14, additive)
+- Tool `feel` (cloud, every surface, `behavior: NON_BLOCKING`): `kind`, `heard {valence, energy?, tone[≤2]?, via?}`,
+  `about?`, `said?`. Its result is `api.FeelPlan {stance, depth: brief|stay, reflect_hint, recall?, may_offer?,
+  offer_note?, offer_activity?, follow_up_saved, scheduling}`.
+- `CompanionSessionRequest.purpose?` (`talk | check_in | walk | ritual`); `CompanionSessionResponse.chat_shape?`
+  (`ChatShape {purpose, depth, open_items[]}`); `CompanionTool.behavior?`; `ContextCard.purpose?`, `.chat_depth?`,
+  `.open_items[]` (`mood | energy | sleep`).
+- `HeardTone {valence?, energy?, tone[≤2], provenance: model_heard|model_read, moments}`; `LastReflection` and
+  `ReflectionDay` gain `tone[]`, `energy?`, `heard?`; `ReflectionOverview.tone_summary?`.
+- Tone is an observation by a model, never a state and never an input to the consensus.
+

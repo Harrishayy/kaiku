@@ -70,7 +70,9 @@ def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str,
         "outputAudioTranscription": {},
         "sessionResumption": {},
     }
-    decls = [{"name": t["name"], "description": t["description"], "parameters": t["parameters"]} for t in tools]
+    # `behavior: NON_BLOCKING` (asynchronous function calling, supported on gemini-3.8-live per the Live tools
+    # guide): the model keeps talking while `feel` runs; the device answers with the result's `scheduling`.
+    decls = [{k: t[k] for k in ("name", "description", "parameters", "behavior") if k in t} for t in tools]
     if decls:
         s["tools"] = [{"functionDeclarations": decls}]
     if get("live", "context_compression", True):

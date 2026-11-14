@@ -36,6 +36,21 @@
           "title": "Item",
           "type": "string"
         },
+        "scale_10": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the answer exactly as dialled when the device has a 1-10 dial (the standalone robot head); `value` is then ceil(scale_10 / 2). Absent for 1-5 dials",
+          "title": "Scale 10"
+        },
         "value": {
           "maximum": 5,
           "minimum": 1,

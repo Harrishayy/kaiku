@@ -403,14 +403,22 @@ public final class AppModel {
     }
 
     /// The weather check: three obs.self_report (channel phone|mac). Sent only with the check-ins signal on.
-    public func recordWeather(_ values: [DialItem: Int]) async {
+    public func recordWeather(_ values: [DialItem: Int], celebrates: Bool = true) async {
         weatherDoneDay = Self.dayKey(Date())
-        celebrate()
+        if celebrates { celebrate() }
         guard allowed(.checkins) else { return }
         for item in DialItem.allCases {
             if let v = values[item] { await emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel)) }
         }
         await loadToday()
+    }
+
+    /// Today's check-in happened (a chat the person took part in, or the dials): the first stop of the path is
+    /// done and the completion moment plays, once a day.
+    public func checkInDone() {
+        guard !weatherDoneToday else { return }
+        weatherDoneDay = Self.dayKey(Date())
+        celebrate()
     }
 
     /// Quick mood from a notification button (Good · Okay · Low → 4 · 3 · 2). Queued if offline.

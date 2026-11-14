@@ -102,6 +102,17 @@ def metric_course(m: Any, series: dict[date, float], crit: Any, start: date, end
                         away_days=frozenset(p.day for p in spell if p.z >= thr))
 
 
+def _tone(r: dict[str, Any]) -> str:
+    """' Tone: words flat; voice flat and quiet (as heard by the voice model).' — a model's observation."""
+    h = r.get("heard") or {}
+    words = [*(h.get("tone") or [])[:2], *([{"low": "quiet", "high": "lively"}[h["energy"]]] if h.get("energy") in ("low", "high") else [])]
+    parts = ([f"words {' and '.join(r['tone'][:2])}"] if r.get("tone") else []) + (
+        [("voice " if h.get("provenance") == "model_heard" else "read as ") + " and ".join(words)
+         + (" (as heard by the voice model)" if h.get("provenance") == "model_heard" else " (by the model, from typed words)")]
+        if words else [])
+    return f" Tone: {'; '.join(parts)}." if parts else ""
+
+
 def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end: date, human_value: Any,
           day_of_record: int, early: bool, reflections: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
           ) -> tuple[Course, dict[str, MetricCourse]]:
@@ -160,12 +171,12 @@ def build(crit: Any, data: Any, c: Consensus, actions: list[dict[str, Any]], end
         r = low_talks[0]
         add(r["day"], 2, "reflection_low", "Reflections with Kaiku",
             f"Reflections with Kaiku first sounded low on the {r['part']} of {human_date(r['day'])}"
-            + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else "."))
+            + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else ".") + _tone(r))
         if lighter:
             r = lighter[0]
             add(r["day"], 3, "reflection_lighter", "Reflections with Kaiku",
                 f"Reflections with Kaiku sounded lighter from the {r['part']} of {human_date(r['day'])}"
-                + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else "."))
+                + (f"; {' and '.join(r['themes'][:2])} came up." if r["themes"] else ".") + _tone(r))
     events.sort(key=lambda e: (e[0], e[1]))
 
     def names(items: list[MetricCourse]) -> str:

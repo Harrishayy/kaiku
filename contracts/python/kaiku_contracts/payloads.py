@@ -49,6 +49,16 @@ class SelfReport(Strict):
     channel: SelfReportChannel = Field(
         "robot", description="where the dial was answered: robot ear, phone/Mac/web weather check, or spoken on the "
                              "glasses (parsed on the phone, no transcript kept). Always counts toward the robot source")
+    scale_10: int | None = Field(
+        default=None, ge=1, le=10,
+        description="the answer exactly as dialled when the device has a 1-10 dial (the standalone robot head); "
+                    "`value` is then ceil(scale_10 / 2). Absent for 1-5 dials")
+
+    @model_validator(mode="after")
+    def _scale_10_matches_value(self):
+        if self.scale_10 is not None and (self.scale_10 + 1) // 2 != self.value:
+            raise ValueError("value must equal ceil(scale_10 / 2)")
+        return self
 
 
 class HrvSession(Strict):

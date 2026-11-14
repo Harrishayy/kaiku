@@ -35,7 +35,7 @@ API_MODELS = [
     api.MeResponse, api.VoiceLinesResponse, api.VoiceSayRequest, api.StateScore,
     api.EvalResult, api.Healthz, api.LiveEventsResponse, api.NodeHealthReport, api.HealthOverview,
     api.CriteriaResponse, api.CriteriaUpdate, api.PreviewChange, api.CriteriaPreview,
-    api.LastReflection, api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
+    api.HeardTone, api.LastReflection, api.FeelPlan, api.ChatShape, api.ContextCard, api.CompanionSessionRequest, api.LiveToken, api.CompanionTool, api.CompanionSessionResponse,
     api.CompanionToolCall, api.CompanionToolResult, api.Memory, api.MemoriesResponse, api.MemorySettings,
     api.DeletedResponse, api.ThreadIn, api.TranscriptTurn, api.EpisodeIn, api.EpisodeResult,
     api.Transcript, api.TranscriptsResponse,

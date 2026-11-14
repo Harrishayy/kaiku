@@ -22,7 +22,7 @@ from kaiku_contracts.config import load_dotenv
 
 from sim.nodes.friendlink_sim import FriendlinkSim
 from sim.nodes.glasses_sim import GlassesSim
-from sim.nodes.head_sim import HeadSim
+from sim.nodes.head_sim import HeadSim, StandaloneHeadSim, standalone_requested
 from sim.nodes.laptop_sim import LaptopSim
 from sim.nodes.phone_sim import PhoneSim
 from sim.nodes.sensors_sim import SensorsSim
@@ -97,7 +97,11 @@ async def amain(names: list[str], keyboard: bool, args: argparse.Namespace) -> N
     stop = asyncio.Event()
     nodes: dict = {}
     if "head" in names:
-        nodes["head"] = HeadSim(auto=not keyboard, tempo_bpm=args.tempo, mood=args.mood)
+        if args.standalone or standalone_requested():  # D44: the ritual runs on the head, the hub follows
+            nodes["head"] = StandaloneHeadSim(auto=not keyboard, tempo_bpm=args.tempo, mood=args.mood,
+                                              time_scale=args.fast)
+        else:
+            nodes["head"] = HeadSim(auto=not keyboard, tempo_bpm=args.tempo, mood=args.mood and min(5, args.mood))
     if "sensors" in names:
         nodes["sensors"] = SensorsSim(arrive_after_s=None if keyboard or args.arrive_after < 0 else args.arrive_after)
         nodes["sensors"].people = 2 if args.two else 1
@@ -136,9 +140,12 @@ def main() -> None:
                     help="comma list: head,sensors,friendlink,glasses,laptop,phone")
     ap.add_argument("--keyboard", action="store_true", help="drive the sims by hand instead of auto mode")
     ap.add_argument("--tempo", type=float, default=96.0, help="auto drum tempo")
-    ap.add_argument("--mood", type=int, choices=range(1, 6), help="auto mood dial value")
+    ap.add_argument("--mood", type=int, choices=range(1, 11), help="auto mood dial value (1-5; standalone head 1-10)")
     ap.add_argument("--arrive-after", type=float, default=3.0, help="auto presence after N s (-1 never)")
     ap.add_argument("--two", action="store_true", help="sensors: two people walk up (camera sees two faces)")
+    ap.add_argument("--standalone", action="store_true",
+                    help="head: twin of the standalone firmware (D44; also KAIKU_SIM_HEAD=standalone). mood = 1-10")
+    ap.add_argument("--fast", type=float, default=1.0, help="standalone head: divide the firmware's timers by this")
     ap.add_argument("--every", type=float, default=300.0, help="glasses/laptop/phone: seconds between posts (auto)")
     ap.add_argument("--phq9", action="store_true", help="laptop: also send a PHQ-9 at start")
     ap.add_argument("--phq9-item9", action="store_true", help="laptop: PHQ-9 with item 9 > 0 (+ safety_flag)")

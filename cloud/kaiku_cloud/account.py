@@ -130,6 +130,47 @@ def fortnight(rows: list[dict[str, Any]]) -> str:
     return " ".join(parts)
 
 
+def tone_summary(rows: list[dict[str, Any]]) -> str | None:
+    """How the reflections sounded, by provenance: the tone of their words (rules or Gemma, opted-in text only) and
+    the tone the model in the conversation reported. Counts of fixed tags; never their words."""
+    worded = [r for r in rows if r.get("tone") or r.get("energy")]
+    heard = [r["heard"] for r in rows if r.get("heard")]
+    if not worded and not heard:
+        return None
+
+    def tags(counter: Counter) -> str:
+        return ", ".join(f"{t} in {n}" for t, n in counter.most_common(3)) or "no tone tag"
+
+    parts = []
+    if worded:
+        low = sum(1 for r in worded if r.get("energy") == "low")
+        parts.append(f"Tone of their words in {len(worded)} reflection{'s' if len(worded) != 1 else ''}: "
+                     + tags(Counter(t for r in worded for t in r.get("tone") or []))
+                     + (f"; energy read low in {low}." if low else "."))
+    if heard:
+        voice = sum(1 for h in heard if h["provenance"] == "model_heard")
+        who = "As heard by the voice model" if voice == len(heard) else \
+            "As the model read their typed words" if not voice else "As the model in the conversation reported"
+        low = sum(1 for h in heard if h.get("energy") == "low")
+        parts.append(f"{who} in {len(heard)}: " + tags(Counter(t for h in heard for t in h.get("tone") or []))
+                     + (f"; sounded quiet in {low}." if low else "."))
+    parts.append("Tone is a model's observation of a conversation, not a measurement.")
+    return " ".join(parts)
+
+
+def talk_part(r: dict[str, Any]) -> str:
+    """'evening reflection low (sleep), voice flat and quiet': one reflection in a day's account."""
+    text = f"{r['part']} reflection {'ordinary' if r['valence'] == 'neutral' else r['valence']}"
+    if r["themes"]:
+        text += f" ({', '.join(r['themes'][:2])})"
+    if r.get("tone"):
+        text += f", words {' and '.join(r['tone'][:2])}"
+    words = affect.heard_words(r.get("heard"))
+    if words:
+        text += (", voice " if r["heard"]["provenance"] == "model_heard" else ", read as ") + words
+    return text
+
+
 def reflections(store: Store, home_id: str, now: datetime, shared: bool
                 ) -> tuple[ReflectionOverview | None, list[dict[str, Any]], RecordCitation | None, str]:
     """(overview, rows of the last 14 days, citable record, direction). Nothing at all unless the person shares."""
@@ -146,11 +187,14 @@ def reflections(store: Store, home_id: str, now: datetime, shared: bool
         shared=True, reflections=len(rated), low=n["low"], neutral=n["neutral"], bright=n["bright"],
         declined=declined, themes=[SourceCount(label=t, value=c) for t, c in themes.most_common(5)],
         days=[ReflectionDay(date=r["day"], part=r["part"], valence=r["valence"], themes=r["themes"],
-                            declined=r["declined"]) for r in rows], summary=summary[:400])
+                            declined=r["declined"], tone=(r.get("tone") or [])[:2], energy=r.get("energy"),
+                            heard=affect.public_heard(r)) for r in rows],
+        summary=summary[:400], tone_summary=tone_summary(rows))
     tone = "unknown"
     if len(rated) >= 2:
         tone = "worse" if n["low"] * 2 > len(rated) else "better" if n["bright"] * 2 > len(rated) else "similar"
-    record = RecordCitation(id="reflect:recent", label="Reflections with Kaiku", detail=summary,
+    record = RecordCitation(id="reflect:recent", label="Reflections with Kaiku",
+                            detail=" ".join(x for x in (summary, overview.tone_summary) if x),
                             observed_at=rows[-1]["day"]) if rows else None
     return overview, rows, record, tone
 
@@ -192,8 +236,7 @@ def days(events: list[dict[str, Any]], found: dict[str, MetricCourse], actions: 
     talks = defaultdict(list)
     for r in reflection_rows:
         if r["valence"]:
-            talks[r["day"]].append(f"{r['part']} reflection {'ordinary' if r['valence'] == 'neutral' else r['valence']}"
-                                   + (f" ({', '.join(r['themes'][:2])})" if r["themes"] else ""))
+            talks[r["day"]].append(talk_part(r))
         elif r["declined"]:
             talks[r["day"]].append(f"did not want to talk in the {r['part']}")
     usual = [r.activity for r in (r_list or []) if r.cadence == "daily" and r.activity in MISSING]

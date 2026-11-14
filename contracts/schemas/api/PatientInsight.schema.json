@@ -566,6 +566,83 @@
       "title": "GroupCoverage",
       "type": "object"
     },
+    "HeardTone": {
+      "additionalProperties": false,
+      "description": "How a conversation sounded to the model that was in it, reported through the `feel` tool. An observation\nby a model, never a measurement and never a state. `model_heard`: the native-audio voice model heard the\nperson speak. `model_read`: it went by their typed or transcribed words only.",
+      "properties": {
+        "energy": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "moments": {
+          "default": 1,
+          "description": "how many times a feeling was noticed in that conversation",
+          "minimum": 1,
+          "title": "Moments",
+          "type": "integer"
+        },
+        "provenance": {
+          "enum": [
+            "model_heard",
+            "model_read"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "tone": {
+          "items": {
+            "enum": [
+              "flat",
+              "tense",
+              "tearful",
+              "irritable",
+              "warm",
+              "playful",
+              "calm"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Tone",
+          "type": "array"
+        },
+        "valence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "neutral",
+                "bright"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valence"
+        }
+      },
+      "required": [
+        "provenance"
+      ],
+      "title": "HeardTone",
+      "type": "object"
+    },
     "HelpEffect": {
       "additionalProperties": false,
       "description": "What the learner has seen for one activity. A reported response, not proof that the activity caused it.",
@@ -1487,6 +1564,35 @@
           "title": "Declined",
           "type": "boolean"
         },
+        "energy": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Energy"
+        },
+        "heard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeardTone"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "as reported by the model in the conversation"
+        },
         "part": {
           "enum": [
             "morning",
@@ -1501,6 +1607,24 @@
             "type": "string"
           },
           "title": "Themes",
+          "type": "array"
+        },
+        "tone": {
+          "description": "from their words (rules or Gemma)",
+          "items": {
+            "enum": [
+              "flat",
+              "tense",
+              "tearful",
+              "irritable",
+              "warm",
+              "playful",
+              "calm"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Tone",
           "type": "array"
         },
         "valence": {
@@ -1584,6 +1708,20 @@
           },
           "title": "Themes",
           "type": "array"
+        },
+        "tone_summary": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how they sounded, by provenance: tone of their words, and tone as reported by the model in the conversation",
+          "title": "Tone Summary"
         }
       },
       "required": [

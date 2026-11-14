@@ -21,6 +21,8 @@ public final class ConversationAudio: @unchecked Sendable {
     private var generation = 0
     private var micOn = true
     private var tapInstalled = false
+    /// False: playback only (no microphone permission). The input node is never touched, nothing is captured.
+    private var captures = true
 
     /// 16 kHz mono PCM16 chunks (only while the mic is on).
     public var onPCM: ((Data) -> Void)?
@@ -50,11 +52,15 @@ public final class ConversationAudio: @unchecked Sendable {
         try TalkAudio.activate()
         TalkAudio.preferHeadsetInput()
         // Voice processing (AEC + noise suppression) must be on before the engine starts; best effort.
-        do { try engine.inputNode.setVoiceProcessingEnabled(true) } catch { kaikuLog.notice("vp_unavailable") }
+        if captures {
+            do { try engine.inputNode.setVoiceProcessingEnabled(true) } catch { kaikuLog.notice("vp_unavailable") }
+        }
         if player.engine == nil { engine.attach(player) }
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
+        // `-kaikuMute YES` silences everything (tests, screenshots), Kaiku's live voice included.
+        player.volume = UserDefaults.standard.bool(forKey: "kaikuMute") ? 0 : 1
         do {
-            try installTap()
+            if captures { try installTap() }
             engine.prepare()
             try engine.start()
         } catch { stop(); throw error }
@@ -75,6 +81,12 @@ public final class ConversationAudio: @unchecked Sendable {
         flush()
         player.stop()
         engine.stop()
+    }
+
+    /// Before `start()`: false opens the voice for playback only (typed conversation without the microphone).
+    public func setCapture(_ on: Bool) {
+        guard !running else { return }
+        captures = on
     }
 
     /// Mic on/off without tearing the engine down (Kaiku can finish its sentence while muted).
@@ -165,7 +177,7 @@ public final class ConversationAudio: @unchecked Sendable {
         if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
         TalkAudio.preferHeadsetInput()
         do {
-            try installTap()
+            if captures { try installTap() }
             engine.prepare()
             try engine.start()
             player.play()

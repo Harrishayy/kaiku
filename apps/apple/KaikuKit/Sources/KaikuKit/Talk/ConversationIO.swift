@@ -16,8 +16,13 @@ protocol ConversationAudioIO: AnyObject, Sendable {
     func flush()
     /// Start capture/playback again after a system interruption ended (phone call, Siri, alarm).
     func resumeAfterInterruption()
+    /// Before `start()`: false = playback only, the microphone is never opened (typed conversation).
+    func setCapture(_ on: Bool)
 }
-extension ConversationAudioIO { func resumeAfterInterruption() {} }
+extension ConversationAudioIO {
+    func resumeAfterInterruption() {}
+    func setCapture(_ on: Bool) {}
+}
 extension ConversationAudio: ConversationAudioIO {}
 protocol ConversationTransport: AnyObject, Sendable {
     func connect(token: String, session: CompanionSessionResponse, options: LiveSession.Options)

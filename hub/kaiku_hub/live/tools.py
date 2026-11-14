@@ -6,6 +6,17 @@ lower a safety state, and crisis handling never routes through the model).
 
 from __future__ import annotations
 
+from kaiku_contracts.companion_tools import TOOLS as REGISTRY
+
+
+def from_registry(name: str) -> dict:
+    """A shared-registry tool as a function declaration (same shape the cloud bootstrap sends), incl. `behavior`."""
+    t = REGISTRY[name]
+    assert "robot" in t["surfaces"], f"{name} is not a robot tool"
+    return {"name": name, "description": t["description"], "parameters": t["parameters"],
+            **({"behavior": t["behavior"]} if t.get("behavior") else {})}
+
+
 TOOLS: list[dict] = [
     {"name": "record_dial", "description": "Record the person's 1-5 answer to a dial question (mood, energy, "
      "or last night's sleep).",
@@ -24,6 +35,9 @@ TOOLS: list[dict] = [
     {"name": "send_friend_ping", "description": "Light the friend's lamp via the friend link.",
      "parameters": {"type": "object", "properties": {}}},
     {"name": "end_ritual", "description": "End today's ritual politely.", "parameters": {"type": "object", "properties": {}}},
+    # Notice and act (cloud `feel`): the companion reports a clear feeling or news and gets back how to meet it.
+    # Declared from the shared registry, NON_BLOCKING: Kaiku keeps listening and talking while it runs.
+    from_registry("feel"),
 ]
 
 SYSTEM_PROMPT = (

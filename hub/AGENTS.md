@@ -28,7 +28,9 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `kaiku/v1/<home>/cmd/hub` | `start_ritual`, `say` (text utterance, safety-gated), `suggest_nudge`, `set_ritual_time`, `clinician_message`, `phq9_due` |
 | `kaiku/v1/<home>/cmd/friendlink` | `ping` → LoRa gateway |
 | `kaiku/v1/<home>/obs/#` (non-hub sources) | `obs/phq9` with `item9_positive` → crisis; relays other local obs (e.g. friendlink sim) to the cloud |
-| `kaiku/v1/<home>/health/+` | node heartbeats → `PUT /v1/health/{home}` |
+| `kaiku/v1/<home>/health/+` | node heartbeats → `PUT /v1/health/{home}`; `health/head` with `details.firmware: standalone` switches the hub to **follow mode** and `details.step` is the head's ritual step |
+| `kaiku/v1/<home>/cmd/sensors` (source `head`) | follow mode: the standalone head's chimes mark its step changes (`wake` = greet, `start_drum`, `end_drum`) |
+| `kaiku/v1/+/health/head` | a head publishing under another home id → one `head_on_other_home` warning naming the setting |
 | `GET /v1/commands?home_id` | pending cloud commands; apply locally, then acknowledge; repeated delivery is deduped |
 | `GET /v1/nudge?home_id` | bandit arm (falls back to clinician suggestion, then uniform random) |
 | `GET /v1/voice/{key}?lang=` | greeting audio in the one Kaiku voice (404/503/offline → visible text) |
@@ -77,6 +79,8 @@ kaiku_hub/
   perception/      taps.py, hrv.py (PpgBuffer.pre_post / session), presence.py, light.py, speech.py, face.py,
                    engagement.py (EngagementTracker + fuse: the multi-cue summary, pure)
   store.py         SessionStore: local SQLite of each ritual's raw numbers + emitted obs (never uplinked)
+  follow.py        HeadFollower (pure): shadow of a standalone head's ritual -> the same obs, held dial answers,
+                   partial rituals; Hub._follow_do executes its actions
   safety/gate.py   SafetyGate (phrases en/fi/sv, PHQ-9 item 9), ButtonLongPress, CrisisScript (verbatim)
   live/            base.py (Voice/Music interfaces; open_session/close_session per ritual), factory.py,
                    text.py, gemini_live.py (configured model, automatic VAD/barge-in, bounded resumption, [voice].name),
@@ -183,6 +187,19 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   (weights dial .30, voice .20, drum .20, face .15, pulse .10, ritual .05); the face share is capped at 25 % and,
   with ≥ 3 cues, no cue above 50 %; **< 2 cues → no level**. `agreement` = 1 − spread. Only for a ritual whose
   conversation was accepted; never after a crisis. Maps to `adherence` in `sources.py`: it feeds no verdict.
+- **Follow mode** (`follow.py`, `[hub] head_mode = auto|follow|drive`, D44; details in "Robot bring-up with the
+  standalone head"): with `auto`, a `health/head` saying `firmware: standalone` makes the hub follow, anything else
+  (the MQTT firmware, the sim head) makes it drive as before; a hub-driven ritual in progress is ended when a
+  standalone head appears. While following: `start_ritual` is refused, the attention ladder acts on nothing, and
+  **no `cmd.head` is sent** (the head turns every `pan` into a 600 ms motor run); the one exception is
+  `{eyes: soft}` on a crisis. `raw.head.ear` is never an ad-hoc mood (a press outside a dial carries a stale 1–10
+  value). Dial answers are held until the head confirms the hub's shadow; the head's 1–10 value is kept in
+  `scale_10`, `value` = ceil(v / 2). A head that goes `down` or silent for `head_stale_s` → open step `aborted`,
+  episode `ended_early`. Recording stops on a crisis until the next greeting. A ritual joined mid-way is not
+  consented (no engagement summary). No Live session is opened in follow mode.
+- **Two home ids:** the bus home (`[hub] robot_home_id`, default = the home id) is what the boards publish on;
+  every observation is stamped with the person's record (`KAIKU_HOME_ID`) for the uplink and the local store, and
+  echoed on the bus under the robot's home. Cloud commands, nudges and the episode use the person's record.
 - **Local session store** (`store.py`, `[hub] store_*`): while a ritual runs, every validated `raw.*` message
   (tap times, pulse samples, distances, face boxes, dial turns, button edges, pan) and every emitted `obs.*` is
   written to `logs/hub_sessions.sqlite`, linked by the ritual id (+ the episode id the cloud knows; obs rows carry
@@ -200,10 +217,68 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   `budget.guard(estimate(model, audio_min=5))` passes; then one `budget.charge(audio_min=1)` per started minute.
   Over the cap → Live isn't opened (scripted ritual) or closes politely mid-session (one visible/cached Gemini line, ritual
   continues scripted); Lyria → local click only. Ledger `logs/spend.sqlite` (`KAIKU_SPEND_DB`), `make spend`.
+- **`feel` (notice and act):** declared in `live/tools.py` from the shared registry with `behavior: NON_BLOCKING`,
+  so the robot's Live session offers it even on the local fallback tool list. `Hub.on_tool` runs the local crisis
+  gate on its `said` / `about` words **before** anything is forwarded (the cloud gates again), then forwards it with
+  **no thinking pose, no glance and no spoken "think later" line**: the eyes stay what the ritual set. The Live
+  adapter answers a NON_BLOCKING call on its own (never behind a blocking tool of the same message) with the
+  result's `scheduling` (default `WHEN_IDLE`; `SILENT` when the plan is unavailable, late or refused). On the
+  platform (Vertex) backend `behavior` is dropped and `feel` is an ordinary blocking call with the 8 s cap.
 - **Thinking body:** while any `executor: cloud` tool (e.g. `ask_mind`) is in flight → `cmd.head {eyes: thinking,
   look: up}`; restored to the last eyes after (not after a crisis — the crisis body stays). > 8 s
   (`THINK_TIMEOUT_S`; `ask_mind` uses `[live] mind_timeout_s` for Gemma reasoning) → the tool answers `{ok: false}`, Kaiku says "Let me think about that later." and the ritual
   goes on.
+
+## Robot bring-up with the standalone head
+The Atech head currently runs the **standalone** firmware (D44): the ritual runs on the head, and its `kaiku_net`
+publishes only status, the knob and chimes (`docs/robot-network-handover.md`). The hub **follows** it
+(`follow.py`, `[hub] head_mode = "auto"`): it never starts its own ritual and sends no `cmd.head`.
+
+**See a knob turn become a line on the dashboard** (laptop on the venue Wi-Fi; its IP is `MQTT_HOST_IP` in the head's
+`kaiku_link/secrets.h` and `MQTT_HOST` in the UNO Q's `.env`):
+```bash
+make broker                                   # 1: mosquitto :1883
+make cloud-local                              # 2: API + dashboard on :8000 (or use the deployed cloud URL below)
+KAIKU_HOME_ID=aino KAIKU_HUB_ROBOT_HOME_ID=demo-aino KAIKU_CLOUD_URL=http://localhost:8000 KAIKU_VOICE=off make hub   # 3
+make tail TOPIC='kaiku/v1/+/#'                # 4
+```
+- `KAIKU_HOME_ID` = the person's record the data lands on (`aino`). `KAIKU_HUB_ROBOT_HOME_ID` = the home the boards
+  publish on (`KAIKU_HOME_ID` in `secrets.h` and in the UNO Q `.env`; both ship as `demo-aino`). Leave it out when
+  they are the same. If the hub logs `head_on_other_home`, it tells you the value to set.
+- What to look for, in order: `health/head` with `"firmware":"standalone"` → hub log `head_mode follow` and
+  `health/hub` details `head_mode: follow`, `ritual: head:idle`. Knock or show a face → `cmd/sensors {chime: wake}`.
+  Press the ear → `obs/ritual greet` + `dial started` from `hub`. Turn the knob → `raw/head/ear {value: 1-10}`; press
+  → within 5 s (the head's next heartbeat) `obs/self_report {item: mood, value, scale_10}`. After the drum:
+  `obs/drum_session`, `obs/ritual close completed`, `obs/engagement`.
+- Dashboard: `http://localhost:8000/?id=aino` → Daily account ("morning ritual done; drum session; mood 4 of 5"),
+  or `curl 'localhost:8000/v1/patients/aino/insight?generate=false'`. Locally: `uv run python tools/session.py show last`.
+- No hardware: `KAIKU_HOME_ID=demo-aino make sim NODES=head,sensors ARGS='--standalone --fast 4'` instead of the boards.
+- Back to the hub-driven ritual: flash `make atech-mqtt` (the hub switches by itself), or force `KAIKU_HUB_HEAD_MODE=drive`.
+
+**Head step → what the hub records** (from `standalone/src/main.cpp`; the head's own results go to USB serial only):
+
+| Head step (`details.step`) | The head sends | The hub records |
+|---|---|---|
+| `greet` | `cmd.sensors {chime: wake}` on entering; a press starts the ritual; 60 s without one → `idle` | `obs.ritual greet` started/completed once the person presses (consent); an unanswered greeting → `greet skipped`, at most once per `[attention] regreet_h` |
+| `mood`, `energy`, `sleep` | turns `raw.head.ear {value 1–10, pressed: false}`; the press `{value, pressed: true}` confirms that dial | `obs.ritual dial`; one `obs.self_report {item, value: ceil(v/2), scale_10: v, context: ritual}` per press, after the head confirms the hub's shadow of its step (next heartbeat or expected chime). A mismatch drops the held answers (`dial_unattributed`), never relabels them |
+| `breathe` | nothing (6 × 4 s in / 6 s out; a press skips it); then `chime: start_drum` | `obs.ritual breathe` completed (timed) or skipped (press). The hub asks the UNO Q for the pulse (`cmd.sensors ppg`): `obs.hrv_session` only if it passes every gate, else `pulse_not_measured` |
+| `drum` | `chime: start_drum` … `chime: end_drum` (20 s after the first tap, 60 s without one, or a press) | UNO Q knocks (`raw.head.tap`) received meanwhile, not while `raw.head.pan.moving` → `obs.drum_session` (≥ 4 knocks) or `drum skipped` |
+| `done` | (8 s, then `idle`) | `obs.ritual close`, the episode, `obs.engagement` if the hub saw the starting press |
+
+**Not derivable today** (so never emitted): a post-drum mood and the drum before/after response (the head doesn't
+ask), drum force and the head's own motion-sensor taps (serial only), breathing cycles, PHQ-9, a suggestion.
+Step changes without a chime (greet → idle, done → idle) are seen up to 5 s late.
+
+**What the firmware would need to send for a richer record** (owner A; nothing here blocks the loop above):
+1. `health/head` (or any message) at every step change, not only every 5 s: answers then land at once.
+2. The results it already prints on USB serial: `dial {item, value}`, `drum {taps, tempo_bpm, force_avg_g,
+   force_max_g}`, `breathe {completed, cycles}`, `ritual_done`. A contract type can be added when the fields are fixed.
+3. Its motion-sensor taps as `raw.head.tap {t_ms, force, src: "imu"}` (existing contract): force and head taps count.
+4. A greeting cooldown: with a face in view it greets again 3 s after returning to idle, about once a minute.
+5. `cmd.head` → `idle` / `ritual` (today only eyes, pan, gesture, purr): the crisis path can't stop the head's
+   ritual, and a cloud invitation can't start one.
+6. Optional: a post-drum mood dial, for the before/after response.
+`kaiku_net` is built but not flashed or tested yet: all of this is proven against the sim twin only.
 
 ## Run standalone
 ```bash
@@ -238,7 +313,8 @@ Attention log lines: `attention` (state changes + face count), `voice_line` (key
 - `config/kaiku.toml [live]`: VAD, context compression, `hub_transcripts` (off until explicit opt-in),
   `reconnect_attempts`, `session_max_minutes`.
 - `config/kaiku.toml [hub]`: `store_enabled`, `store_path`, `store_retention_days`, `store_max_mb`,
-  `presence_leave_s`, `presence_stale_s`, `engagement_enabled` (env e.g. `KAIKU_HUB_STORE_PATH`).
+  `presence_leave_s`, `presence_stale_s`, `engagement_enabled`, `head_mode`, `robot_home_id`, `head_stale_s`
+  (env e.g. `KAIKU_HUB_STORE_PATH`, `KAIKU_HUB_HEAD_MODE`, `KAIKU_HUB_ROBOT_HOME_ID`).
 - `config/kaiku.toml [robot]`: `dial_input = ear|button` (prompts + press counting), `press_window_s`, `drum_sway`
   (`drum_input` is for the sims). `[attention] camera_on_head`, `pan_limit_deg`.
 - `config/kaiku.toml`: `[ritual]` timings (`greet_s`, `dial_s`, `breathe_s`, `drum_s`, `drum_idle_end_s`,
@@ -258,7 +334,7 @@ Attention log lines: `attention` (state changes + face count), `voice_line` (key
 ## Health signal
 `kaiku/v1/<home>/health/hub` (retained, every 5 s; last will = `down`). `details`: `ritual` (current step or
 `idle`), `uplink_queue`, `uplink_lag_s`, `uplink_error`, `voice`, `music`, `cloud`, `episodes_queue`,
-`store` (`ok|off|error`), `dropped` (bus publishes
+`store` (`ok|off|error`), `head_mode` (`follow|drive`; following: `ritual` = `head:<step>`), `head_cmds_held`, `dropped` (bus publishes
 dropped while offline). `degraded` signals: growing `uplink_queue`, non-null `uplink_error`.
 
 ## Tests
@@ -297,6 +373,14 @@ uv run pytest hub/tests      # ~10 s; the MQTT integration test needs mosquitto 
   Streaming regressions cover fragment/final boundaries, one PHQ-9 answer per completed utterance, both tool/transcript
   arrival orders, duplicate named tools, immediate partial-speech crisis and durable end-session outcome/follow-up.
 - `test_episodes.py`: durable offline completion survives restart/retry; PPG timing discontinuities.
+- `test_feel.py` (+ two cases in `test_live_integration.py`): `feel` declared NON_BLOCKING from the registry and
+  accepted by the installed SDK, no thinking body while it runs, silent when unavailable/slow/invalid, crisis words
+  never forwarded, the cloud's crisis answer handled, its own response with `scheduling`, blocking on Vertex.
+- `test_follow.py`: the follower alone (whole ritual → obs, 1–10 → 1–5 with `scale_10`, press skips, a lost press
+  drops answers instead of relabelling, head gone mid-drum, unanswered greetings rate-limited, knocks muted while
+  moving, stale retained health) and through the Hub (no `cmd.head`, `start_ritual` refused, record home vs robot
+  home, store + episode, fallback to drive for the MQTT firmware / sim head, `head_mode` overrides, a standalone head
+  appearing mid hub ritual, head lost, crisis, head on another home). The broker loop is in `sim/tests`.
 - `test_robot_data.py`: pulse measured vs not measured (flat, noise, flicker artefact, low sensor quality), camera
   backup at a wobbling frame rate (HR only), finger→camera switch, drum change features, very fast drumming
   (capped + low quality), face-derived presence (brief look-away vs silence), engagement rules (face alone gives no

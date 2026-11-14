@@ -5,10 +5,12 @@ function-declaration shape) and the surfaces it may be used on. `make contracts`
 `contracts/schemas/companion_tools.json` (+ `COMPANION_TOOLS` in `contracts/ts/index.ts`) for Swift/TS clients.
 
 Who executes what (`executor`):
-    cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind — devices forward the call to
+    cloud   remember, forget, recall, suggest_nudge, end_session, ask_mind, feel — devices forward the call to
             `POST /v1/companion/tool` and hand the result back to the model
     device  record_dial, start_activity, log_walk_moment, send_friend_ping, start_phq9, express, look_at_this —
             the device runs the deterministic effect (it may still forward the call so the episode logs it)
+`behavior: NON_BLOCKING` (Gemini Live asynchronous function calling): the model keeps talking while the tool runs;
+the device declares the function with that behaviour and answers with the `scheduling` the result carries.
 No tool lowers a safety state, reads state numbers, contacts a clinician or changes criteria.
 """
 
@@ -27,6 +29,18 @@ MEMORY_CATEGORIES: tuple[str, ...] = get_args(MemoryCategory)
 Activity = Literal["breathe", "drum", "firefly", "pebbles", "tell", "walk", "light_hunt"]
 Feeling = Literal["happy", "curious", "sleepy", "cozy", "proud"]
 MindKind = Literal["fact", "care", "memory", "plan", "emotional"]
+# How a moment sounded, as a model in the conversation reports it (an observation, never a measurement or a state).
+Valence = Literal["low", "neutral", "bright"]
+VALENCES: tuple[str, ...] = get_args(Valence)
+Energy = Literal["low", "medium", "high"]
+ENERGIES: tuple[str, ...] = get_args(Energy)
+Tone = Literal["flat", "tense", "tearful", "irritable", "warm", "playful", "calm"]
+TONES: tuple[str, ...] = get_args(Tone)
+FeelKind = Literal["sad_news", "good_news", "flat", "angry", "worried", "lonely", "proud", "relief", "other"]
+FEEL_KINDS: tuple[str, ...] = get_args(FeelKind)
+Purpose = Literal["talk", "check_in", "walk", "ritual"]
+CheckinItem = Literal["mood", "energy", "sleep"]
+CHECKIN_ITEMS: tuple[str, ...] = get_args(CheckinItem)
 
 #: which skill an intent runs (talk = free chat, no skill)
 SKILL_OF_INTENT: dict[str, str | None] = {"ritual": "morning_ritual", "checkin": "weather_check",
@@ -81,6 +95,23 @@ TOOLS: dict[str, dict[str, Any]] = {
         "parameters": {"type": "object", "required": ["question", "kind"], "properties": {
             "question": {"type": "string", "maxLength": 300},
             "kind": {"type": "string", "enum": list(get_args(MindKind))}}}},
+    "feel": {
+        "description": "Tell Kaiku's mind about a clear feeling or a piece of news in what the person just said or "
+                       "how they sounded. Once per clear shift, never every turn; keep talking warmly while it "
+                       "runs. Returns how to meet it for this person: stance, depth (brief = an ordinary moment, "
+                       "keep the chat small; stay = do not close, stay as long as they want), one thing the "
+                       "record knows (recall) and at most one small thing you may offer once (may_offer). "
+                       "heard.via: voice when you heard them say it, text when it was typed.",
+        "executor": "cloud", "surfaces": _ALL, "behavior": "NON_BLOCKING",
+        "parameters": {"type": "object", "required": ["kind", "heard"], "properties": {
+            "kind": {"type": "string", "enum": list(FEEL_KINDS)},
+            "heard": {"type": "object", "required": ["valence"], "properties": {
+                "valence": {"type": "string", "enum": list(VALENCES)},
+                "energy": {"type": "string", "enum": list(ENERGIES)},
+                "tone": {"type": "array", "maxItems": 2, "items": {"type": "string", "enum": list(TONES)}},
+                "via": {"type": "string", "enum": ["voice", "text"]}}},
+            "about": {"type": "string", "maxLength": 80},
+            "said": {"type": "string", "maxLength": 300}}}},
     "send_friend_ping": {
         "description": "Light the friend's lamp.",
         "executor": "device", "surfaces": ["robot"], "parameters": _EMPTY},
@@ -116,6 +147,7 @@ def for_surface(surface: str) -> list[dict[str, Any]]:
     if surface not in SURFACES:
         raise KeyError(f"unknown surface {surface!r}")
     return [{"name": n, "description": t["description"], "parameters": t["parameters"]}
+            | ({"behavior": t["behavior"]} if t.get("behavior") else {})
             for n, t in TOOLS.items() if surface in t["surfaces"]]
 
 
@@ -124,8 +156,8 @@ def allowed(name: str, surface: str) -> bool:
 
 
 def validate_args(schema: dict[str, Any], args: dict[str, Any]) -> list[str]:
-    """Tiny JSON-schema subset check (object, required, enum, string, integer, min/max, maxLength, nested object).
-    Returns problems (empty = valid)."""
+    """Tiny JSON-schema subset check (object, required, enum, string, integer, min/max, maxLength, nested object,
+    array of enum strings with maxItems). Returns problems (empty = valid)."""
     problems: list[str] = []
     if not isinstance(args, dict):
         return ["args not an object"]
@@ -141,6 +173,15 @@ def validate_args(schema: dict[str, Any], args: dict[str, Any]) -> list[str]:
         t = spec.get("type")
         if t == "object":
             problems += [f"{key}.{p}" for p in validate_args(spec, val)]
+            continue
+        if t == "array":
+            item = spec.get("items", {})
+            if not isinstance(val, list):
+                problems.append(f"{key} not array")
+            elif len(val) > spec.get("maxItems", len(val)):
+                problems.append(f"{key} has too many items")
+            elif any(not isinstance(v, str) or "enum" in item and v not in item["enum"] for v in val):
+                problems.append(f"{key} has an item outside its enum")
             continue
         if t == "integer" and (isinstance(val, bool) or not isinstance(val, int | float) or int(val) != val):
             problems.append(f"{key} not integer")

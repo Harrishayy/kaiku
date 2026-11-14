@@ -41,6 +41,25 @@
       "title": "Others Present",
       "type": "boolean"
     },
+    "purpose": {
+      "anyOf": [
+        {
+          "enum": [
+            "talk",
+            "check_in",
+            "walk",
+            "ritual"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "why the conversation was opened. check_in: a small passing chat alongside the periodic check-in (see chat_shape). Omitted = today's behaviour for the intent",
+      "title": "Purpose"
+    },
     "resume_session_id": {
       "anyOf": [
         {

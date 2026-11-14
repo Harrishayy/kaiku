@@ -85,3 +85,11 @@ never as something observed). `tools/companion_evals/scenarios/attunement.yaml` 
 two-sentence, one-question caps because the model copies them.
 `voice_lines.toml` `welcome.hello` / `welcome.done` are the app's first-run lines; a running service must be
 restarted to serve new keys (the apps fall back to `/v1/voice/say` with the same words until then).
+`persona.md` → "Notice and act" (call `feel` once per clear shift and keep talking; use `recall` lightly; be glad
+out loud for good news; when they are down, the one `may_offer` once, as a question, in a later turn, and a no is
+final; `depth` brief or stay) and "Passing chat" (a check-in is a small conversation that closes itself on an
+ordinary day and stays on a very good or very hard one; at most one check-in question, a number only if offered).
+`tools/companion_evals/scenarios/act.yaml` covers them. `surfaces.toml` lists `feel` on every surface.
+`[live] feel_scheduling` is the FunctionResponse scheduling the cloud returns for the non-blocking `feel` tool;
+`[insight] reflection_label_at_episode_end` turns the one Gemma labelling call after an opted-in conversation on.
+

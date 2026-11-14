@@ -1,6 +1,6 @@
 import XCTest
 
-/// End-to-end against a local cloud (make cloud-local + make seed): weather check → obs.self_report,
+/// End-to-end against a local cloud (make cloud-local + make seed): check-in chat (dials) → obs.self_report,
 /// a Pebble path round → obs.play_session, memories list loads. Set KAIKU_TEST_CLOUD (default http://127.0.0.1:8000).
 final class KaikuFlowTests: XCTestCase {
     var app: XCUIApplication!
@@ -14,13 +14,22 @@ final class KaikuFlowTests: XCTestCase {
         app.launch()
     }
 
-    func testWeatherCheckPosts() {
+    /// Today's first stop is a small chat with Kaiku; the dials sit under it as the quiet alternative and count on
+    /// their own. Dials only: Kaiku answers what was dialled in one warm line, the stop is done, nothing is a form.
+    func testCheckInChatDialsOnly() {
         app.buttons["Today"].tap()
         app.staticTexts["Weather check"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Checking in"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["Type a message"].waitForExistence(timeout: 20), "the chat is there to answer in words")
+        XCTAssertTrue(app.staticTexts["Or just turn the dials"].exists, "and the dials are on the same screen, never a gate")
         let done = app.buttons["That's it"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        for _ in 0..<6 where !done.isHittable { app.swipeUp() }
         done.tap()
-        XCTAssertTrue(app.staticTexts["Thank you. I've noted it."].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Thank you for telling me. An ordinary day counts too."].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(done.exists, "the dials are done")
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Today's path"].waitForExistence(timeout: 5))
     }
 
     func testPebblesPostsPlaySession() {

@@ -42,6 +42,19 @@ public final class Conversation {
 
     public let surface: CompanionSurface
     public let intent: CompanionIntent
+    /// Why the conversation was opened; the cloud shapes the chat with it (a check-in is a small passing chat).
+    public let purpose: CompanionPurpose?
+    /// The latest plan from the cloud's `feel` tool (the voice model noticed a feeling or news). `planCount`
+    /// goes up with each one, so a view can react to a new plan that equals the previous one.
+    public private(set) var plan: FeelPlan?
+    public private(set) var planCount = 0
+    /// How many things the person had said when the latest plan arrived (an offer lasts until they carry on).
+    public private(set) var planTurns = 0
+    /// The model closed the conversation itself (`end_session`): a passing chat that wrapped up warmly.
+    public private(set) var closedByModel = false
+    /// False when the conversation runs without the microphone (permission off): Kaiku still speaks and answers
+    /// typed messages; nothing is captured.
+    public private(set) var listens = true
     public private(set) var phase: Phase = .idle {
         didSet { if oldValue != phase { notePhase() } }
     }
@@ -88,6 +101,9 @@ public final class Conversation {
     @ObservationIgnored private var pendingContext: [AnyEnvelope] = []
     @ObservationIgnored private var limitTask: Task<Void, Never>?
     @ObservationIgnored private var readyTask: Task<Void, Never>?
+    @ObservationIgnored private var closeTask: Task<Void, Never>?
+    /// Set while a conversation the model closed is letting Kaiku's goodbye finish.
+    @ObservationIgnored private var closing: (sawOutput: Bool, turnDone: Bool)?
     @ObservationIgnored private var listenerTask: Task<Void, Never>?
     @ObservationIgnored private var handle: String?
     @ObservationIgnored private var started = Date()
@@ -100,17 +116,27 @@ public final class Conversation {
     @ObservationIgnored private var pauseGeneration = 0
     @ObservationIgnored private var pairingRevision = 0
 
-    public convenience init(surface: CompanionSurface, intent: CompanionIntent) {
+    public convenience init(surface: CompanionSurface, intent: CompanionIntent, purpose: CompanionPurpose? = nil,
+                            typedWithoutMic: Bool = false) {
         self.init(surface: surface, intent: intent, audio: ConversationAudio(),
-                  transport: { LiveSession(onEvent: $0) }, permission: { await Self.micGranted() })
+                  transport: { LiveSession(onEvent: $0) }, permission: { await Self.micGranted() },
+                  purpose: purpose, typedWithoutMic: typedWithoutMic)
     }
 
     init(surface: CompanionSurface, intent: CompanionIntent, audio: any ConversationAudioIO,
          transport: @escaping (@escaping @Sendable (LiveSession.Event) -> Void) -> any ConversationTransport,
-         permission: @escaping () async -> Bool, localListener: Bool = true) {
+         permission: @escaping () async -> Bool, localListener: Bool = true, purpose: CompanionPurpose? = nil,
+         typedWithoutMic: Bool = false) {
         self.surface = surface; self.intent = intent; self.audio = audio
         self.transport = transport; self.permission = permission; self.localListener = localListener
+        self.purpose = purpose; self.typedWithoutMic = typedWithoutMic
     }
+
+    /// Without microphone permission the conversation still opens, with the microphone closed: writing works
+    /// like speaking and Kaiku answers in its voice. Off by default (Talk and the walk need the microphone).
+    @ObservationIgnored private let typedWithoutMic: Bool
+    /// Cloud tools that must not look like waiting: Kaiku keeps talking and no "thinking" state is shown.
+    nonisolated static let quietTools: Set<String> = ["feel"]
 
     public var isLive: Bool { live != nil && phase != .unavailable }
     /// Live setup was acknowledged at least once in this conversation.
@@ -139,6 +165,7 @@ public final class Conversation {
         lines = []; personTurnID = nil; kaikuTurnID = nil
         inputFinalObserved = false; outputFinalObserved = false; audioTurnEnded = false
         toolsUsed = []; everReady = false; wasLive = false; failures = 0; muted = false; handle = nil
+        plan = nil; planCount = 0; planTurns = 0; closedByModel = false; listens = true
         sessionPairing = app.pairing
         pairingRevision = app.pairingRevision
         seenEvents = []; pendingContext = []
@@ -148,7 +175,10 @@ public final class Conversation {
         guard !app.isPaused else { unavailableReason = .paused; phase = .unavailable; return false }
         pauseGeneration += 1
         observeGlobalPause(generation: pauseGeneration)
-        guard await permission() else { unavailableReason = .microphone; phase = .unavailable; return false }
+        if !(await permission()) {
+            guard typedWithoutMic else { unavailableReason = .microphone; phase = .unavailable; return false }
+            listens = false; muted = true
+        }
         guard !stopped, !app.isPaused else { return false }
         guard let s = await bootstrap() else {
             note("live_bootstrap_failed", ["reason": String(describing: unavailableReason)])
@@ -170,7 +200,7 @@ public final class Conversation {
                 self.stop(outcome: .ended_early)
             }
         }
-        if localListener && !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
+        if localListener && listens && !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
         guard !stopped else { return false }
         do { try startAudio() } catch {
             note("audio_start_failed", ["error": error.localizedDescription])
@@ -187,6 +217,7 @@ public final class Conversation {
         pauseGeneration += 1
         limitTask?.cancel(); limitTask = nil
         readyTask?.cancel(); readyTask = nil
+        closeTask?.cancel(); closeTask = nil; closing = nil
         contextTask?.cancel(); contextTask = nil; pendingContext = []
         connectionGeneration += 1
         eventContinuation?.finish(); eventContinuation = nil
@@ -211,7 +242,7 @@ public final class Conversation {
     // MARK: input
 
     public func setMuted(_ on: Bool) {
-        guard isLive else { return }
+        guard isLive, listens else { return }
         muted = on
         audio.setMic(!on && phase != .paused && phase != .connecting)
         guard phase != .paused && phase != .connecting else { return }
@@ -284,6 +315,7 @@ public final class Conversation {
         var req = CompanionSessionRequest(surface: surface, home_id: app.pairing?.homeID ?? "", intent: intent,
                                           language: app.language.rawValue)
         req.resume_session_id = session?.session_id
+        req.purpose = purpose
         do { return try await app.api.companionSession(req) }
         catch APIError.http(let status) where status == 401 || status == 403 { unavailableReason = .pairing; return nil }
         catch { unavailableReason = .connection; return nil }
@@ -386,13 +418,14 @@ public final class Conversation {
             self.live?.sendAudio(pcm)
         } }
         audio.setMic(false)
+        audio.setCapture(listens)
         audio.onPlaying = { [weak self] on in Task { @MainActor in self?.playing(on) } }
         audio.onLevel = { [weak self] db in Task { @MainActor in self?.level = db } }
         let listener = listener
-        audio.onBuffer = localListener ? { b in listener.append(b) } : nil
+        audio.onBuffer = localListener && listens ? { b in listener.append(b) } : nil
         try audio.start()
         listener.onHit = { [weak self] hit in Task { @MainActor in self?.onDeviceHit(hit) } }
-        if localListener { startListener() }
+        if localListener && listens { startListener() }
     }
 
     /// Global privacy pause closes an already-open Live microphone. Unpausing never resumes it silently.
@@ -437,8 +470,12 @@ public final class Conversation {
 
     // MARK: private — events
 
+    /// Tests: every Live event as it is handled (the opt-in real runs write their evidence from it).
+    @ObservationIgnored var trace: ((LiveSession.Event) -> Void)?
+
     private func handle(_ ev: LiveSession.Event) {
         guard !stopped else { return }
+        trace?(ev)
         guard app?.pairing == sessionPairing else { stop(outcome: .ended_early); return }
         switch ev {
         case .ready:
@@ -455,6 +492,10 @@ public final class Conversation {
             }
         case .audio(let pcm):
             guard phase != .paused else { return }
+            if let c = closing {
+                if c.turnDone { return }
+                closing?.sawOutput = true
+            }
             audio.play(pcm)
         case .interrupted:
             if let id = kaikuTurnID, let index = lines.firstIndex(where: { $0.id == id }) {
@@ -463,7 +504,8 @@ public final class Conversation {
             }
             audio.flush()
             if phase != .muted && phase != .paused { phase = .hearing }
-        case .userText(let t):
+        case .userText(let raw):
+            guard let t = Self.spoken(raw) else { return }
             // Older providers omit finished. A new physical-input turn after audio completion is then a
             // boundary, but never evidence that the older transcript was final. Typed input is independent.
             if audioTurnEnded {
@@ -475,7 +517,14 @@ public final class Conversation {
             if SafetyGate.shared.check((lines.last(where: \.me)?.text ?? "") + t) != nil { crisis(); return }
             append(t, me: true)
             if phase == .listening { phase = .hearing }
-        case .kaikuText(let t):
+        case .kaikuText(let raw):
+            guard let t = Self.spoken(raw) else { return }
+            if let c = closing {
+                if c.turnDone { return }               // filler after the goodbye turn
+                closing?.sawOutput = true
+            }
+            // A turn never starts with a stray mark ("-"): that is transcription noise, not a line.
+            if kaikuTurnID == nil && !t.contains(where: { $0.isLetter || $0.isNumber }) { return }
             append(t, me: false)
         case .userTranscriptComplete:
             inputFinalObserved = true
@@ -484,6 +533,7 @@ public final class Conversation {
             outputFinalObserved = true
             finishTranscript(me: false)
         case .turnComplete:
+            if closing?.sawOutput == true { closing?.turnDone = true }
             audioTurnEnded = true
             if !inputFinalObserved { markUnknownTranscript(me: true) }
             if !outputFinalObserved { markUnknownTranscript(me: false) }
@@ -543,6 +593,14 @@ public final class Conversation {
         if me { personTurnID = nil } else { kaikuTurnID = nil }
     }
 
+    /// Live transcription sometimes hands over markers instead of words (`<no speech>`, `{pause}`, `<noise>`):
+    /// they are not something anyone said, so they never become a line. Nil when nothing spoken is left.
+    nonisolated static func spoken(_ fragment: String) -> String? {
+        guard fragment.contains("<") || fragment.contains("{") else { return fragment.isEmpty ? nil : fragment }
+        let cleaned = fragment.replacingOccurrences(of: #"<[^<>]{1,24}>|\{[^{}]{1,24}\}"#, with: "", options: .regularExpression)
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : cleaned
+    }
+
     nonisolated static func mergeTranscript(_ existing: String, _ incoming: String) -> String {
         if incoming.hasPrefix(existing) { return incoming }
         if incoming == existing { return existing }
@@ -557,11 +615,16 @@ public final class Conversation {
             live?.respond(id: id, name: name, result: result)
             return
         }
-        pendingTools += 1
-        if !audio.isPlaying { phase = .thinking }
+        let quiet = Self.quietTools.contains(name)
+        if !quiet {
+            pendingTools += 1
+            if !audio.isPlaying && phase != .muted && phase != .paused { phase = .thinking }
+        }
         defer {
-            pendingTools = max(0, pendingTools - 1)
-            if phase == .thinking && pendingTools == 0 { phase = .listening }
+            if !quiet {
+                pendingTools = max(0, pendingTools - 1)
+                if phase == .thinking && pendingTools == 0 { phase = .listening }
+            }
         }
         let call = CompanionToolCall(home_id: app.pairing?.homeID ?? "", surface: surface, name: name, args: args,
                                      session_id: s.session_id)
@@ -573,8 +636,43 @@ public final class Conversation {
         onToolResult?(name, r)
         if r.crisis == true { crisis(); return }
         live?.respond(id: id, name: name, result: r.result ?? .object(["ok": .bool(r.ok)]))
+        if name == "feel", r.ok, let p = FeelPlan(result: r.result) {
+            plan = p; planTurns = lines.filter(\.me).count; planCount += 1
+        }
         if name == "end_session", r.ok {
-            stop(outcome: args["outcome"]?.string.flatMap(EpisodeOutcome.init(rawValue:)) ?? .completed)
+            closedByModel = true
+            closeAfterGoodbye(args["outcome"]?.string.flatMap(EpisodeOutcome.init(rawValue:)) ?? .completed)
+        }
+    }
+
+    /// How long Kaiku's voice must have been quiet before a conversation the model closed really ends.
+    static var closeGrace: TimeInterval = 1.5
+
+    /// `end_session` lands just before Kaiku's goodbye (the model speaks it once the tool has answered) or right
+    /// after it (its voice is still playing): both were seen live. Stop listening at once and let the goodbye be
+    /// heard (bounded), then end: it is never cut off and never skipped. Whatever the model produces after the
+    /// goodbye turn is filler (seen live: seconds of silent audio, transcribed as "-"), so that is dropped.
+    private func closeAfterGoodbye(_ outcome: EpisodeOutcome) {
+        guard Self.closeGrace > 0 || audio.isPlaying else { stop(outcome: outcome); return }
+        muted = true
+        audio.setMic(false)
+        live?.audioStreamEnd()
+        closing = (sawOutput: audio.isPlaying, turnDone: false)
+        closeTask?.cancel()
+        closeTask = Task { [weak self] in
+            let grace = Self.closeGrace
+            var quiet = 0.0, waited = 0.0
+            while waited < 15 {
+                do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
+                waited += 0.2
+                guard let self, !self.stopped, let c = self.closing else { return }
+                quiet = self.audio.isPlaying ? 0 : quiet + 0.2
+                if c.sawOutput {
+                    // the goodbye turn ended and its voice has played out (or it simply went quiet)
+                    if (c.turnDone && quiet >= max(0.2, grace * 0.4)) || quiet >= max(0.2, grace * 2) { break }
+                } else if waited >= grace * 3 && quiet >= max(0.2, grace) { break }   // it had already said goodbye
+            }
+            self?.stop(outcome: outcome)
         }
     }
 

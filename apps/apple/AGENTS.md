@@ -39,7 +39,8 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
 
 ## Emits (topics/endpoints)
 `POST /v1/events` (source `phone` on iPhone, `laptop` on Mac), always through the offline queue:
-- `obs.self_report` ×3 (`channel: phone|mac`, `context: adhoc`) — weather check; `record_dial` tool in Talk.
+- `obs.self_report` ×3 (`channel: phone|mac`) — the dials on the check-in chat ("That's it"); `record_dial` tool
+  (`context: adhoc`) in the check-in chat and Talk.
 - `obs.play_session` (`device: phone|mac`) — `firefly` (reaction median/IQR, lapses > 500 ms or missed, false
   taps), `pebbles` (`span_max`, `accuracy`), `breathe` (duration), `tell` (speech_rate, pause_ratio — only with the
   voice signal on). Sent only with the check-ins signal on and nothing paused.
@@ -88,7 +89,7 @@ iOS/SurfaceSnapshots.swift  DEBUG: -kaikuSurfaceSnapshot <dir> → Live Activity
 iOS/Resources/              kaiku-chime.caf (0.8 s notification sound)
 Shared/WalkIntents.swift    LiveActivityIntents Found one / End walk (compiled into app + widget extension)
 Widgets/KaikuWidgets.swift  widget extension: Walk + Breathe Live Activities, Kaiku widget (small/medium/lock)
-iOSUITests/                 end-to-end against a local cloud (weather → self_report, pebbles → play_session, memories);
+iOSUITests/                 end-to-end against a local cloud (check-in chat dials → self_report, pebbles → play_session, memories);
                             DemoTourTests = the paced feature tour the demo recordings are made from
 KaikuKit/Sources/KaikuKit/
   Design/Tokens.swift       COPY of design/generated/Tokens.swift (never edit here)
@@ -107,7 +108,7 @@ KaikuKit/Sources/KaikuKit/
                             bubbles, KChip, KChevron, Celebration (completion moment), empty/loading/offline/error states, RingStage; Polish.swift (KTone soft fills,
                             KPressStyle press/hover, KBackdrop time-of-day wash, MascotHalo, KAdaptiveColumns)
   Screens/                  TodayPath.swift (Today's path: weather → suggestion → game, on Today/Play/game ends;
-                            GardenBeds day plots + DayPlant), Screens.swift (tabs, routes, parity list, root/tab bar/sidebar), Today, Weather check,
+                            GardenBeds day plots + DayPlant), Screens.swift (tabs, routes, parity list, root/tab bar/sidebar), Today, CheckInChatView (the check-in as a small chat + the dials),
                             Play, Your days, You (+ remembers, saw today, voice, quiet hours, devices, help),
                             Crisis, Onboarding (OnboardingFlow + SetupStep), EvidenceView (Today, so far), MenuBarPopover
   Games/                    Firefly, Pebble path, Breathe, Tell Kaiku (+ Composer, mic card); measured games:
@@ -266,7 +267,10 @@ Live tool call → device tool (Conversation.deviceTool: express, record_dial, s
   cannot affect a replacement socket. `end_session` and the session duration limit stop microphone capture.
   Global "Pause everything" also closes an active conversation without waiting for another audio frame and
   prevents bootstrap/capture while paused. Unpausing requires an explicit conversation restart.
-- `record_dial` uses the same pause/consent/value checks as manual check-ins. Both Talk and walks support it.
+- `record_dial` uses the same pause/consent/value checks as manual check-ins. Talk, the check-in chat and walks
+  support it.
+- `start_activity` runs only on the person's word: their latest words ask for it or say a clear yes
+  (`TalkModel.asked`, en/fi/sv; "maybe" is not a yes), or they take the offer chip. Otherwise the model is told no.
   Talk supports `start_phq9` and walking activities. PHQ-9 forwards pairing credentials in a consumed URL fragment.
 - Mock adapters are explicit debug choices, never automatic fallbacks; their outings carry `sim=true` through
   normal completion and draft recovery. Real motion connection is shown only after a sample arrives.
@@ -340,12 +344,18 @@ KAIKU_TEST_CLOUD=http://127.0.0.1:18020 apps/apple/scripts/record_app_demo.sh io
   person's pace on a dedicated "Kaiku Demo 17 Pro" simulator: `testA_FirstRun` (fresh install + Keychain reset →
   the six setup steps → Today), `testB_TodayPath` (weather dials → Kaiku's suggestion → Lantern played → the
   rotating game played → "All done for today"), `testC_TodaySoFar` (Your days → Today, so far → What Kaiku saw
-  today), `testD_Talk` (the voice control, the voice-unavailable state, a typed message and the scripted reply),
+  today), `testD_Talk` (a typed message, the thinking dots, the reply; `KAIKU_DEMO_TALK_OPEN` / `_WAIT` seconds leave
+  room for a live voice, `KAIKU_DEMO_VOICE_TAP=1` also presses the voice control),
   `testE_YouAndGlassesCheck` (sharing choices, Glasses check, self-test). Extras through `TESTS=method:clip ...`:
   `testF_Firefly`, `testG_GlassesWalkSimulated` (`-kaikuGlasses mock`). A missing control logs `DEMO-MISSING` plus
   what was on screen and the flow goes on; `DEMO-STEP` lines become chapter time codes; step screenshots land in
   `demo/recordings/shots/`. The games are played through two test-only accessibility identifiers that are never
   spoken or shown: `lantern-lit` / `lantern-dark` on the lantern field and `seed-pot-<n>` on the seed packet.
+- `KAIKU_BUILD_SERVICE=1` builds the app with `$KAIKU_TEST_CLOUD` as its configured service (`KAIKU_SERVICE_URL`):
+  the fresh install of `testA_FirstRun` then connects by itself and `welcome.hello` is spoken (cached lines are
+  served without a key). Without it the flow taps "Continue without connecting" and the hello is text.
+  The recording has no sound: `scripts/record_voice.py` saves the same lines for the cut. Before each take the
+  recorder flips the simulator's appearance once, or the first seconds of the app are missing from the video.
 - Build products go to `~/Library/Caches/kaiku-record-dd` (`DERIVED`). Not under `~/Documents`: macOS privacy
   protection blocks a simulator app launched by XCUITest from loading the test dylibs there (white screen, then
   "Setting up automation session" times out with `kAXErrorServerNotFound`).
@@ -545,8 +555,8 @@ physical microphone/HFP voice acceptance remains a separate user-started check.
 - Phone-only walks post `method: steps` with CMPedometer steps (nil in the simulator); no background location.
 - Notifications answer in the app process (UNUserNotificationCenter delegate; iOS launches the app in the
   background), not a notification extension; no Notification Content Extension (STRETCH). "Later" sends no obs.
-- `SpokenDial` is used for on-device Talk transcripts (fills `record_dial` when Live omits the value); there is no
-  spoken path on the weather-check screen yet.
+- `SpokenDial` is used for on-device transcripts (fills `record_dial` when Live omits the value), in Talk and in
+  the check-in chat.
 - Health background delivery is best effort (observer query); the simulator sample writes sleep, steps, resting HR
   and HRV (exercise minutes are Apple-computed and can't be written).
 - Interactive widget (mood buttons) and Control Center control are STRETCH, not built. Lock Screen Live Activity
@@ -736,3 +746,42 @@ Microphone and speakers are not toolkit features: they are Bluetooth hands-free 
 - `kTopEdgeBackdrop()` (in `KScreen` and setup pages) fills the top safe area so scrolled content does not run
   under the clock. Glasses check shows results as rows only; raw log lines travel with "Share log"; the speaker
   step reports "played" only when audio started.
+
+## The check-in as a passing chat, and "notice and act" (2026-11-14)
+Today's first stop (`KaikuRoute.weather`, still titled "Weather check" on the path) opens `Screens/CheckInChatView`:
+a small chat with Kaiku, not a form. `Talk/CheckInChat.swift` holds it: `CheckInState` (pure, tested) + `CheckInChat`
+(the shared `TalkModel` + `Conversation` with `intent: checkin`, `purpose: check_in`).
+- **Three ways to answer, all count.** Voice (Live), typing (the same Live socket: `sendText`), or the three dials
+  under the chat ("Or just turn the dials": the same screen, never a gate). Kaiku's hello is on screen as text at
+  once (`checkin.hello`); Live says its own hello over it when there is a voice; without Live the cached Gemini
+  voice line plays (silent otherwise, never a synthesizer).
+- **Brief or stay.** `chat_shape.depth` opens the chat, the latest `feel` plan's `depth` updates it. Brief: the
+  model closes (`end_session` + its goodbye): the screen shows "Good to see you", ticks the stop
+  (`AppModel.checkInDone()`, one completion moment) and offers the next stop / "Keep talking". Stay: the chat
+  simply goes on ("No hurry"), nothing counts turns or sets a timer; "That's enough for now" is the calm way out.
+  Leaving after taking part counts too; opening and leaving does not.
+- **Dials only.** "That's it" → three `obs.self_report`, the stop is ticked, and Kaiku answers what was dialled in
+  one warm line (`CheckInState.dialLine` → `checkin.dials.low|tired|mid|bright`, voice line + text). With Live
+  open the model is told the dial words (never numbers) and its own answer takes the line's place; the microphone
+  is muted on the end screen. Offline it all still works (queue + text).
+- **`feel` (cloud tool, NON_BLOCKING).** Forwarded like every cloud tool, but never shows the thinking state
+  (`Conversation.quietTools`); declared from `tools[].behavior`; answered with the result's `scheduling`
+  (`LiveSession.toolResponse`). The plan (`FeelPlan`: `stance`, `depth`, `may_offer`, `offer_activity`) is published
+  as `Conversation.plan` / `planCount`.
+- **The offer chip** (`CheckInOffer`, `OfferChip`; check-in chat and Talk): `may_offer` is its words, `offer_activity`
+  what it starts (walk / breathe on this device). No startable activity → it starts nothing: Kaiku is told the
+  person said yes and stays ("sitting quietly together" shows "I'm right here"). It appears from the person's next
+  words on (Kaiku meets the feeling first), stays until taken or the plan changes, and is easy to ignore.
+  `stance: celebrate` plays the completion sparkle once per conversation.
+- **Typing without the microphone.** With microphone permission off, the check-in conversation still opens with
+  the microphone closed (`typedWithoutMic`, `ConversationAudio.setCapture(false)`: the input node is never
+  touched) and Kaiku answers in its voice. Talk keeps its existing behaviour.
+- **The model's close.** `end_session` arrives before or after the goodbye (both seen live): listening stops at
+  once, the goodbye is let play (`Conversation.closeGrace`, bounded), output after the goodbye turn is dropped as
+  filler. Transcription markers (`<no speech>`, `{pause}`, a lone "-") never become lines (`Conversation.spoken`).
+- **Never in a passing chat:** the two-weekly questionnaire (`start_phq9` is refused there).
+- Tests: `CheckInChatTests` (state, plan, chat on the real engine with a fake Live + stubbed cloud),
+  `KaikuFlowTests.testCheckInChatDialsOnly` (UI). Opt-in paid proof: `CheckInLiveTests` (typed, no microphone;
+  `KAIKU_CHECKIN_LIVE_CLOUD`, `KAIKU_CHECKIN_LIVE_SCRIPT=ordinary|hard|good`, `KAIKU_CHECKIN_LIVE_OUT`).
+- Not verified on a device: answering by voice in the check-in (microphone opens when the screen does, like
+  Talk), the goodbye's sound at the close, the chip on a real walk offer.

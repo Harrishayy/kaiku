@@ -48,21 +48,34 @@ def available(model_id: str) -> tuple[bool, str]:
     return True, ""
 
 
-def tool_config(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Accept either plain function declarations [{name, description, parameters}] or Gemini tool blocks."""
+def tool_config(tools: list[dict[str, Any]], non_blocking: bool = True) -> list[dict[str, Any]]:
+    """Accept either plain function declarations [{name, description, parameters, behavior?}] or Gemini tool
+    blocks. `behavior` (NON_BLOCKING = asynchronous function calling) is passed through unless `non_blocking` is
+    False: then it is dropped and the tool is an ordinary blocking call."""
     if tools and all(isinstance(t, dict) and "function_declarations" in t for t in tools):
-        return tools
-    decls = [t for t in tools if isinstance(t, dict) and t.get("name")]
+        if non_blocking:
+            return tools
+        return [{**b, "function_declarations": [{k: v for k, v in d.items() if k != "behavior"}
+                                                for d in b["function_declarations"]]} for b in tools]
+    decls = [t if non_blocking else {k: v for k, v in t.items() if k != "behavior"}
+             for t in tools if isinstance(t, dict) and t.get("name")]
     return [{"function_declarations": decls}] if decls else []
 
 
-def live_config(system_instruction: str, tools: list[dict[str, Any]], voice_name: str = "") -> dict[str, Any]:
+def non_blocking_names(tools: list[dict[str, Any]]) -> set[str]:
+    """Names of the functions declared NON_BLOCKING in a tool_config() result."""
+    return {d["name"] for b in tools for d in b.get("function_declarations", [])
+            if str(d.get("behavior", "")).upper().endswith("NON_BLOCKING")}
+
+
+def live_config(system_instruction: str, tools: list[dict[str, Any]], voice_name: str = "",
+                non_blocking: bool = True) -> dict[str, Any]:
     """LiveConnectConfig as a dict (pure; tested without the SDK)."""
     live = load_config().get("live", {})
     cfg: dict[str, Any] = {
         "response_modalities": ["AUDIO"],
         "system_instruction": system_instruction,
-        "tools": tool_config(tools),
+        "tools": tool_config(tools, non_blocking),
         "input_audio_transcription": {},
         "output_audio_transcription": {},
         "session_resumption": {},
@@ -123,6 +136,7 @@ class GeminiLiveVoice(Voice):
         self._fallback = LocalVoice()
         self._on_utterance: UtteranceHandler | None = None
         self._on_tool: ToolHandler | None = None
+        self._non_blocking: set[str] = set()  # functions this session declared NON_BLOCKING
         self._cm: Any = None
         self._spoke = asyncio.Event()
         self._meter: SessionMeter | None = None
@@ -134,7 +148,11 @@ class GeminiLiveVoice(Voice):
                            model: str | None = None, voice: str | None = None) -> bool:
         await self.close_session()
         model = model or self.model_id
-        config = live_config(system_instruction, tools, voice or self.voice_name)
+        # Asynchronous function calling is a Gemini Developer API Live feature. On the platform backend the
+        # declaration's `behavior` is dropped and such a tool (feel) is forwarded as an ordinary blocking call.
+        asynchronous = not getattr(self.client, "vertexai", False)
+        config = live_config(system_instruction, tools, voice or self.voice_name, non_blocking=asynchronous)
+        self._non_blocking = non_blocking_names(config["tools"])
         self.transcript = []
         self._transcript_pending = {}
         self._resume = None
@@ -312,12 +330,32 @@ class GeminiLiveVoice(Voice):
         responses = []
         try:
             for fc in tc.function_calls:
-                result = await self._on_tool(fc.name, dict(fc.args or {}))
+                if fc.name in self._non_blocking:
+                    # The model keeps talking while this runs: answer on its own, with the result's scheduling,
+                    # and never behind a slower blocking tool of the same message.
+                    self._tasks.append(asyncio.create_task(self._answer_non_blocking(session, fc)))
+            for fc in tc.function_calls:
+                if fc.name in self._non_blocking:
+                    continue
+                result = dict(await self._on_tool(fc.name, dict(fc.args or {})))
+                result.pop("scheduling", None)  # only meaningful for a NON_BLOCKING declaration
                 responses.append(types.FunctionResponse(id=fc.id, name=fc.name, response=result))
-            if self._session is session:
+            if responses and self._session is session:
                 await asyncio.wait_for(session.send_tool_response(function_responses=responses), timeout=10)
         except Exception as e:
             log.warning("gemini_tool_failed", type(e).__name__)
+
+    async def _answer_non_blocking(self, session, fc) -> None:
+        try:
+            result = dict(await self._on_tool(fc.name, dict(fc.args or {})))
+            scheduling = str(result.pop("scheduling", None) or "WHEN_IDLE").upper()
+            if scheduling not in ("INTERRUPT", "WHEN_IDLE", "SILENT"):
+                scheduling = "WHEN_IDLE"
+            if self._session is session:
+                response = types.FunctionResponse(id=fc.id, name=fc.name, response=result, scheduling=scheduling)
+                await asyncio.wait_for(session.send_tool_response(function_responses=[response]), timeout=10)
+        except Exception as e:
+            log.warning("gemini_tool_failed", type(e).__name__, tool=fc.name)
 
     async def _reconnect(self, generation: int) -> None:
         self._speech_window.reset()

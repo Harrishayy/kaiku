@@ -17,7 +17,21 @@ final class TalkModel {
     private var replyGeneration = 0
     private(set) var conversation: Conversation
     private let makeConversation: @MainActor () -> Conversation
-    init(makeConversation: @escaping @MainActor () -> Conversation = { Conversation(surface: KaikuPlatform.surface, intent: .talk) }) {
+    /// What Live is told when the conversation opens (a fixed bracketed context event; Kaiku then greets).
+    var opening: String
+    /// The Gemini voice line played when Live is not there (nil: the time-of-day greeting).
+    var silentGreeting: String?
+    /// Kaiku's typed-message lines when there is no model to answer (copy keys, in turn).
+    var scriptedKeys = ["talk.scripted.1", "talk.scripted.2", "talk.scripted.3"]
+    /// The model recorded a dial answer the person said out loud (after it was sent).
+    var onDial: ((DialItem, Int) -> Void)?
+    /// False in a passing chat: the two-weekly questionnaire is never opened in the middle of a check-in.
+    var allowsQuestionnaire = true
+    /// The person asked for an activity and the model starts it: called just before the app goes there.
+    var onActivity: ((KaikuRoute) -> Void)?
+    init(opening: String = "[the person just opened Talk]",
+         makeConversation: @escaping @MainActor () -> Conversation = { Conversation(surface: KaikuPlatform.surface, intent: .talk, purpose: .talk) }) {
+        self.opening = opening
         self.makeConversation = makeConversation
         conversation = makeConversation()
     }
@@ -67,7 +81,7 @@ final class TalkModel {
         let c = conversation
         c.deviceTool = { [weak self] name, args in await self?.deviceTool(name, args) ?? .object(["ok": .bool(false)]) }
         c.onCrisis = { [weak self] in self?.app?.crisis(trigger: "phrase") }
-        c.onReady = { [weak c] in c?.context("[the person just opened Talk]") }   // Kaiku greets in its live voice
+        c.onReady = { [weak c, opening] in c?.context(opening) }   // Kaiku greets in its live voice
         denied = AudioCapture.permission == .denied
         await app.ensureServiceConnection()
         guard started else { return }
@@ -75,7 +89,8 @@ final class TalkModel {
         denied = AudioCapture.permission == .denied
         if !ok {
             // No Live: Kaiku still says hello in its own Gemini voice (cached / fetched line; silent offline).
-            VoiceLines.shared.play(Self.greetingKey(), lang: app.language)
+            let key = silentGreeting ?? Self.greetingKey()
+            VoiceLines.shared.play(key, lang: app.language, fallback: silentGreeting == nil ? nil : T(key))
         }
     }
 
@@ -83,6 +98,7 @@ final class TalkModel {
         replyGeneration += 1
         scriptedTask?.cancel(); scriptedTask = nil
         scriptedThinking = false; scripted = []
+        takenPlan = 0; sparkled = false
         conversation.stop()
         audioTokens.forEach(NotificationCenter.default.removeObserver)
         audioTokens = []
@@ -112,12 +128,42 @@ final class TalkModel {
         conversation.setMuted(mode != .muted)
     }
 
+    // MARK: notice and act (the cloud's `feel` plan)
+
+    private var takenPlan = 0
+    private var sparkled = false
+
+    /// The one thing the plan may offer, as a chip under Kaiku's line: from the person's next words on (Kaiku
+    /// meets the feeling first), until it is taken or the plan changes. Easy to ignore.
+    var offer: CheckInOffer? {
+        let c = conversation
+        guard hasLive, c.planCount > takenPlan, let p = c.plan, c.lines.filter(\.me).count > c.planTurns else { return nil }
+        return CheckInOffer(p)
+    }
+
+    /// Taking the chip counts as the person asking: the activity starts, or Kaiku sits quietly with them.
+    func takeOffer() {
+        guard let o = offer, let app else { return }
+        takenPlan = conversation.planCount
+        guard let route = o.route else { conversation.context(o.acceptance); return }
+        onActivity?(route)
+        app.deepLink = route
+        app.selectedTab = route.tab
+    }
+
+    /// A new plan arrived: good news gets the sparkle moment, once per conversation.
+    func planArrived() {
+        guard conversation.plan?.isGoodNews == true, !sparkled else { return }
+        sparkled = true
+        app?.celebrate()
+    }
+
     /// The mic is open (Live, not muted / paused).
     var micOn: Bool { hasLive && mode != .muted && mode != .paused }
 
     private func scriptedReply() {
         scriptedThinking = true
-        let keys = ["talk.scripted.1", "talk.scripted.2", "talk.scripted.3"]
+        let keys = scriptedKeys
         let key = keys[scriptedIndex % keys.count]
         scriptedIndex += 1
         scriptedTask?.cancel()
@@ -142,10 +188,15 @@ final class TalkModel {
             expression = ["sleepy": .sleepy, "cozy": .cozy, "curious": .listening, "proud": .cheering][f] ?? .happy
         case "record_dial":
             if let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)), let v = args["value"]?.int ?? lastSpokenDial {
-                return .object(["ok": .bool(await app.recordDial(item: item, value: v))])
+                let ok = await app.recordDial(item: item, value: v)
+                if ok { onDial?(item, v) }
+                return .object(["ok": .bool(ok)])
             }
             return .object(["ok": .bool(false), "error": .string("a valid item and value are required")])
         case "start_phq9":
+            guard allowsQuestionnaire else {
+                return .object(["ok": .bool(false), "error": .string("not in a passing chat; leave the questionnaire for another time and do not read its questions out")])
+            }
             guard app.isPaired else { return .object(["ok": .bool(false)]) }
             app.phq9Requested = true
         case "start_activity":
@@ -154,10 +205,16 @@ final class TalkModel {
             guard conversation.lines.contains(where: \.me) else {
                 return .object(["ok": .bool(false), "error": .string("ask the person first; they haven't asked for an activity")])
             }
+            // Only on the person's word: they asked for it, or said a clear yes to Kaiku's offer. Seen live
+            // 2026-11-14: the model opened "Tell Kaiku" on the first sad sentence, and breathing on a "maybe".
+            guard Self.asked(for: args["kind"]?.string ?? "", in: conversation.lines.last(where: \.me)?.text) else {
+                return .object(["ok": .bool(false), "error": .string("they have not asked for it or clearly said yes; start nothing. Stay with what they said; you may offer once, later, as a question")])
+            }
             let kind = args["kind"]?.string ?? ""
             guard let r = ["breathe": KaikuRoute.breathe, "firefly": .firefly, "pebbles": .pebbles, "tell": .tell, "walk": .walk, "light_hunt": .walk][kind] else {
                 return .object(["ok": .bool(false), "error": .string("not on this device")])
             }
+            onActivity?(r)
             app.deepLink = r
             app.selectedTab = r.tab
         default:
@@ -168,6 +225,34 @@ final class TalkModel {
 }
 
 extension TalkModel {
+    /// The person's latest words ask for this activity or say a clear yes (en / fi / sv). A hedge or a no
+    /// ("maybe", "not now", "I don't know") is never a yes. The device decides this, not the model: when it says
+    /// no, the model may ask plainly and the person can answer, or take the offer chip.
+    nonisolated static func asked(for kind: String, in said: String?) -> Bool {
+        guard let said else { return false }
+        let text = " " + said.lowercased().replacingOccurrences(of: "’", with: "'")
+            .components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "'")).inverted)
+            .filter { !$0.isEmpty }.joined(separator: " ") + " "
+        let yes = [" yes ", " yeah ", " yep ", " yup ", " sure ", " ok ", " okay ", " alright ", " please ", " let's ", " lets ",
+                   " go ahead ", " sounds good ", " sounds nice ", " would help ", " would be nice ", " would be good ",
+                   " i'd like ", " i would like ", " i'd love ", " love to ", " can we ", " could we ", " shall we ", " why not ",
+                   " joo ", " juu ", " kyllä ", " toki ", " okei ", " mennään ", " tehdään ", " aloitetaan ", " sopii ", " mielellään ",
+                   " ja ", " japp ", " gärna ", " okej ", " visst ", " absolut ", " kan vi ", " vi gör det "]
+        let words: [String]
+        switch kind {
+        case "breathe": words = [" breath", " hengit", " anda", " andning"]
+        case "walk", "light_hunt": words = [" walk", " kävel", " promen"]
+        case "firefly", "pebbles": words = [" game", " play ", " peli", " pela", " spel"]
+        default: words = []
+        }
+        let hedges = [" maybe ", " perhaps ", " not now ", " not today ", " not sure ", " don't know ", " dont know ", " later ", " no ",
+                      " nope ", " don't want ", " dont want ", " rather not ", " can't ", " cant ", " ehkä ", " en tiedä ", " ei nyt ",
+                      " myöhemmin ", " ei ", " en halua ", " kanske ", " inte nu ", " vet inte ", " senare ", " nej ", " vill inte "]
+        let saysYes = yes.contains(where: text.contains)
+        if hedges.contains(where: text.contains) && !saysYes { return false }
+        return saysYes || words.contains(where: text.contains)
+    }
+
     static func greetingKey(_ d: Date = Date()) -> String {
         let h = Calendar.current.component(.hour, from: d)
         return h < 5 ? "greet.night" : h < 12 ? "greet.morning" : h < 18 ? "greet.afternoon" : h < 23 ? "greet.evening" : "greet.night"
@@ -382,6 +467,7 @@ public struct TalkView: View {
                             .id(l.id)
                     }
                     if model.mode == .thinking { TypingDots().frame(maxWidth: .infinity, alignment: .leading) }
+                    if let offer = model.offer { OfferChip(offer: offer) { model.takeOffer() } }
                     Color.clear.frame(height: 1).id(Self.bottom)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.scrollSpace)).minY } action: { y in
                             let next = TalkFollow.next(current: followLatest, sentinelY: y, viewport: viewport,
@@ -408,6 +494,7 @@ public struct TalkView: View {
                 if abs(size.height - viewport) > 0.5 { viewport = size.height }
             }
             .onChange(of: model.lines) { _, _ in toBottom(proxy) }
+            .onChange(of: model.conversation.planCount) { _, _ in model.planArrived(); toBottom(proxy) }
             .onChange(of: model.mode) { _, _ in toBottom(proxy) }
             #if os(iOS)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in

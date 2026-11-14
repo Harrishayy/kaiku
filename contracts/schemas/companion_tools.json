@@ -147,6 +147,96 @@
         "web"
       ]
     },
+    "feel": {
+      "behavior": "NON_BLOCKING",
+      "description": "Tell Kaiku's mind about a clear feeling or a piece of news in what the person just said or how they sounded. Once per clear shift, never every turn; keep talking warmly while it runs. Returns how to meet it for this person: stance, depth (brief = an ordinary moment, keep the chat small; stay = do not close, stay as long as they want), one thing the record knows (recall) and at most one small thing you may offer once (may_offer). heard.via: voice when you heard them say it, text when it was typed.",
+      "executor": "cloud",
+      "parameters": {
+        "properties": {
+          "about": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "heard": {
+            "properties": {
+              "energy": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              "tone": {
+                "items": {
+                  "enum": [
+                    "flat",
+                    "tense",
+                    "tearful",
+                    "irritable",
+                    "warm",
+                    "playful",
+                    "calm"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              "valence": {
+                "enum": [
+                  "low",
+                  "neutral",
+                  "bright"
+                ],
+                "type": "string"
+              },
+              "via": {
+                "enum": [
+                  "voice",
+                  "text"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "valence"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "enum": [
+              "sad_news",
+              "good_news",
+              "flat",
+              "angry",
+              "worried",
+              "lonely",
+              "proud",
+              "relief",
+              "other"
+            ],
+            "type": "string"
+          },
+          "said": {
+            "maxLength": 300,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "heard"
+        ],
+        "type": "object"
+      },
+      "surfaces": [
+        "robot",
+        "glasses",
+        "iphone",
+        "mac",
+        "web"
+      ]
+    },
     "forget": {
       "description": "The person said \"don't remember that\" (scope last) or wants everything forgotten (all).",
       "executor": "cloud",

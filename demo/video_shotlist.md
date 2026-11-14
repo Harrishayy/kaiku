@@ -22,10 +22,10 @@ simulator at real speed, without sound, starting on the home screen as the app o
 
 | Clip | What the person does | Chapters (`-steps.txt`) |
 |---|---|---|
-| `iphone-1-first-run.mp4` | Fresh install: welcome, what Kaiku is and is not, "Continue without connecting" (the simulator finds no service nearby), the choices (turns "Keep our conversations" on), permissions (microphone, nudges), Kaiku's hello, the practice dial, "You did it", Today. | `welcome` `what-kaiku-is` `nearby-service` `choices` `permissions` `hello-and-first-task` `you-did-it` `today` |
-| `iphone-2-today-path.mp4` (6:15) | Today's path from 0 of 4 to "All done for today": three weather dials, Kaiku's suggestion (a one-minute walk on the phone in this take), Lantern played to its end screen, Seed shelf played to its end screen. | `today` `weather-check` `suggestion` `walking` `walk-summary` `lantern` `rotating-game` `all-done` |
+| `iphone-1-first-run.mp4` (1:43) | Fresh install of a build with a configured service: welcome, what Kaiku is and is not, "Connected to your Kaiku service", the choices (turns "Keep our conversations" on), permissions (microphone, nudges), Kaiku's hello spoken in its voice, the practice dial, "You did it", Today. | `welcome` `what-kaiku-is` `nearby-service` `choices` `permissions` `hello-and-first-task` `you-did-it` `today` |
+| `iphone-2-today-path.mp4` (5:51) | Today's path from 0 of 4 to "All done for today": three weather dials, Kaiku's suggestion (a minute of breathing in this take), Lantern played to its end screen, Seed shelf played to its end screen. | `today` `weather-check` `suggestion` `breathing` `lantern` `rotating-game` `all-done` |
 | `iphone-3-today-so-far.mp4` | Your days: "Today, so far" (what was noticed, from which device, what is shared), "See every detail", the garden. | `your-days` `today-so-far` `what-kaiku-saw` |
-| `iphone-4-talk.mp4` | Talk: taps the one voice control, the app says in words why the voice is not there, she types instead and gets the short scripted reply. | `talk` `voice-state` `typing` `reply` |
+| `iphone-4-talk.mp4` (0:36) | Talk on its typed path (no live voice on the recording service): she types "I walked to the lake today.", Kaiku thinks, the short scripted reply. | `talk` `typing` `reply` |
 | `iphone-5-you-glasses-check.mp4` | You: opens the sharing choices, turns Walks off and on, opens Glasses check with no glasses connected, runs the self-test. | `you` `sharing-choices` `glasses-check` `self-test` |
 | `web-dashboard.mp4` | The practitioner dashboard in one viewport: default view, reading days along the Trends chart, Kaiku's review and its agent trace, the knowledge graph maximised with a node selected, a day opened in the Daily account, a panel collapsed and another moved. Recorded from the public deployment with `--allow-model`: the review is the cached one written by Gemma. | `default-view` `trends-hover` `review` `gemma-reading` `agent-trace` `knowledge-graph` `graph-node` `daily-account` `reflections` `collapse-and-move` |
 | `mac-snapshots/mac-*.png` | Stills of the Mac panes drawn by the app itself (not a screen recording: see below). | |
@@ -35,7 +35,7 @@ simulator at real speed, without sound, starting on the home screen as the app o
 | Narrative shot | Covered by | Still needed from a person |
 |---|---|---|
 | 0:00–0:10 kitchen table | nothing | Film it: appointment card, phone face down. |
-| 0:10–0:19 first run | `iphone-1-first-run.mp4`: `nearby-service` → `choices` → `permissions` → `hello-and-first-task` | The simulator cannot find the service nearby, so the clip continues without connecting. For "found nearby" record it on the iPhone: recipe 1. |
+| 0:10–0:19 first run | `iphone-1-first-run.mp4`: `nearby-service` → `choices` → `permissions` → `hello-and-first-task` | The simulator cannot find a service nearby, so the clip uses a build with a configured service (the connect step shows `127.0.0.1`: cut from `choices`). For "found nearby" record it on the iPhone: recipe 1. |
 | 0:19–0:33 Talk, Kaiku's voice | fallback only: `iphone-4-talk.mp4` from `typing` (6 s of typed chat) | The real voice: recipe 2. |
 | 0:33–0:42 a game as a reading | `iphone-2-today-path.mp4` from `lantern` (the lantern lights, she touches, a star rises; end screen at the next chapter) | The narrative names Firefly; today's path now leads with Lantern, which is the reaction-time game. Say "Lantern", or record Firefly from Play (`TESTS=testF_Firefly:iphone-6-firefly`). |
 | 0:42–0:57 glasses outdoors | fallback only: `iphone-5-you-glasses-check.mp4` from `glasses-check` (states with nothing connected) | The walk itself: recipe 3. |
@@ -74,26 +74,35 @@ simulator at real speed, without sound, starting on the home screen as the app o
    Or give Terminal Screen Recording + Accessibility permission (System Settings → Privacy & Security) and run
    `KAIKU_TEST_CLOUD=<service> apps/apple/scripts/record_app_demo.sh mac && apps/apple/scripts/record_app_demo.sh post`.
 
-## Draft cut
+## README GIFs, Kaiku's voice, the draft cut
 
-`uv run --with pillow python demo/draft_cut.py` → `recordings/kaiku-draft-cut.mp4` (1:51) + `-sheet.png` +
-`-timeline.txt`; narration by time code and the list of placeholder seconds: `draft-cut-narration.md`.
+- `uv run python scripts/record_gifs.py [name ...]` → `docs/media/*.gif` (committed): `ios-first-run`,
+  `ios-today-path`, `ios-seed-shelf`, `ios-talk`, `ios-today-so-far`, `ios-glasses-check`, `web-dashboard`, `mac-app`.
+  Each is a few pieces of one clip; the pieces are picked by eye and listed at the top of the script. `mac-app` is
+  the app's own renders of its panes until a real screen recording (`mac-tour.mp4`) exists.
+- `uv run python scripts/record_voice.py --url <service>` → `demo/recordings/voice/*.wav`: the lines the app
+  plays, for the silent simulator clips (cached lines cost nothing; a new line is one capped TTS call).
+- `uv run --with pillow python demo/draft_cut.py` → `recordings/kaiku-draft-cut.mp4` (1:57, with Kaiku's voice
+  where it speaks) + `-sheet.png` + `-timeline.txt`. Filmed shots dropped into `recordings/` as
+  `shot-01-cold-open.mp4`, `shot-03-voice.mp4`, `shot-05-glasses.mp4`, `shot-06-robot.mp4`, `shot-07-mac.mp4`,
+  `shot-10-care-action.mp4`, `shot-11-end.mp4` replace their placeholder cards. Narration by time code, the
+  placeholder seconds and what the added sound is: `draft-cut-narration.md`.
+- The step-by-step guide for filming the remaining shots is the git-ignored `video_making.md` at the repo root.
 
-## Known problems (2026-11-14, iPhone 17 Pro simulator, build 7421f1c)
+## Known problems (2026-11-14 midday, iPhone 17 Pro simulator, current build)
 
-Checked on screen and gone: the Talk hang on tapping the message field, the doubled voice-unavailable message,
-today's path losing a finished stop, the "Mac" label on iPhone games, the Motion prompt on "Your choices", "That
-was my voice" without a voice, raw JSON in Glasses check, the typed service link in setup ("Continue without
-connecting" is the main button). Still there (frames in `recordings/bugs/after-fix-*.png`):
+Checked on screen and gone: content under the clock (every scrolling screen now has a backdrop at the top), the
+Talk reply hidden behind the keyboard, Seed shelf's empty end picture, the monospaced rows in What Kaiku saw
+today, and everything fixed in 7421f1c (Talk hang, doubled voice message, path stops, device labels, prompt
+timing, raw JSON in Glasses check). Still true:
 
-1. Scrolled content still runs under the clock and Dynamic Island (Your days, What Kaiku saw today, You, Glasses
-   check, the longer setup steps).
-2. Talk with the keyboard open leaves about one line of conversation visible: the reply is cut off under the
-   voice button.
-3. Seed shelf's end picture is three bare lines ("Look at all those sprouts" with no sprouts) when the frame was
-   taken, four seconds after the round.
-4. What Kaiku saw today still lists its rows in a monospaced face.
-5. Glasses check self-test says "Played through Speaker" on a service without a voice (not checked whether a
-   cached line really played).
-6. Recorder: chapter codes in `iphone-1-first-run-steps.txt` run about 6 to 9 s late (the simulator recording's
-   first seconds are not steady); the other clips are within about 2 s.
+1. Talk on a service without a live voice opens with "Kaiku's voice is temporarily unavailable. Please try
+   again." while its spoken greeting plays. The Talk GIF and the cut start after that header has collapsed.
+2. First run on the simulator never lists a service "nearby" (no Bonjour): the clip uses a build with a
+   configured service, whose connect step shows `127.0.0.1` and the service URL.
+3. The simulator recording runs a few seconds ahead of the clock the test prints, and not steadily at the
+   start: chapter codes in `iphone-1-first-run-steps.txt` are about 6 to 9 s late, the others within about 2 s.
+   The GIFs and the cut therefore use times picked by eye for the phone clips.
+4. The terminal the agents use may not record the screen: no Mac video, and the Mac GIF is in-app renders
+   (Talk and You are left out of it: their text field and switches are drawn as placeholders).
+5. Nobody has listened to the two voice files under the cut (`recordings/voice/`).

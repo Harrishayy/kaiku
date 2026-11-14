@@ -2,7 +2,8 @@
 
     uv run --with playwright python scripts/record_web_demo.py --url http://127.0.0.1:8000/?id=aino
     uv run --with playwright python scripts/record_web_demo.py --url <base> [--person aino] [--out demo/recordings]
-        [--name web-dashboard] [--size 1440x900] [--allow-model] [--browser <path to chrome-headless-shell>]
+        [--name web-dashboard] [--size 1440x900] [--still docs/media/web-dashboard.png] [--allow-model]
+        [--browser <path to chrome-headless-shell>]
 
 The take: default view → hover along the Trends chart → Kaiku's review (a cited record, then the agent trace) →
 the knowledge graph maximised and one node selected → the Daily account with one day opened → a panel collapsed
@@ -63,6 +64,7 @@ class Take:
         self.skipped: list[str] = []
         self.at = (700.0, 450.0)
         self.model = False
+        self.still: str | None = None
         self.opened = time.monotonic()
 
     # -- pacing and pointer -------------------------------------------------------------------------------------
@@ -181,6 +183,9 @@ def flow(t: Take, url: str) -> None:
     t.wait(1.5)
     t.t0 = time.monotonic()                         # chapters count from here; the load before it is cut from the clip
     t.chapter("default-view")
+    if t.still:                                     # a crisp still of the default view, before the pointer shows
+        page.screenshot(path=t.still, full_page=False)
+        print(f"STILL {t.still}")
     t.move(720, 420, 0.8)
     t.wait(4)
 
@@ -332,6 +337,7 @@ def main() -> None:
     ap.add_argument("--out", default="demo/recordings")
     ap.add_argument("--name", default="web-dashboard")
     ap.add_argument("--size", default="1440x900", help="viewport = video size (the layout opens five panels from 1280x800)")
+    ap.add_argument("--still", default="", help="also save a PNG of the default view here (e.g. docs/media/web-dashboard.png)")
     ap.add_argument("--allow-model", action="store_true", help="do not force generate=false or block writes")
     ap.add_argument("--browser", default=str(HEADLESS_SHELL), help="chrome-headless-shell to launch (falls back to Playwright's own)")
     a = ap.parse_args()
@@ -361,6 +367,7 @@ def main() -> None:
         page = ctx.new_page()
         take = Take(page)
         take.model = a.allow_model
+        take.still = a.still or None
         try:
             flow(take, url)
         finally:

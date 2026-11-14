@@ -82,6 +82,33 @@ en = "Okay, I'll be here."
 fi = "Selvä, minä olen täällä."
 sv = "Okej, jag finns här."
 
+# The check-in as a small passing chat (apps): Kaiku's hello when its live voice is not there, and its one warm
+# line for what was turned on the dials. Never a number, never a judgement.
+[checkin.hello]
+en = "Oh, hello. Good to see you. How is today going?"
+fi = "No hei. Kiva nähdä. Miten tämä päivä on mennyt?"
+sv = "Nämen hej. Vad fint att se dig. Hur har dagen varit?"
+
+[checkin.dials.low]
+en = "That sounds like a heavy day. Thank you for telling me. I'm right here."
+fi = "Kuulostaa raskaalta päivältä. Kiitos, että kerroit. Olen ihan tässä."
+sv = "Det låter som en tung dag. Tack för att du berättade. Jag finns här."
+
+[checkin.dials.tired]
+en = "Running on little today. Go gently, small steps are enough."
+fi = "Voimat ovat tänään vähissä. Ota rauhassa, pienet askeleet riittävät."
+sv = "Krafterna är små i dag. Ta det varsamt, små steg räcker."
+
+[checkin.dials.mid]
+en = "Thank you for telling me. An ordinary day counts too."
+fi = "Kiitos, että kerroit. Tavallinenkin päivä on arvokas."
+sv = "Tack för att du berättade. En vanlig dag räknas också."
+
+[checkin.dials.bright]
+en = "That sounds like a good day. I'm glad for you."
+fi = "Kuulostaa hyvältä päivältä. Olen iloinen puolestasi."
+sv = "Det låter som en bra dag. Jag är glad för din skull."
+
 # ---------------------------------------------------------------- walks (glasses / phone)
 [walk.start]
 en = "Let's go outside for a bit. I'll come along."

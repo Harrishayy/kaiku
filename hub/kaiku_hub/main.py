@@ -16,7 +16,7 @@ import re
 import signal
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -36,6 +36,7 @@ from .devices.atech_adapter import AtechAdapter
 from .devices.lora_serial import LoraSerialAdapter
 from .devices.unoq_yolo import UnoqYoloFaces
 from .episodes import EpisodeOutbox
+from .follow import HeadFollower
 from .live import Music, Voice, make_music, make_voice
 from .live.context_events import ContextEvents, DrumFeel, breathing_calmer, late_key, light_key
 from .live.lines import LinePlayer
@@ -54,6 +55,9 @@ from .uplink import Uplink
 
 log = get_logger("hub")
 CLOUD_TOOLS = frozenset(n for n, t in REGISTRY.items() if t.get("executor") == "cloud")
+# Cloud tools the model calls WITHOUT pausing (feel): Kaiku keeps listening, so no thinking pose and no spoken
+# "let me think" line; the answer goes back with the `scheduling` the result carries.
+BACKGROUND_TOOLS = frozenset(n for n in CLOUD_TOOLS if REGISTRY[n].get("behavior") == "NON_BLOCKING")
 
 SIM_WINDOW_S = 60.0
 CRISIS_DEDUPE_S = 60.0
@@ -78,7 +82,10 @@ class Hub:
         self.voice = voice or make_voice(s.voice, model_id=s.gemini_live_model, language=s.language,
                                          read_stdin=read_stdin, voice_name=s.voice_name)
         self.music = music or make_music(s.music, model_id=s.lyria_model, bpm_min=s.bpm_min, bpm_max=s.bpm_max)
-        self.bus = Bus("hub", home_id=s.home_id, version=__version__, details=self._details)
+        # The bus home is the robot's (what the boards were flashed with); observations are stamped with the
+        # person's record id (settings.home_id). They are usually the same; `[hub] robot_home_id` splits them.
+        self.bus_home = s.robot_home_id or s.home_id
+        self.bus = Bus("hub", home_id=self.bus_home, version=__version__, details=self._details)
         self.uplink = Uplink(url=s.cloud_url, token=s.home_token, queue_path=s.queue_path,
                              batch_s=s.uplink_batch_s, max_batch=s.uplink_max_batch, timeout_s=s.uplink_timeout_s,
                              transport=transport)
@@ -95,6 +102,15 @@ class Hub:
         self.store = SessionStore(s.store_path, retention_days=s.store_retention_days, max_mb=s.store_max_mb)
         self.engagement = EngagementTracker()
         self._in_session = False  # a ritual is open: raw + obs are stored and feed the engagement summary
+        # Follow mode (follow.py): a standalone head runs the ritual itself; the hub records it and sends no cmd.head.
+        self.follower = HeadFollower(
+            refractory_ms=s.tap_refractory_ms, force_max_g=s.tap_force_max_g, stale_s=s.head_stale_s,
+            ppg_band_hz=s.ppg_band_hz, ppg_min_clean_ratio=s.ppg_min_clean_ratio, hrv_window_s=s.hrv_window_s,
+            quality_min=s.quality_min,
+            unanswered_gap_s=float(s.attention.get("regreet_h", 3)) * 3600)
+        self.head_firmware: str | None = None  # from health/head details.firmware ("standalone" | "mqtt")
+        self.head_cmds_held = 0  # cmd.head not sent because the head runs its own ritual
+        self._other_homes: set[str] = set()
         self._ritual_consented = False  # the person accepted the conversation at some point in this ritual
         self._notes: dict[str, dict] = {}  # "not measured" reasons etc. for the stored session summary
         self._last_face: tuple[float, dict] | None = None
@@ -164,7 +180,18 @@ class Hub:
         if event == "pulse_not_measured":
             self.engagement.hrv_reason = str(fields.get("reason", ""))
 
-    async def _cmd(self, type_: str, payload: dict) -> None:
+    @property
+    def following(self) -> bool:
+        """True when the head runs the ritual itself and the hub only records it ([hub] head_mode)."""
+        mode = self.settings.head_mode
+        return mode == "follow" or (mode == "auto" and self.head_firmware == "standalone")
+
+    async def _cmd(self, type_: str, payload: dict, *, force: bool = False) -> None:
+        if type_ == "cmd.head" and self.following and not force:
+            # The standalone head turns every `pan` into a 600 ms open-loop motor run and owns its eyes per step:
+            # hub ritual / attention commands would fight it.
+            self.head_cmds_held += 1
+            return
         try:
             await self.bus.publish(type_, payload)
         except ContractError as e:
@@ -183,7 +210,8 @@ class Hub:
             log.error("emit_invalid", str(e)[:300], type=type_)
             return None
         self.uplink.enqueue(env)  # durable queue first: a stop during the publish must not lose it for the cloud
-        await self.bus.publish_env(env)
+        await self.bus.publish_env(env if env.home_id == self.bus_home
+                                   else env.model_copy(update={"home_id": self.bus_home}))
         if self._in_session:
             self.store.add_obs(env)
             self.engagement.on_obs(type_, payload, quality)
@@ -215,6 +243,10 @@ class Hub:
 
     # ================================================================ ritual control
     def start_ritual(self, reason: str) -> bool:
+        if self.following:
+            log.info("ritual_start_refused", "the head runs its own ritual (follow mode); press its ear to start",
+                     reason=reason)
+            return False
         if self.machine.running:
             return False
         log.info("ritual_start", reason)
@@ -359,6 +391,9 @@ class Hub:
         log.warning("safety_trigger", trigger.kind, matched=trigger.detail, lang=trigger.language)
         # 1. stop the ritual and any generated audio
         await self.machine.abort()
+        if self.following:  # stop recording; the head itself has no "stop" over MQTT, so only its eyes are calmed
+            await self._follow_do(self.follower.abort(now, "crisis", "safety trigger"))
+            await self._cmd("cmd.head", {"eyes": "soft"}, force=True)
         with contextlib.suppress(Exception):
             await self.music.stop()
         with contextlib.suppress(Exception):
@@ -449,6 +484,27 @@ class Hub:
             else:
                 await self.head(eyes=eyes)
             return {"ok": True}
+        if name in BACKGROUND_TOOLS:
+            # The crisis gate stays first, and local: the person's own words in the arguments are checked here,
+            # before anything is forwarded (the cloud runs its own gate again).
+            for text in (args.get("said"), args.get("about")):
+                if isinstance(text, str) and text and await self.check_utterance_safety(text):
+                    return {"ok": False, "error": "stopped", "scheduling": "SILENT"}
+            problems = validate_args(REGISTRY[name]["parameters"], args)
+            if problems or not self.conversation_consented:
+                return {"ok": False, "error": "; ".join(problems) or "no active consented conversation",
+                        "scheduling": "SILENT"}
+            try:
+                res = await self._cloud_tool_thinking(name, args)
+            except TimeoutError:
+                res = None  # no plan in time: say nothing about it, the conversation simply goes on
+            if res is None or (not res.get("crisis") and not res.get("ok")):
+                return {"ok": False, "error": (res or {}).get("error") or "not available right now",
+                        "scheduling": "SILENT"}
+            if res.get("crisis"):
+                await self.crisis(Trigger("phrase", "tool_args", None))
+                return {"ok": False, "error": "stopped", "scheduling": "SILENT"}
+            return {"ok": True, "scheduling": "WHEN_IDLE", **(res.get("result") or {})}
         if name in CLOUD_TOOLS:
             try:
                 res = await self._cloud_tool_thinking(name, args)
@@ -484,8 +540,13 @@ class Hub:
 
     async def _cloud_tool_thinking(self, name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         """Body while a cloud tool (ask_mind, recall, ...) is in flight: eyes `thinking` + a small upward glance
-        (the head has no ear command), restored afterwards unless a crisis took over. Raises TimeoutError."""
+        (the head has no ear command), restored afterwards unless a crisis took over. Raises TimeoutError.
+        Background tools (feel) run with no pose: the eyes stay whatever the ritual set (usually `listening`)."""
         timeout = self.settings.mind_timeout_s if name == "ask_mind" else self.think_timeout_s
+        if name in BACKGROUND_TOOLS:  # feel: keep listening warmly; the body does not change at all
+            return await asyncio.wait_for(
+                self.cloud.companion_tool(name, args, getattr(self, "_session_id", None), timeout_s=timeout + 1),
+                timeout)
         crisis_n = self._crisis_n
         self.thinking += 1
         await self._cmd("cmd.head", {"eyes": "thinking", "look": {"x": 0.0, "y": 0.3}})
@@ -513,6 +574,24 @@ class Hub:
             self.store.add_raw(env)
         p = env.payload.model_dump()
         name = t.name
+        if self.following and name in ("head/ear", "head/tap", "head/pan", "sensors/ppg"):
+            # The head owns the ritual: these feed the follower, never the hub's own steps or the ad-hoc mood
+            # (a press outside a dial step carries a stale 1-10 value).
+            f = self.follower
+            if name == "head/ear":
+                self.attention.person_started(datetime.now().astimezone())
+                stored = self._in_session
+                await self._follow_do(f.on_ear(int(p["value"]), bool(p.get("pressed")), env.ts, time.monotonic()))
+                if self._in_session and not stored:
+                    self.store.add_raw(env)  # the press that started the ritual belongs to its record
+            elif name == "head/tap":
+                f.on_tap(int(p["t_ms"]), p.get("force"))
+            elif name == "head/pan":
+                f.on_pan(bool(p["moving"]))
+                self.attention.set_head_pan(p["deg"])
+            else:
+                f.on_ppg(p["fs_hz"], p["samples"], p.get("t0_ms"), env.quality)
+            return
         if name == "head/tap":
             self.machine.feed(Event("tap", p))
             if self.machine.state == "drum":
@@ -614,7 +693,9 @@ class Hub:
             self.attention.set_present(False)
             if self.machine.running:
                 await self.notice("people.away")
-        if self.machine.running:  # one look per tick for the engagement summary (numbers only)
+        if self.following:
+            await self._follow_do(self.follower.tick(time.monotonic()))
+        if self._in_session:  # one look per tick for the engagement summary (numbers only)
             fresh = self._last_face is not None and time.monotonic() - self._last_face[0] <= self.attention.cfg.frame_s
             n = self.attention.face_count(now)
             self.engagement.look(n, self._last_face[1] if fresh and self._last_face else None)
@@ -624,6 +705,8 @@ class Hub:
             await self.notice("people.second")
         if self.attention.state != prev:
             log.info("attention", f"{prev} -> {self.attention.state}", faces=self.attention.face_count(now))
+        if self.following:
+            return  # the head greets and offers by itself (a face or a knock wakes it): no hub reflexes
         for kind, arg in actions:
             if kind == "head":
                 await self.head(**arg)
@@ -675,15 +758,101 @@ class Hub:
             trig = SafetyGate.check_phq9(item9_positive=env.payload.item9_positive)
             if trig:
                 await self.crisis(trig)
+        if env.home_id != self.settings.home_id:  # the robot's bus home -> the person's record
+            env = env.model_copy(update={"home_id": self.settings.home_id})
         self.uplink.enqueue(env)  # relay to the cloud (idempotent by id, so double delivery is harmless)
 
     async def on_health(self, t: ParsedTopic, env: Envelope[Any]) -> None:
         self.node_health[t.name] = env.payload.model_dump(mode="json")
+        if t.name == "head":
+            await self._on_head_health(env)
+
+    # ================================================================ follow mode (standalone head, D44)
+    async def _on_head_health(self, env: Envelope[Any]) -> None:
+        was = self.following
+        details = env.payload.details or {}
+        if env.payload.status != "down":
+            self.head_firmware = "standalone" if details.get("firmware") == "standalone" else "mqtt"
+        now = time.monotonic()
+        if self.following and not was:
+            log.info("head_mode", "follow: the head runs the ritual (standalone firmware); the hub records it")
+            if self.machine.running:  # never two rituals at once
+                await self.end_ritual()
+        elif was and not self.following:
+            log.info("head_mode", "drive: the head obeys cmd.head; the hub runs the ritual")
+            await self._follow_do(self.follower.lost(now, "head no longer runs the standalone firmware"))
+        if self.following:
+            self._mark_sim(env)
+            age = (datetime.now(UTC) - env.ts).total_seconds()
+            await self._follow_do(self.follower.on_health(env.payload.status, details, now, age_s=age))
+
+    async def on_sensors_cmd(self, t: ParsedTopic, env: Envelope[Any]) -> None:
+        """The standalone head's chimes (cmd.sensors from `head`) mark its step changes exactly."""
+        if env.source == "head" and self.following and env.payload.chime:
+            self._mark_sim(env)
+            await self._follow_do(self.follower.on_chime(env.payload.chime, time.monotonic()))
+
+    async def on_any_head(self, t: ParsedTopic, env: Envelope[Any]) -> None:
+        """A head on this broker under another home id: say so once (the usual reason nothing arrives)."""
+        if t.home_id != self.bus_home and t.home_id not in self._other_homes and env.payload.status != "down":
+            self._other_homes.add(t.home_id)
+            log.warning("head_on_other_home", f"a head publishes on home {t.home_id!r}; this hub listens on "
+                        f"{self.bus_home!r}. Set KAIKU_HUB_ROBOT_HOME_ID={t.home_id} (or flash the head with this home)")
+
+    async def _follow_do(self, actions: list[tuple]) -> None:
+        for a in actions:
+            kind = a[0]
+            if kind == "begin":
+                self._follow_begin(a[1])
+            elif kind == "end":
+                await self._follow_end(a[1], a[2], a[3])
+            elif kind == "emit":
+                ts = a[4]
+                if isinstance(ts, (int, float)):  # "this many seconds ago" (a greeting recorded once answered)
+                    ts = datetime.now(UTC) - timedelta(seconds=max(0.0, float(ts)))
+                elif ts is not None and abs((datetime.now(UTC) - ts).total_seconds()) > 120:
+                    ts = None  # a head clock that far off is not evidence of when the person answered
+                await self.emit(a[1], a[2], quality=a[3], ts=ts)
+            elif kind == "sensors":
+                await self.sensors(**a[1])
+            elif kind == "note":
+                self.note(a[1], **a[2])
+
+    def _follow_begin(self, reason: str) -> None:
+        log.info("ritual_start", reason, head_step=self.follower.step)
+        self._episode = {"id": str(uuid4()), "start": datetime.now(UTC), "outcome": "completed", "tools_used": []}
+        self.ritual_reason = reason
+        self.engagement.reset()
+        self._notes = {}
+        self.store.begin(self._episode["id"], reason, home_id=self.settings.home_id, sim=self.is_sim)
+        self._in_session = True
+
+    async def _follow_end(self, outcome: str, consented: bool, dial: dict[str, int]) -> None:
+        episode, self._episode = self._episode, None
+        if dial:  # same bookkeeping as the hub's own dial step (today's answers, yesterday's suggestion outcome)
+            nudge = self.state.record_dial(datetime.now().astimezone().date(), mood=dial.get("mood"),
+                                           energy=dial.get("energy"), sleep=dial.get("sleep"))
+            if nudge:
+                await self.emit("obs.nudge_outcome", nudge)
+        if episode:
+            episode.pop("_explicit_outcome", None)
+            episode["outcome"] = "crisis" if episode["outcome"] == "crisis" else outcome
+            self.episodes.enqueue(EpisodeIn(home_id=self.settings.home_id, surface="robot", intent="ritual",
+                                            end=datetime.now(UTC), transcript=None, **episode))
+            outcome = episode["outcome"]
+        self._close_session(episode["id"] if episode else None, outcome, consented)
+        self.ritual_reason = ""
+        self._last_ritual_end = time.monotonic()
+        log.info("ritual_done", outcome, mode="follow")
+        if outcome == "completed":
+            self.state.mark_ritual_done(datetime.now().astimezone().date())
 
     # ================================================================ lifecycle
     def _details(self) -> dict[str, Any]:
         return {
-            "ritual": self.machine.state,
+            "ritual": f"head:{self.follower.step or 'unknown'}" if self.following else self.machine.state,
+            "head_mode": "follow" if self.following else "drive",
+            "head_cmds_held": self.head_cmds_held,
             "uplink_queue": self.uplink.size(),
             "uplink_lag_s": self.uplink.lag_s(),
             "uplink_error": self.uplink.last_error,
@@ -721,6 +890,8 @@ class Hub:
         b.on("cmd/friendlink", self.on_friendlink_cmd)
         b.on("obs/#", self.on_obs)
         b.on("health/+", self.on_health)
+        b.on("cmd/sensors", self.on_sensors_cmd)
+        b.on("health/head", self.on_any_head, home_id="+")
         await b.__aenter__()
         await self.voice.start(self.on_utterance, self.on_tool)
         await self.lora.start()
@@ -741,6 +912,8 @@ class Hub:
 
     async def stop(self) -> None:
         await self.end_ritual()
+        if self.follower.active:  # stopped while the head is mid-ritual: close the record honestly
+            await self._follow_do(self.follower.abort(time.monotonic(), "ended_early", "hub stopped"))
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)

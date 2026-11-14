@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -272,10 +272,13 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         return mind.run_tool(store, settings, call)
 
     @app.post("/v1/companion/episode", response_model=EpisodeResult)
-    def companion_episode(ep: EpisodeIn) -> EpisodeResult:
+    def companion_episode(ep: EpisodeIn, background: BackgroundTasks) -> EpisodeResult:
         try:
             eid = mind.record_episode(store, ep)
-            return EpisodeResult(ok=True, id=eid, transcript_stored=store.transcript_exists(ep.home_id, eid))
+            kept = store.transcript_exists(ep.home_id, eid)
+            if kept:  # after the response: one Gemma call relabels this reflection's level, tone and themes
+                background.add_task(mind_affect.label_episode, store, ep.home_id, eid)
+            return EpisodeResult(ok=True, id=eid, transcript_stored=kept)
         except ValueError as e:  # includes MemoryRefused (thread topic)
             raise HTTPException(422, str(e)) from None
 
@@ -297,6 +300,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     def me_forget_all(home_id: str) -> DeletedResponse:
         n = store.memory_delete(home_id)
         mind_graph.rebuild(store, home_id)
+        mind_affect.forget_heard(store, home_id)  # "forget everything" covers what the companion noted about tone
         return DeletedResponse(deleted=n)
 
     # Opt-in conversation transcripts — person-facing only; no clinician route reads them (tested).
@@ -317,6 +321,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     @app.delete("/v1/me/transcripts", response_model=DeletedResponse)
     def me_transcripts_delete_all(home_id: str) -> DeletedResponse:
         mind_affect.forget(store, home_id)
+        store.kv_delete(f"feel:{home_id}")
         return DeletedResponse(deleted=store.transcript_delete(home_id))
 
     @app.get("/v1/me/constellation", response_model=ConstellationResponse)

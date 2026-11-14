@@ -83,15 +83,24 @@ _FILLER = {"the", "and", "her", "his", "their", "she", "has", "have", "that", "w
            "named", "called", "person", "wants", "want", "said", "says", "going", "will", "every", "this", "are", "was"}
 
 
+_DAY = re.compile(r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|\b(?:tomorrow|tonight|next week)\b", re.I)
+
+
 def grounded(text: str, said: str | None) -> bool:
-    """True when at least half of the fact's content words occur in what the person said (same word stem)."""
+    """True when the fact is in what the person said: more than half of its content words occur there (same word
+    stem), and so does every specific a model could have added on its own: a name, a day, a number."""
     if not said or not said.strip():
         return False
-    stems = {w[:5] for w in _WORD.findall(norm(said))}
+    heard = norm(said)
+    stems = {w[:5] for w in _WORD.findall(heard)}
     words = [w for w in _WORD.findall(norm(text)) if w not in _FILLER]
     if not words:
         return False
-    return sum(w[:5] in stems for w in words) * 2 >= len(words)
+    names = [w for w in re.findall(r"(?<=[^\W\d_][ ,])[A-ZÅÄÖ][^\W\d_]{2,}", text)]  # capitalised, not sentence-first
+    specifics = [*names, *_DAY.findall(text), *re.findall(r"\d+", text)]
+    if any(norm(x)[:5] not in stems and norm(x) not in heard for x in specifics):
+        return False
+    return sum(w[:5] in stems for w in words) * 2 > len(words)
 
 
 # ------------------------------------------------------------------ settings

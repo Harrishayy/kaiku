@@ -57,7 +57,7 @@ public enum KaikuScreen: String, CaseIterable, Sendable {
 @ViewBuilder
 func destination(_ r: KaikuRoute) -> some View {
     switch r {
-    case .weather: WeatherCheckView()
+    case .weather: CheckInChatView()
     case .firefly: FireflyGame()
     case .pebbles: PebbleGame()
     case .lantern: LanternGame()

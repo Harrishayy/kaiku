@@ -108,6 +108,20 @@ export interface CareSharing {
   share_with_care_team?: boolean;
 }
 /**
+ * How this conversation should run, for the device: the same guidance the model reads in its instruction.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ChatShape".
+ */
+export interface ChatShape {
+  depth: "brief" | "stay";
+  /**
+   * check-in dials not answered today
+   */
+  open_items?: ("mood" | "energy" | "sleep")[];
+  purpose: "talk" | "check_in" | "walk" | "ritual";
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "ClinicianAskRequest".
  */
@@ -220,6 +234,10 @@ export interface CompanionSessionRequest {
   language?: ("en" | "fi" | "sv") | null;
   others_present?: boolean;
   /**
+   * why the conversation was opened. check_in: a small passing chat alongside the periodic check-in (see chat_shape). Omitted = today's behaviour for the intent
+   */
+  purpose?: ("talk" | "check_in" | "walk" | "ritual") | null;
+  /**
    * reuse an open session belonging to this home and surface
    */
   resume_session_id?: string | null;
@@ -233,6 +251,10 @@ export interface CompanionSessionRequest {
  * via the `definition` "CompanionSessionResponse".
  */
 export interface CompanionSessionResponse {
+  /**
+   * present when the request named a purpose
+   */
+  chat_shape?: ChatShape | null;
   context_card: ContextCard;
   /**
    * poll interval for consented source updates during an active conversation
@@ -267,6 +289,10 @@ export interface CompanionSessionResponse {
 export interface ContextCard {
   care_info?: string | null;
   /**
+   * check-in sessions: how the chat should open
+   */
+  chat_depth?: ("brief" | "stay") | null;
+  /**
    * on any surface
    *
    * @maxItems 4
@@ -289,11 +315,25 @@ export interface ContextCard {
    */
   memories?: [] | [string] | [string, string] | [string, string, string];
   /**
+   * check-in sessions: dials not answered today; at most one is woven into the chat
+   *
+   * @maxItems 3
+   */
+  open_items?:
+    | []
+    | ["mood" | "energy" | "sleep"]
+    | ["mood" | "energy" | "sleep", "mood" | "energy" | "sleep"]
+    | ["mood" | "energy" | "sleep", "mood" | "energy" | "sleep", "mood" | "energy" | "sleep"];
+  /**
    * topic left open on any surface
    */
   open_thread?: string | null;
   others_present?: boolean;
   phq9_due?: boolean;
+  /**
+   * set when the device said why it opened the session
+   */
+  purpose?: ("talk" | "check_in" | "walk" | "ritual") | null;
   /**
    * how the latest reflection with Kaiku went, as a level and themes only (never the words), so Kaiku can be gentle about it
    */
@@ -335,15 +375,56 @@ export interface LastReflection {
    * they did not want to talk or asked to stop
    */
   declined?: boolean;
+  energy?: ("low" | "medium" | "high") | null;
+  heard?: HeardTone | null;
   /**
    * @maxItems 3
    */
   themes?: [] | [string] | [string, string] | [string, string, string];
+  /**
+   * from their words (rules or Gemma)
+   *
+   * @maxItems 2
+   */
+  tone?:
+    | []
+    | ["flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"]
+    | [
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm",
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"
+      ];
   valence?: ("low" | "neutral" | "bright") | null;
   /**
    * e.g. "yesterday evening", "this morning"
    */
   when: string;
+}
+/**
+ * How a conversation sounded to the model that was in it, reported through the `feel` tool. An observation
+ * by a model, never a measurement and never a state. `model_heard`: the native-audio voice model heard the
+ * person speak. `model_read`: it went by their typed or transcribed words only.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HeardTone".
+ */
+export interface HeardTone {
+  energy?: ("low" | "medium" | "high") | null;
+  /**
+   * how many times a feeling was noticed in that conversation
+   */
+  moments?: number;
+  provenance: "model_heard" | "model_read";
+  /**
+   * @maxItems 2
+   */
+  tone?:
+    | []
+    | ["flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"]
+    | [
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm",
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"
+      ];
+  valence?: ("low" | "neutral" | "bright") | null;
 }
 /**
  * Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within
@@ -362,6 +443,10 @@ export interface LiveToken {
  * via the `definition` "CompanionTool".
  */
 export interface CompanionTool {
+  /**
+   * Live asynchronous function calling: declare it so and answer with the result's `scheduling`
+   */
+  behavior?: "NON_BLOCKING" | null;
   description: string;
   name: string;
   parameters: {
@@ -1271,6 +1356,45 @@ export interface EventsResult {
   }[];
 }
 /**
+ * Result of the `feel` tool: how to meet what the person just shared. Chosen by code from this person's own
+ * record; hints for the companion's own words, never a script. Nothing here is a state or changes one.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "FeelPlan".
+ */
+export interface FeelPlan {
+  /**
+   * brief: an ordinary moment, the chat may stay small. stay: a strong feeling either way, repeated heaviness, or they keep talking: never close first
+   */
+  depth: "brief" | "stay";
+  /**
+   * a thread to ask about next time was kept
+   */
+  follow_up_saved?: boolean;
+  /**
+   * one small thing to offer once, or null
+   */
+  may_offer?: string | null;
+  /**
+   * start_activity kind, only after a clear yes
+   */
+  offer_activity?: ("breathe" | "drum" | "firefly" | "pebbles" | "tell" | "walk" | "light_hunt") | null;
+  /**
+   * why that one, and how to offer it
+   */
+  offer_note?: string | null;
+  /**
+   * one thing the record knows that fits
+   */
+  recall?: string | null;
+  reflect_hint: string;
+  /**
+   * Live FunctionResponse scheduling for this non-blocking tool: send it as `response.scheduling` so the model answers with the plan as soon as it is idle
+   */
+  scheduling?: "INTERRUPT" | "WHEN_IDLE" | "SILENT";
+  stance: "comfort" | "celebrate" | "steady" | "explore" | "give_space";
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "FriendLink".
  */
@@ -2173,6 +2297,10 @@ export interface ReflectionOverview {
    * theme -> reflections it came up in
    */
   themes?: SourceCount[];
+  /**
+   * how they sounded, by provenance: tone of their words, and tone as reported by the model in the conversation
+   */
+  tone_summary?: string | null;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -2181,8 +2309,25 @@ export interface ReflectionOverview {
 export interface ReflectionDay {
   date: string;
   declined?: boolean;
+  energy?: ("low" | "medium" | "high") | null;
+  /**
+   * as reported by the model in the conversation
+   */
+  heard?: HeardTone | null;
   part: "morning" | "afternoon" | "evening";
   themes?: string[];
+  /**
+   * from their words (rules or Gemma)
+   *
+   * @maxItems 2
+   */
+  tone?:
+    | []
+    | ["flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"]
+    | [
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm",
+        "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"
+      ];
   valence?: ("low" | "neutral" | "bright") | null;
 }
 /**
@@ -2578,6 +2723,10 @@ export interface SelfReport {
   channel?: "robot" | "phone" | "mac" | "web" | "glasses_voice";
   context?: "ritual" | "adhoc" | "post_activity";
   item: "mood" | "energy" | "sleep";
+  /**
+   * the answer exactly as dialled when the device has a 1-10 dial (the standalone robot head); `value` is then ceil(scale_10 / 2). Absent for 1-5 dials
+   */
+  scale_10?: number | null;
   value: number;
 }
 /**

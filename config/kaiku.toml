@@ -36,7 +36,8 @@ start_sensitivity = "START_SENSITIVITY_LOW"   # fewer false starts from room noi
 end_sensitivity = "END_SENSITIVITY_LOW"       # people pause mid-thought: don't cut them off
 prefix_padding_ms = 120
 silence_ms = 900                              # quiet this long = the person's turn is over
-affective_dialog = false                      # true breaks the session (1007 "invalid argument" on the first turn, real call 2026-11-14)
+affective_dialog = false                      # the Live guide lists it as supported on gemini-3.8-live (v1beta, enable_affective_dialog), but true closes the session with 1007 "invalid argument" on the first turn (real calls 2026-11-14: SDK, raw key and token endpoint). Leave off until a real call passes.
+feel_scheduling = "WHEN_IDLE"                 # FunctionResponse scheduling for the non-blocking `feel` tool (INTERRUPT | WHEN_IDLE | SILENT). Real Live sessions 2026-11-14: the model calls `feel` before it speaks; with WHEN_IDLE it then answers using the plan, with SILENT it said nothing that turn.
 context_compression = true                    # sliding window: long chats don't hit the context limit
 session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
 reconnect_attempts = 2                       # bounded recovery during an explicitly started conversation
@@ -123,6 +124,11 @@ store_max_mb = 200          # then the oldest sessions go until the file is unde
 presence_leave_s = 6        # distance comes from the face box (D39): a face turned away this long = the person left
 presence_stale_s = 5        # no distance reading this long (camera off, UNO Q down) = presence unknown, not "here"
 engagement_enabled = true   # obs.engagement: multi-cue session summary, only for an accepted conversation
+head_mode = "auto"          # auto | follow | drive. auto: FOLLOW a head whose health/head says firmware = standalone
+                            # (the ritual runs on the head, D44; the hub records it), else DRIVE the ritual itself
+robot_home_id = ""          # home id the robot boards publish on (firmware secrets.h / UNO Q .env), if it differs from
+                            # the person's record (KAIKU_HOME_ID). Empty = the same. Env: KAIKU_HUB_ROBOT_HOME_ID
+head_stale_s = 15           # follow mode: no health/head this long (3 heartbeats) = the head is gone
 
 [ritual]
 enabled_nudges = ["breathe", "drum", "daylight_walk"] # No Friendlink or iCBT task is implemented in this build.
@@ -184,8 +190,9 @@ max_model_len = 8192
 # Allocate the approved $25 total / $23 daily ceiling: local ledgers $20/$18; the deployed API
 # uses KAIKU_BUDGET_TOTAL_USD=5 and KAIKU_BUDGET_DAILY_USD=5 in its runtime secret.
 # Over the cap every caller fails softly; this is an estimated spend ceiling, not a provider billing guarantee.
-total_usd = 20.0
-daily_usd = 18.0
+# Lead approved a further extension on 2026-11-14 (voice on recordings, real attunement and tone proofs): +$10.
+total_usd = 30.0
+daily_usd = 28.0
 argon_per_home_day = 20                    # flagship calls per home per local day (ask_mind, reflection, consolidation, briefs); then Flash only
 images_per_home_day = 3                    # walk postcards per home per local day
 
@@ -257,3 +264,4 @@ usual_scale = 1.0          # this week's median within this many baseline scales
 help_early_tries = 3       # fewer attempts than this = too early to rely on
 help_consistent_tries = 8  # at least this many attempts and a narrow interval = consistent
 reflection_labels_per_night = 4  # reflections Gemma relabels per home in one nightly run (newest first)
+reflection_label_at_episode_end = true  # one Gemma call right after an opted-in conversation: level, themes, tone, energy (rules stand if it fails)

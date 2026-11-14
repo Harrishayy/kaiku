@@ -274,6 +274,9 @@ public struct LiveEventsResponse: Codable, Sendable { public var events: [AnyEnv
 
 public enum CompanionSurface: String, Codable, Sendable { case robot, glasses, iphone, mac, web }
 public enum CompanionIntent: String, Codable, Sendable { case ritual, checkin, walk, breathe, talk, `break` }
+/// Why this conversation was opened (contracts: api.CompanionSessionRequest.purpose). The cloud shapes the chat
+/// with it: a check-in is a small passing chat that closes itself on an ordinary day.
+public enum CompanionPurpose: String, Codable, Sendable { case talk, check_in, walk, ritual }
 
 public struct CompanionSessionRequest: Codable, Sendable {
     public var surface: CompanionSurface
@@ -282,6 +285,8 @@ public struct CompanionSessionRequest: Codable, Sendable {
     public var language: String?
     public var others_present: Bool = false
     public var resume_session_id: String? = nil
+    /// Omitted when nil, so a cloud that does not know the field yet still accepts the request.
+    public var purpose: CompanionPurpose? = nil
 }
 
 public struct LiveToken: Codable, Sendable, Equatable {
@@ -294,6 +299,8 @@ public struct CompanionTool: Codable, Sendable, Equatable {
     public var name: String
     public var description: String
     public var parameters: JSONValue
+    /// "NON_BLOCKING": Live asynchronous function calling; answer with the result's `scheduling`.
+    public var behavior: String? = nil
 }
 
 public struct ContextCard: Codable, Sendable, Equatable {
@@ -304,6 +311,23 @@ public struct ContextCard: Codable, Sendable, Equatable {
     public var suggestion: String?
     public var open_thread: String?
     public var tone: String?
+    /// Plain facts the person recorded themselves today, in everyday words ("a short night"); never a number.
+    public var today_facts: [String]? = nil
+    public var last_reflection: LastReflection? = nil
+    /// Set when the device said why it opened the session (talk | check_in | walk | ritual).
+    public var purpose: String? = nil
+    /// Check-in sessions: how the chat should open (brief | stay).
+    public var chat_depth: String? = nil
+    /// Check-in sessions: dials not answered today (mood | energy | sleep).
+    public var open_items: [String]? = nil
+}
+
+/// How the latest talk with Kaiku went: a level and themes, never the words (contracts: api.LastReflection).
+public struct LastReflection: Codable, Sendable, Equatable {
+    public var when: String?
+    public var valence: String?
+    public var themes: [String]?
+    public var declined: Bool?
 }
 
 public struct CompanionSessionResponse: Codable, Sendable, Equatable {
@@ -320,6 +344,9 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var context_refresh_seconds: Int? = nil
     /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
     public var live_setup: JSONValue?
+    /// How this conversation should run (contracts: api.ChatShape {purpose, depth, open_items}): the same guidance
+    /// the model reads. Loosely typed on purpose: the device only reads it; absent when no purpose was sent.
+    public var chat_shape: JSONValue? = nil
 }
 
 public struct CompanionToolCall: Codable, Sendable {
@@ -381,6 +408,52 @@ public struct EpisodeResult: Codable, Sendable { public var ok: Bool; public var
 public enum ToolExecutor {
     public static let deviceTools: Set<String> = [
         "express", "log_walk_moment", "look_at_this", "record_dial", "send_friend_ping", "start_activity", "start_phq9",
+        // In the registry since 2026-11-14; not built on the Apple surfaces yet: the device answers "not on this
+        // device" (the default of every `deviceTool`) instead of forwarding them to the cloud.
+        "set_walk_goal", "suggest_activity",
     ]
     public static func isDevice(_ name: String) -> Bool { deviceTools.contains(name) }
+}
+
+/// What the cloud's `feel` tool hands back when the voice model noticed a feeling or news (contracts:
+/// api.FeelPlan; chosen by code in the cloud from this person's own record). The device never decides any of it:
+/// it shows the one thing that may be offered as a soft chip, lets a `stay` conversation run on, and plays the
+/// completion sparkle once for good news. The hints for the model's own words (`reflect_hint`, `recall`,
+/// `offer_note`) go back to the model untouched and are not read here.
+public struct FeelPlan: Equatable, Sendable {
+    public enum Depth: String, Sendable { case brief, stay }
+    /// comfort | celebrate | steady | explore | give_space
+    public var stance: String?
+    public var depth: Depth
+    /// One small thing Kaiku may offer once, as a phrase for the model ("sitting quietly together for a minute").
+    public var mayOffer: String?
+    /// The `start_activity` kind behind the offer, when it is an activity (breathe | drum | walk …).
+    public var offerActivity: String?
+
+    public init(stance: String? = nil, depth: Depth = .brief, mayOffer: String? = nil, offerActivity: String? = nil) {
+        self.stance = stance; self.depth = depth; self.mayOffer = mayOffer; self.offerActivity = offerActivity
+    }
+
+    /// Reads a tool result. Nil when it is not a plan.
+    public init?(result: JSONValue?) {
+        guard let result, case .object(let o) = result["plan"] ?? result,
+              o["depth"] != nil || o["stance"] != nil else { return nil }
+        stance = o["stance"]?.string
+        depth = o["depth"]?.string.flatMap(Depth.init(rawValue:)) ?? .brief
+        mayOffer = o["may_offer"]?.string
+        offerActivity = o["offer_activity"]?.string
+    }
+
+    /// Good news: the one case that gets the sparkle moment.
+    public var isGoodNews: Bool { stance == "celebrate" }
+}
+
+public extension CompanionSessionResponse {
+    /// How the cloud wants this conversation to open (`chat_shape.depth`): `stay` after a heavy few days.
+    var openingDepth: FeelPlan.Depth? { chat_shape?["depth"]?.string.flatMap(FeelPlan.Depth.init(rawValue:)) }
+    /// Check-in dials not answered today on any surface (`chat_shape.open_items`); nil on an older cloud.
+    var openCheckInItems: [DialItem]? {
+        guard case .array(let a)? = chat_shape?["open_items"] else { return nil }
+        return a.compactMap { $0.string.flatMap(DialItem.init(rawValue:)) }
+    }
 }

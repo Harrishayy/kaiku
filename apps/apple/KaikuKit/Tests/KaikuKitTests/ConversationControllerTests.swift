@@ -111,6 +111,11 @@ private final class ConversationHTTP: URLProtocol {
 }
 
 @MainActor final class ConversationControllerTests: XCTestCase {
+    private var grace: TimeInterval = 0
+    // These tests end conversations on purpose-built fakes: no goodbye is playing, so nothing needs waiting for.
+    override func setUp() async throws { grace = Conversation.closeGrace; Conversation.closeGrace = 0 }
+    override func tearDown() async throws { Conversation.closeGrace = grace }
+
     private func fixture() -> (AppModel, ControllerAudio, ControllerTransport, Conversation, URL) {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

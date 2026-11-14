@@ -75,6 +75,8 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     private let onEvent: @Sendable (Event) -> Void
     private let lock = NSLock()
     private var cancelled: Set<String> = []
+    /// Tools declared NON_BLOCKING in this session (the cloud's `behavior`, plus ask_mind).
+    private var nonBlocking: Set<String> = Options().nonBlocking
     private var closedReported = false
     /// Why the server closed the socket (close code + reason text from Gemini), for logs and tests.
     public private(set) var closeReason: String?
@@ -84,6 +86,9 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     }
 
     public func connect(token: String, session: CompanionSessionResponse, options: Options) {
+        lock.lock()
+        nonBlocking = options.nonBlocking.union(session.tools.filter { $0.behavior == "NON_BLOCKING" }.map(\.name))
+        lock.unlock()
         var c = URLComponents(string: Self.endpoint)!
         c.queryItems = [URLQueryItem(name: "access_token", value: token)]
         let s = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
@@ -148,7 +153,8 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     public func respond(id: String, name: String, result: JSONValue) {
         lock.lock(); let skip = cancelled.remove(id) != nil; lock.unlock()
         if skip { return }
-        send(Self.toolResponse(id: id, name: name, result: result, background: Options().nonBlocking.contains(name)))
+        lock.lock(); let background = nonBlocking.contains(name); lock.unlock()
+        send(Self.toolResponse(id: id, name: name, result: result, background: background))
     }
 
     // MARK: pure frames (tested)
@@ -157,7 +163,7 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
         let model = session.model.hasPrefix("models/") ? session.model : "models/\(session.model)"
         let decls: [[String: Any]] = session.tools.map { t in
             var d: [String: Any] = ["name": t.name, "description": t.description, "parameters": t.parameters.any]
-            if options.nonBlocking.contains(t.name) { d["behavior"] = "NON_BLOCKING" }
+            if options.nonBlocking.contains(t.name) || t.behavior == "NON_BLOCKING" { d["behavior"] = "NON_BLOCKING" }
             return d
         }
         let realtime: [String: Any]
@@ -209,8 +215,18 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
     }
 
     static func toolResponse(id: String, name: String, result: JSONValue, background: Bool) -> [String: Any] {
-        var response: [String: Any] = ["result": result.any]
-        if background { response["scheduling"] = "WHEN_IDLE" }
+        // A non-blocking tool's result may say how to deliver it (`scheduling`: feel → SILENT, so Kaiku is not
+        // made to speak again); that field is for this frame, not for the model.
+        var body = result
+        var scheduling = "WHEN_IDLE"
+        if background, case .object(var o) = result, let s = o["scheduling"]?.string,
+           ["INTERRUPT", "WHEN_IDLE", "SILENT"].contains(s) {
+            scheduling = s
+            o["scheduling"] = nil
+            body = .object(o)
+        }
+        var response: [String: Any] = ["result": body.any]
+        if background { response["scheduling"] = scheduling }
         return ["toolResponse": ["functionResponses": [["id": id, "name": name, "response": response]]]]
     }
 

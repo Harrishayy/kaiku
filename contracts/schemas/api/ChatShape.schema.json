@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "description": "How this conversation should run, for the device: the same guidance the model reads in its instruction.",
+  "properties": {
+    "depth": {
+      "enum": [
+        "brief",
+        "stay"
+      ],
+      "title": "Depth",
+      "type": "string"
+    },
+    "open_items": {
+      "description": "check-in dials not answered today",
+      "items": {
+        "enum": [
+          "mood",
+          "energy",
+          "sleep"
+        ],
+        "type": "string"
+      },
+      "title": "Open Items",
+      "type": "array"
+    },
+    "purpose": {
+      "enum": [
+        "talk",
+        "check_in",
+        "walk",
+        "ritual"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    }
+  },
+  "required": [
+    "purpose",
+    "depth"
+  ],
+  "title": "ChatShape",
+  "type": "object"
+}

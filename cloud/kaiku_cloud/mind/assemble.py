@@ -19,6 +19,10 @@ Context card (built deterministically by the cloud, ≤ 400 tokens). Allowed key
     care_info       an approved passage from the care team (the only source for treatment facts)
     others_present  bool (a second person is in the room)
     dont_remember   bool (the person said "don't remember things")
+    purpose         "talk" | "check_in" | "walk" | "ritual" (why the device opened the session, when it said so)
+    chat_depth      "brief" | "stay" (how the chat should open; rule in mind/card.py)
+    open_items      check-in dials not answered today ("mood" | "energy" | "sleep"); at most one is woven in
+The shape of a check-in (`render_shape`) is its own short section, outside the card's token budget.
 Anything that looks like state, scores or data about the person is rejected: the model never sees it.
 """
 
@@ -37,7 +41,13 @@ ROOT = _PERSONA.parents[1] if _PERSONA else Path.cwd()
 
 CARD_KEYS = {"language", "intent", "time_of_day", "weather_word", "first_name", "done_today", "suggestion",
              "phq9_due", "source_context", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember",
-             "recent_reflection", "last_reflection", "today_facts"}
+             "recent_reflection", "last_reflection", "today_facts", "purpose", "chat_depth", "open_items"}
+DEPTHS = {"brief", "stay"}
+OPEN_ITEMS = {"mood": "how they feel", "energy": "their energy", "sleep": "how they slept"}
+FEEL_RULE = ("`feel`: call it once per clear shift in how they feel or clear news, and keep talking while it runs. Its "
+             "answer shapes your next turns: how to meet it (`stance`, `reflect_hint`), one thing to bring in lightly "
+             "(`recall`), at most one thing to offer once after they feel heard (`may_offer`; a no is final), and "
+             "whether to keep it small or stay (`depth`).")
 TONES = {"steady", "gentle", "extra-gentle"}
 LANGUAGES = {"en", "fi", "sv"}
 FORBIDDEN_KEY = re.compile(r"state|score|verdict|consensus|needs_call|phq9_total|z_|baseline|metric|trend|risk|"
@@ -98,6 +108,8 @@ def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None)
         lines.append(f"Activities you can start here: {', '.join(s['activities'])}. Start one only when the person "
                      "asks for it or says yes to your offer; when a conversation opens, greet them first.")
     lines += [f"- {r}" for r in s.get("rules", [])]
+    if "feel" in tools:
+        lines.append(f"- {FEEL_RULE}")
     return "\n".join(lines)
 
 
@@ -114,6 +126,10 @@ def validate_card(card: dict[str, Any]) -> None:
         raise ValueError("at most 3 memories")
     if len(card.get("routines", [])) > 2:
         raise ValueError("at most 2 routines")
+    if card.get("chat_depth", "brief") not in DEPTHS:
+        raise ValueError(f"chat_depth must be one of {sorted(DEPTHS)}")
+    if set(card.get("open_items", [])) - set(OPEN_ITEMS):
+        raise ValueError(f"open_items must be among {sorted(OPEN_ITEMS)}")
 
 
 def render_card(card: dict[str, Any]) -> str:
@@ -133,7 +149,8 @@ def render_card(card: dict[str, Any]) -> str:
     if c.get("suggestion"):
         lines.append(f"Today's suggestion (if it fits): {c['suggestion']}.")
     if c.get("phq9_due"):
-        lines.append("The two-weekly questionnaire is due; offer it once, gently, with start_phq9.")
+        lines.append("The two-weekly questionnaire is due: you may offer it once, gently. Call start_phq9 only "
+                     "after a clear yes.")
     if c.get("routines"):
         lines.append("Their rhythm: " + "; ".join(c["routines"]) + ".")
     if c.get("open_thread"):
@@ -161,6 +178,48 @@ def render_card(card: dict[str, Any]) -> str:
     return text
 
 
+def render_grounding(card: dict[str, Any]) -> str:
+    """What may be said as fact. The persona is full of quoted example lines ("You've been out already…"); a model
+    reused one as a fact about a day with nothing recorded. This section says which is which, every session."""
+    today = bool(card.get("done_today") or card.get("today_facts")) or any(
+        " today" in f for f in card.get("source_context", []))
+    lines = ["Quoted lines anywhere in these instructions show how to speak. They are never facts about this person "
+             "or this day: do not reuse one unless \"Today\" above or the person's own words make it true.",
+             "Say that they went out, slept a certain way, did an activity or were somewhere only if \"Today\" lists "
+             "it for today or they just told you. Something listed for yesterday or earlier is not about today."]
+    if not today:
+        lines.append("Nothing is recorded for today yet: do not say or imply that they have done anything today.")
+    if not card.get("weather_word"):
+        lines.append("You are not told the weather: do not describe it.")
+    return "\n".join(lines)
+
+
+def render_shape(card: dict[str, Any]) -> str | None:
+    """How a check-in conversation runs: a passing chat that stays small on an ordinary day and stays on a very
+    good or very hard one. Only when the device opened the session as a check-in."""
+    if card.get("purpose") != "check_in":
+        return None
+    if card.get("chat_depth") == "stay":
+        lines = ["This check-in is in no hurry: the last talk was a hard one, or it has been a heavy few days. Open "
+                 "gently with something real, follow them, and never be the one to close."]
+    else:
+        lines = ["This check-in is a passing chat, like meeting someone you like on the street. Open with something "
+                 "real that \"Today\" above actually lists (what was left open last time, the weather if it is "
+                 "given); if it lists nothing, a plain greeting and one open question. Give back what you hear, and "
+                 "close warmly and lightly within about four exchanges, in words like \"Good to see you. I'm "
+                 "around later.\" Call `end_session` with your goodbye.",
+                 "If it turns out to be a very good or a very hard day, call `feel`; when its `depth` is stay, or "
+                 "they keep talking or ask for more, stay as long as they want. Never keep someone talking, and "
+                 "never rush someone who needs it."]
+    items = [OPEN_ITEMS[i] for i in card.get("open_items", [])]
+    if items:
+        lines.append("Not answered yet today: " + ", ".join(items) + ". You may weave ONE of these into the chat as "
+                     "an ordinary question (\"How did you sleep?\"), never as a scale. Call `record_dial` only if "
+                     "they offer a number from one to five themselves; never ask for a number, never go through "
+                     "them like a form, and recording none is fine: the dials on screen still work.")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- assemble
 def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: str, card: dict[str, Any],
              max_examples: int = 4, tools: list[str] | None = None) -> str:
@@ -174,6 +233,10 @@ def assemble(persona_text: str, surfaces: dict[str, dict[str, Any]], surface: st
         out.append(f"## Language notes ({lang})\n{p['languages'][lang]}")
     out.append("## Your body right now\n" + render_surface(surface, surfaces[surface], tools))
     out.append("## Today\n" + render_card(card))
+    out.append("## What you may say as fact\n" + render_grounding(card))
+    shape = render_shape(card)
+    if shape:
+        out.append("## The shape of this conversation\n" + shape)
     exs = sorted(p["examples"], key=lambda e: e["surface"] != surface)[:max_examples]
     if exs:
         out.append("## Examples (say it like Good, never like Bad)\n" + "\n".join(

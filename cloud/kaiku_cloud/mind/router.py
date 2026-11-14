@@ -132,7 +132,9 @@ def source_facts(store: Store, home_id: str, now: datetime) -> list[dict[str, st
         if source not in labels or kind not in activities or not oldest <= ts <= now:
             continue
         key = (source, kind)
-        recent = "today" if ts.astimezone(TZ).date() == now.astimezone(TZ).date() else "recently"
+        ago = (now.astimezone(TZ).date() - ts.astimezone(TZ).date()).days
+        # Always say when: an undated "recently" was read as "today" by the voice model (real run 2026-11-14).
+        recent = "today" if ago <= 0 else "yesterday" if ago == 1 else "earlier this week"  # words: no numbers here
         latest[key] = {"id": f"doc:source-{source}-{kind.removeprefix('obs.').replace('_', '-')}",
                        "text": ("Simulated: " if event.get("sim") else "") +
                        f"The {labels[source]} reported {activities[kind]} {recent}."}

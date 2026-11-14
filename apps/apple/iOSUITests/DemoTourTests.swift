@@ -184,7 +184,15 @@ final class DemoTourTests: XCTestCase {
         step("nearby-service")
         _ = see("Nearby Kaiku services")
         let name = app.staticTexts[serviceName].firstMatch
-        if name.waitForExistence(timeout: 6) {
+        // A build with a configured service (KAIKU_SERVICE_URL) connects by itself: then Kaiku's hello has its voice.
+        let connected = element(containing: "Connected to your Kaiku service")
+        var hasVoice = false
+        if connected.waitForExistence(timeout: 5) {
+            hasVoice = true
+            pause(3)
+            tap("Continue", after: 2.5)
+        } else if name.waitForExistence(timeout: 3) {
+            hasVoice = true
             pause(2)
             // the Connect button of that service's card (another service on the network may be listed too)
             let y = name.frame.maxY
@@ -224,7 +232,7 @@ final class DemoTourTests: XCTestCase {
 
         step("hello-and-first-task")
         _ = see("good to meet you")
-        pause(4)
+        pause(hasVoice ? 9.5 : 4)                           // Kaiku says hello aloud (8.7 s) when there is a service
         if see("One small thing to try", timeout: 3) {
             let dial = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Mood", "Energy"])).firstMatch
             if dial.exists {
@@ -238,7 +246,7 @@ final class DemoTourTests: XCTestCase {
         if app.buttons["That's it"].exists { tap("That's it", timeout: 2, after: 1) }
         step("you-did-it")
         _ = see("You did it")
-        pause(4)
+        pause(hasVoice ? 9.5 : 4)                           // "That's all a check-in is…" aloud (8.4 s)
         tap("Go to Today", after: 3)
         step("today")
         _ = app.tabBars.buttons["Today"].waitForExistence(timeout: 8)
@@ -422,7 +430,10 @@ final class DemoTourTests: XCTestCase {
         pause(2.5)
         tab("Talk", after: 4)
         step("talk")
-        if tap("Talk with Kaiku", timeout: 5, after: 1.5) {
+        // Kaiku greets aloud as Talk opens. KAIKU_DEMO_TALK_OPEN / _WAIT (seconds) give a live conversation
+        // the time to greet and to answer; the defaults suit the typed path without a live voice.
+        pause(Double(env["KAIKU_DEMO_TALK_OPEN"] ?? "") ?? 2)
+        if env["KAIKU_DEMO_VOICE_TAP"] == "1", tap("Talk with Kaiku", timeout: 5, after: 1.5) {
             allowSystemAlert(timeout: 3)
             step("voice-state")
             pause(7)                                         // connecting → the reason voice is not there, in words
@@ -445,7 +456,10 @@ final class DemoTourTests: XCTestCase {
             if !tap(containing: "I went outside for a bit", timeout: 4, after: 2) { tap(containing: "Something good happened", timeout: 3, after: 2) }
         }
         step("reply")
-        pause(6)
+        pause(Double(env["KAIKU_DEMO_TALK_WAIT"] ?? "") ?? 6)
+        // what was said, for the recorder (Kaiku's lines are re-rendered in its voice for the silent recording)
+        print("DEMO-SAID \(app.staticTexts.allElementsBoundByIndex.suffix(10).map(\.label).joined(separator: " | "))")
+        shot("talk-end")
     }
 
     // MARK: e · You: sharing choices, each with its own switch; Glasses check with no glasses connected

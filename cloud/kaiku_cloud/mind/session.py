@@ -14,6 +14,7 @@ from typing import Any
 
 from kaiku_contracts import make, uuid7
 from kaiku_contracts.api import (
+    ChatShape,
     CompanionSessionRequest,
     CompanionSessionResponse,
     CompanionTool,
@@ -30,7 +31,7 @@ from kaiku_contracts.safety import version as safety_version
 from .. import service
 from ..settings import Settings
 from ..store.db import Store
-from . import assemble, graph, live_token, memory, router
+from . import affect, assemble, feel, graph, live_token, memory, router
 from .card import SUGGESTION, build_card, card_dict, done_today
 
 log = get_logger("cloud.mind")
@@ -61,7 +62,8 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
         if max_seconds <= 0:
             raise ValueError("session duration limit reached")
     card = build_card(store, settings, req.home_id, intent=req.intent, language=req.language,
-                      others_present=req.others_present, now=now)
+                      others_present=req.others_present, now=now, purpose=req.purpose)
+    feel.prepare(store, req.home_id, now)  # so the `feel` tool answers without scanning the record mid-conversation
     persona, surfaces = assemble.load_files()
     tools = for_surface(req.surface)
     instruction = assemble.assemble(persona, surfaces, req.surface, card_dict(card), tools=[t["name"] for t in tools])
@@ -80,6 +82,8 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
         tools=[CompanionTool(**t) for t in tools], context_card=card, persona_version=pv,
         safety_phrases_version=safety_version(), live_token=token, live_setup=setup,
         max_session_seconds=max_seconds,
+        chat_shape=ChatShape(purpose=card.purpose, depth=card.chat_depth or "brief", open_items=card.open_items)
+        if card.purpose else None,
         context_refresh_seconds=int(load_config().get("live", {}).get("context_refresh_seconds", 15)))
 
 
@@ -107,6 +111,8 @@ def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang:
     ep = store.episode(call.session_id) if call.session_id else None
     if ep:
         store.episode_upsert({**ep, "end": memory.iso(datetime.now(UTC)), "outcome": "crisis"})
+        affect.forget(store, call.home_id, ep["id"])  # nothing of a crisis conversation is summarised
+        feel.close(store, call.home_id, ep["id"], crisis=True)
     log.warning("companion_tool_crisis", call.name, home=call.home_id, surface=call.surface)
     return CompanionToolResult(ok=False, name=call.name, crisis=True, error="crisis",
                                result={"stop_session": True, "script": _gate().script(hit_lang)})
@@ -158,13 +164,18 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
         elif name == "forget":
             res = memory.forget(store, home, a["scope"])
             graph.on_memory_write(store, home)
+            if a["scope"] == "all":
+                affect.forget_heard(store, home)
         elif name == "recall":
             res = {"memories": [m["text"] for m in memory.recall(store, home, a["topic"], now=now)]}
         elif name == "suggest_nudge":
             n = service.nudge(store, settings, home)
             res = {"arm": n.arm, "suggestion": SUGGESTION.get(n.arm)}
+        elif name == "feel":
+            res = feel.act(store, home, call.surface, call.session_id, episode, a, now)
         elif name == "end_session":
             res = end_session(store, call, a, now)
+            feel.close(store, home, call.session_id)
         else:  # pragma: no cover - every cloud tool is handled above
             return CompanionToolResult(ok=False, name=name, error="not implemented")
     except memory.MemoryRefused as e:
@@ -226,8 +237,7 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
                                  "turns": [t.model_dump() for t in ep.transcript or []]})
         if stored:
             log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
-    from . import affect
-
+    feel.close(store, ep.home_id, eid, crisis=crisis)
     affect.on_episode(store, ep.home_id, eid, start=memory.iso(ep.start), surface=ep.surface, intent=ep.intent,
                       outcome=ep.outcome, crisis=crisis,
                       turns=[t.model_dump() for t in ep.transcript] if ep.transcript and not crisis else None)

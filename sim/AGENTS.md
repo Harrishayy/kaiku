@@ -21,6 +21,7 @@ See the twin table (Map). Seeder: `POST /v1/events` (obs only, `sim: true`), `PO
 | file | twin of | talks | publishes / posts | listens to |
 |---|---|---|---|---|
 | `nodes/head_sim.py` | Atech board (+ the UNO Q knock drum) | MQTT | `raw/head/ear` Knob dial (`[robot] dial_input = ear`, current build) or `raw/head/button` presses (`button`); taps as knocks (`drum_input = knock`, no force; dropped inside the 40 ms debounce or while the pan moves, like the sketch) or IMU (`imu`); `raw/head/pan` (5 Hz while moving, 0.5 Hz idle; `moving` only on real `pan`/`home`/`gesture` moves, soft limit ±80°), `health/head` | `cmd/head`, `obs/ritual`, `obs/drum_session` |
+| `nodes/head_sim.py` `StandaloneHeadSim` (`--standalone`, `KAIKU_SIM_HEAD=standalone`) | the **standalone** head firmware (D44: `firmware/atech-head/standalone/src/main.cpp` + `kaiku_net.cpp`): the ritual runs on the head (idle → greet → mood → energy → sleep → breathe → drum → done) | MQTT | `health/head` (5 s, `details.step`, `firmware: standalone`), `raw/head/ear` (turns only in a dial step, value 1–10; every press, sent before the step changes), `cmd/sensors {chime: wake\|start_drum\|end_drum}`, `raw/head/pan {deg 0, moving}` (on change + 2 s); auto mode also knocks as the UNO Q would (`raw/head/tap {src: knock}`, source `sensors`). Never any ritual result | `raw/head/tap` + `raw/hub/face` (wake / drum taps), `cmd/head` eyes, pan (600 ms burst), gesture, purr |
 | `nodes/sensors_sim.py` | UNO Q (+ its camera's face boxes) | MQTT | `raw/hub/face` (5 Hz, one per person within 180 cm, size = `[unoq] distance_k_cm` / cm; `--two` / key `2` = two people), `raw/sensors/distance` (5 Hz, **derived from the biggest face box** like the firmware; `far_cm` when no face is seen: `face_hidden`; nothing at all with `camera_ok = False`), `button`, `health/sensors` (`camera_ok, mcu_ok, mcu_fw, knocks, ppg, at_home`); explicit bench fixtures for pulse (`--ppg-fixture clean\|flat\|noisy\|flicker\|camera\|auto`), light and hall | `cmd/sensors`, `obs/ritual` |
 | `nodes/friendlink_sim.py` | LoRa gateway + lamp | MQTT | `obs/friend_link` | `cmd/friendlink` |
 | `nodes/glasses_sim.py` | glasses via the iPhone DAT bridge (source 2) | HTTPS | `obs.outing{method: steps, minutes, steps}` (phone-supported outing only; no outdoor-location or DAT claim) + `obs.intervention_response{activity: walk}` | — |
@@ -70,7 +71,9 @@ seeds the deployed cloud.
 ## Config & env
 `MQTT_*`, `KAIKU_HOME_ID`, `KAIKU_CLOUD_URL` (default `http://localhost:8000`), `KAIKU_HOME_TOKEN` (Bearer for the
 HTTPS twins and the seeder), `KAIKU_ADMIN_TOKEN` (seeder admin calls). `KAIKU_RITUAL_DRUM_S` etc. shorten the auto
-drum. `run.py` flags: `--every`, `--phq9`, `--phq9-item9`, `--tempo`, `--mood`, `--arrive-after`, `--two`.
+drum. `run.py` flags: `--every`, `--phq9`, `--phq9-item9`, `--tempo`, `--mood`, `--arrive-after`, `--two`, `--standalone`
+(head = the standalone firmware twin; the hub then follows it, `hub/AGENTS.md` → Robot bring-up), `--fast N` (divide
+that firmware's timers: breathing 60 s, drum 20 s). `--mood` is 1–10 for the standalone head.
 `sensors_sim` alone: `--no-faces` (legacy distance-sensor fixture: distance without a camera), `--two`, `--legacy-light`,
 `--hall`, `--ppg-fixture [clean|flat|noisy|flicker|camera|auto]` (`camera` = ~15 Hz at a wobbling rate, quality 0.6, only
 while a face is in view; `auto` = flat KY-039 for `[unoq] ppg_fallback_s`, then the camera). Light/hall/pulse fixtures default off.
@@ -83,10 +86,14 @@ MQTT twins heartbeat on `health/<node>` with `details.sim = true`. HTTPS twins l
 ## Tests
 `uv run pytest sim/tests` (PPG heart rate + RSA, approach curve, face boxes grow on approach / two people, head dial/drum/post-mood protocol and PPG gating on
 a real broker, glasses/laptop envelopes + auth via `httpx.MockTransport`, fail-soft when the cloud is down; firmware
-twins: distance from the face box / `far_cm` / camera unplugged, every pulse fixture's shape, pan `moving` + knock mute). The
+twins: distance from the face box / `far_cm` / camera unplugged, every pulse fixture's shape, pan `moving` + knock mute;
+standalone head: message order and timers against `main.cpp`, `cmd.head` handling, and the whole follow loop on a real
+broker: standalone head → hub → observations under the person's record). The
 generator and every demo patient's end state are tested in `cloud/tests`.
 
 ## Known issues
+- The standalone twin follows `main.cpp` as merged on 2026-11-14 (`kaiku_net` not yet flashed): when the firmware
+  changes, re-read it. Its mic wake and motion-sensor taps are not simulated (keyboard `e` / a knock wake it).
 - Pan is a linear move to the target (no ramp, no dead-reckoning drift). The pulse fixtures are synthetic shapes
   (flat, noise, a metronomic flicker ripple, a smooth camera ripple): no motion artefacts and no real finger data.
 - The sim person sits 36 cm away (face ≈ 25 % of the frame) so the default `at_desk_size` is reached; `distance_k_cm`

@@ -8,7 +8,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .companion_tools import Intent, MemoryCategory, MindKind, Skill, Surface
+from .companion_tools import (
+    Activity,
+    CheckinItem,
+    Energy,
+    Intent,
+    MemoryCategory,
+    MindKind,
+    Purpose,
+    Skill,
+    Surface,
+    Tone,
+    Valence,
+)
 from .criteria import Criteria
 from .envelope import Envelope
 from .payloads import Health, NudgeArm, PlaySession
@@ -399,13 +411,58 @@ ToneCue = Literal["steady", "gentle", "extra-gentle"]
 EpisodeOutcome = Literal["completed", "skipped", "ended_early", "crisis", "offline"]
 
 
+ChatDepth = Literal["brief", "stay"]
+Stance = Literal["comfort", "celebrate", "steady", "explore", "give_space"]
+
+
+class HeardTone(ApiModel):
+    """How a conversation sounded to the model that was in it, reported through the `feel` tool. An observation
+    by a model, never a measurement and never a state. `model_heard`: the native-audio voice model heard the
+    person speak. `model_read`: it went by their typed or transcribed words only."""
+
+    valence: Valence | None = None
+    energy: Energy | None = None
+    tone: list[Tone] = Field(default_factory=list, max_length=2)
+    provenance: Literal["model_heard", "model_read"]
+    moments: int = Field(default=1, ge=1, description="how many times a feeling was noticed in that conversation")
+
+
 class LastReflection(ApiModel):
     """How the latest talk with Kaiku went: a level and themes, never the words."""
 
     when: str = Field(description='e.g. "yesterday evening", "this morning"')
-    valence: Literal["low", "neutral", "bright"] | None = None
+    valence: Valence | None = None
     themes: list[str] = Field(default_factory=list, max_length=3)
     declined: bool = Field(default=False, description="they did not want to talk or asked to stop")
+    tone: list[Tone] = Field(default_factory=list, max_length=2, description="from their words (rules or Gemma)")
+    energy: Energy | None = None
+    heard: HeardTone | None = None
+
+
+class FeelPlan(ApiModel):
+    """Result of the `feel` tool: how to meet what the person just shared. Chosen by code from this person's own
+    record; hints for the companion's own words, never a script. Nothing here is a state or changes one."""
+
+    stance: Stance
+    depth: ChatDepth = Field(description="brief: an ordinary moment, the chat may stay small. stay: a strong "
+                             "feeling either way, repeated heaviness, or they keep talking: never close first")
+    reflect_hint: str = Field(max_length=300)
+    recall: str | None = Field(default=None, max_length=240, description="one thing the record knows that fits")
+    may_offer: str | None = Field(default=None, max_length=120, description="one small thing to offer once, or null")
+    offer_note: str | None = Field(default=None, max_length=240, description="why that one, and how to offer it")
+    offer_activity: Activity | None = Field(default=None, description="start_activity kind, only after a clear yes")
+    follow_up_saved: bool = Field(default=False, description="a thread to ask about next time was kept")
+    scheduling: Literal["INTERRUPT", "WHEN_IDLE", "SILENT"] = Field(
+        default="WHEN_IDLE", description="Live FunctionResponse scheduling for this non-blocking tool: send it as "
+        "`response.scheduling` so the model answers with the plan as soon as it is idle")
+
+
+class ChatShape(ApiModel):
+    """How this conversation should run, for the device: the same guidance the model reads in its instruction."""
+
+    purpose: Purpose
+    depth: ChatDepth
+    open_items: list[CheckinItem] = Field(default_factory=list, description="check-in dials not answered today")
 
 
 class ContextCard(ApiModel):
@@ -432,6 +489,10 @@ class ContextCard(ApiModel):
                                    'themselves today, in everyday words ("a short night"); never a number or a judgement')
     recent_reflection: str | None = Field(default=None, description="how the latest reflection with Kaiku went, as a "
                                           "level and themes only (never the words), so Kaiku can be gentle about it")
+    purpose: Purpose | None = Field(default=None, description="set when the device said why it opened the session")
+    chat_depth: ChatDepth | None = Field(default=None, description="check-in sessions: how the chat should open")
+    open_items: list[CheckinItem] = Field(default_factory=list, max_length=3, description="check-in sessions: dials "
+                                          "not answered today; at most one is woven into the chat")
     others_present: bool = False
     dont_remember: bool = False
 
@@ -443,6 +504,9 @@ class CompanionSessionRequest(ApiModel):
     intent: Intent = "talk"
     language: VoiceLang | None = Field(default=None, description="default: config/kaiku.toml [home].language")
     others_present: bool = False
+    purpose: Purpose | None = Field(default=None, description="why the conversation was opened. check_in: a small "
+                                    "passing chat alongside the periodic check-in (see chat_shape). Omitted = "
+                                    "today's behaviour for the intent")
 
 
 class LiveToken(ApiModel):
@@ -458,6 +522,8 @@ class CompanionTool(ApiModel):
     name: str
     description: str
     parameters: dict[str, Any]
+    behavior: Literal["NON_BLOCKING"] | None = Field(default=None, description="Live asynchronous function calling: "
+                                                     "declare it so and answer with the result's `scheduling`")
 
 
 class CompanionSessionResponse(ApiModel):
@@ -479,6 +545,7 @@ class CompanionSessionResponse(ApiModel):
         default=None, description="Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, "
         "voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame "
         "{setup: live_setup}; clients must apply this complete setup.")
+    chat_shape: ChatShape | None = Field(default=None, description="present when the request named a purpose")
 
 
 class CompanionToolCall(ApiModel):
@@ -1050,6 +1117,9 @@ class ReflectionDay(ApiModel):
     valence: Literal["low", "neutral", "bright"] | None = None
     themes: list[str] = Field(default_factory=list)
     declined: bool = False
+    tone: list[Tone] = Field(default_factory=list, max_length=2, description="from their words (rules or Gemma)")
+    energy: Energy | None = None
+    heard: HeardTone | None = Field(default=None, description="as reported by the model in the conversation")
 
 
 class ReflectionOverview(ApiModel):
@@ -1065,6 +1135,8 @@ class ReflectionOverview(ApiModel):
     themes: list[SourceCount] = Field(default_factory=list, description="theme -> reflections it came up in")
     days: list[ReflectionDay] = Field(default_factory=list, description="the last 14 days, oldest first")
     summary: str = Field(max_length=400, description="the fortnight in one or two sentences; counts are 7 days")
+    tone_summary: str | None = Field(default=None, max_length=400, description="how they sounded, by provenance: "
+                                     "tone of their words, and tone as reported by the model in the conversation")
 
 
 class StateDay(ApiModel):

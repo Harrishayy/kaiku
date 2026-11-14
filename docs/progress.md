@@ -1168,3 +1168,39 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Verified: `make check` 805 passed after the merge; tree hashes compared before and after the fold.
 - Broken/blocked: every clone must reset to the new history (see the entry above); the standalone head's ritual
   results do not reach the cloud as `obs.*` yet (handover open item 3): hub follower mode is the next step.
+
+## 2026-11-14 14:55 EET — Claude Code — cloud (C), hub (B), contracts, config, docs: the companion notices and acts
+- Did:
+  - **Detect and act (`feel`):** a non-blocking cloud tool the Live voice calls once per clear shift in what the
+    person said or how they sounded. `cloud/kaiku_cloud/mind/feel.py` answers with a `FeelPlan` (stance, depth,
+    one thing the record knows, at most one offer per conversation, a saved follow-up). Depth comes from the
+    person's own words (loss / win cues), not the model's label. Declared on the robot too (`hub/kaiku_hub/live`).
+  - **Check-ins as a passing chat:** `CompanionSessionRequest.purpose` (`talk | check_in | walk | ritual`) and
+    `CompanionSessionResponse.chat_shape` (depth, open items); persona sections "Notice and act", "Passing chat".
+  - **Grounding:** facts on the context card carry their day, the instructions carry a grounding section and the
+    eval openers are linted (a real opener claimed an outing that was not in the record; fixed and rerun).
+    `remember` keeps a fact only when the person's own words contain it.
+  - **Robot follow mode (D44):** `hub/kaiku_hub/follow.py` turns the standalone head's own ritual into `obs.*`
+    (`[hub] head_mode = auto | follow | drive`); twin `StandaloneHeadSim`. Uplink queues before it publishes
+    (fixes a lost-event race on stop).
+  - **README + media:** rewritten README, `docs/media/` (six iPhone clips, dashboard, Mac), recording scripts
+    (`scripts/record_gifs.py`, `scripts/record_voice.py`), draft cut builder.
+  - `[budget]` raised to 30 total / 28 daily at the lead's request.
+- Verified: `make check` 887 passed; companion evals dry run passes; real Live reruns of the opener and of a
+  hard-day and a good-news exchange (typed input). Follow mode is proven on the software twin only.
+- Broken/blocked: follow mode has not met the real head; nothing here has been heard through a real microphone.
+
+## 2026-11-14 15:10 EET — Claude Code — apple (A): the check-in is a small chat
+- Did: Today's first stop opens `CheckInChatView` (Kaiku's hello, then voice, typing or the dials underneath; all
+  three tick the stop); `WeatherCheckView` removed. `Conversation` sends `purpose`, answers the non-blocking `feel`
+  call with the plan's `scheduling`, and shows no thinking state for it. One offer chip from the plan (`may_offer`,
+  `offer_activity`) in the check-in chat and in Talk, from the person's next message on. `start_activity` now needs
+  the person's own ask or a clear yes (the real model opened "Tell Kaiku" on the first sad sentence and breathing
+  on a "maybe"). Transcription markers (`<no speech>`, `{pause}`) no longer reach the screen. The questionnaire is
+  refused inside a check-in chat.
+- Verified: `swift test` 211 passed; iOS and Mac targets build; on the simulator with real Live replies to typed
+  input: an ordinary day closes in three turns, a hard day (a pet died) stays, offers sitting quietly once and
+  keeps going after the chip is taken. Installed on the lead's phone, not launched.
+- Broken/blocked: voice input in the check-in, the sound of the goodbye, and typed-only audio without microphone
+  permission are unproven on a real phone; the walk and breathe chips are unit-tested only. On a fresh home the
+  cloud still hints that the questionnaire is due during a check-in (cloud to drop it for `check_in`).

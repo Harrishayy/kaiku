@@ -299,3 +299,78 @@ def test_attunement_scenarios_cover_the_leads_cases():
     assert len(ids) >= 8
     assert all(s["expect"].get("attune") for s in SCENARIOS if s["file"] == "attunement.yaml")
     assert "attunement" in run.RUBRIC and "Anyway" in run.JUDGE_PROMPT
+
+
+# ---------------------------------------------------------------- notice and act (scenarios/act.yaml)
+def _k(text, *tools):
+    return {"role": "kaiku", "text": text, "tools": list(tools)}
+
+
+def test_check_act_catches_each_way_of_getting_it_wrong():
+    feel = {"name": "feel", "args": {"kind": "sad_news", "heard": {"valence": "low"}, "about": "x", "said": "y"}}
+    good = [_k("Your sister cancelled. That sounds lonely.", feel), _k("Would a short walk help, or shall I sit with you?")]
+    exp = {"offer": {"words": ["walk"], "not_before_turn": 2, "at_least": 1, "at_most": 1}, "feel": {"kind": ["sad_news"],
+           "about": True, "said": True}, "stays": True}
+    assert run.check_act(exp, good) == []
+    early = [_k("That sounds lonely. A walk might help.", feel), _k("I'm here.")]
+    assert run.check_act(exp, early) == ["act:offer_too_early"]
+    pushy = [*good, _k("How about that walk?"), _k("A walk, then?")]
+    assert "act:offer_repeated" in run.check_act(exp, pushy)
+    assert "act:offer_after_no" in run.check_act({"offer": {"words": ["walk"], "none_from_turn": 3, "at_most": 2}}, pushy)
+    assert run.check_act(exp, [_k("That sounds lonely.", feel)]) == ["act:offer_missing"]
+    assert run.check_act(exp, [_k("That sounds lonely."), _k("A walk?")]) == ["act:feel_not_called"]
+    bare = {"name": "feel", "args": {"kind": "flat", "heard": {"valence": "low"}}}
+    assert run.check_act({"feel": {"kind": ["sad_news"], "about": True, "said": True, "max_calls": 1}},
+                         [_k("a", bare), _k("b", bare)]) == ["act:feel_kind:flat", "act:feel_no_about", "act:feel_no_said",
+                                                             "act:feel_every_turn"]
+    bye = [_k("That sounds hard.", feel), _k("Good to see you. I'm around later.", {"name": "end_session", "args": {}})]
+    assert run.check_act({"stays": True}, bye) == ["act:closed_early"]
+    assert run.check_act({"closes_by_turn": 2}, bye) == [] and run.check_act({"closes_by_turn": 1}, bye) == ["act:not_closed_briefly"]
+    form = [_k("How did you sleep?"), _k("And your energy today?"), _k("Mood, one to five?")]
+    assert run.check_act({"checkin_items_max": 1, "no_scale": True}, form) == ["act:form_like_checkin", "act:asked_for_a_number"]
+    assert run.check_act({"says": [{"from_turn": 2, "any": ["heavy few days"]}]}, [_k("It's been a heavy few days."), _k("I'm here.")]) == ["act:missing_words"]
+
+
+def test_fake_mind_runs_the_clouds_own_plan_on_the_scenario_record():
+    scn = _scn("iphone-act-sad-news-known-helper")
+    state: dict = {}
+    args = {"kind": "sad_news", "heard": {"valence": "low", "energy": "low"}, "about": "her sister", "said": "My sister cancelled."}
+    plan = run._sim_tool_result("feel", args, scn["context"], scn["mind"], state)
+    assert plan["stance"] == "comfort" and plan["depth"] == "stay" and plan["may_offer"] == "a short walk in daylight"
+    assert "a few times so far" in plan["offer_note"] and "Liisa" in plan["recall"] and plan["follow_up_saved"]
+    again = run._sim_tool_result("feel", {**args, "kind": "lonely"}, scn["context"], scn["mind"], state)
+    assert "may_offer" not in again and "already offered once" in again["offer_note"]
+    flat = _scn("iphone-act-third-flat-evening")
+    hint = run._sim_tool_result("feel", {"kind": "flat", "heard": {"valence": "low"}}, flat["context"], flat["mind"], {})
+    assert "heavy on 3 days this week" in hint["reflect_hint"] and hint["stance"] == "give_space"
+    nothing = run._sim_tool_result("feel", {"kind": "lonely", "heard": {"valence": "low"}}, {}, None, {})
+    assert nothing["may_offer"] == "sitting quietly together for a minute" and "recall" not in nothing
+    acts = [s for s in SCENARIOS if s["file"] == "act.yaml"]
+    assert len(acts) == 7 and {s["id"].split("-act-")[1] for s in acts} >= {"checkin-ordinary-day-brief", "checkin-hard-day-stays"}
+
+
+def test_opener_may_only_state_what_the_card_or_the_person_gave_it():
+    empty = _scn("iphone-act-checkin-empty-day-grounded-opener")["context"]  # an outing yesterday, nothing today
+    invented = "Morning. You've been out already today—how was it out there?"  # the real ungrounded opener
+    assert run.check_grounding(invented, empty, "Morning.") == ["ground:claim_out"]
+    assert run.check_grounding("Morning. How are you landing in today?", empty, "Morning.") == []
+    assert run.check_grounding("Morning. You were out yesterday; how was it?", empty, "Morning.") == []  # it says when
+    walked = empty | {"done_today": ["a walk on the glasses"]}
+    assert run.check_grounding(invented, walked, "Morning.") == []
+    assert run.check_grounding("You've been out already. How was it?", {}, "Just back from a walk.") == []  # they said so
+    assert run.check_grounding("Morning. You slept well, I hope it shows.", empty, "Morning.") == ["ground:claim_sleep"]
+    assert run.check_grounding("A short night. How is the morning?", empty | {"today_facts": ["a short night"]}, "") == []
+    assert run.check_grounding("Morning, grey out there today.", empty, "Morning.") == ["ground:weather"]
+    assert run.check_grounding("Morning, grey out there today.", empty | {"weather_word": "grey"}, "Morning.") == []
+    assert run.check_grounding("Yesterday evening sounded heavy. How is this morning?", {"time_of_day": "morning"}, "Hi.") == [
+        "ground:past_reference"]
+    assert run.check_grounding("Yesterday evening sounded heavy. How is this morning?",
+                               {"recent_reflection": "The talk yesterday evening sounded like a hard one."}, "Hi.") == []
+    assert run.check_grounding("Morning. The lake path again?", empty, "Morning.") == ["ground:place_lake"]
+    assert run.check_grounding("Morning. The lake path again?", empty | {"open_thread": "the walk by the lake"}, "") == []
+    assert run.check_grounding("You've already done the ritual, lovely.", empty, "Morning.") == ["ground:claim_done"]
+    # wired into every scenario: the invented opener fails the scenario it came from
+    scn = _scn("iphone-act-checkin-empty-day-grounded-opener")
+    bad = [{"role": "person", "text": "Morning."}, {"role": "kaiku", "text": invented, "tools": []}]
+    assert "ground:claim_out" in run.evaluate(scn, bad, SURFACES["iphone"], tool_specs.load())
+
