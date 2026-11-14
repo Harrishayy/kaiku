@@ -1,5 +1,7 @@
 # Assembly
 
+> **Illustrated step-by-step version:** [`assembly_guide/kaiku_assembly.pdf`](assembly_guide/kaiku_assembly.pdf).
+
 How to put Kaiku together, either on the **cardboard body (MVP)** or the **printed body**. The parts come from
 `hardware/cad/` (see its README for the print plan). Positions below are in mm. Every number comes from
 `hardware/cad/kaiku_cad.py`, so if a parameter changes, regenerate the files rather than editing this page.
@@ -24,10 +26,10 @@ The layout from `docs/kaiku_robot_electronics_specs.md` uses all 12:
 | Speaker | 1–2 | body, right-wall grille |
 | Color Display (eyes) | 3–4 | head, tuning window |
 | Knob (dial ear) | 5–6 | head, left ear |
-| DC Motor (pan) | 7 | under the pan base |
+| Button ("I'm not OK" / push to talk) | 7 | lid, square opening |
 | Microphone | 9–10 | head, right ear |
-| Button ("I'm not OK" / push to talk) | 11 | lid, square opening |
-| LED Grid ×2 (breathing glow) | 13, 14 | body, behind the chest louvres |
+| LED Grid left / right (breathing glow) | 11 / 14 | body, behind the chest louvres (port 11 stayed dark on the bench: `hardware/wiring.md`) |
+| DC Motor (pan) | 13 | under the pan base |
 
 So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on the UNO Q. The purr mount in the CAD
 stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C

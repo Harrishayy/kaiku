@@ -509,6 +509,8 @@ def ref_parts():
             p.cube, p.cube_h, p.cube, align=(Align.CENTER, Align.MIN, Align.CENTER)), f"led_grid_{'l' if sx < 0 else 'r'}",
             GLOW)
     add(Pos(*BUTTON_XY, TOP - p.cube_h) * Box(p.cube, p.cube, p.cube_h, align=MIN), "button", AMBER)
+    # KY-053 (ADS1115) for the KY-039, taped on the floor in front of the UNO Q (nominal 28 x 17 x 5)
+    add(Pos(6, -26, p.floor) * Box(28, 17, 5, align=MIN), "ky053_adc", PCB)
     kx, ky, kh = p.ky039
     add(Pos(0, FINGER_Y, LEDGE_Z - kh) * Box(kx, ky, kh, align=MIN), "ky039_pulse", PCB)
     add(Pos(*LIGHT_XY, LEDGE_Z - 6) * Box(20, 15, 6, align=MIN), "ky054_light", PCB)

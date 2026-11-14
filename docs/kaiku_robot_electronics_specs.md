@@ -145,10 +145,10 @@ body), not snapped onto it. Confirm the GPIO numbers with `atech validate`; don'
 | Speaker | 1–2 | Same side as the motor, away from the mic |
 | Color Display | 3–4 | — |
 | Knob | 5–6 | — |
-| DC Motor (pan) | 7 | Speaker side, away from the mic |
-| Microphone | 9–10 | Other side from the speaker and motor, so less noise reaches it |
-| Button | 11 | — |
-| LED Grid left / right | 13 / 14 | — |
+| Button | 7 | — |
+| Microphone | 9–10 | — |
+| LED Grid left / right | 11 / 14 | Port 11 (GPIO43/44, UART0) stayed dark on the bench: see `hardware/wiring.md` |
+| DC Motor (pan) | 13 | Matches the build (Xavier, 2026-11-14) |
 
 With every port taken, there is **one motor** (pan) and no Atech IMU. A second motor (the "purr" mount in the CAD)
 needs a free port: drop one LED grid, or drop the Speaker and play audio from the laptop.
@@ -365,10 +365,10 @@ Every physical connection, in one place. Record the final port and pin numbers i
 | Atech Speaker (body) | Atech ports 1–2 | Atech cable | `play_rtttl` test |
 | Atech Color Display (head) | Atech ports 3–4 | Atech cables, through the neck | Eyes appear |
 | Atech Knob (head) | Atech ports 5–6 | Atech cables, through the neck | `knob` events 1–5 |
-| Atech DC Motor (pan) | Atech port 7 | Atech cable | `home` gesture moves the head |
+| Atech DC Motor (pan) | Atech port 13 | Atech cable | `home` gesture moves the head |
 | Atech Microphone (head) | Atech ports 9–10 | Atech cables, through the neck | `mic/level` rises when you talk |
-| Atech Button (lid) | Atech port 11 | Atech cable | `button` event |
-| Atech LED Grid ×2 | Atech ports 13, 14 | Atech cables | Breathing glow |
+| Atech Button (lid) | Atech port 7 | Atech cable | `button` event |
+| Atech LED Grid ×2 | Atech ports 11 (left), 14 (right) | Atech cables | Breathing glow |
 | Modulino Buzzer | UNO Q Qwiic | Qwiic cable | I2C scan on `Wire1` finds 0x3C |
 | KY-031 S / + / − (head) | UNO Q D2 / 3V3 / GND | Dupont jumpers, through the neck | Knock prints in the serial monitor |
 | KY-053 SDA / SCL / + / − (KY-039 on its A0) | UNO Q SDA / SCL / 3V3 / GND | Dupont jumpers | I2C scan on `Wire` finds 0x48 |
