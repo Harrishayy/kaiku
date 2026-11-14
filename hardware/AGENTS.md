@@ -9,6 +9,7 @@
 - `wiring.md` — ground truth for every pin, voltage and level shifter. Update it the moment you wire something.
   KY-050 echo is 5 V → KY-051 level shifter/divider before any 3.3 V pin.
 - `bom.md` — parts list.
+- Electronics (boards, ports, pins, power, firmware behaviour): `docs/kaiku_robot_electronics_specs.md`.
 - `assembly.md` — build steps (neck, head, cardboard or printed body) and the Atech port budget.
 - `dimensions.md` — ground truth for every part's physical size (datasheet, photo estimate or caliper value) for CAD.
 - `datasheets/` — vendor PDFs, **gitignored** (third-party copyright). Re-download from the URLs in its `SOURCES.md`.

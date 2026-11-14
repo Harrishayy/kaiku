@@ -501,6 +501,9 @@ def ref_parts():
     add(Pos(UNOQ_X0, UNOQ_Y0, p.floor + 5) * Box(ux, uy, uh, align=(Align.MIN, Align.MIN, Align.MIN)), "unoq", PCB)
     sw, sd, st = p.speaker
     add(Pos(IN_W / 2 - st, -10, p.floor) * Box(st, sw, sd, align=(Align.MIN, Align.MIN, Align.MIN)), "speaker", DARK)
+    # Modulino Buzzer (41 x 25.36, datasheet) on the right wall above the speaker, Qwiic to the UNO Q
+    add(Pos(IN_W / 2 - 8, -5, 55) * Box(8, 41, 25.36, align=(Align.MIN, Align.MIN, Align.MIN)), "modulino_buzzer",
+        PCB)
     for sx in (-1, 1):
         add(Pos(sx * (p.cube / 2 + 1), -p.body_d / 2 + p.wall + 0.8, p.window_z) * Box(
             p.cube, p.cube_h, p.cube, align=(Align.CENTER, Align.MIN, Align.CENTER)), f"led_grid_{'l' if sx < 0 else 'r'}",
@@ -531,8 +534,9 @@ def ref_parts():
     add(Pos(-HW - p.knob_out, 0, h0 + p.ear_z) * cyl_x(p.knob_d / 2, p.knob_out), "knob_shaft", GREY)
     mw, ml2, mt = p.mic
     add(Pos(HW - mt, 0, h0 + p.ear_z) * Box(mt, mw, ml2, align=(Align.MIN, Align.CENTER, Align.CENTER)), "mic", DARK)
-    add(Pos(0, 2, h0 + p.head_h - p.head_wall - p.cube) * Box(p.cube, p.cube, p.cube, align=(
-        Align.CENTER, Align.MIN, Align.MIN)), "imu", DARK)
+    # KY-031 knock sensor (the drum) glued under the head top, wired to the UNO Q through the neck
+    add(Pos(0, 4, h0 + p.head_h - p.head_wall - 10) * Box(25, 15, 10, align=(Align.CENTER, Align.MIN, Align.MIN)),
+        "ky031_knock", PCB)
     add(Pos(34, 8, h0 + p.head_h - p.head_wall) * Cylinder(1.5, 52, align=MIN), "antenna_rod", GREY)
     return refs
 

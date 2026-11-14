@@ -98,3 +98,15 @@ their defaults are in handoff.md §12 — record the actual answer here when it'
   LED ×2, button 1, motors 2, plus Microphone *or* Speaker (`hardware/assembly.md`).
 - Print budget: MVP (head + neck, cardboard body) about 3 h 20 min. Full printed robot about 5 h 50 min on a P1S
   or P2S (`hardware/cad/README.md`).
+
+## D23 — Electronics spec merged into the printed design (2026-11-14, Edwin; supersedes the motor count in D22)
+- Context: `docs/kaiku_robot_electronics_specs.md` (Xavier) arrived after the CAD was printing. Where they
+  disagreed, the physical design won. The spec's additions that need no reprint were adopted: the Modulino Buzzer
+  (body), the KY-031 knock sensor (under the head top, on the UNO Q) and a powered USB-C PD hub (outside, behind the
+  robot).
+- Atech ports: Speaker 1–2, Display 3–4, Knob 5–6, pan motor 7, Mic 9–10, Button 11, LED grids 13 and 14. All
+  12 are used, so there is **one motor** (pan) and **no Atech IMU** (the KY-031 handles taps). The purr mount stays
+  in the CAD as an option if a port frees up.
+- Open, owned elsewhere: the spec puts the hub on the UNO Q, while handoff §5.1 / `hub/AGENTS.md` default to the
+  laptop. `firmware/atech-head/AGENTS.md` still describes IMU taps and purr. Its MQTT topics need mapping onto
+  `contracts/`.

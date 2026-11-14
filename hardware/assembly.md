@@ -16,22 +16,25 @@ How to put Kaiku together, either on the **cardboard body (MVP)** or the **print
 
 ## Atech ports: there are only 12
 
-The board has 12 module ports (1–7, 9–11, 13–14). Here is what the robot uses:
+The board has 12 module ports (1–7, 9–11, 13–14); two-port modules need a neighbouring pair on the same side.
+The layout from `docs/kaiku_robot_electronics_specs.md` uses all 12:
 
 | Module | Ports | Where |
 |---|---|---|
-| Color Display (eyes) | 2 | head, tuning window |
-| Knob (dial ear) | 2 | head, left ear |
-| Orientation Sensor (taps) | 1 | head, glued under the top |
-| LED Grid ×2 (breathing glow) | 2 | body, behind the chest louvres |
-| Button ("I'm not OK" / push to talk) | 1 | lid, square opening |
-| DC Motor ×2 (pan, purr) | 2 | under the pan base / body floor |
-| **Subtotal** | **10** | |
-| Microphone *or* Speaker | 2 | head right ear / body right wall |
+| Speaker | 1–2 | body, right-wall grille |
+| Color Display (eyes) | 3–4 | head, tuning window |
+| Knob (dial ear) | 5–6 | head, left ear |
+| DC Motor (pan) | 7 | under the pan base |
+| Microphone | 9–10 | head, right ear |
+| Button ("I'm not OK" / push to talk) | 11 | lid, square opening |
+| LED Grid ×2 (breathing glow) | 13, 14 | body, behind the chest louvres |
 
-So there is room for **one** of Microphone or Speaker, not both. Audio defaults to the hub laptop (handoff §5.1),
-so either module is optional. The CAD has places for both. Power comes through the Atech USB-C module (port 8).
-With the Arduino power supply (TPX00242) on the board, two motors are well within budget.
+So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on the UNO Q. The purr mount in the CAD
+stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
+module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
+
+The UNO Q side: KY-031 knock (D2), KY-035 hall (D3), KY-054 light (A0), KY-053 ADC for the KY-039 pulse (SDA/SCL),
+and the Modulino Buzzer on Qwiic. Pin details: the spec's wiring table.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
 
@@ -59,9 +62,11 @@ With the Arduino power supply (TPX00242) on the board, two motors are well withi
    glue if it's loose). Optional: drill the ear hole out to Ø26 to show the module's light ring.
 5. *Optional:* glue the **Microphone** module against the right inner wall behind the hole pattern, then glue the
    **right ear** grille on the outside.
-6. Glue the **IMU** under the head top, behind the display. The top is where you tap.
+6. Glue the **KY-031 knock sensor** flat under the head top, behind the display, on foam tape. The top is where
+   you tap.
 7. Push the skewer into the antenna socket on top and glue on the **antenna ball**.
-8. Plug every head cable in now (display ×2, knob ×2, IMU, mic ×2), and route them all down through the floor
+8. Plug every head cable in now (display ×2, knob ×2, mic ×2, three KY-031 jumper wires), and route them all
+   down through the floor
    slot. Fit the **back lid**: its two ribs push the camera forward against the lip.
 9. Feed the cable bundle through the turntable disc and down the hollow axle. Glue the head floor onto the
    turntable disc, with the floor slot over the disc slot, facing front. Use the two M3 screws if you have them.
@@ -88,8 +93,9 @@ panels directly from this table (4 mm board; the generator recomputes for other 
    - Tape the **UNO Q** to the floor at the rear, with its USB-C facing the cable slot.
    - Tape the **speaker** to the right wall, behind the grille.
    - Tape the two **LED grids**, lit face forward, behind the chest window.
-   - Glue the **purr_sleeve** to the floor at the front-left, with the shaft pointing left. Slide the purr motor in
-     and press the **purr weight** onto its shaft.
+   - *Optional, only if it has a port:* glue the **purr_sleeve** to the floor at the front-left, shaft pointing
+     left, slide a second motor in and press the **purr weight** onto its shaft.
+   - Glue the **Modulino Buzzer** to the right wall above the speaker and run its Qwiic cable to the UNO Q.
 3. Lid:
    - Glue **four cardboard strips** (10 mm wide) under the lid, 4 mm in from each edge, so it drops in and
      stays put.
@@ -112,5 +118,5 @@ ledge and lifts out using its finger hole.
 - Turn the head by hand through its whole range (about ±100°). The cable bundle in the axle must not pull.
   Leave a loop inside the body.
 - Home the head: turn it until it faces front and check the hall sensor triggers. The firmware works out the pan
-  angle from the IMU gyro between homings (`firmware/atech-head/AGENTS.md`).
+  angle from timed moves between homings (there is no IMU; `docs/kaiku_robot_electronics_specs.md`).
 - Update `hardware/wiring.md` with the actual port numbers as you plug things in.

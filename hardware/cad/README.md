@@ -19,7 +19,7 @@ The pre-event concept renders mentioned in `handoff.md` §8 were not used.
   rim rests on a 65 mm lip. The Color Display sits above it in a "tuning window" and shows the eyes.
   - **Left ear:** the Knob (tuning dial).
   - **Right ear:** a microphone grille. The Microphone module sits behind it; this is optional.
-  - **Inside:** the IMU is glued under the top for tap detection. A wire antenna with a ball on top goes in the
+  - **Inside:** the KY-031 knock sensor is glued under the top for taps (the drum). A wire antenna with a ball on top goes in the
     top socket.
 - **Neck.** The pan base, glued on the body top, carries a fixed hollow axle. All the head cables go through it.
   - The turntable has a 40-tooth ring gear (module 1.25). It turns on the axle and the head glues onto its disc.
@@ -30,15 +30,16 @@ The pre-event concept renders mentioned in `handoff.md` §8 were not used.
   - the UNO Q on four standoffs (UNO hole pattern), with its USB-C at the rear;
   - the Speaker against the right-wall grille;
   - two LED grids behind the chest louvres (breathing glow);
-  - the purr motor with an off-centre weight on the floor.
+  - the Modulino Buzzer on the right wall;
+  - an optional purr motor mount on the floor (needs a free Atech port).
 - **On the lid:** the pan base, a square opening for the Button module (or its cable), and the KY-039 pulse
   sensor under a finger cradle. A finger hole lets you lift the lid out.
-- **Two motors** (2 of the 4 Atech DC motors): pan and purr, as in `handoff.md` §8. There is no tilt, because a
+- **One motor** (pan). All 12 Atech ports are used, so the purr mount is optional (D23). There is no tilt, because a
   200 g head that sits in front of the motor would make it slip back under load.
 - **No ultrasonic sensor** (vision only).
 
 Fit check: `kaiku_cad.py` intersects every printed part with every bought-in envelope. It currently reports
-**no clashes**. Envelopes marked ASSUMED in `dimensions.md` (IMU, button, LED height) are guesses:
+**no clashes**. Envelopes marked ASSUMED in `dimensions.md` (button, LED height) are guesses:
 measure them before printing the part that holds them.
 
 ## Print plan (Bambu Studio's own estimates, 2026-11-14)
@@ -85,7 +86,7 @@ Change sizes in the `P` dataclass at the top of `kaiku_cad.py`, then rerun. Don'
 
 ## Known gaps
 
-- Sizes marked ASSUMED (IMU, button) are guesses. The knob is a photo estimate; its cap's 9.8 mm bore has to
+- Sizes marked ASSUMED (button, LED height) are guesses. The knob is a photo estimate; its cap's 9.8 mm bore has to
   fit over the module's own black knob. The display is a photo estimate (42 × 21 × 10, screen
   centred); the frame around it is open at the top for the cable plugs.
 - The motor shaft is assumed to be the standard 3 mm D-shaft. The pinion and purr weight have D-holes; if the

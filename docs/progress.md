@@ -55,3 +55,15 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   not both.
 - Next: A — measure the ASSUMED modules, print plate 2 (neck) and bench-test the pan, then the head; cut the
   cardboard body.
+
+## 2026-11-14 06:00 — Claude Code — hardware (A) + docs
+- Did: reconciled `docs/kaiku_robot_electronics_specs.md` with the printed CAD (D23). Both boards are in the body;
+  the camera, display, knob, mic and KY-031 are in the head. The eyes are the Atech display and the dial is the
+  Knob. KY-039/053/054/035 kept; all 12 Atech ports allocated, so there is 1 motor (pan) and no IMU. Added the
+  Modulino Buzzer and KY-031 to the CAD fit check, and the PD hub (external) to the BOM/wiring. Updated
+  `assembly.md`, `bom.md`, `wiring.md` and the CAD README.
+- Verified: fit check clean; all 19 printed STLs unchanged (nothing to reprint).
+- Contract changes: none (the spec's MQTT topics still need mapping onto `contracts/`).
+- Broken/blocked: `firmware/atech-head/AGENTS.md` (IMU taps, purr) and handoff §8 now disagree with D23. Hub
+  location (UNO Q in the spec, laptop in handoff §5.1) is undecided. Owners: A for firmware, B for hub.
+- Next: A — flash the Atech port plan; B — decide the hub location and map the spec's topics onto `contracts/`.
