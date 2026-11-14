@@ -119,8 +119,8 @@ owner = "A"
 kind = "firmware"
 summary = "Atech board: display eyes, knob ear dial, lid button, chest LED grids, pan motor (power-on home, optional hall), speaker; MQTT on the LAN"
 removable = true
-consumes = ["cmd.head", "raw.sensors.hall", "health"]
-emits = ["raw.head.ear", "raw.head.button", "raw.head.pan", "health"]
+consumes = ["cmd.head", "raw.sensors.hall", "raw.head.tap", "raw.hub.face", "health"]
+emits = ["raw.head.ear", "raw.head.button", "raw.head.pan", "cmd.sensors", "health"]
 
 [[module]]
 name = "unoq-sensors"

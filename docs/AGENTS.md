@@ -11,6 +11,7 @@
 | `tracks.md` | track → what we show → proof today → where in repo | |
 | `track-readiness.md` | dated audit: requirement → status → evidence per track, weak points, unsupported claims | point-in-time; re-run before FINAL, do not copy its facts elsewhere |
 | `demo-narrative.md` | the 2:00 video script, 3:00 pitch beats, how to describe each service, judge Q&A | only what runs on recording day; `demo/` follows it |
+| `robot-network-handover.md` | robot Wi-Fi/MQTT handover (Atech + UNO Q): what exists, verified vs not, traps | point-in-time (2026-11-14); details live in the module `AGENTS.md` files |
 | `validation.md` | tester/mentor feedback | no names without consent |
 | `submission.md` | Junction submission text | must match what actually runs before FINAL |
 | `templates/module/` | new-module `AGENTS.template.md` | named `*.template.md` so agents don't load it as instructions |

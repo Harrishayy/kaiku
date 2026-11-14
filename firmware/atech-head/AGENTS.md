@@ -41,6 +41,8 @@ kaiku_link/
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
 standalone/             ACTIVE (D44): website-agent firmware in src/ (main.cpp, pins.h, transport.*; our edit: drum clock from the first tap);
+                        src/kaiku_net.*: Wi-Fi + MQTT (UNO Q knocks/faces in, chimes + pan out; hooks marked `// kaiku_net`;
+                        handover: docs/robot-network-handover.md)
                         project.yaml only lists modules so `atech build` fetches drivers; build.sh overlays src/ +
                         include shims for its modules/<group>/x.h paths. `make atech-standalone [FLASH=1]`
 bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over USB; record_wav.py saves a .wav

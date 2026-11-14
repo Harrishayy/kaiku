@@ -1131,3 +1131,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   breathing, drum from the first tap, done). Over USB: `pan` runs and reports done (value commands are JSON lines).
 - Broken/blocked: none for the standalone head. The MQTT firmware stays the next stage (D44).
 
+
+## 2026-11-14 12:45 — Claude Code — firmware (A): kaiku_net for the standalone head + handover
+- Did: `standalone/src/kaiku_net.*` (Wi-Fi + MQTT from kaiku_link's network code): UNO Q knocks and faces in, chimes
+  (`cmd.sensors`) and `raw.head.pan` out, `cmd.head` mapped to the ritual's actions; 13 marked hooks in `main.cpp`;
+  `build.sh` copies the gitignored `secrets.h` and adds PubSubClient + ArduinoJson. `modules.toml` updated.
+  Handover for the team: `docs/robot-network-handover.md`.
+- Verified: builds (RAM 16 %, flash 25 %); `make check` passes. **Not yet flashed or tested on the board.**
+- Next: flash, then knock on the UNO Q while the head is idle (greeting + wake chime), knocks in DRUM.

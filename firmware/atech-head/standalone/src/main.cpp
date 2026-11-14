@@ -17,6 +17,7 @@
 #include "modules/sensor/icm40608.h"
 #include "modules/led/neopixel.h"
 #include "i2c_software.h"
+#include "kaiku_net.h"   // kaiku_net: Wi-Fi + MQTT to the UNO Q and hub (contracts)
 
 ST7735_TFT st7735_tft(PIN_ST7735_TFT_D, PIN_ST7735_TFT_B, PIN_ST7735_TFT_C, PIN_ST7735_TFT_A);
 RotaryEncoder rotary_encoder_knob(PIN_ROTARY_ENCODER_KNOB_A, PIN_ROTARY_ENCODER_KNOB_B, PIN_ROTARY_ENCODER_KNOB_C, PIN_ROTARY_ENCODER_KNOB_D);
@@ -81,9 +82,10 @@ static void setMode(Mode m) {
   mode = m; modeStart = millis(); dirty = true;
   char b[64]; snprintf(b, sizeof b, "{\"step\":\"%s\"}", modeName(m));
   emit("ritual_step", b);
+  kaiku_net::step(modeName(m));   // kaiku_net
   if (m == DIAL_MOOD || m == DIAL_ENERGY || m == DIAL_SLEEP) { dialValue = 5; eyes = EYES_CALM; }
   if (m == BREATHE) eyes = EYES_SLEEPY;
-  if (m == DRUM) { taps = 0; firstTap = lastTap = 0; forceSum = forceMax = curForce = 0; eyes = EYES_WIDE; }
+  if (m == DRUM) { kaiku_net::chime("start_drum");   /* kaiku_net */ taps = 0; firstTap = lastTap = 0; forceSum = forceMax = curForce = 0; eyes = EYES_WIDE; }
   if (m == IDLE) { eyes = EYES_CALM; quietUntil = millis() + 3000; }
   if (m == DONE) eyes = EYES_HAPPY;
 }
@@ -94,6 +96,7 @@ static void purr(unsigned long ms) { purrUntil = millis() + ms; }
 static void startGreeting() {
   setMode(GREET); eyes = EYES_WIDE;
   chirp(); purr(1500);
+  kaiku_net::chime("wake");   // kaiku_net: the UNO Q buzzer answers
   emit("greet", "{\"offer\":\"ritual\"}");
 }
 
@@ -105,6 +108,7 @@ static void finishDrum() {
   snprintf(b, sizeof b, "{\"taps\":%d,\"tempo_bpm\":%.1f,\"force_avg_g\":%.2f,\"force_max_g\":%.2f}",
            taps, bpm, taps ? forceSum / taps : 0.0f, forceMax);
   emit("drum", b);
+  kaiku_net::chime("end_drum");   // kaiku_net
 }
 
 static void finishRitual() {
@@ -275,6 +279,7 @@ void setup() {
   lastKnobPos = rotary_encoder_knob.getPosition();
   setMode(IDLE);
   drawFrame();
+  kaiku_net::begin();   // kaiku_net
 
   Serial.printf("{\"type\":\"boot\",\"payload\":{\"reset_reason\":\"%s\",\"free_heap\":%u,\"modules\":["
                 "{\"instance\":\"st7735_tft\",\"module\":\"st7735_tft\",\"ok\":true,\"detectable\":false},"
@@ -289,10 +294,11 @@ void setup() {
 
 void loop() {
   p2p_transport_loop();
+  kaiku_net::tick();   // kaiku_net
 
   // ---- commands from the hub ----
   P2PCommand cmd;
-  while (p2p_next_command(&cmd)) {
+  while (p2p_next_command(&cmd) || kaiku_net::nextCommand(&cmd)) {   // kaiku_net: cmd.head too
     const char* a = cmd.action;
     if (!strcmp(a, "greet")) startGreeting();
     else if (!strcmp(a, "ritual")) startRitual();
@@ -317,6 +323,7 @@ void loop() {
   int32_t pos = rotary_encoder_knob.getPosition();
   if (pos != lastKnobPos) { knobSteps += knobSign * (int)(pos - lastKnobPos); lastKnobPos = pos; }
   tapLatch |= icm40608_imu.wasShaken();
+  if (kaiku_net::takeTaps()) { tapLatch = true; if (curForce < 1.0f) curForce = 1.0f; }   // kaiku_net: UNO Q knocks
   {
     float ax = icm40608_imu.readAccelX(), ay = icm40608_imu.readAccelY(), az = icm40608_imu.readAccelZ();
     float dev = fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f);
@@ -324,16 +331,20 @@ void loop() {
   }
 
   applyMotor();
+  kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: the UNO Q ignores knocks while the motor runs
+  if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera
 
   // knob
   if (knobSteps) {
     if (mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP) {
       dialValue = constrain(dialValue + knobSteps, 1, 10); dirty = true;
+      kaiku_net::ear(dialValue, knobSteps, false);   // kaiku_net
     }
     knobSteps = 0;
   }
   if (pressedLatch) {
     pressedLatch = false;
+    kaiku_net::ear(dialValue, 0, true);   // kaiku_net
     if (mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP) confirmDial();
     else if (mode == IDLE || mode == GREET || mode == DONE) advance();
     else advance();   // skip breathing or end drumming early

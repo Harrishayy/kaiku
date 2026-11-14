@@ -28,6 +28,11 @@ PY
 fi
 rm -f build/src/*.cpp build/src/*.h
 cp src/*.cpp src/*.h build/src/
+# kaiku_net (Wi-Fi + MQTT): the one gitignored secrets file shared with the MQTT firmware, plus its two libraries
+[ -f ../kaiku_link/secrets.h ] || { echo "missing ../kaiku_link/secrets.h: cp ../kaiku_link/secrets.example.h ../kaiku_link/secrets.h and fill it in" >&2; exit 1; }
+cp ../kaiku_link/secrets.h build/src/secrets.h
+python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text()
+if "PubSubClient" not in s: p.write_text(s.replace("lib_deps =\n", "lib_deps =\n    knolleary/PubSubClient@^2.8\n    bblanchon/ArduinoJson@^7.2\n", 1))'
 for m in shared/atech_helpers display/st7735_tft input/rotary_encoder audio/speaker audio/microphone \
          motor/dc_motor sensor/icm40608 led/neopixel; do
   mkdir -p "build/src/modules/$(dirname "$m")"
