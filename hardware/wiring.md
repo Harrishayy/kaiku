@@ -38,10 +38,10 @@ Confirm GPIOs with `atech validate`; never hard-code them. Head modules are cabl
 | Speaker (MAX98357A) | 1–2 | body, right-wall grille | `bench/speaker` |
 | Color Display (st7735_tft, eyes) | 3–4 | head, tuning window (connector edge up) | `bench/display` |
 | Knob (rotary_encoder_knob, ear dial) | 5–6 | head, left ear | `bench/knob` |
-| DC Motor V2.3 (pan, 12:40 gear) | 7 | body, under the pan base | `bench/motor` |
+| DC Motor V2.3 (pan, 12:40 gear) | 13 | body, under the pan base | `bench/motor` |
 | Microphone (ICS-43434) | 9–10 | head, right-ear grille (sound hole against it) | `bench/mic` |
-| Button (active low) | 11 | lid, square opening | `bench/button` |
-| LED Grid left / right (neopixel_grid) | 13 / 14 | body, behind the chest louvres | `bench/leds` |
+| Button (active low) | 7 | lid, square opening | `bench/button` |
+| LED Grid left / right (neopixel_grid) | 11 / 14 | body, behind the chest louvres | `bench/leds` |
 
 The neck carries 6 Atech cables, 3 jumpers and the camera cable through a 19 mm axle: feed the plugs through one at
 a time, the camera's USB-A plug first, and leave a service loop. Charge-only USB-C cables can't program the Atech board.

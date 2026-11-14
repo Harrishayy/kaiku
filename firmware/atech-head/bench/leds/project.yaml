@@ -1,9 +1,9 @@
-# Bench: both Atech LED grids alone on ports 13 and 14 (neopixel_grid, WS2812B 3x3). Colours, then a breath.
+# Bench: both Atech LED grids alone on ports 11 and 14 (neopixel_grid, WS2812B 3x3). Colours, then a breath.
 # C++ names from the docs example: setAll(r, g, b) + show().
 name: bench-leds
 board: 14port
 modules:
-  - {id: neopixel, instance: ledL, port: 13}
+  - {id: neopixel, instance: ledL, port: 11}
   - {id: neopixel, instance: ledR, port: 14}
 code:
   loop: |

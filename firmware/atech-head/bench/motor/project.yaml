@@ -1,9 +1,9 @@
-# Bench: Atech DC motor alone on port 7 (pan, 12:40 gear). Low speed, short pulses, ramped. Hold the head; nothing else is driven.
+# Bench: Atech DC motor alone on port 13 (pan, 12:40 gear). Low speed, short pulses, ramped. Hold the head; nothing else is driven.
 # VERIFY method names with `atech info dc_motor` (camelCase: setSpeed(-255..255) / brake).
 name: bench-motor
 board: 14port
 modules:
-  - {id: dc_motor, instance: motor, port: 7}
+  - {id: dc_motor, instance: motor, port: 13}
 code:
   loop: |
     static int step = 0; static uint32_t next = 3000;

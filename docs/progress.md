@@ -262,3 +262,17 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Contract changes: none.
 - Broken/blocked: `make` is not on Windows; atech-setup done by hand (see module AGENTS.md).
 - Next: run the motor/display/speaker/mic_record benches on the board, then the link bench.
+
+## 2026-11-14 — Xavier — firmware/atech-head, hardware [new port layout; full firmware compiles]
+- Did: ports now match the build: motor 13, LED grids 11/14, button 7 (project.yaml, benches, wiring.md, module
+  AGENTS.md). The full firmware compiles for the first time: `kaiku_link` is a PlatformIO library linked in place
+  (`libraries: symlink://`, new `kaiku_link/library.json`; `module.yaml` removed), since an Atech module must sit on a
+  real port. Knob: acceleration off (one count per click) in the bench and the firmware; the bench starts with the
+  ring off. Corrected the earlier motor note: the "won't stop" run had the motor on 13 while the code drove 7.
+- Verified: motor/leds/button/knob benches and the full firmware build. LED bench on hardware: grid lights on port 14,
+  stays dark on port 11.
+- Contract changes: none.
+- Broken/blocked: port 11 (GPIO43/44, UART0) did not light the LED grid: keep a grid off it or find out why.
+  Uploads sometimes fail at esptool's switch to 460800 baud; flash with `upload_speed = 115200` via
+  `pio run -d build -t upload` when that happens. Knob bench not yet run on hardware.
+- Next: knob bench on hardware, then the motor bench on port 13, then secrets.h + the link bench.

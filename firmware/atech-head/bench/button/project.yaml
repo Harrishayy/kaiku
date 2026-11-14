@@ -1,9 +1,9 @@
-# Bench: Atech button alone on port 11. `atech build . && atech upload .`, then `atech monitor` (or FROM=serial:<port>).
+# Bench: Atech button alone on port 7. `atech build . && atech upload .`, then `atech monitor` (or FROM=serial:<port>).
 # VERIFY method names with `atech info button_module` (C++ camelCase per the docs example: isPressed).
 name: bench-button
 board: 14port
 modules:
-  - {id: button, instance: btn, port: 11}   # lid
+  - {id: button, instance: btn, port: 7}   # lid
 code:
   loop: |
     static bool down = false; static uint32_t at = 0, n = 0;

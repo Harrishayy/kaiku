@@ -1,5 +1,5 @@
 // kaiku_link implementation. See kaiku_link.h for the contract and ../AGENTS.md for the module rules.
-// Libraries (module.yaml lib_deps): knolleary/PubSubClient, bblanchon/ArduinoJson@7.
+// Libraries (library.json dependencies): knolleary/PubSubClient, bblanchon/ArduinoJson@7.
 #include "kaiku_link.h"
 
 #include <ArduinoJson.h>
