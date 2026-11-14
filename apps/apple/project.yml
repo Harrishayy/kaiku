@@ -1,0 +1,93 @@
+# XcodeGen spec for the Kaiku Apple apps. Generate: `cd apps/apple && xcodegen` → Kaiku.xcodeproj (not committed).
+# Ground truth for look/copy stays in design/ + config/; scripts/sync_design.sh copies them into KaikuKit.
+name: Kaiku
+options:
+  bundleIdPrefix: fi.kaiku
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_PREVIEWS: YES
+packages:
+  KaikuKit:
+    path: KaikuKit
+targets:
+  Kaiku iOS:
+    type: application
+    platform: iOS
+    sources: [iOS]
+    dependencies:
+      - package: KaikuKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.app
+        PRODUCT_NAME: Kaiku
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Kaiku
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you hold Kaiku. Your voice stays on this phone."
+        INFOPLIST_KEY_NSCameraUsageDescription: "To scan the pairing code on Kaiku's screen. Nothing is saved."
+        INFOPLIST_KEY_LSApplicationQueriesSchemes: tel
+    info:
+      path: iOS/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: fi.kaiku.pair
+            CFBundleURLSchemes: [kaiku]
+  Kaiku iOS UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [iOSUITests]
+    dependencies:
+      - target: Kaiku iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Kaiku iOS
+  Kaiku Mac:
+    type: application
+    platform: macOS
+    sources: [Mac]
+    dependencies:
+      - package: KaikuKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.kaiku.mac
+        PRODUCT_NAME: Kaiku
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Kaiku
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.healthcare-fitness
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you hold Kaiku. Your voice stays on this Mac."
+        ENABLE_HARDENED_RUNTIME: NO
+    info:
+      path: Mac/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: fi.kaiku.pair
+            CFBundleURLSchemes: [kaiku]
+schemes:
+  Kaiku iOS:
+    build:
+      targets:
+        Kaiku iOS: all
+    test:
+      targets: [Kaiku iOS UITests]
+  Kaiku Mac:
+    build:
+      targets:
+        Kaiku Mac: all

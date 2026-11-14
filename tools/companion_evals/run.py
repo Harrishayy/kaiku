@@ -349,6 +349,10 @@ def main(argv: list[str] | None = None) -> int:
                                                                   DEFAULT_MODELS[role]))
     ap.add_argument("--out", type=Path, default=OUT)
     a = ap.parse_args(argv)
+    if not a.dry:
+        from kaiku_contracts.config import load_dotenv
+
+        load_dotenv()  # GEMINI_API_KEY from the repo .env for real passes only
     if not a.dry and not os.environ.get("GEMINI_API_KEY"):
         print("GEMINI_API_KEY not set — use --dry (or `make eval-companion DRY=1`).", file=sys.stderr)
         return 2

@@ -1,0 +1,5 @@
+Kaiku.xcodeproj/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/

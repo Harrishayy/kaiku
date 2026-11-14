@@ -88,7 +88,7 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
     thread = memory.current_thread(store, home_id, now)
     arm = service.nudge(store, settings, home_id).arm
     lang = language or str(settings_language())
-    return ContextCard(
+    card = ContextCard(
         language=lang if lang in ("en", "fi", "sv") else "en", intent=intent, time_of_day=time_of_day(local.hour),
         first_name=memory.first_name(store, home_id),
         done_today=done_today(events, store.episodes(home_id), now),
@@ -96,6 +96,12 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
         memories=[m["text"] for m in mems], routines=memory.routines(store, home_id, now, TZ),
         open_thread=thread["topic"] if thread and not others_present else None,
         tone=tone_for(row), others_present=others_present, dont_remember=not memory.remembering(store, home_id))
+    if known and not others_present:
+        from . import reflect
+
+        d = card.model_dump(mode="json")
+        card.focus = reflect.focus_line(reflect.plan(store, home_id, d, now=now, use_model=False), d)
+    return card
 
 
 def settings_language() -> str:

@@ -68,6 +68,19 @@
           "description": "only if the person told Kaiku their name",
           "title": "First Name"
         },
+        "focus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "today's focus, chosen by the daily reflection from fixed options",
+          "title": "Focus"
+        },
         "intent": {
           "default": "talk",
           "enum": [

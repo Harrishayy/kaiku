@@ -145,3 +145,26 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Contract changes: none. `modules.toml` web: emits + memories endpoints; removed the `obs.play_session` planned producer.
 - Broken/blocked: design (D) — move `apps/web/lib/copy-web.json` keys into `design/copy.json`. Cloud (C) — highlights /
   what-helps / suggestion reasons are English only; per-signal pause for the receipt has no endpoint.
+
+## 2026-11-14 — Claude Code (workstream A1, Apple core) — apps/apple (+ modules.toml entry)
+- Did: `apps/apple/` XcodeGen project (`Kaiku iOS` 17+, `Kaiku Mac` 14+, `Kaiku iOS UITests`) around the shared
+  package `KaikuKit`: contracts mirror, async API client (timeouts, retry/backoff), offline queue on disk (UUIDv7 ids,
+  idempotent), pairing (`?home=&t=` link, QR on iPhone, paste on Mac, Keychain), local safety gate (port of
+  `kaiku_contracts.safety`), Canvas mascot drawn from `mascot.spec.json` (all 11 states, blink schedule, yawn, tap
+  ear flick, dial ear, cursor look on Mac, time-of-day glow, Reduce Motion poses), component library, crisis screen,
+  onboarding, tabs Today · Play · Talk · Your days · You per `design/ia.md` (Mac: sidebar window + menu bar popover).
+  Games: Firefly (go/no-go 60 s), Pebble path (Corsi, 2 misses), Breathe (6/min), Tell Kaiku (energy VAD speech
+  rate + pause ratio, no audio kept). Talk: companion session → Gemini Live WebSocket with the ephemeral token
+  (protocol from geminiDocs) or, with no token, an honest offline card + typed path with scripted lines.
+  Emits `obs.self_report` (channel phone|mac), `obs.play_session`, `obs.safety_flag`. Removed `obs.play_session`
+  from `[planned_producers]`.
+- Verified: `swift test` (25 tests incl. `safety_cases.json` parity, contract shapes vs schemas, copy keys en+fi),
+  both targets build, `make check` green. UITests against a seeded local cloud: weather check → 3 `obs.self_report`
+  `channel: phone`, pebbles → `obs.play_session`, memories list loads; Today shows "…, Aino" with the cozy mascot.
+  Screenshots on iPhone SE (3rd gen) + 16 Pro Max, en + fi, default / XXXL / AX-XL, long name: fixed mid-word breaks,
+  header/back overflow, Talk and game screens overflowing at large text, onboarding Help overlap.
+- Contract changes: none.
+- Broken/blocked: design (D) — please upstream `apps/apple/KaikuKit/Sources/KaikuKit/Resources/copy.apple.json`
+  (~50 keys copy.json lacks) into `design/copy.json`. Cloud (C) — `/v1/me` highlights are English-only. No contract
+  for good/hard day marks (kept on device). Live not exercised against the real API (no key).
+- Next: A2 (Live Activity, HealthKit, glasses, light hunt), A3 (notch island, usage sampler); real Live smoke.

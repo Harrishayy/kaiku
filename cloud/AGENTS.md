@@ -238,3 +238,17 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
   `forget` is in the registry on every surface but not yet in `config/surfaces.toml` tool lists (prompt lists the
   served tools, so it is described anyway). Memories are not embedded (FTS5 only, per the scope guard).
 - The synth emits screen activity in 4 blocks a day (not hourly) to keep `make tune` fast; the real Mac app is hourly.
+
+## Intelligence wiring (2026-11-14)
+- **One key:** `GEMINI_API_KEY` in the repo `.env` (template: `.env.example`). `make cloud-local` loads it via
+  `kaiku_cloud.api.local`; tests and `make smoke` use `kaiku_cloud.api.main` and never read `.env` (no paid calls).
+  `make doctor` checks the key and that every model ID in `config/kaiku.toml [models]` is visible to it (free lookups).
+- **Gemini text:** `llm/gemini.py` (Interactions API) — tiers `fast` (`gemini_fast`) and `flagship` (`gemini_flagship`).
+- **Explanations:** `KAIKU_LLM=auto` → hosted Gemma → Gemini fast → template. `gemma_modal` only when selected.
+- **Gemma on Modal:** separate scale-to-zero app `kaiku-gemma` (`cloud/gemma_app.py`): `make gemma-download` (CPU,
+  weights → Volume), `make gemma-deploy` (no container starts), `make gemma-smoke` (one cold call). GPU/scale-down in
+  `config/kaiku.toml [gemma_modal]`.
+- **Daily reflection:** `mind/reflect.py` — the flagship picks today's focus from fixed options (validated; rule
+  fallback); runs in the nightly job and `POST /v1/admin/reflect`; sessions only read the cached plan (card `focus`).
+- **Live through the mind:** every surface opens Gemini Live with what `POST /v1/companion/session` returns
+  (persona + surface + context card + tools; ephemeral `live_token` for apps); cloud tools go to `/v1/companion/tool`.

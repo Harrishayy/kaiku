@@ -316,6 +316,22 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     def admin_recompute(eval: bool = False) -> dict[str, Any]:
         return nightly.run(store, settings, with_eval=eval, eval_runner=eval_runner)
 
+    @app.post("/v1/admin/reflect", dependencies=[Depends(require_admin)])
+    def admin_reflect(home_id: str | None = None) -> dict[str, Any]:
+        """Daily reflection with the flagship model (rule fallback without a key). Nightly job + on demand.
+        Clears today's cached plan first so a re-run uses the model."""
+        from ..mind import reflect
+        from ..mind.card import build_card
+
+        out = {}
+        now = datetime.now(UTC)
+        for hid in ([home_id] if home_id else store.home_ids()):
+            store.kv_delete(f"reflect:{hid}:{now.astimezone(reflect.TZ).date().isoformat()}")
+            card = build_card(store, settings, hid, intent="talk", now=now).model_dump(mode="json")
+            store.kv_delete(f"reflect:{hid}:{now.astimezone(reflect.TZ).date().isoformat()}")
+            out[hid] = reflect.plan(store, hid, card, now=now, use_model=True, log=log)
+        return {"reflected": len(out), "plans": out}
+
     @app.post("/v1/admin/reset", dependencies=[Depends(require_admin)])
     def admin_reset() -> dict[str, Any]:
         """Demo reset: delete simulated data (live/real events stay). Re-seed with `make seed`."""

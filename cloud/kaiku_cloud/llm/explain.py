@@ -18,15 +18,18 @@ from kaiku_contracts.api import Explanation
 from kaiku_contracts.config import get
 
 from ..settings import Settings
-from . import gemma_hosted, gemma_vllm
+from . import gemini, gemma_hosted, gemma_vllm
 from .errors import LlmUnavailable
 from .template import CAVEATS, template_explanation
 
 BANNED = ("diagnos", "relapse detected", "predicts", "predict relapse", "disorder", "suffering from",
           "symptoms of", "is depressed", "mentally ill", "psychotic")
 PROMPT = (Path(__file__).parent / "prompts" / "explain.md").read_text()
-BACKENDS = {"gemma_hosted": gemma_hosted.generate, "gemma_modal": gemma_vllm.generate}
-MODEL_KEY = {"gemma_hosted": "gemma_hosted", "gemma_modal": "gemma_hf_repo"}
+BACKENDS = {"gemma_hosted": gemma_hosted.generate, "gemma_modal": gemma_vllm.generate, "gemini": gemini.generate_fast}
+MODEL_KEY = {"gemma_hosted": "gemma_hosted", "gemma_modal": "gemma_hf_repo", "gemini": "gemini_fast"}
+# KAIKU_LLM=auto: Gemma first (open model), then Gemini fast, then the deterministic template. gemma_modal is not in
+# the auto chain on purpose — a cold GPU start takes minutes; select it explicitly when it's warm for a demo.
+CHAINS = {"auto": ("gemma_hosted", "gemini")}
 
 
 def contains_banned(text: str) -> str | None:
@@ -63,10 +66,12 @@ def _from_llm(raw: str, ctx: dict[str, Any], backend: str) -> Explanation:
 
 
 def make_explanation(ctx: dict[str, Any], settings: Settings | None = None, log: Any = None) -> Explanation:
-    backend = (settings or Settings()).llm
-    gen = BACKENDS.get(backend)
-    if gen is not None:
-        prompt = PROMPT + json.dumps(ctx, default=str, indent=1)
+    choice = (settings or Settings()).llm
+    prompt = PROMPT + json.dumps(ctx, default=str, indent=1)
+    for backend in CHAINS.get(choice, (choice,)):
+        gen = BACKENDS.get(backend)
+        if gen is None:
+            continue
         for attempt in (1, 2):
             try:
                 return _from_llm(gen(prompt), ctx, backend)
@@ -74,9 +79,9 @@ def make_explanation(ctx: dict[str, Any], settings: Settings | None = None, log:
                 if log:
                     log.warning("llm_unavailable", str(e))
                 break
-            except Exception as e:  # invalid JSON / schema / banned words → retry once, then template
+            except Exception as e:  # invalid JSON / schema / banned words → retry once, then next backend
                 if log:
-                    log.warning("llm_invalid_explanation", f"attempt {attempt}: {e}")
+                    log.warning("llm_invalid_explanation", f"{backend} attempt {attempt}: {e}")
     ex = template_explanation(ctx)
     assert contains_banned(ex.model_dump_json()) is None
     return ex

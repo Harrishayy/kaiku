@@ -10,13 +10,14 @@ greeting_language = "fi"
 # Verified in the Gemini docs (geminiDocs MCP) 2026-11-14. Model names change: re-check before a deploy.
 gemini_live = "gemini-3.8-live"
 lyria_realtime = "lyria-realtime-exp"
-gemini_flagship = "gemini-4-argon"
+gemini_flagship = "gemini-4-argon"         # orchestration / reflection / eval judge (Hydrogen/Carbon: not listed yet)
+gemini_fast = "gemini-3.8-flash"           # bulk text: explanations fallback, simulated persons in evals
 gemini_vision = "VERIFY-gemini-flash-model-id"
 tts = "gemini-3.8-flash-tts"              # GA 2026-09-22, Interactions API; used by the cloud /v1/voice
 tts_lite = "gemini-3.8-flash-lite-tts"    # cheaper on-demand alternative
 gemma_hosted = "gemma-4-26b-a4b-it"       # larger: gemma-4-31b-it
 # VERIFY Hugging Face repo id (org prefix) + licence acceptance (D5: smallest instruct variant first)
-gemma_hf_repo = "VERIFY-google/gemma-4-26b-a4b-it"
+gemma_hf_repo = "google/gemma-4-26B-A4B-it"  # checked on HF 2026-11-14; smaller: google/gemma-4-12B-it (fits L40S)
 
 [voice]
 # D27: ONE voice for Kaiku everywhere (Gemini Live on the robot + cloud TTS for apps/glasses).
@@ -93,3 +94,9 @@ bpm_max = 200
 helpline_name = "MIELI Crisis Helpline"
 helpline_number = "09 2525 0111"
 emergency_number = "112"
+
+[gemma_modal]
+# Separate scale-to-zero Modal app `kaiku-gemma` (cloud/gemma_app.py). Costs nothing until called.
+gpu = "H100"          # 26B-A4B in bf16 needs ~52 GB; use "L40S" with google/gemma-4-12B-it to save credits
+scaledown_s = 60      # container stops 60 s after the last call (raise to keep it warm during the demo)
+max_model_len = 8192

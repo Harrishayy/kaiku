@@ -341,6 +341,7 @@ class ContextCard(ApiModel):
     open_thread: str | None = Field(default=None, description="topic left open on any surface")
     tone: ToneCue = "steady"
     care_info: str | None = None
+    focus: str | None = Field(default=None, description="today's focus, chosen by the daily reflection from fixed options")
     others_present: bool = False
     dont_remember: bool = False
 

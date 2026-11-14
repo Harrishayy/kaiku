@@ -1,4 +1,4 @@
-"""Kaiku on Modal: API + static web app, 15-min recompute, nightly simulation fan-out, optional Gemma GPU class.
+"""Kaiku on Modal: API + static web app, 15-min recompute, nightly simulation fan-out, Gemma is a separate app (gemma_app.py).
 
     cd cloud && uv run modal serve app.py     # dev, hot reload  (make cloud-dev)
     cd cloud && uv run modal deploy app.py    # public URL       (make cloud-deploy)
@@ -111,37 +111,21 @@ def recompute():
 
 @app.function(image=image, secrets=SECRETS, schedule=modal.Cron("0 3 * * *", timezone="Europe/Helsinki"))
 def nightly():
-    """Recompute + refresh the simulation shown on /eval."""
+    """Recompute + refresh the simulation shown on /eval, then the daily reflection (flagship; rule without a key)."""
     _call_recompute(with_eval=True)
+    _call_reflect()
 
 
-if LLM == "gemma_modal":
-    # Gemma 4 on vLLM. VERIFY the HF repo id (config [models].gemma_hf_repo) and vLLM support before deploying.
-    from kaiku_contracts.config import get as cfg_get
+def _call_reflect() -> None:
+    import httpx
 
-    GEMMA_REPO = os.environ.get("KAIKU_GEMMA_REPO") or cfg_get("models", "gemma_hf_repo", "")
-    hf_cache = modal.Volume.from_name("kaiku-hf-cache", create_if_missing=True)
-    vllm_image = (
-        modal.Image.debian_slim(python_version="3.12")
-        .pip_install("vllm", "huggingface_hub[hf_transfer]")
-        .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "GEMMA_REPO": GEMMA_REPO})
-    )
+    headers = {"Authorization": f"Bearer {os.environ['KAIKU_ADMIN_TOKEN']}"} if os.environ.get("KAIKU_ADMIN_TOKEN") else {}
+    r = httpx.post(f"{web.get_web_url()}/v1/admin/reflect", headers=headers, timeout=900)
+    r.raise_for_status()
+    print(r.json().get("reflected"), "homes reflected")
 
-    @app.cls(image=vllm_image, gpu="L40S", volumes={"/root/.cache/huggingface": hf_cache}, secrets=SECRETS,
-             scaledown_window=300, timeout=900)
-    class Gemma:
-        @modal.enter()
-        def load(self):
-            from vllm import LLM as VLLM
 
-            self.llm = VLLM(model=os.environ["GEMMA_REPO"], max_model_len=8192)
-
-        @modal.method()
-        def generate(self, prompt: str) -> str:
-            from vllm import SamplingParams
-
-            out = self.llm.chat([{"role": "user", "content": prompt}], SamplingParams(temperature=0.2, max_tokens=800))
-            return out[0].outputs[0].text
+# Gemma 4 lives in its own scale-to-zero Modal app: cloud/gemma_app.py (`make gemma-deploy`).
 
 
 @app.local_entrypoint()

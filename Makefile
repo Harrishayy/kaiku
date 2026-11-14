@@ -57,13 +57,19 @@ replay: ## replay a recording: make replay FILE=logs/x.jsonl [SPEED=1]
 	$(RUN) python tools/replay.py $(FILE) --speed $(or $(SPEED),1)
 
 # ---------------------------------------------------------------- cloud & web
-.PHONY: cloud-local cloud-dev cloud-deploy seed web web-build voice-prerender
+.PHONY: cloud-local cloud-dev cloud-deploy gemma-download gemma-deploy gemma-smoke seed web web-build voice-prerender
 cloud-local: ## run the cloud API locally on :8000 (no Modal needed)
-	$(RUN) uvicorn kaiku_cloud.api.main:app --reload --port 8000
+	$(RUN) uvicorn kaiku_cloud.api.local:app --reload --port 8000
 cloud-dev: ## modal serve (hot-reload on Modal)
 	cd cloud && $(RUN) modal serve app.py
 cloud-deploy: web-build ## modal deploy (public URL)
 	cd cloud && $(RUN) modal deploy app.py
+gemma-download: ## once: Gemma weights -> Modal Volume (CPU only, no GPU time)
+	cd cloud && $(RUN) modal run gemma_app.py::download
+gemma-deploy: ## register the scale-to-zero Gemma app on Modal (no container starts)
+	cd cloud && $(RUN) modal deploy gemma_app.py
+gemma-smoke: ## ONE cold Gemma call (~2-4 min GPU), then it scales to zero
+	cd cloud && $(RUN) modal run gemma_app.py::smoke
 seed: ## seed the cloud with simulated patients (KAIKU_CLOUD_URL) [ARGS=--reset]
 	$(RUN) python -m sim.seed_demo $(ARGS)
 voice-prerender: ## render every config/voice_lines.toml line into the TTS cache (needs GEMINI_API_KEY) [ARGS=--lang en]

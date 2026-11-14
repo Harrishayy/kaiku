@@ -93,6 +93,18 @@ emits = ["obs.outing"]
 http = ["POST /v1/events"]
 
 [[module]]
+name = "apple"
+path = "apps/apple"
+owner = "A"
+kind = "app"
+summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis"
+removable = true
+emits = ["obs.self_report", "obs.play_session", "obs.safety_flag"]
+http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice/{line_key}",
+        "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
+        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
+
+[[module]]
 name = "atech-head"
 path = "firmware/atech-head"
 owner = "A"

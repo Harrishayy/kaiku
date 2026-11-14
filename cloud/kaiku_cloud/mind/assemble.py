@@ -36,7 +36,7 @@ _PERSONA = find_repo_file("config/persona.md")
 ROOT = _PERSONA.parents[1] if _PERSONA else Path.cwd()
 
 CARD_KEYS = {"language", "intent", "time_of_day", "weather_word", "first_name", "done_today", "suggestion",
-             "phq9_due", "memories", "routines", "open_thread", "tone", "care_info", "others_present", "dont_remember"}
+             "phq9_due", "memories", "routines", "open_thread", "tone", "care_info", "focus", "others_present", "dont_remember"}
 TONES = {"steady", "gentle", "extra-gentle"}
 LANGUAGES = {"en", "fi", "sv"}
 FORBIDDEN_KEY = re.compile(r"state|score|verdict|consensus|needs_call|phq9_total|z_|baseline|metric|trend|risk|"
@@ -134,6 +134,8 @@ def render_card(card: dict[str, Any]) -> str:
         lines.append("Their rhythm: " + "; ".join(c["routines"]) + ".")
     if c.get("open_thread"):
         lines.append(f"Left open last time (on any device): {c['open_thread']}. Pick it up gently if it fits.")
+    if c.get("focus"):
+        lines.append(f"Today's focus, if it fits naturally: {c['focus']}.")
     if c.get("dont_remember"):
         lines.append("They asked you not to remember things: never call remember.")
     elif c.get("memories"):

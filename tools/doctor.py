@@ -223,10 +223,28 @@ def check_gemini() -> list[Check]:
     try:
         r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
                       headers={"x-goog-api-key": key}, timeout=5)
-        return [Check("cloud", "gemini key", OK if r.status_code == 200 else FAIL, f"HTTP {r.status_code}",
-                      "" if r.status_code == 200 else "check the key in AI Studio")]
+        out = [Check("cloud", "gemini key", OK if r.status_code == 200 else FAIL, f"HTTP {r.status_code}",
+                     "" if r.status_code == 200 else "check the key in AI Studio")]
     except Exception as e:
         return [Check("cloud", "gemini key", WARN, f"unreachable: {type(e).__name__}")]
+    if out[0].status != OK:
+        return out
+    # Every configured model ID must exist for this key (metadata lookups only: free, no generation).
+    from kaiku_contracts.config import get
+
+    for role in ("gemini_live", "gemini_flagship", "gemini_fast", "tts", "lyria_realtime", "gemma_hosted"):
+        mid = str(get("models", role, "") or "")
+        if not mid or mid.startswith("VERIFY"):
+            out.append(Check("cloud", f"model {role}", WARN, mid or "unset", "set it in config/kaiku.toml [models]"))
+            continue
+        try:
+            r = httpx.get(f"https://generativelanguage.googleapis.com/v1beta/models/{mid}",
+                          headers={"x-goog-api-key": key}, timeout=5)
+            out.append(Check("cloud", f"model {role}", OK if r.status_code == 200 else WARN, f"{mid}: HTTP {r.status_code}",
+                             "" if r.status_code == 200 else "ID not visible to this key — check the Gemini docs"))
+        except Exception as e:
+            out.append(Check("cloud", f"model {role}", WARN, f"{mid}: {type(e).__name__}"))
+    return out
 
 
 def check_modal() -> list[Check]:

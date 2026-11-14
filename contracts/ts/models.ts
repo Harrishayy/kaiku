@@ -109,6 +109,10 @@ export interface ContextCard {
    * only if the person told Kaiku their name
    */
   first_name?: string | null;
+  /**
+   * today's focus, chosen by the daily reflection from fixed options
+   */
+  focus?: string | null;
   intent?: "ritual" | "checkin" | "walk" | "breathe" | "talk" | "break";
   language?: "en" | "fi" | "sv";
   /**
