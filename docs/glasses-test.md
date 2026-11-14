@@ -43,7 +43,9 @@ None of this has run on the real glasses yet. If a step fails, **screenshot You 
 8. **Walk at least one full minute in total** (under a minute nothing is saved), then tap **End walk**.
    See: the summary: minutes, "You spoke n times. Kaiku was in your glasses.", pictures seen (none saved),
    "Saved to Your days."
-9. **Your days** tab: today shows the walk under "Today, so far".
+9. **History** tab → the row under this week's days ("Your garden, today so far and little moments"): today shows
+   the walk under "Today, so far". Back on History, under Walks and outings, **Time out** says "Today so far" with
+   the walk's minutes (the service has to be reachable for that card).
 10. **Practitioner dashboard** on the Mac (`http://localhost:8000`, this person's record): the outing appears
     under Walks and outings for today.
 

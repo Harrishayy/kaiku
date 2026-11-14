@@ -82,13 +82,20 @@ web-build: ## static-export the Next.js app to apps/web/out (served by the cloud
 	@if [ -f apps/web/package.json ]; then cd apps/web && pnpm install --silent && pnpm build; fi
 
 # ---------------------------------------------------------------- quality
-.PHONY: test lint fmt doctor demo demo-reset live-day check smoke eval-companion spend
+.PHONY: test lint fmt doctor demo demo-reset live-day check smoke eval-companion spend drum-music
 spend: ## paid model spend so far vs the hard cap (config/kaiku.toml [budget])
 	$(RUN) python -m kaiku_contracts.budget
 smoke: ## end-to-end: throwaway cloud + seed + key endpoint checks (run before every merge)
 	./scripts/smoke.sh
 e2e-intelligence: ## REAL model calls (cents): session + Live token round trip (typed, spoken, barge-in) + TTS + ask_mind + graph [KAIKU_ENV_FILE=]
 	$(RUN) python scripts/e2e_intelligence.py
+drum-music: ## REAL Lyria RealTime (cents): a whole ritual with simulated taps; music to a WAV, or make drum-music SPEAKER=1 to hear it
+	uv run $(if $(SPEAKER),--extra live,) python tools/drum_music_check.py $(if $(SPEAKER),--speaker,)
+.PHONY: tap-back head-voice
+tap-back: ## Tap it back through the head twin's speaker, no sound device: REAL Lyria (cents), or make tap-back BEAT=1 (the hub's own beat, no model, no cost) [ARGS="--broker-port N"]
+	$(RUN) python tools/drum_music_check.py --tap-back $(if $(BEAT),--beat,) $(ARGS)
+head-voice: ## REAL Gemini Live (cents): one spoken exchange through the head twin's microphone and speaker, no sound device [ARGS="--question q.wav"]; FOLLOW=1 = a head that runs its own ritual: her press, the question, then Tap it back in the same ritual
+	$(RUN) python tools/head_voice_check.py $(if $(FOLLOW),--follow,) $(ARGS)
 test: ## all Python tests (+ web typecheck if installed)
 	$(RUN) pytest
 	@if [ -d apps/web/node_modules ]; then cd apps/web && pnpm -s typecheck; fi
@@ -126,6 +133,20 @@ atech-mqtt: ## MQTT/contract head firmware (next stage, D44): build; FLASH=1 als
 	if [ -n "$(FLASH)" ]; then sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini; \
 	  python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text(); p.write_text(s if "--no-stub" in s else s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'; \
 	  pio run -d build -t upload --upload-port $(ATECH_PORT); else echo "built firmware/atech-head (FLASH=1 to upload)"; fi
+.PHONY: atech-bench head-audio
+atech-bench: ## build ONE Atech bench part: make atech-bench PART=firmware/atech-head/bench/speaker_pcm [FLASH=1 uploads like the firmwares]
+	@set -e; . $(ATECH_VENV)/bin/activate; cd $(PART); atech build . > /dev/null; \
+	if [ -n "$(FLASH)" ]; then sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini; \
+	  python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text(); p.write_text(s if "--no-stub" in s else s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'; \
+	  pio run -d build -t upload --upload-port $(ATECH_PORT); else pio run -d build | tail -6; echo "built $(PART) (FLASH=1 to upload)"; fi
+head-audio: ## head speaker + microphone over MQTT, no hub, no model: make head-audio ARGS='bench --host <broker ip>' (play | mic | hold | check | fake-head; --help)
+	$(RUN) python firmware/atech-head/bench/speaker_pcm/audio_test.py $(ARGS)
+.PHONY: head-audio-test
+HEAD_AUDIO_TEST := firmware/atech-head/bench/speaker_pcm/host_test
+head-audio-test: ## logic test of the head's audio code on this computer (no board, no sound, about 25 s): run after changing kaiku_link/head_audio.*
+	@mkdir -p logs && c++ -std=c++17 -O1 -Wall -Wextra -I $(HEAD_AUDIO_TEST)/stubs -I firmware/atech-head/kaiku_link \
+	  $(HEAD_AUDIO_TEST)/test_head_audio.cpp firmware/atech-head/kaiku_link/head_audio.cpp -o logs/head_audio_test -lpthread
+	@logs/head_audio_test
 eval-companion: ## companion persona evals → scorecard: make eval-companion [DRY=1] [ARGS="--surface robot --limit 5"]
 	$(if $(DRY),$(RUN) python -m tools.companion_evals.run --dry,$(UV) run --quiet --with google-genai python -m tools.companion_evals.run) $(ARGS)
 check: lint test ## lint + test (+ contracts and agents sync checks) — run before pushing

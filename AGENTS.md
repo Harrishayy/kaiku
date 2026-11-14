@@ -8,7 +8,10 @@ the person's own baseline; a **deterministic consensus engine** combines them on
 **intelligence layer** is the product: it turns every input into what it means for this person (went outside, kept
 the morning ritual, slept short, sounded low in the evening reflection), answers them with real emotional
 attunement (a sad thing gets a gentle, curious reply, never "ok, anyway"), and shows the practitioner what changed
-and why, so staying well after treatment does not depend on expensive clinic visits. Every module exists to feed
+and why, so staying well after treatment does not depend on expensive clinic visits. With the person's own switch,
+the phone or Mac camera also counts how the face moves during a game or a check-in (smiles, blinks, range of
+expression): numbers made on the device, never a picture and never an emotion label, shown beside the record and
+not part of the consensus (D52). Every module exists to feed
 or express that layer; a new robot signal is done only when Gemma's review can cite it.
 Groups are not proof of independent connected devices: actual envelope source and capture provenance stay visible.
 `docs/plans/` holds the plans in order (`01-foundation.md` done, `08-product-integration.md` current); this file is the condensed law. Every module folder has its own `AGENTS.md`.
@@ -59,11 +62,17 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    in `sources.py`, run `make contracts`, update producers/consumers/sims, note it in `docs/progress.md`.
    Breaking change → bump `SCHEMA_VERSION`.
 5. **No raw media leaves the device that captured it.** Only `obs.*` is uplinked (the cloud rejects anything else).
-   Raw audio only to Gemini Live during an active, consented companion conversation. Robot camera and laptop webcam are
-   processed in memory, never stored or sent. One exception for pictures (D43): with the separate opt-in "Let Kaiku
+   Raw audio only to Gemini Live during an active, consented companion conversation. Robot camera, laptop webcam and the
+   phone or Mac camera during activities are processed in memory, never stored or sent. The camera during activities
+   (opt-in, off by default, D52) yields only counts of face movement per task (`obs.face_signs`); nothing anywhere
+   infers an emotion from a face, and those counts are shown and citable, not scored. One exception for pictures (D43): with the separate opt-in "Let Kaiku
    see through the glasses during walks" (off by default), about one glasses camera frame a second goes from the
    iPhone straight to that same Gemini Live conversation while it is open and unmuted; frames are never stored,
    logged or sent to the Kaiku cloud, and no observation is derived from them. Browser apps never hold the Gemini key.
+   On the robot the head and the hub are one body in two boxes (D51): only while a consented conversation is open,
+   the head's microphone audio crosses the home network to the hub as unstored PCM frames (`audio/head/mic`) on its
+   way to that same Gemini Live conversation, and generated music and Kaiku's voice cross the other way
+   (`audio/head/speaker`); these frames are never stored, logged, recorded by a bus tool or uplinked.
 6. **The consensus rule and the crisis path are deterministic.** No LLM decides a person's state or handles a
    crisis. Gemma explains the verdict and organises permitted companion knowledge (D35); Gemini Live uses
    the prepared context for conversation and calls the shared mind only when needed. See `docs/safety.md`.
@@ -97,12 +106,12 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | contracts | [`contracts/`](contracts/AGENTS.md) | all | library | no | Message envelope, payloads, topics, API models, consensus source map; shared Bus/config/jlog |
 | hub | [`hub/`](hub/AGENTS.md) | B | node | no | Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink |
 | cloud | [`cloud/`](cloud/AGENTS.md) | C | service | no | Modal app: ingest, SQLite, baselines, per-source verdicts, consensus v1, bandit, Gemma reasoning and graph organisation, simulation, web hosting |
-| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune |
+| web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune/debug day |
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
-| apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your days, You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
+| apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live, read-only), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
 | atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, pan motor (power-on home, optional hall), speaker, taps from the orientation sensor (standalone); standalone ritual or MQTT firmware (D44); MQTT on the LAN |
-| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D48, D49) |
+| unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D54, D55) |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
 | sim | [`sim/`](sim/AGENTS.md) | C | harness | yes | Twins of every hardware node + glasses/laptop/phone sources; synthetic patients; cloud seeder |
 | tools | [`tools/`](tools/AGENTS.md) | B | harness | yes | bus tail / record / replay, local API discovery, doctor, agents sync checker, electronics bench checker, companion evals (persona/wording/safety scorecard) |
@@ -127,7 +136,11 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 `make tail TOPIC=...` · `make record` / `make replay FILE=` · `make cloud-local` · `make seed` · `make web` ·
 `make test` · `make check` · `make doctor` · `make contracts` · `make agents` · `make criteria` · `make tune` ·
 `make cloud-deploy` · `make voice-prerender` · `make demo-reset` · `make design` · `make eval-companion [DRY=1]` ·
-`make e2e-intelligence` (real model calls: Live, TTS, mind, graph)
+`make e2e-intelligence` (real model calls: Live, TTS, mind, graph) · `make drum-music [SPEAKER=1]` (real Lyria
+RealTime through a whole ritual with simulated taps) · `make tap-back [BEAT=1]` (the Tap it back game with real Lyria through the head twin) ·
+`make head-voice` (one real Live exchange through the head's speaker and microphone, no sound device) · head firmware: `make atech-setup`, `make atech-standalone [FLASH=1]`,
+`make atech-mqtt [FLASH=1]`, `make atech-bench PART=<bench folder>`, `make head-audio ARGS='bench --host <broker>'`
+(the head's speaker and microphone over MQTT, no hub, no model), `make head-audio-test` (its audio logic on this computer)
 
 ## Tech rules
 - Python ≥ 3.11 via **uv** only (`uv add --package <member> <dep>`; uv workspace: `contracts/python`, `hub`,
@@ -139,15 +152,17 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 - **English first.** Every surface must work fully in English before any fi/sv work; untranslated or draft
   fi/sv copy never blocks or delays an English fix.
 - **Who uses what.** The website is the practitioner dashboard only (one viewport, panels). Everything the person
-  does (onboarding, Today, Play, Talk, walks, Your days) lives in the iPhone/Mac apps and on the robot.
+  does (onboarding, Today, Play, Talk, walks, History) lives in the iPhone/Mac apps and on the robot.
 - **Show the intelligence.** A practitioner must be able to see what Gemma concluded and why (review, cited
   evidence, agent trace, knowledge graph, routine, period comparison): `GET /v1/patients/{id}/insight`.
 - **Real over plausible.** No hand-written model output, no hard-coded patient data in a UI, no claim in docs or
   copy that the code or a physical test has not shown. Seeded records go through the real routes and rules.
 - Wording in UI/explanations: "change from your usual", "worth a check-in", "consensus", "needs a call".
   Never "diagnosis", "relapse detected", "predicts relapse". Drum = "inspired by research on improvisational
-  music therapy". Robot light is not light therapy. Kaiku "can see" only during a walk with "Let Kaiku see" on and frames flowing (the walk screen shows it); everywhere
+  music therapy". Tap it back is a rhythm game, not a test: its words are "perfect / great / nice / not quite", never a score. Robot light is not light therapy. Kaiku "can see" only during a walk with "Let Kaiku see" on and frames flowing (the walk screen shows it); everywhere
   else the glasses are a voice in the ear and never "see".
+  Face signs (D52): say "face signs", "movements of the face", "shown, not scored"; never "emotion detected" or
+  "looked sad", and Kaiku never says it saw the person's face.
 
 ## Don'ts
 - Don't edit another module's folder; leave its owner a `Broken/blocked` line in `docs/progress.md`.

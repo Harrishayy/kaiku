@@ -36,7 +36,7 @@ kaiku-cloud = { workspace = true }
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["contracts/tests", "hub/tests", "cloud/tests", "tools/tests", "sim/tests", "design/tests",
-             "firmware/unoq-sensors/python/tests"]
+             "firmware/unoq-sensors/python/tests", "firmware/atech-head/tests"]
 addopts = "-q --import-mode=importlib"
 pythonpath = ["."]
 

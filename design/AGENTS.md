@@ -32,7 +32,7 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   modes, per-state pose + keyframe tracks + events, interactions, ambient-mood → state map, robot eye crop.
 - `copy.json` — **ground truth** for on-screen UI copy (en + fi, same keys; `{name}`/`{n}` placeholders). Apps
   render keys, never inline strings or dev notes.
-- `ia.md` — the app's information architecture: tabs (Today · Play · Talk · Your days · You), every screen with its
+- `ia.md` — the app's information architecture: tabs (Today · Play · Talk · History · You; Your days sits under History), every screen with its
   components, states and copy keys, games (intro → play → gentle end, what each records), Mac/island/web extras.
 - `layout.md` — overflow-proofing rules: stress case (fi + long name + 1.35× text + 320 pt), wrapping/truncation,
   scrolling, text scaling, safe areas.

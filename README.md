@@ -80,6 +80,29 @@ flowchart TD
 | **Needs a call** | Two or more signal groups worse than her usual |
 | **Safety** | PHQ-9 item 9 or a crisis phrase; overrides everything, with a fixed script and no model |
 
+### One sentence through the mind
+
+<p align="center"><img src="docs/media/intelligence-flow-all.gif" width="820" alt="Seven scenes of data travelling through Kaiku: one sentence, a question to the mind, a walk, the robot's ritual to the practitioner, the drum game, face signs, the fixed lines, then every model"><br><sub>The whole flow in 70 seconds: seven scenes, 35 hops, then every model. At each gate: what crosses, what stays behind, how long it took. Simulated record, real model calls, measured 14 Nov 2026.</sub></p>
+
+<p align="center"><img src="docs/media/intelligence-flow.gif" width="760" alt="One sentence travelling from the Mac to Gemini Live, to Kaiku's rules and back"><br><sub>One scene at reading pace: "I am not feeling too well", from the Mac to Gemini Live, to Kaiku's rules and back.</sub></p>
+
+[`docs/explainers/intelligence-flow.html`](docs/explainers/intelligence-flow.html) is the interactive version (open the file in a browser): seven scenes and a table of every model. The scenes: one sentence, a question to the mind, a glasses walk, the robot's ritual to the practitioner, the drum game, face signs, and the fixed lines.
+
+| Model | When Kaiku uses it | Measured (runs) |
+|---|---|---|
+| Gemini Live (`gemini-3.8-live`) | Every spoken conversation; hears her, speaks as Kaiku, chooses the tools | 2.3 s to first sound (5 turns) |
+| Gemma 4 (`gemma-4-26b-a4b-it`) | First to reason behind `ask_mind`; writes the practitioner review; every answer checked by code | 2.3 s `ask_mind` (5), 18.1 s review (8) |
+| Gemini 3.8 Flash | Fallback only, after Gemma fails twice | 3.4 s (1) |
+| Gemini 4 Argon | Escalation for hard questions (at most 20 a day per home), the weekly brief | 4.6 s (1), 7.7 s brief (6) |
+| Gemini Embedding 2 | A vector for each note she lets Kaiku keep, and for a question | 341 ms a note (108) |
+| Gemini TTS | The fixed lines in Kaiku's one voice, rendered once and cached; never the crisis script | 4.1 to 4.5 s, then 5 ms |
+| Lyria RealTime (`lyria-realtime-exp`) | The robot's drum game, Tap it back: a short song at a set tempo, straight from the hub; off unless the hub's music is switched on | 0.38 to 0.71 s to open (2), 8.7 s once |
+| No model | Her state, the crisis path, the context card, the `feel` plan, the spend cap, every validator | 20 ms ingest and rule (3) |
+
+The conversations were held by a test client standing in for the apps (same session route, token, Live connection
+and tool route) with a synthetic voice. In those five turns the voice chose `feel` and `recall` and never
+`ask_mind`; the `ask_mind` numbers come from questions sent to the same route.
+
 ## A companion, not a reporting machine
 
 <table align="center">
@@ -94,12 +117,22 @@ flowchart TD
 - **The check-in is a small chat.** Today's first stop opens with Kaiku's hello, like meeting on the street. Answer by voice, by typing, or turn the three dials underneath; all three count. An ordinary day closes in a few turns; a really good or really hard one goes on as long as the person wants.
 - **A suggestion comes as a card.** When Kaiku suggests a game, a journal entry, breathing or a walk, it makes a tool call that puts one card in the conversation. Nothing opens without the person's yes, and a no is final for that conversation.
 - **One mind on every device.** A favourite place mentioned on a glasses walk is known to the phone, the Mac and the robot the next time ([tested](cloud/tests/test_walk.py)). Once a day Kaiku may bring one thing up on Today, chosen by rule and worded around her own words.
+- **Agreed in one place, shown everywhere.** When she says yes to an activity on the robot, the glasses or in any talk, Kaiku's cloud keeps it for the day and every screen shows the same thing: a card on Today, a notification when the app is behind or the phone is locked, "Done" everywhere once the activity's own record arrives. Code decides what counts as her yes; "maybe" keeps nothing, and on an extra-gentle day only her own ask is kept. An open app has it in well under a second (7 to 39 ms on one machine); a phone that has put the app to sleep shows it when the app is next opened (Kaiku sends no Apple push; that was considered and left out).
 - **None of this sets the state.** The consensus stays code. The plan shapes a conversation; it never changes what the practitioner sees as the state.
+
+<p align="center">
+<img src="docs/media/ios-agreed-card.png" width="200" alt="iPhone Today: the card for an activity agreed with the robot">
+<img src="docs/media/ios-agreed-banner.png" width="200" alt="iPhone: the notification for an agreed activity with Start and Not now">
+<br><sub>A yes posted as the robot's tool call: the card on an open Today, and the notification with the app behind (iPhone simulator, a real stream).</sub></p>
 
 **Where it stands:** shown with real Gemini Live replies to typed input on the iPhone simulator. An ordinary day
 closed in three turns, by Kaiku. On a hard day (the clip: her mother's ninetieth birthday) Kaiku stayed, made one
 offer and kept answering after the phone was locked. In one earlier take it gave no reply to two plain
-statements; the cause (a setting meant for walks) is being fixed. Not yet heard through a real microphone.
+statements. That did not happen again in three later real runs of the same lines (four of four answered each
+time), so its cause is not known; the app now notices a line that gets no answer, checks the connection and
+sends the line again. Not yet heard through a real microphone. The agreed card was shown on the simulator from
+posted tool calls, and once from a real typed Gemini Live walk where Kaiku itself made the call; a spoken yes to a
+real robot, and the Mac's own banner, have not been shown.
 
 ## The surfaces
 
@@ -110,13 +143,21 @@ statements; the cause (a setting meant for walks) is being fixed. Not yet heard 
 <td align="center" valign="top"><img src="docs/media/ios-first-run.gif" width="170" alt="iPhone: first-run setup"><br><sub>First-run setup to Today (iPhone simulator)</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-seed-shelf.gif" width="170" alt="iPhone: Seed shelf game"><br><sub>Seed shelf, a measured game</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-talk.gif" width="170" alt="iPhone: Talk as a call, continuing on the Lock Screen"><br><sub>Talk is a call (simulator, typed lines, real Gemini Live replies, no sound): Kaiku muted for one answer, which still comes as captions; then the phone locked, the reply on the Lock Screen bar, and "End" there</sub></td>
-<td align="center" valign="top"><img src="docs/media/ios-today-so-far.gif" width="170" alt="iPhone: Your days"><br><sub>Your days: "Today, so far" (what was noticed, from which device, what is shared)</sub></td>
+<td align="center" valign="top"><img src="docs/media/ios-today-so-far.gif" width="170" alt="iPhone: Today, so far"><br><sub>"Today, so far" under History (what was noticed, from which device, what is shared)</sub></td>
 </tr>
 </table>
 
 - **Three minutes a day.** Today's path is a small check-in chat with Kaiku, its one suggestion, the Lantern game and one more game in turn. Games end on what grew, never a time or a count; they are short activities inspired by research, not validated tests ([games](docs/validation.md#games)).
 - **Talk is a call.** One voice everywhere: a Gemini Live call opened with a short-lived token from the cloud, so the app never holds the API key. Mute yourself or mute Kaiku, independently; the words of both keep coming as captions. The call goes on when the phone locks, with a bar on the Lock Screen and in the Dynamic Island (elapsed time, the last caption, mute, end), and ends by itself after three quiet minutes in the background. If the voice is unavailable Kaiku stays silent and shows text, never a synthesizer.
+- **History: her own numbers.** One tab holds everything Kaiku has collected about her, from every device: the robot's drum tempo, taps and steadiness, the morning ritual and first hello, each game's result, walks, check-ins, the watch and the Mac. Each measure opens by day, week or month with the average, the range and a band for her own usual range, and the single sessions under it. Numbers only: no state, no verdict, and seeded readings say "Simulated". From Apple Health, when she allows it (D53): the night's sleep with its deep, REM and core stages and the time awake, resting and walking heart rate, steps, distance walked and time in daylight, as daily totals; no sleep score, because Apple gives apps none. The new ones are shown, not scored.
+- **Face signs, as numbers (D52).** With "Camera during activities" on (off by default), the iPhone or Mac counts how the face moves while a game or a check-in is on screen: smiles, blinks, range of expression. Apple's face tracking does it on the device; only the counts are sent, no picture is kept or sent, and nothing labels an emotion. A chip shows when the camera is on, with a one-tap off. The counts sit in History and beside the practitioner's record as shown, not scored: they never change the consensus. On a day when they are clearly below her own usual Kaiku goes a little gentler and never says why.
 - **Her choices, her day.** Every signal has its own switch, set at first run and reversible. "Today, so far" lists what was noticed, from which device and what is shared. Readings queue on the phone until the cloud confirms them.
+
+<p align="center">
+<img src="docs/media/ios-history-summary.png" width="200" alt="iPhone: History, one card per measure">
+<img src="docs/media/ios-history-drum-tempo.png" width="200" alt="iPhone: History, the robot's drum tempo over a month with her usual range">
+<img src="docs/media/ios-history-pebble-path.png" width="200" alt="iPhone: History, the Pebble path game by week">
+<br><sub>History (iPhone simulator, the seeded record through the real route): the summary, the robot's drum tempo over a month, a game by week.</sub></p>
 
 **Where it stands:** a signed build is installed on a real iPhone and found the service from the phone. On the
 simulator, with typed input, a real call ran 4 min 48 s across a token renewal while locked, answered from the
@@ -129,6 +170,7 @@ Apple Health are not yet accepted on the device. [`apps/apple/AGENTS.md`](apps/a
 
 - **The same Kaiku on the desk.** One Swift package holds every screen and game; the Mac and iPhone targets are thin shells around it.
 - **Rhythm, never content.** Opt-in and pausable: the frontmost app is mapped to a broad category on the Mac, and one message an hour carries minutes per category, late-night minutes, switches and breaks. Never window titles, URLs, keystrokes or screenshots; the contract rejects extra fields.
+- **History on the desk too.** The same History pane as the phone, from the same route, two cards to a row.
 - **A quiet nudge from the notch.** After 01:00 while still active, or after 90 active minutes without a break, Kaiku peeks from the notch with one line: at most three a day, with a snooze.
 - **Quick talk from any app.** A thin bar rests at the left edge of the screen. Hover and it becomes two buttons: start speaking, open Kaiku. Tap Control twice (or Option-Shift-Space) and it grows into a small popup with Kaiku and live captions, and the conversation starts at once without taking focus from the app in front. Mute yourself or mute Kaiku; the captions keep coming. Tuck the popup away and the call lives in the notch with its elapsed time.
 
@@ -188,11 +230,17 @@ Bring-up steps: [`hub/AGENTS.md`](hub/AGENTS.md). Module docs:
 
 <p align="center"><a href="https://harrish21raj--kaiku-web.us-east.modal.run/?id=aino"><img src="docs/media/web-dashboard.gif" width="820" alt="The practitioner dashboard"></a><br><sub>The practitioner dashboard on the public simulated record · <a href="docs/media/web-dashboard.png">full-size still</a></sub></p>
 
-- **One page, one person.** A header strip with the consensus in plain words, then nine movable panels: trends against her usual range, consensus now, Kaiku's review, routine, knowledge graph, daily account, care actions, ask the record, and coverage.
+- **One page, one person.** A header strip with the consensus in plain words, then nine movable panels: trends against her usual range, consensus now, Kaiku's review, knowledge graph, daily account, routine, care actions, ask the record, and coverage.
+- **A map of her days, not a diagram.** The knowledge graph puts every measure, activity and routine in its neighbourhood (mornings, sleep and body, mood and energy, movement, people, screens and games, care) and lets the practitioner scrub through the days: what was recorded, what was away from her usual, what changed that day and what moved first. Order in time is stated; cause never is.
 - **A review that can be checked.** Gemma writes the overview and findings; code renders the numbers, and each finding opens the records it cites. A second tab shows the agent trace: every step, whether a rule or a model ran it, validator rejections and fallbacks.
 - **Honest about its sources.** Each signal group shows which device actually sent its records and a "Simulated" marker. Care actions are recorded in Kaiku and contact nobody. Conversation words are never shown.
 
-**Where it stands:** live at the public link, read-only, with one simulated record. [`apps/web/AGENTS.md`](apps/web/AGENTS.md)
+<p align="center"><img src="docs/media/web-graph-day.png" width="820" alt="The knowledge graph maximised on 9 Nov: neighbourhoods, the day scrubber and what changed that day"><br><sub>The knowledge graph on 9 Nov, the day the call was raised: 17 of 18 measures away from her usual, and what changed that day.</sub></p>
+
+**Where it stands:** live at the public link, read-only, with one simulated record. Seen in one browser engine
+(headless Chromium). For the team there is also a debug page per day: everything collected that day, each rule's
+reading, every model call, and Gemma's read of the day with each sentence checked against the facts it cites.
+[`apps/web/AGENTS.md`](apps/web/AGENTS.md)
 
 ### Cloud on Modal
 
@@ -311,6 +359,7 @@ ritual on the board with its standalone firmware (see [Robot](#robot)); the live
 - **The crisis path is deterministic and contacts nobody.** A fixed phrase list, PHQ-9 item 9 or a long press on the robot's button shows a pre-written message with the MIELI Crisis Helpline 09 2525 0111 and 112 and sets "Safety" on the dashboard. It will miss indirect language. [`docs/safety.md`](docs/safety.md)
 - **No raw media is stored.** Only derived numbers reach the record and the cloud rejects anything else. Audio goes to Gemini Live only during a conversation she started; Google can keep Live session state for up to 24 hours. [`docs/privacy.md`](docs/privacy.md)
 - **The glasses-frames rule (D43).** Off by default. Frames may go to that walk's Gemini Live conversation and nowhere else; no state, observation or crisis trigger comes from a picture, and people in view are never described. [`docs/decisions.md`](docs/decisions.md)
+- **Camera during activities (D52).** Off by default. Counts of face movement per game or check-in are made on the device and only those numbers are sent; no picture leaves it and no emotion is inferred from a face anywhere in Kaiku. The idea comes from research on reduced facial movement at higher symptom severity; it is not validated here and every level is uncalibrated, which is why the counts have no vote. [`docs/validation.md`](docs/validation.md)
 - **Consent per signal.** One switch per signal, pausable, listed in "What Kaiku saw today". Conversation text is kept only after a separate opt-in, and practitioners never see conversations or the notebook.
 - **A research prototype.** Not a medical device, not a crisis service, and no replacement for clinicians. It reports a change from a person's usual; a practitioner decides what that means.
 
@@ -324,7 +373,7 @@ Every module has one doc, its `AGENTS.md`. New here? Read the root [`AGENTS.md`]
 | [`hub/`](hub/AGENTS.md) | Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live adapter, uplink |
 | [`cloud/`](cloud/AGENTS.md) | Modal app: ingest, SQLite, baselines, verdicts, consensus, learner, Gemma review and graph, simulation, web hosting |
 | [`apps/web/`](apps/web/AGENTS.md) | Next.js practitioner dashboard |
-| [`apps/apple/`](apps/apple/AGENTS.md) | SwiftUI iPhone and Mac apps: Today, Play, Talk, Your days, You; the glasses walk |
+| [`apps/apple/`](apps/apple/AGENTS.md) | SwiftUI iPhone and Mac apps: Today, Play, Talk, History, You; the glasses walk |
 | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | Instructions only for a glasses display web app; not part of the entry |
 | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | Instructions only for an optional Android camera app; not part of the entry |
 | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | Atech board: screen eyes, knob ear dial, chest LEDs, neck motor, speaker |

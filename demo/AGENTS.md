@@ -47,6 +47,15 @@ free ports with a temp DB, so they run beside other dev servers.
   - `TEST_RUNNER_KAIKU_DEMO_ARGS="-kaikuTalkDemo live"` runs a flow on the scripted Live: for checking the taps
     and answering the simulator's "Allow Live Activities?" prompt before a real take. Its lines are hand-written
     layout text: never a clip, a GIF or a piece of the cut.
+- `scripts/record_flow.py` (`uv run --with playwright python scripts/record_flow.py`, about 10 min, needs ffmpeg
+  and gifsicle; no model, cloud or key): steps `docs/explainers/intelligence-flow.html` frame by frame, two takes
+  at 1920×1080 (`--only video|fast` for one of them). The full take, at reading pace →
+  `recordings/intelligence-flow.mp4` (seven scenes and the model table, about 4 min 10 s), `-steps.txt` (time code
+  of every scene and hop), `-sheet.png` and `docs/media/intelligence-flow.gif` (scene 1, under 3 MB). The fast
+  take (the page's own `?pace=fast`, every hop still travelled, about 70 s) → `recordings/intelligence-flow-fast.mp4`,
+  `-fast-steps.txt`, `docs/media/intelligence-flow-all.gif` (every scene and hop, then the model table; 960 px,
+  under 10 MB) and `-all-sheet.png` (frames of that GIF at every hop: look at it before the GIF ships).
+  `--audit` records nothing: it checks that every text fits its box at every size and must be clean first.
 - `scripts/record_gifs.py [name ...]` → the README GIFs in `docs/media/` from those clips (pieces listed in the
   script); `scripts/record_voice.py --url <service>` → `recordings/voice/*.wav`, the lines the app plays (cached
   lines are free, a new one is a capped TTS call); `draft_cut.py` (`uv run --with pillow python demo/draft_cut.py`)

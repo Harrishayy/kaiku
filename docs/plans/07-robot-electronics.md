@@ -77,14 +77,17 @@ YuNet detector · ring-light control · purr motor (needs a free port).
 
 ## 4. Future: the same messages, other placements (kept open by design)
 
-- **Hub + broker on the UNO Q** (what the spec proposes). The hub is plain Python on MQTT. Run Mosquitto + `make hub` on
-  the UNO Q Linux side, set `MQTT_HOST=localhost` for the UNO Q app, and point `MQTT_HOST` in the Atech `secrets.h`
-  at the UNO Q. No code changes are needed. Watch the RAM (2 GB with OpenCV + Live) and App Lab's container USB access.
-- **Audio over MQTT through the Atech speaker/mic.** Add binary topics outside the envelope families:
-  `kaiku/v1/<home>/audio/head/{mic,speaker}` (16 kHz, 16-bit LE mono, 20 ms = 640 B frames). `tools/record`,
-  `tail` and the uplink must skip `audio/` (root rules 5 and 9). Add a hub `devices/head_audio.py` adapter, selected
-  by config, that replaces the laptop mic/speaker in the Live adapter. Firmware side: a ~200 ms ring buffer that
-  plays silence on underrun, and mic frames flagged or muted while the speaker plays.
+- **Hub + broker on the UNO Q** (what the spec proposes). Written up on 14 Nov as a runbook with a setup script,
+  **not yet run on the board**: [`../robot-network-handover.md`](../robot-network-handover.md) → "The robot on its own:
+  no laptop" and `scripts/unoq_robot_setup.sh`. The hub is plain Python on MQTT and needs no sound device. The sensors
+  app reaches the broker at the board's address as its App Lab container sees it, not `localhost`. Watch the RAM (2 GB
+  with OpenCV + Live) and give the broker a password outside a bench.
+- **Audio over MQTT through the Atech speaker and microphone.** Built on 14 Nov (D51), compiled, **not yet flashed or
+  heard**: binary topics outside the envelope families, `kaiku/v1/<home>/audio/head/{mic,speaker}` (wire format:
+  [`contracts/AGENTS.md`](../../contracts/AGENTS.md)); hub adapter `hub/kaiku_hub/live/head_audio.py`, selected by
+  `[music] out` and `[voice] audio`; firmware `firmware/atech-head/kaiku_link/head_audio.*` (a 0.5 s ring that plays
+  silence on underrun, microphone sent only while the hub holds it open and never while the speaker plays). The bus
+  tools and the uplink skip `audio/` (root rules 5 and 9).
 
 ## 5. Risks
 

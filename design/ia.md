@@ -19,7 +19,7 @@ Copy keys live in [`copy.json`](copy.json) (en + fi; never inline strings, never
 ## Navigation
 | | iPhone | Mac | Web `/me` |
 |---|---|---|---|
-| Tabs | Bottom tab bar: Today · Play · Talk · Your days · You (`tab.*`) | Sidebar, same five, same order | Single page: Today block, garden, receipt, pairing |
+| Tabs | Bottom tab bar: Today · Play · Talk · History · You (`tab.*`) | Sidebar, same five, same order | Single page: Today block, garden, receipt, pairing |
 | Extra | Dynamic Island, Lock Screen Live Activity, widgets | Menu bar popover, notch island | — |
 
 ## Onboarding (first launch; no tab bar)
@@ -56,7 +56,18 @@ Every game goes **intro → play → gentle end**. The end screen has `game.agai
 | Talk | header, chat bubbles (me / Kaiku), hold-to-talk mascot with 30 s ring, hint | idle · listening (hold) · thinking · speaking (glow pulses, reply bubble) · mic denied → permission card, then the text field | `talk.*`, `perm.mic.*` |
 | Talk, typing | bubbles, typing indicator (mini `thinking` + dots), composer (text field + mic + send icon) | empty · typing · sending · offline (queued, banner) | `talk.type`, `talk.send` |
 
+## History
+The one place where the person's own numbers are shown (`docs/decisions.md` D48): the exception to "never show
+scores or trends" above. Plain numbers only: no colour for good or bad, no arrows, no "better" or "worse", no state
+words, no streaks. Measure names, units and groups come from the service, not from `copy.json`.
+
+| Screen | Components | States | Copy keys |
+|---|---|---|---|
+| History | header, Your days block (this week's 7 day buttons + row to Your days), then per group (Robot, Games, Walks and outings, Check-ins, Sleep and body, Mac): one card per measure (name, device, latest value + day, last 7 days as a small chart). Mac: two columns of cards | loading · nothing yet (one calm line with Kaiku `cozy`) · latest day simulated ("Simulated") · practice rounds only · offline (shows what it last had + when it was updated) | `tab.history`, `history.sub`, `history.empty*`, `history.fetched*`, `history.card.practice`, `common.simulated` |
+| A measure | back + name, where it came from and how a day is made, segmented Day · Week · Month, period with earlier/later, the period's total or average + range + days, chart (bars for amounts, dots for levels, soft band = the person's usual range), month: week by week, sessions list (when, device, each session's numbers) | no records in the period · day picked on the chart · warm-up session · simulated | `history.range.*`, `history.perday.*`, `history.total`, `history.average*`, `history.spread`, `history.days`, `history.usual`, `history.byweek`, `history.sessions*`, `history.warmup` |
+
 ## Your days
+Reached from History (its first block) and from Today's garden card; no longer a tab.
 | Screen | Components | States | Copy keys |
 |---|---|---|---|
 | Your days | garden (sprout per interaction; rests after 3 quiet days, never wilts), week strip (7 day buttons), postcards row | day blank/good/hard/today · postcards empty state | `days.*`, `empty.postcards` |

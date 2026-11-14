@@ -232,3 +232,112 @@ Lantern → one of seed shelf / pebble path / watering in turn: about three minu
   their abstracts only), so a change in a game says something about the day or the week, not about TMS "working".
 - Sources above were checked from abstracts or open full text on 2026-11-14; effect sizes were not re-derived.
 - A game result alone never raises "needs a call", and no game ever handles safety.
+
+### Tap it back (the robot's rhythm game, D51)
+
+The robot plays a short song at a set tempo, goes quiet, and she taps the beat back from memory; three levels a
+day (about 100 bpm, clearly faster, then slow with more taps). It is **inspired by research on timing**: hearing
+a beat and then keeping it going without it is the "synchronise, then continue" tapping task used in laboratory
+work on timing (Wing & Kristofferson 1973; reviewed in Repp 2005, *Psychonomic Bulletin & Review*; named from
+memory, not re-read on 2026-11-14). **It is not that task and not a validated test.**
+
+- What is measured: the median gap between her taps as a tempo, its distance from the song's tempo in percent,
+  and how even the gaps were. The laboratory task uses a metronome, dozens of taps and millisecond timing; ours
+  uses a generated song, 8 to 12 taps, and tap times from a knock switch or a motion sensor sent over Wi-Fi.
+- What it is for: something pleasant to do with the robot that ends on a warm word. The bands (perfect, great,
+  nice) are our own cut-offs (4 %, 8 %, 15 %), chosen to feel fair, not taken from any study.
+- How it is used: shown to the person in History as numbers. **Not scored**: no metric reads it, it moves no
+  verdict, and it is kept apart from free drumming, whose tempo is her own (D51).
+- Shown so far: the game end to end with the real music model through a simulated head (bands as tapped: 1.5 %,
+  6.9 %, 22 % then 3.1 %). Not shown: a person playing it, the real speaker and tap sensors, whether people can
+  hear the tempo of a generated song in 8 seconds, or whether anyone enjoys it.
+
+## Face signs (camera during activities, D52)
+With the person's opt-in, the phone or Mac counts movements of the face while a game or the check-in chat runs
+(`obs.face_signs`). Nothing here is validated. This section says what the idea is inspired by, what we chose
+because of it, and what we cannot claim.
+
+### What the research says (read from abstracts and summaries on 2026-11-14, not re-derived)
+- **Less facial movement went with higher symptom severity, in clinical interviews.** In adults followed during
+  treatment for depression, sessions with higher severity had fewer affiliative facial actions (action units 12
+  and 15; AU 12 is the smile), more of a non-affiliative one (AU 14) and smaller, slower head movement, in both
+  manual and automatic coding (Girard, Cohn, Mahoor, Mavadati, Hammal & Rosenwald 2014, *Image and Vision
+  Computing* 32(10):641–647, [doi](https://doi.org/10.1016/j.imavis.2013.12.007)). An earlier study from the
+  same group reported moderate concurrent validity with depression for facial actions and for vocal prosody
+  (Cohn et al. 2009, *ACII 2009*, [doi](https://doi.org/10.1109/ACII.2009.5349358)). Both used recorded
+  clinical interviews, not a game on a phone.
+- **A face does not show what a person feels.** A review of the evidence found that facial movements are not
+  reliably diagnostic of emotional states: the same movement goes with different feelings, and the same feeling
+  with different movements, across people and situations (Barrett, Adolphs, Marsella, Martinez & Pollak 2019,
+  *Psychological Science in the Public Interest* 20(1):1–68, [doi](https://doi.org/10.1177/1529100619832930)).
+- **Blink rate** rose with time on task in studies of fatigue, and also depends on what the task asks of the
+  eyes (Stern, Boyer & Schroeder 1994, "Blink rate: a possible measure of fatigue", *Human Factors* 36(2)). We
+  found no source we could check for blink rate and low mood, so none is cited and the blink metric would not
+  vote even if the others did.
+
+### What we built because of it
+| Choice | Why |
+|---|---|
+| Counts of movement (`smile_share`, `expression_range`, `blinks_per_min`, …), never an emotion label | Barrett et al. 2019; the contract has no field for a label and the review rejects one |
+| Compared only with the same person's own earlier sessions, on the same method and the same kind of task | Girard et al. followed the same people across sessions; ARKit blendshapes and Vision landmarks are different instruments; a talking face moves for that reason |
+| Shown and citable, not scored | the evidence is from interviews, not games; there are no recordings of day-to-day spread, so every spread floor is argued, not measured |
+| A reading needs one usable face in 60 % of the frames, 20 s of sampling, and half the frames its method takes in 20 s (300 at the phone's 30 looks a second, 150 at the landmark method's 15) | a thin capture is missing evidence, not a low number |
+| A livelier face than usual is never read as "better" | the face is not a wellbeing meter |
+| Apple's on-device face tracking, no model of our own | no weights to ship or audit, explainable coefficients; an emotion classifier (and a YOLO-family model under AGPL-3.0 in an MIT repository) was the alternative we decided against |
+
+### What we cannot claim
+- That any of these counts says something about how a person is, in this setting or any other. Not tried.
+- That a game on a phone brings out the movements a clinical interview does. A person concentrating on a screen
+  smiles little on any day.
+- That the numbers are stable: lighting, glasses, a beard, the angle of the phone and the device's own tracking
+  all move them. Head movement has no fixed scale across methods and gets no usual.
+- Real captures. The record that shows them is authored and labelled SIMULATED; its quiet days were written in.
+- Before a face metric may vote: recordings of real spread per method, a floor re-set from them, and a check
+  against a scored outcome. Until then it is a line on a chart that a practitioner may ask about.
+
+## More of the day from Apple Health (D53)
+`obs.wearable_daily` now also carries the day's walking and running distance, time in daylight, the average
+walking heart rate, the minutes of deep, REM and core sleep, and the minutes awake in the night. Nothing here is
+validated. Six of them are measures that are shown beside the record and do not vote (`role = "shown"`); core
+sleep is stored and listed in History only.
+
+### What the research says (read from abstracts and summaries on 2026-11-14, not re-derived)
+- **Daylight.** In a cross-sectional analysis of 86,772 adults who wore a light sensor for a week, more light in
+  the daytime went with a lower risk of major depressive disorder, and more light at night with a higher one
+  (Burns et al. 2023, *Nature Mental Health* 1:853–862, [doi](https://doi.org/10.1038/s44220-023-00135-8)).
+  Cross-sectional: it cannot say which way the link runs, and a person who is low may simply go out less. The
+  watch's "time in daylight" is Apple's own estimate; we found no public description of how it is computed.
+- **Sleep stages and waking in the night.** A meta-analysis of sleep-laboratory studies found disturbed sleep
+  continuity in most mental disorders, and changes in sleep depth and REM sleep in affective disorders among
+  others (Baglioni et al. 2016, *Psychological Bulletin* 142:969–990,
+  [doi](https://doi.org/10.1037/bul0000053)). That is polysomnography in a laboratory, between groups of people.
+  A watch estimates stages from its own sensors: Apple's own paper ("Estimating Sleep Stages from Apple
+  Watch") compares its four states (awake, core, deep, REM) with polysomnography; we did not read its accuracy
+  tables and quote no figure.
+- **Distance walked and walking heart rate.** Distance is the same walking the step count already measures,
+  reported in kilometres; we did not look for separate evidence and cite none. We found no source we could
+  check for the average walking heart rate and low mood, so none is cited.
+- **No sleep score.** Apple shows a sleep score in its own apps and gives other apps no type to read it
+  (`HealthSync.swift` reads sleep analysis samples only). Kaiku sends the stages and the time awake and does not
+  compute a score of its own: a single number would hide which part of the night changed, and nobody here could
+  check it.
+
+### What we built because of it
+| Choice | Why |
+|---|---|
+| Shown and citable, not scored | the evidence is between groups, in laboratories or with research-grade sensors; none of it is about one person's watch from day to day |
+| Compared only with the same person's own earlier days | a watch's stage estimate has its own bias; the same watch on the same wrist is at least the same instrument |
+| Spread floors are argued, not measured (0.4 km, 10 min of daylight, 3 bpm, 10 / 12 / 8 min of deep sleep, REM and time awake) | no recordings of real day-to-day spread; each floor only stops an unusually even fortnight from turning a small difference into a large one |
+| Less REM sleep is charted as "below usual" and carries no weight | the sleep-laboratory literature on low mood describes more REM pressure, not fewer REM minutes (Baglioni et al. 2016), and a watch's nightly REM minutes are not that measure; the direction on the chart is a convention, not a claim |
+| More daylight, more distance, more deep sleep than usual is never read as "better" | these are not wellbeing meters |
+| The five watch measures that vote are untouched | the rule version stays `consensus-v1+db93b715`; a verdict is the same with and without the new fields (tested) |
+
+### What we cannot claim
+- That any of these numbers says something about how a person is. Not tried.
+- That a watch's deep or REM minutes equal a sleep laboratory's. They are estimates, and they are absent on any
+  night the watch was not worn or did not stage.
+- That "time in daylight" measures the light that matters for mood. We do not know how the watch decides it,
+  so we do not know what it misses (a covered wrist in a Finnish November, for one, is untested).
+- Real data. The record that shows them is authored and labelled SIMULATED; its harder days were written in.
+- Before one of them may vote: real spread per person, floors re-set from it, and a check against a scored
+  outcome.

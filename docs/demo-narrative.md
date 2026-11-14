@@ -43,6 +43,20 @@ About 175 spoken words. Record the narration first and cut the pictures to it.
   never been calibrated on patients, and that is the pilot."
 - **After the care action (15 s):** the learner. "Each suggestion is scored right after and the next day, and
   Kaiku offers Aino what has worked for her."
+- **After the Mac shot (15 to 20 s): how one sentence travels.** The explainer
+  (`docs/explainers/intelligence-flow.html`, recorded as `demo/recordings/intelligence-flow.mp4`; time codes of
+  every hop in `intelligence-flow-steps.txt`): zoom out from "I'm not feeling too well" to the map, her voice
+  straight to Gemini Live, the `feel` call to Kaiku's rules, the plan back, the reply. "Her voice goes to the
+  voice model and nowhere else. Kaiku's own mind decides how to meet her in milliseconds, by rule, and the voice
+  never sees a score." Its numbers were measured on a simulated record with a test client and a synthetic voice:
+  say "measured on our bench", not "in the app".
+- **After the robot shot (10 s): agreed in one place.** She says "Can we play the lantern game later?" to the
+  robot; the phone on the table shows the card at once. Shown so far from posted tool calls on the simulator and
+  one real typed walk; film it only after it has worked on the real devices. On Aino's record the day is
+  extra-gentle, so only her own ask is kept: a plain "yes" to an offer keeps nothing there.
+- **Drum music (optional, only if it has played in the room):** the hub with `KAIKU_MUSIC=lyria` plays Lyria
+  RealTime in the style of her mood dial and follows her tapped tempo; the sound comes from the hub's speaker, not
+  the head. Proven on 14 Nov with simulated taps and audio into a file only.
 - **Close (10 s):** pilot with a neuromodulation unit; the consensus compared with clinician assessments.
 
 ## How to talk about each service

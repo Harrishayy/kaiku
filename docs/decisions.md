@@ -442,10 +442,276 @@ flowchart LR
   Without that, a re-seed of the same days (same episode ids) never re-opened the seeded threads, and the seeded
   person had no invitation.
 
+## D48 — The person may see their own numbers in one place: History (2026-11-14, lead)
+- **Rule so far:** the person-facing apps never show scores, trends or state words (D34: "never shows states,
+  scores or z values"). That rule stays for every other screen and for everything Kaiku says.
+- **Decision (lead):** one person-facing place shows numbers, the way a health app does: `GET /v1/me/history`
+  (`PersonHistory`, `cloud/kaiku_cloud/history.py`). It is the person's own record by day and by session, from
+  every device: robot (drum tempo, taps, steadiness, time; ritual steps; first hello; speaking pace; heart rate
+  and heart rhythm around the breathing and room light when a robot measures them), games (each game's own
+  measured numbers, practice rounds marked and left out of the day), walks and outings, the three check-in dials,
+  the watch's daily summary, the Mac's active time, late-night minutes and breaks.
+- **Same numbers as the practitioner side:** which measures exist and how a day is made come from
+  `config/criteria.toml` through the analytics' own reading code; `config/kaiku.toml [history]` only says which are
+  shown, in which group, under which plain title, plus the stored readings no metric scores. The only extra is
+  "your usual": a low and a high from their own baseline, nothing else.
+- **What stays forbidden there, and is tested on the wire for a home in "needs a call" with a safety flag on
+  top:** the consensus state, any verdict word, z-scores, flags, weights, thresholds, "better" or "worse" or any
+  other direction word, anything from the practitioner's review or the care team's actions, safety flags, the
+  PHQ-9 (answers and totals), engagement levels, camera or facial readings, and what Kaiku offered or how the
+  person responded to it. The response model has no field for any of them.
+- **Two places it differs from the practitioner's chart, on purpose:** a day with no reading is absent (the rule
+  engine counts some measures as zero on such a day); today's running total is shown as it stands (the
+  practitioner side waits for the day to end).
+
+## D49 — Only a walk may answer with silence: proactive audio is per purpose (2026-11-14, lead)
+- **What happened:** in a real check-in on a hard day Kaiku answered the first line and then said nothing to two
+  typed statements that were not questions and did not name it. Proactive audio was on for every conversation
+  (`[live].proactive_audio = true`), and with it "the model can reject responding to the last prompt" (Live API
+  reference, ProactivityConfig). That is wanted for a walk's own look and quiet nudges, and exactly wrong
+  everywhere else: a companion that goes silent on "it has been a hard day" is the worst failure we can ship.
+- **Rule:** `live_setup.proactivity` is sent only for the purposes in `[live].proactive_audio_purposes` (`["walk"]`),
+  on every surface; for a talk, a check-in, the ritual and a session without a purpose the field is absent
+  (`live_token.proactive`, `live_token.setup(proactive_audio=)`). The robot's own Live session never set it
+  (`hub live_config`, pinned by the hub's tests). Devices send proactive audio only when the cloud's setup has it.
+- **Instruction:** "How Kaiku speaks" now says to always answer what the person says, a plain statement as much
+  as a question, and that silence is only ever the answer to a walk's own look-around or quiet-stretch line;
+  "Passing chat" says the same for a check-in on a hard day.
+- **Checked on the real Live model** (typed lines, the seeded hard day, three plain statements each): check-in 3
+  of 3 answered, talk 3 of 3 answered, both with the field absent. One control run with proactive audio forced
+  back on and the new instruction also answered 3 of 3, so these runs did not reproduce the silence; the setup
+  change is what takes the model's permission to decline away, the instruction is the second layer.
+- **Eval:** `tools/companion_evals/scenarios/answers.yaml` (`expect.answers_every_turn`, `run.check_answers`): a
+  line the person says that gets no words back fails, also when only a tool was called. The text stand-in cannot
+  decline a turn the way the Live model can, so this guards the wording, not the audio behaviour.
+
+## D50 — An activity agreed in one place shows up everywhere at once: agreed activities and the home's stream (2026-11-14, lead)
+- **What the lead asked for:** say yes to the robot or on a walk, and the phone and the Mac have it straight away,
+  with a notification; one mind, so one answer on every channel.
+- **What an agreed activity is:** a same-day fact the cloud holds for a home: the person clearly said yes, in a
+  conversation, to an activity that is not starting right there (a game or the journal entry agreed with the robot
+  or on the glasses, a walk agreed for after lunch). It is not a memory, not an observation, not a suggestion and
+  not a state. It holds the kind, where and when it was agreed, the local day it belongs to, now or later, and
+  Kaiku's own short line if it passed the wording rules. The person's words are checked and never stored.
+- **Who decides:** the voice only asks (tool `agree_activity {kind, said, line?, when?}`, cloud executor, every
+  surface). Code decides (`cloud/kaiku_cloud/mind/agree.py`): `said` must carry a yes or their own ask and no hedge
+  or no (`[agree]` word lists in `config/kaiku.toml`); the kind must have a screen on a phone or Mac this home
+  really uses; on an extra-gentle day only what they asked for themselves is kept; one open item per kind and at
+  most `[agree].max_open`; the questionnaire is not an activity and cannot be agreed. A refusal tells the model
+  what happened and that it must not say it is on a device.
+- **Its life:** `open` → `started` (a device opened it) → `done` (an observation for that activity arrived the
+  same local day, not before the yes: `[[agree.done_by]]`) or `put_aside` (the person said so on a screen). It is
+  never shown or mentioned after local midnight. A crisis removes every open item from every screen at once.
+- **One read:** `GET /v1/me/invitation` also returns `agreed` (today's items, each with a template sentence from
+  `config/voice_lines.toml` `agreed.*` around the activity's name and where it was agreed). An agreed item comes
+  before the daily invitation: while one is open or started the invitation waits, and is not picked meanwhile.
+- **The next conversation** on any surface is told what was agreed and whether it was done, once per state, so
+  Kaiku is glad once or asks gently once. Never about the item agreed in that very conversation, never about one
+  put aside, never with someone else in the room.
+- **Real time:** `GET /v1/me/stream` (Server-Sent Events) is kept open by each app. **What it may carry:** ids,
+  kinds, item states, observation type names and envelope sources, a local date. **What it may never carry:**
+  words from a conversation (also not Kaiku's line or the template sentence: the screen reads those with the
+  ordinary route), a value, a consensus state or verdict, why something was removed. `obs.safety_flag` and
+  `obs.phq9` are never named in a `day` event (`[stream].hide_types`); the event is still sent so screens refresh.
+- **Why in process:** the cloud is one warm container (one SQLite writer), so the change and every open stream are
+  in the same process: a list of listeners and a per-home replay buffer, nothing else to run. A reconnect with
+  `Last-Event-ID` gets what it missed; an id from before a restart, or older than the buffer, gets `resync` and
+  the screen reads everything again. A listener that does not read is closed, never waited for. Across several
+  containers this needs a shared channel and a shared replay log (Redis streams, or Postgres LISTEN/NOTIFY with
+  an `events_out` table); the route and the event shapes would not change.
+- **What this does not do:** there is no push service. A phone whose app is suspended has no open stream and
+  shows the item when the app is next opened (the read is the truth; the stream only makes it immediate). The
+  tool's result names the screens that are listening right now (`listening`), so that can be said honestly.
+  Apple push for a sleeping phone was considered and left out on 2026-11-14; a sleeping phone shows the item when
+  the app is next opened.
+- **Checked on the real Live model** (`gemini-3.8-live`, glasses, a chatty walk, typed lines, a home with the
+  phone's and the Mac's stream open against a local cloud): Kaiku offered "a few slow breaths together when you
+  get back home"; on "Yes, let's do that when I'm home." it called the tool once with exactly those words and
+  said "It's on your phone and your Mac."; both streams had the `agreed` event 0.04 s after the call began. In a
+  second session, "Maybe. I'll see how I feel." led to no call and "Sounds completely fine. I'm here if you
+  decide you'd like to do it later." One run each. Not tried: a spoken yes, a refusal reaching the live model,
+  the apps themselves, and a deployment on Modal.
+
+## D52 — The camera during activities counts face signs: shown and citable, not scored (2026-11-14, lead; builds on D37)
+- **What the lead asked for:** the camera on during tasks on iPhone and Mac, proper structured data from the
+  video ("some sort of emotion detector, YOLO or something") into the database and to the models, as part of the
+  intelligence layer, done thoroughly.
+- **Nothing is recorded.** Golden rule 5 stands: frames are processed in memory on the device that captured them
+  and only numbers leave it. `obs.face_signs` has no field for a frame, a per-frame value, a face template or an
+  identity, and rejects extra fields. "Recording" in the lead's sense means structured data per task, and that
+  is what is stored.
+- **Face signs, not emotion labels.** The observation holds counted movements for one task: share of the time
+  smiling, smiles, brow raise and furrow, mouth open, blinks a minute, gaze toward the screen, head movement,
+  range of expression, with the method, the frames looked at and the share with a usable face. Why not a label:
+  (1) the evidence that facial movements reliably show what a person feels is poor (Barrett et al. 2019);
+  (2) what the depression literature does report is less movement, fewer smiles and less head motion at higher
+  severity within the same people (Girard et al. 2014; Cohn et al. 2009), which is a count, not a label;
+  (3) a labelled feeling beside a person's name is a claim nobody here can check, and under the EU AI Act a
+  system that infers emotions from biometric data is high-risk (prohibited at work and in school): not a place
+  for a hackathon build; (4) it would break the rule that nothing in Kaiku says how a person is except the
+  deterministic consensus. Sources and limits: `docs/validation.md` → Face signs.
+- **Not YOLO.** Apple's on-device face tracking gives the coefficients directly (ARKit blendshapes on a TrueDepth
+  iPhone, Vision landmarks elsewhere): no weights to ship or audit, explainable numbers, nothing leaves the
+  device. Ultralytics YOLO is AGPL-3.0, which this MIT repository cannot take in, and a detector trained to
+  output emotion classes is exactly the label we decided against. The two Apple methods are different
+  instruments (the landmark method has no smile, brow or gaze sign, and other scales for the rest): every
+  metric is tied to one method and one kind of task, and they are never pooled into one usual.
+- **Part of the intelligence layer, not yet a vote.** A new criteria state, `role = "shown"`: the metric is
+  computed with the same gates, compared with the person's own usual, charted, listed in the knowledge graph,
+  told in the course of change, citable by Gemma's review and by record chat, and visible to the person in
+  History. It is never read by a verdict, adds no coverage or freshness to its signal group, and is not in the
+  rule version hash, so every verdict and `consensus-v1+db93b715` are unchanged (tested on the seeded record).
+  Deleting one `role` line lets a face metric vote; before that its spread floor must be re-set from recordings.
+  The older `expressivity` metric of the retired browser task stays switched off and is not reused (removing
+  its block would change the rule version; it can go with the next real rule change).
+- **Gemma may describe, never infer.** A review finding may cite a face record only beside a scored one; a
+  sentence that names an emotion, or says how the person felt, seemed or looked in a sentence about the face or
+  the camera, is rejected (`emotion_label`, `face_inference`). Its direction never sets a finding's theme.
+- **The companion may only become gentler.** When today's face signs in a kind of task are clearly below the
+  person's own established usual, the context card carries which kind (an enum) and one fixed instruction: go
+  gently, for your manner only, never say why, never mention a face or a camera. No number crosses. Kaiku never
+  claims to see the person; asked about the camera it gives one plain answer (`config/persona.md`). A wording
+  rule (`face_talk`) flags any remark about a face, looks or a watching camera on every surface.
+- **Consent:** one switch, "Camera during activities", off by default, owned by the Apple apps. Proposed wording
+  is in the hand-over; `docs/privacy.md` has the row.
+- **Not shown:** real captures, real spread, any link between these counts and how a person is. The seeded
+  record's face signs are authored (`sim: true`). On the real models, the record chat answered a camera question
+  with counts only and three eval scenarios passed (Kaiku went gently and said nothing; answered the camera
+  question plainly; said "I can't see you" when asked if she looked tired). Gemma's review cited face records in
+  one raw output and that finding was rejected for a date in prose: no accepted Gemma sentence yet.
+
+## D51 — The robot's drum becomes "Tap it back", and the robot is its own body for sound (2026-11-14, lead)
+- **What the lead asked for:** the drum music should work through the robot: it gives the song and asks her to tap
+  it back, three levels a day, each harder, with a warm word for how it went (nice, great, perfect, or "oh no, try
+  again"). Then: it must come out of the head's speaker, not the computer, and the robot's microphone and speaker
+  must work on their own and call Gemini when needed.
+- **The game.** Level n of 3: the song plays at the level's tempo for 8 s while the head listens and sways; it goes
+  quiet; "Your turn"; she taps the beat from memory; the band comes as soon as she has made the taps asked for (8,
+  8, 12) or stops. Bands by how far her tempo (the median gap between taps) is from the song's: perfect within 4 %,
+  great within 8 %, nice within 15 %, otherwise "again": the level is played once more, then we move on kindly.
+  Uneven tapping (steadiness under 0.85) lowers perfect and great by one band. Tapping every second beat, or twice
+  per beat, counts as the beat. Tempos: about 100, then clearly faster (about 126), then slow with more taps (about
+  76), each moved a few bpm by the date so no two days in a row are the same. All numbers are `config/kaiku.toml
+  [tap_back]`.
+- **Why a separate observation (`obs.tap_back`), not `obs.drum_session`.** In free drumming the tempo is hers: it
+  is one of the robot's scored signals, read against her own usual. In the game the tempo is given. One type for
+  both would put a tempo she was handed into the baseline of the tempo she chooses, and every later reading of
+  "slower than her usual" would be wrong. So a game day emits `obs.tap_back` and no drum session.
+- **Why it is not scored.** It is a game: a result depends on the song, the speaker, the level and whether she felt
+  like playing. Nothing is known about what timing accuracy in this form says about a person, and a game that can
+  move "worth a check-in" stops being a game. No `[[metric]]` reads it (tested). It is shown to her in History as
+  numbers ("Tap it back: songs on the beat", "Tap it back: timing"). On a game day the drum's own metrics have no
+  reading, which the rule already treats as missing (`missing = "skip"`), never as zero. Scoring it later is one
+  criteria block, after real recordings show its spread.
+- **The fallback.** `[tap_back] mode = "auto"` (default): the game runs only when generated music is really open
+  (Lyria RealTime connected and streaming). Music off, no key, over the spend cap, or the stream dies: free
+  drumming, exactly as before, and if a song is lost mid-game she is told "My song got lost. Let's just drum
+  together, any rhythm you like." `mode = "tap_back"` forces the game with the hub's own plain beat (or the chest
+  light alone); `mode = "free"` switches it off.
+- **The wording.** These are people recovering from depression. A band is a warm word; a miss is "Oh, not quite.
+  Let's try that one again." once, then "That one was tricky. Let's leave it there."; silence gets "No rush."; no
+  number is ever said, nothing is counted against her, and the closing line names only what she matched. Every
+  line passes `kaiku_contracts.wording` with the robot's caps (tested). Every cue also lands without words: the
+  eyes, a chime on the head's speaker, the UNO Q's buzzer.
+- **The robot is its own body for sound.** Two binary topics that are not messages: `audio/head/speaker` (hub →
+  head) and `audio/head/mic` (head → hub), 20 ms frames of 16 kHz mono PCM, QoS 0 (`contracts/AGENTS.md`). The hub
+  down-mixes and resamples (Lyria 48 kHz stereo, Live 24 kHz) and is the clock: one frame every 20 ms, 80 ms ahead.
+  `[music] out` and `[voice] audio` choose the head, and with them the hub needs no sound device, so it can run on
+  the UNO Q. One sender at a time on the speaker: frames of two sources are never interleaved; Kaiku's voice never
+  waits behind music, music waits for the voice. The microphone is open only while the hub holds it open for a
+  conversation the person started, and the head is half-duplex: no voice barge-in on the robot, the ear press
+  stops Kaiku instead; a gap in the microphone is never filled with silence. Audio is never stored, logged,
+  recorded by a tool or uplinked.
+- **A head that runs its own ritual (D44) lends the hub its drum step:** `cmd.head {drum: hold}` (again every 3 s;
+  the head takes its timer back after 10 s without one) and `{drum: end}`. Nothing else about follow mode changes:
+  no Live conversation is opened there (D44 stands).
+- **Added later the same day (the lead called the robot's own voice critical): the conversation opens in follow
+  mode too, by the consent rule that already existed.** Drive mode opens it when the person started the ritual
+  themselves; on a head that runs its own ritual that is her press of its ear at the greeting, which the hub
+  already recorded as `follow.consented`. So the hub opens the Live conversation on that press and only then:
+  never for a ritual it joined mid-way or whose start it did not see. It uses the cloud's existing `ritual`
+  intent (no cloud change); the tools that would run a step are neither offered nor run, because this head runs
+  its own steps, and Kaiku accompanies instead: at each step the head enters, the voice says that step's line and
+  she can answer. The microphone is closed for the whole of Tap it back in both modes (the song and her taps are
+  not speech, and the gaps between levels are too short to listen in), and open again from the game's closing
+  line. On a crisis the hub sends `cmd.head {show: help}`: a head with a screen shows the helpline's name and
+  number and the emergency number from constants compiled into its firmware (never a sound; the hub can send it no
+  text), and the screen comes down when the next ritual starts. **The robot as built has no screen on its head
+  (D54): there the command only stops the head's ritual quietly, and nothing is shown or said to the person; the
+  script is on the hub's terminal and the flag goes to the dashboard.** The microphone is closed first and never
+  reopened. What the
+  apps' "Kaiku bot" tab shows of all this is a local trace of Kaiku's own lines and tool names (`raw.hub.trace`),
+  never her words, never stored or uplinked. Shown with the real Live model through the standalone head TWIN:
+  her press, the conversation and microphone opening on it, a spoken question answered through the head's
+  speaker, the three dials, Tap it back in the same ritual with the microphone closed, goodbye, everything
+  closed. The first real run found that a line asked for right after another cut it (the game's closing line
+  never came out); a line now waits for Kaiku's own words, and the second run heard every line. After the robot
+  branch was merged (D54, D55: no screen, no light, taps only from the head's orientation sensor) the step lines
+  were rewritten to point at nothing she would have to see, the twin taps as that head does, and the game is
+  started only on a head whose firmware can lend its drum step. One real run of the robot's exact configuration
+  (Live and Lyria through the head) had the conversation right and lost the game: the voice said the game's first
+  line for 11 s, the song could not sound behind it, and the hub took it for lost. A song now waits for Kaiku's
+  words; that passes with a stand-in voice and has not been run again with the real models. Not shown: a flashed
+  head, the Lyria game together with the Live voice, a person.
+- **Shown on 2026-11-14, all through the sim head twin, no sound device:** the whole game with real Lyria
+  RealTime (each level's song at its tempo in the twin's recording, silence while it tapped, bands perfect, great,
+  again then perfect); the firmware's own wire check passed on the hub's speaker stream; one real Gemini Live
+  exchange with the question in through the microphone topic and the answer out on the speaker topic. **Not
+  shown:** the flashed head, a real speaker in a room, real taps on the real sensors, a person. Whether the
+  speaker's sound reaches the tap sensor, and whether 8 s is the right length to hear a tempo, are open.
+
+## D53 — More of the day from Apple Health: shown, not scored, and no sleep score (2026-11-14, lead)
+- **What the lead asked for:** Apple Health should give a better understanding of the person's daily life:
+  distance walked, heart rate, sleep quality.
+- **Seven optional fields on `obs.wearable_daily`** (additive, no schema version bump): `distance_km`,
+  `daylight_min` (Apple Watch only), `walking_hr_bpm`, `sleep_deep_min`, `sleep_rem_min`, `sleep_core_min`
+  (the three together, or none), `sleep_awake_min`. Daily totals and averages only; a field the person did not
+  allow or the device does not measure is absent. Existing fields keep their meaning.
+- **No sleep score.** Apple shows one in its own apps and gives other apps no type to read it. Kaiku sends the
+  stages and the time awake and does not invent a score: one number would hide which part of the night changed,
+  and nobody here could check it.
+- **Shown, not scored** (the `role = "shown"` state of D52). Six measures: distance walked, time in daylight,
+  walking heart rate, deep sleep, REM sleep, awake in the night. Each is compared with the person's own usual,
+  charted, in the week comparison, the course of change, the knowledge graph, debug day and record chat, and
+  citable by Gemma's review beside a scored record, never alone. None is read by a verdict; the five watch
+  measures that vote are untouched and the rule version stays `consensus-v1+db93b715` (tested with and without
+  the new fields). Core sleep is stored and listed in the person's History; it gets no measure, because it is
+  what is left of the night once deep and REM are taken out. Why not scored: `docs/validation.md` → More of the
+  day from Apple Health.
+- **The person's own data.** History lists them under "Sleep and body" beside the sleep, heart and step numbers
+  they already have there, with plain titles and no state words. `HistoryFormat` gains `percent` (a share 0..1,
+  shown as a percentage) and `duration` (minutes, shown as hours and minutes), so "7 h 20 min" and "12 %" are
+  the app's formatting of the same numbers, not new numbers.
+- **Each number on the day it is of, in her History.** A summary is dated the morning it was made: its sleep is
+  the night that ended that morning; its steps, distance, daylight, exercise, resting and walking heart rate and
+  heart rate variability are the day before's, midnight to midnight. History puts the second kind on the day
+  before (`day_offset = -1` per measure in `config/kaiku.toml [history]`), so yesterday's walking is never shown
+  as today's; its session row lists that day's numbers only and is stamped at the end of that day. The rule and
+  the practitioner's timeline are not touched: they keep every number on the summary's date, as they always
+  have, so a day's walking is read there a day later than it happened. That is a known difference, kept on
+  purpose: moving the rule's day would change which days it scores, and with them every verdict on record.
+- **A limit of the seeded record.** Its summaries were authored with the walking and heart numbers of the
+  summary's own date, not of the day before as the phone sends them. In her History these now stand a day
+  earlier than the walks and check-ins of the same authored day (on 6 Nov the watch's steps for the day read
+  lower than the steps of that day's walk). Authoring the summaries exactly as the phone sends them (the night
+  of that morning, the totals of the day before, a morning stamp, the first morning without totals) was built,
+  run and taken out again, because it changes more than dates. Her History then agrees with her walks on every
+  day. On the practitioner side every day's state and the Watch group's verdict stay the same, but: the Watch
+  group's confidence is one step higher from 8 Nov on (the morning after the watch stayed on the charger still
+  brings the day before's totals, so no morning is without a summary); steps, heart rate variability and
+  resting heart rate read as still away on the last day, so 15 of 18 measures are back where the record now
+  says 18 of 18; and a good day today no longer clears the Watch group, because its totals arrive a morning
+  late. A first, coarser dry run had missed these. Whether the record should be re-authored on those terms is
+  a decision for its owner.
+- **The companion is told none of it.** No cue, no number on the context card: nothing new is said to the
+  person about these readings.
+- **Not shown:** real Apple Health data through the cloud (the seeded record's values are authored, `sim: true`),
+  real spread for any floor, any link between these numbers and how a person is.
+
   there; port 13 has no such conflict, but the standalone puts its orientation sensor on 13, so its motor moved to
   the free port 14 (GPIO36/35).
 
-## D48 — Robot after the joint bench day: no KY-053, no LED grids, own charger for the Atech, hotspot network (2026-11-14, Edwin)
+## D54 — Robot after the joint bench day: no KY-053, no LED grids, own charger for the Atech, hotspot network (2026-11-14, Edwin)
 - **No KY-053 ADC** (removed, not to be integrated). Without it the KY-039 has no way into the sketch, so the robot's
   pulse is the **camera pulse** (forehead green, quality 0.6): `[unoq] ppg_source = "camera"`. The sketch's
   `ads-missing` in `health/sensors` is expected. HR/HRV stays "not measured" when the camera can't see a face, never
@@ -461,7 +727,7 @@ flowchart LR
 - The UNO Q's `kaiku-sensors` app is the board's **default app** (starts at boot) and its network manager retries the
   hotspot forever and no longer auto-joins the venue Wi-Fi.
 
-## D49 — Taps come from the head's orientation sensor; the KY-031 knock switch is removed (2026-11-14, Edwin)
+## D55 — Taps come from the head's orientation sensor; the KY-031 knock switch is removed (2026-11-14, Edwin)
 - The KY-031 was taken off the robot. The UNO Q sketch and app no longer read it, publish `raw.head.tap` or follow
   `raw.head.pan` (that link only muted knocks during motor vibration). `bench/knock` stays as a one-part test for a
   spare KY-031 (the bench checker's tests use it).
@@ -473,4 +739,5 @@ flowchart LR
   knock switch never did.
 - Open: the MQTT firmware (`kaiku_link`) has no orientation sensor code yet; the display was also removed from the head
   on the same day and only the standalone firmware reflects that.
+
 

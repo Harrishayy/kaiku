@@ -1,0 +1,1550 @@
+<title>Kaiku Intelligence Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 16:9 stage. Left, a map of three places (her home, Kaiku's cloud, Google's models) whose borders are
+   membranes a message has to pass. Right, what the current hop carries, what stays behind, how long it took.
+   Below the stage: every model at a glance, and how the numbers were measured. Narrow screens get the same hops
+   as a stacked list. Tokens: design/tokens.json (Kaiku). */
+:root{
+  --k-bg:#F6F0E6; --k-surface:#FFFBF4; --k-surface-2:#EFE6D8; --k-ink:#3A2C24; --k-ink-2:#5E4C40; --k-muted:#74635A;
+  --k-line:#E3D6C4; --k-clay:#9E4E32; --k-clay-ink:#FFF8F1; --k-clay-soft:#F3DCCF; --k-sage:#52714C;
+  --k-sage-soft:#DDE7D6; --k-sky:#466F8D; --k-sky-soft:#DCE7EF; --k-honey:#85600F; --k-honey-soft:#F5E6C4;
+  --k-focus:#2F6FA8; --k-shadow:58,44,36;
+  --k-mascot-body:#FBF3E4; --k-mascot-shade:#E6D2B8; --k-mascot-eye:#3A2C24; --k-mascot-shine:#FFFFFF;
+  --k-mascot-ear-inner:#EDB9A0; --k-mascot-blush:#F2B7A2; --k-mascot-scarf:#B85F43; --k-mascot-scarf-stripe:#E9A286;
+  --k-mascot-outline:#D9C3A5; --k-glow:#FFD98F;
+  --f-display:'Fredoka','SF Pro Rounded',ui-rounded,system-ui,sans-serif;
+  --f-body:'Nunito','SF Pro Rounded',ui-rounded,system-ui,sans-serif;
+  --f-mono:'DM Mono',ui-monospace,Menlo,monospace;
+  --r-sm:10px; --r-md:16px; --r-lg:24px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --k-bg:#221D19; --k-surface:#2B2520; --k-surface-2:#352E28; --k-ink:#F1E7DA; --k-ink-2:#D3C5B4; --k-muted:#A8988A;
+    --k-line:#433A32; --k-clay:#E08B6C; --k-clay-ink:#2A1A12; --k-clay-soft:#4A3027; --k-sage:#9DBB95;
+    --k-sage-soft:#2F3A2C; --k-sky:#9DBBD3; --k-sky-soft:#2A3640; --k-honey:#E8BE6A; --k-honey-soft:#40331C;
+    --k-focus:#8DB8E8; --k-shadow:0,0,0;
+    --k-mascot-body:#EFE3CF; --k-mascot-shade:#C7B192; --k-mascot-eye:#2E231C; --k-mascot-shine:#FFFDF8;
+    --k-mascot-ear-inner:#D99E85; --k-mascot-blush:#DE9F89; --k-mascot-scarf:#C9704F; --k-mascot-scarf-stripe:#E9A286;
+    --k-mascot-outline:#B59C7C; --k-glow:#FFD98F; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --k-bg:#221D19; --k-surface:#2B2520; --k-surface-2:#352E28; --k-ink:#F1E7DA; --k-ink-2:#D3C5B4; --k-muted:#A8988A;
+  --k-line:#433A32; --k-clay:#E08B6C; --k-clay-ink:#2A1A12; --k-clay-soft:#4A3027; --k-sage:#9DBB95;
+  --k-sage-soft:#2F3A2C; --k-sky:#9DBBD3; --k-sky-soft:#2A3640; --k-honey:#E8BE6A; --k-honey-soft:#40331C;
+  --k-focus:#8DB8E8; --k-shadow:0,0,0;
+  --k-mascot-body:#EFE3CF; --k-mascot-shade:#C7B192; --k-mascot-eye:#2E231C; --k-mascot-shine:#FFFDF8;
+  --k-mascot-ear-inner:#D99E85; --k-mascot-blush:#DE9F89; --k-mascot-scarf:#C9704F; --k-mascot-scarf-stripe:#E9A286;
+  --k-mascot-outline:#B59C7C; --k-glow:#FFD98F; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--k-bg);color:var(--k-ink);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--k-focus);outline-offset:2px}
+.page{padding-block:16px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.page.rec{padding:0}
+.page.rec .below{display:none}
+.wrap{width:min(100%,calc((100vh - 32px) * 16 / 9));margin-inline:auto}
+.page.rec .wrap{width:min(100vw,calc(100vh * 16 / 9))}
+.defs{position:absolute;width:0;height:0;overflow:hidden}
+
+/* ------------------------------------------------------------------ the stage (all sizes in em = 1% of its width) */
+.stage{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--k-bg);border:1px solid var(--k-line);border-radius:1.4em;font-size:12.8px;user-select:none;-webkit-user-select:none}
+.page.rec .stage{border:0;border-radius:0}
+.top{position:absolute;left:0;right:0;top:0;height:5.4em;display:flex;align-items:center;gap:1.2em;padding:0 1.6em;z-index:5;background:linear-gradient(to bottom,var(--k-bg) 80%,transparent)}
+.brand{display:flex;align-items:center;gap:.6em;min-width:0}
+.brand svg{width:3.3em;height:3.3em;flex:none}
+.brand b{font:500 1.9em/1 var(--f-display);letter-spacing:.005em}
+.brand span{font-size:1.05em;color:var(--k-muted);font-weight:600;white-space:nowrap}
+.tabs{margin-left:auto;display:flex;gap:.45em;flex:none}
+.top.compact .brand span{display:none}
+.tab{font:700 1em/1 var(--f-body);padding:.62em 1.05em;border-radius:999px;border:1px solid var(--k-line);background:var(--k-surface);color:var(--k-ink-2);cursor:pointer;white-space:nowrap;transition:background-color 150ms,color 150ms,transform 100ms}
+.tab:hover{background:var(--k-surface-2)}
+.tab:active{transform:scale(.97)}
+.tab[aria-selected="true"]{background:var(--k-clay);border-color:var(--k-clay);color:var(--k-clay-ink)}
+
+.world{position:absolute;left:0;top:5.4em;width:66.6em;height:46.02em;transform-origin:0 0;will-change:transform,opacity}
+.world svg{display:block;width:100%;height:100%;overflow:visible}
+.zone{fill:var(--k-surface-2);stroke:none}
+.zone.z-home{fill:var(--k-surface-2);opacity:.62}
+.zone.z-clinic{fill:var(--k-honey-soft);opacity:.55}
+.zone.z-cloud{fill:var(--k-surface);stroke:var(--k-line);stroke-width:1.2}
+.zone.z-models{fill:var(--k-sky-soft);opacity:.6}
+.zt{font:500 12.5px var(--f-display);fill:var(--k-ink-2);letter-spacing:.02em}
+.zs{font:600 9.4px var(--f-body);fill:var(--k-muted)}
+.mem-band{stroke:var(--k-sage-soft);stroke-width:14;stroke-linecap:round;fill:none}
+.mem-band.thin{stroke-width:8}
+.only{opacity:0;transition:opacity 300ms}
+svg[data-scene="face"] .only-face{opacity:1}
+.mem-core{stroke:var(--k-sage);stroke-width:1.3;stroke-dasharray:1.5 5.5;stroke-linecap:round;fill:none;opacity:.9}
+.mem-plate{fill:var(--k-sage-soft)}
+.mem-label{font:800 8.2px var(--f-body);fill:var(--k-sage);letter-spacing:.14em;text-anchor:middle}
+.pore{fill:var(--k-surface);stroke:var(--k-sage);stroke-width:1.4;opacity:0}
+.lane-label{font:600 9.2px var(--f-body);fill:var(--k-muted)}
+.node rect.nb{fill:var(--k-surface);stroke:var(--k-line);stroke-width:1.2;transition:stroke 150ms}
+.z-cloud-node rect.nb{fill:var(--k-bg)}
+.node{cursor:pointer;transition:opacity 300ms}
+.node:hover rect.nb{stroke:var(--k-muted)}
+.node.dim{opacity:.38}
+.node.on rect.nb{stroke:var(--k-clay);stroke-width:2.2;fill:var(--k-clay-soft)}
+.node.sel rect.nb{stroke:var(--k-focus);stroke-width:2.2}
+.nt{font:500 13px var(--f-display);fill:var(--k-ink)}
+.ns{font:600 9.4px var(--f-body);fill:var(--k-muted)}
+.nm{font:500 8.9px var(--f-mono);fill:var(--k-ink-2)}
+.tag rect{fill:var(--k-sage-soft)}
+.tag text{font:800 7.6px var(--f-body);fill:var(--k-sage);letter-spacing:.08em;text-anchor:middle}
+.glyph{fill:none;stroke:var(--k-ink-2);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.pill-state{fill:var(--k-clay-soft)}
+.pill-text{font:700 8.8px var(--f-body);fill:var(--k-clay)}
+.node.on .pill-state{fill:var(--k-surface)}
+.bar-line{stroke:var(--k-line);stroke-width:4;stroke-linecap:round}
+.edge{fill:none;stroke:var(--k-muted);stroke-width:1.3;opacity:0;stroke-linecap:round;transition:opacity 300ms}
+.edge.dash{stroke-dasharray:4 4}
+.edge.lane{opacity:.17}
+.edge.in{opacity:.3}
+.edge.done{opacity:.62;stroke:var(--k-ink-2)}
+.edge-hit{fill:none;stroke:transparent;stroke-width:14;cursor:pointer;pointer-events:none}
+.edge-hit.in{pointer-events:stroke}
+.edge-live{fill:none;stroke:var(--k-clay);stroke-width:2.6;stroke-linecap:round}
+.edge-live.alt{stroke:var(--k-honey)}
+.token-link{fill:none;stroke:var(--k-sage);stroke-width:1.2;stroke-dasharray:1.5 4;stroke-linecap:round;opacity:.8}
+.pulse-halo{fill:var(--k-clay);opacity:.2}
+.pulse-dot{fill:var(--k-clay);stroke:var(--k-clay-ink);stroke-width:1.4}
+.alt .pulse-halo,.alt .pulse-dot{fill:var(--k-honey)}
+.chip text{font:800 8.3px var(--f-body)}
+.chip.pass rect{fill:var(--k-clay)}
+.chip.pass text{fill:var(--k-clay-ink)}
+.chip.stay rect{fill:var(--k-surface);stroke:var(--k-muted);stroke-width:1;stroke-dasharray:2.5 2}
+.chip.stay text{fill:var(--k-ink-2)}
+.chip.stay .lk{fill:none;stroke:var(--k-ink-2);stroke-width:1.1;stroke-linecap:round}
+.chip.stay .lkb{fill:var(--k-ink-2)}
+
+.hero{position:absolute;left:0;top:0;transform-origin:50% 50%;will-change:transform,opacity;pointer-events:none;z-index:3}
+.hc{width:100%;height:100%;background:var(--k-surface);border:1px solid var(--k-line);border-radius:2.6em;box-shadow:0 .8em 2.4em rgba(var(--k-shadow),.14);display:flex;gap:2em;padding:2.2em 2.6em;align-items:center}
+.hc-face{flex:none;width:12.5em;height:12.5em;border-radius:50%;border:.28em solid var(--k-clay-soft);display:grid;place-items:center;background:var(--k-bg)}
+.hc-face svg{width:9.6em;height:9.6em}
+.hc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:.45em;align-self:stretch;justify-content:center}
+.hc-main > *,.hc.dash > *{flex:none}
+.hc-status{display:flex;align-items:center;gap:.6em;font:700 1.45em/1.4 var(--f-body);color:var(--k-ink)}
+.hc-status i{width:.62em;height:.62em;border-radius:50%;background:var(--k-sage);flex:none}
+.hc-status em{margin-left:auto;font-style:normal;color:var(--k-clay);font-size:.9em}
+.hc-her{margin:0;padding-block:.07em;font:400 calc(2em * var(--hf,1))/1.25 var(--f-body);color:var(--k-ink-2)}
+.hc-kaiku{margin:0;padding-block:.07em;font:700 calc(2em * var(--hf,1))/1.25 var(--f-body);color:var(--k-ink)}
+.hc.noctl .hc-ctl{display:none}
+.hc-ctl{display:flex;gap:.8em;margin-top:.25em}
+.hc-ctl span{width:3.1em;height:3.1em;border-radius:50%;background:var(--k-surface-2);display:grid;place-items:center}
+.hc-ctl span.end{margin-left:auto;background:var(--k-ink)}
+.hc-ctl svg{width:1.5em;height:1.5em;fill:none;stroke:var(--k-ink-2);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hc-ctl .end svg{stroke:var(--k-bg)}
+.hc-rows{display:flex;flex-direction:column;gap:.6em;margin-top:.4em}
+.hc-row{display:flex;align-items:center;gap:.8em;font:600 calc(1.4em * var(--hf,1))/1.25 var(--f-body);color:var(--k-ink-2)}
+.hc-row b{color:var(--k-ink);font-weight:800}
+.hc-row span{text-wrap:balance}
+.hc-her,.hc-kaiku{text-wrap:pretty}
+.hc-toggle{margin-left:auto;width:3em;height:1.7em;border-radius:1em;background:var(--k-sage);position:relative;flex:none}
+.hc-toggle::after{content:"";position:absolute;right:.2em;top:.2em;width:1.3em;height:1.3em;border-radius:50%;background:var(--k-surface)}
+.hc-chips{display:flex;flex-wrap:wrap;gap:.6em;margin-top:.5em}
+.hc-chips span{font:700 1.3em/1 var(--f-body);padding:.5em .9em;border-radius:999px;background:var(--k-surface-2);color:var(--k-ink-2)}
+/* the drawn face of the face-signs scene: movement points on a simple face, never a picture */
+.fa-head{fill:var(--k-mascot-body);stroke:var(--k-mascot-outline);stroke-width:1.6}
+.fa-eye{fill:var(--k-mascot-eye)}
+.fa-line{fill:none;stroke:var(--k-mascot-eye);stroke-width:2.8;stroke-linecap:round}
+.fa-blush{fill:var(--k-mascot-blush)}
+.fa-pt{fill:var(--k-sage)}
+.fa-mesh{fill:none;stroke:var(--k-sage);stroke-width:1;stroke-dasharray:1.5 3;stroke-linecap:round;opacity:.8}
+.hc-cam{align-self:flex-start;max-width:100%;display:inline-flex;flex-wrap:wrap;align-items:center;gap:.3em .5em;font:700 1.02em/1.25 var(--f-body);color:var(--k-sage);background:var(--k-sage-soft);border-radius:999px;padding:.38em .85em}
+.hc-cam i{width:.6em;height:.6em;border-radius:50%;background:var(--k-sage);flex:none}
+.hc-cam span,.hc-cam b{white-space:nowrap}
+.hc-cam b{margin-left:.5em;font-weight:800;color:var(--k-ink);background:var(--k-surface);border-radius:999px;padding:.18em .7em}
+.fa-meters{display:flex;flex-direction:column;gap:.75em;margin-top:.35em}
+.fa-m{display:flex;flex-direction:column;gap:.42em}
+.fa-l{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 1em;font:700 1.12em/1.3 var(--f-body);color:var(--k-ink)}
+.fa-l > span:first-child{white-space:nowrap}
+.fa-n{font:500 .86em/1.3 var(--f-mono);color:var(--k-ink-2);white-space:nowrap}
+.fa-n b{font-weight:500;color:var(--k-clay)}
+.fa-bar{position:relative;height:.72em;border-radius:.36em;background:var(--k-surface-2)}
+.fa-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:.36em;background:var(--k-clay);width:60%}
+.fa-bar u{position:absolute;top:-.32em;bottom:-.32em;width:.18em;margin-left:-.09em;border-radius:.09em;background:var(--k-ink-2)}
+.hc.dash{flex-direction:column;align-items:stretch;gap:1em;padding:2em 2.4em}
+.hd-top{display:flex;align-items:center;gap:1em}
+.hd-top b{font:500 2em/1 var(--f-display)}
+.hd-pill{font:800 1.2em/1 var(--f-body);padding:.5em .9em;border-radius:999px;background:var(--k-clay-soft);color:var(--k-clay)}
+.hd-sim{margin-left:auto;font:700 1.1em/1 var(--f-body);color:var(--k-muted);border:1px dashed var(--k-muted);border-radius:999px;padding:.45em .8em}
+.hd-kicker{font:800 1.05em/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--k-muted)}
+.hd-find{margin:0;font:600 calc(1.5em * var(--hf,1))/1.35 var(--f-body);color:var(--k-ink)}
+.hd-fact{margin:0;font:500 calc(1.2em * var(--hf,1))/1.4 var(--f-mono);color:var(--k-ink-2);background:var(--k-surface-2);border-radius:.9em;padding:.8em 1em}
+.hd-foot{font:700 1.15em/1.3 var(--f-body);color:var(--k-sage)}
+
+.intro{position:absolute;left:0;right:0;top:38.4em;display:flex;flex-direction:column;align-items:center;gap:.7em;text-align:center;z-index:4;padding:0 6em}
+.intro h2{margin:0;font:500 2.3em/1.15 var(--f-display);text-wrap:balance}
+.intro p{margin:0;font-size:1.3em;color:var(--k-ink-2);font-weight:600}
+.cta{margin-top:.3em;font:800 1.25em/1 var(--f-body);padding:.85em 1.5em;border-radius:999px;border:0;background:var(--k-clay);color:var(--k-clay-ink);cursor:pointer;transition:transform 100ms,filter 150ms}
+.cta:hover{filter:brightness(1.06)}
+.cta:active{transform:scale(.97)}
+
+.panel{--pf:1;position:absolute;font-size:calc(1em * var(--pf));left:calc(67.5em / var(--pf));top:calc(5.9em / var(--pf));width:calc(31.1em / var(--pf));bottom:calc(5.1em / var(--pf));display:flex;flex-direction:column;gap:.62em;z-index:2}
+.panel > *{flex:none}
+.panel.tight{gap:.42em}
+.panel.tight .box{padding:.45em .8em .5em}
+.panel.tight .box.stays{padding-left:1.6em}
+.p-head{display:flex;flex-direction:column;gap:.35em}
+.kicker{font:800 .84em/1.2 var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--k-muted)}
+.bubble{align-self:flex-start;max-width:100%;font:600 1.18em/1.3 var(--f-body);background:var(--k-clay-soft);color:var(--k-ink);border-radius:1.1em 1.1em 1.1em .3em;padding:.55em .9em}
+.bubble.plain{background:none;padding:0;border-radius:0;color:var(--k-ink-2)}
+.p-step{display:flex;flex-direction:column;gap:.26em}
+.p-step h3{margin:0;font:500 1.5em/1.18 var(--f-display);text-wrap:balance}
+.route{display:flex;flex-wrap:wrap;align-items:center;gap:.35em;font:700 .95em/1.2 var(--f-body);color:var(--k-ink-2)}
+.route .arr{color:var(--k-muted)}
+.route .gate{margin-left:.3em;font-weight:800;font-size:.86em;letter-spacing:.08em;text-transform:uppercase;color:var(--k-sage);background:var(--k-sage-soft);border-radius:999px;padding:.3em .7em}
+.box{border-radius:1.05em;padding:.58em .9em .66em;display:flex;flex-direction:column;gap:.32em;min-width:0}
+.box:empty{visibility:hidden}
+.box .lab{display:flex;align-items:center;gap:.5em;font:800 .8em/1 var(--f-body);letter-spacing:.13em;text-transform:uppercase}
+.box.crosses{background:var(--k-surface);border:1px solid var(--k-line)}
+.box.crosses .lab{color:var(--k-clay)}
+.pay{margin:0;font:400 .88em/1.42 var(--f-mono);color:var(--k-ink-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.pay b{font-weight:500;color:var(--k-ink)}
+.pay i{font-style:normal;font-family:var(--f-body);font-weight:600;color:var(--k-muted)}
+.note{font:600 .86em/1.3 var(--f-body);color:var(--k-muted)}
+.box.stays{background:var(--k-sage-soft);position:relative;padding-left:1.75em}
+.box.stays::before{content:"";position:absolute;left:.62em;top:.7em;bottom:.7em;width:0;border-left:.16em dashed var(--k-sage)}
+.box.stays .lab{color:var(--k-sage)}
+.stays ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:.34em}
+.stays li{font:600 .94em/1.3 var(--f-body);color:var(--k-ink-2)}
+.stays li b{color:var(--k-ink);font-weight:800}
+.box.took{background:var(--k-surface);border:1px solid var(--k-line);flex-direction:row;align-items:center;gap:.9em}
+.took .num{font:500 1.95em/1.15 var(--f-display);color:var(--k-clay);white-space:nowrap;font-variant-numeric:tabular-nums}
+.took .num.nm0{font-size:1.3em;color:var(--k-muted)}
+.took .tx{display:flex;flex-direction:column;gap:.25em;min-width:0}
+.took .tx .lab{color:var(--k-muted)}
+.took .tx span{font:600 .88em/1.28 var(--f-body);color:var(--k-ink-2)}
+.src{font:400 .76em/1.3 var(--f-mono);color:var(--k-muted);overflow-wrap:anywhere}
+.p-node h3{margin:0;font:500 1.5em/1.2 var(--f-display)}
+.p-node p{margin:.4em 0 0;font:600 1.02em/1.4 var(--f-body);color:var(--k-ink-2)}
+.p-node .hops{display:flex;flex-direction:column;gap:.4em;margin-top:.9em}
+.hopbtn{text-align:left;font:700 .95em/1.25 var(--f-body);background:var(--k-surface);border:1px solid var(--k-line);border-radius:.8em;padding:.55em .8em;cursor:pointer;color:var(--k-ink)}
+.hopbtn:hover{background:var(--k-surface-2)}
+.hopbtn small{display:block;font:700 .82em/1.2 var(--f-body);color:var(--k-muted);letter-spacing:.06em;text-transform:uppercase}
+
+.bar{position:absolute;left:0;right:0;bottom:0;height:4.7em;display:flex;align-items:center;gap:.7em;padding:0 1.6em;z-index:5;background:linear-gradient(to top,var(--k-bg) 80%,transparent)}
+.ctl{height:2.9em;min-width:2.9em;padding:0 .9em;border-radius:999px;border:1px solid var(--k-line);background:var(--k-surface);display:inline-flex;align-items:center;justify-content:center;gap:.45em;font:800 .98em/1 var(--f-body);color:var(--k-ink);cursor:pointer;white-space:nowrap;transition:background-color 150ms,transform 100ms}
+.ctl:hover{background:var(--k-surface-2)}
+.ctl:active{transform:scale(.97)}
+.ctl svg{width:1.25em;height:1.25em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ctl.main{background:var(--k-clay);border-color:var(--k-clay);color:var(--k-clay-ink)}
+.ctl.main:hover{background:var(--k-clay);filter:brightness(1.06)}
+.ctl[aria-pressed="true"]{background:var(--k-clay-soft);border-color:var(--k-clay)}
+.scrub{flex:1;min-width:0;height:2.9em;display:flex;align-items:center;gap:.35em;cursor:pointer;position:relative}
+.sc-seg{height:.55em;border-radius:.3em;background:var(--k-line);position:relative;overflow:hidden}
+.sc-seg i{position:absolute;left:0;top:0;bottom:0;background:var(--k-clay);width:0}
+.sc-seg.cur{background:var(--k-surface-2);outline:1px solid var(--k-line)}
+.badges{display:flex;gap:.5em;align-items:center}
+.badge{font:800 .8em/1 var(--f-body);letter-spacing:.07em;text-transform:uppercase;color:var(--k-muted);border:1px dashed var(--k-muted);border-radius:999px;padding:.5em .8em;white-space:nowrap}
+
+.legendview{position:absolute;left:1.6em;right:1.6em;top:5.7em;bottom:5em;z-index:4;display:flex;flex-direction:column;gap:.5em}
+.legendview h2{margin:0;font:500 1.8em/1.15 var(--f-display)}
+.legendview > *{flex:none}
+.lg{display:grid;grid-template-columns:15.5em 1fr 22em 15.5em;column-gap:1.4em;font-size:calc(1em * var(--lf,1))}
+.lg-h{font:800 .8em/1 var(--f-body);letter-spacing:.13em;text-transform:uppercase;color:var(--k-muted);padding:.2em 0 .6em}
+.lg-c{padding:.5em 0;border-top:1px solid var(--k-line);font:600 .96em/1.34 var(--f-body);color:var(--k-ink-2);min-width:0}
+.lg-c.m b{display:block;font:500 1.28em/1.15 var(--f-display);color:var(--k-ink)}
+.lg-c.m code{font:400 .84em/1.3 var(--f-mono);color:var(--k-muted)}
+.lg-c.w{color:var(--k-ink)}
+.lg-c.t{font-variant-numeric:tabular-nums}
+.lg-c.t b{color:var(--k-clay);font-weight:800}
+.lg-foot{font:600 .95em/1.4 var(--f-body);color:var(--k-muted)}
+
+.stack{display:none}
+
+/* ------------------------------------------------------------------ stacked version (narrow screens) */
+.page[data-layout="stack"] .wrap{width:100%;max-width:640px}
+.page[data-layout="stack"] .stage{aspect-ratio:auto;overflow:visible;border:0;border-radius:0;font-size:16px!important;background:none;user-select:auto;-webkit-user-select:auto}
+.page[data-layout="stack"] .top{position:static;height:auto;flex-direction:column;align-items:flex-start;padding:0;gap:12px}
+.page[data-layout="stack"] .tabs{margin-left:0;flex-wrap:wrap;gap:8px}
+.page[data-layout="stack"] .tab{font-size:15px;padding:11px 14px}
+.page[data-layout="stack"] .brand svg{width:44px;height:44px}
+.page[data-layout="stack"] .brand span{white-space:normal}
+.page[data-layout="stack"] .world{position:absolute;visibility:hidden;pointer-events:none;width:880px;height:608px;left:-9999px;top:0}
+.page[data-layout="stack"] .hero,.page[data-layout="stack"] .intro,.page[data-layout="stack"] .panel,.page[data-layout="stack"] .legendview,.page[data-layout="stack"] .scrub,.page[data-layout="stack"] .badges,.page[data-layout="stack"] #btnApp{display:none}
+.page[data-layout="stack"] .stack{display:flex;flex-direction:column;gap:14px;margin-top:16px}
+.page[data-layout="stack"] .bar{position:sticky;bottom:0;height:auto;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:var(--k-bg);border-top:1px solid var(--k-line);margin-top:16px;gap:8px;justify-content:center}
+.page[data-layout="stack"] .ctl{height:44px;min-width:44px;font-size:15px;padding:0 12px}
+@media (max-width:420px){ .page[data-layout="stack"] #btnScene span{display:none} }
+.s-hero{position:relative;width:100%}
+.s-hero .hc{height:auto;min-height:19em}
+/* on a phone the card keeps a readable type size: a smaller face and tighter padding make the room */
+.s-hero.narrow .hc{min-height:0;padding:1.7em 1.6em;gap:1.3em;border-radius:2em}
+.s-hero.narrow .hc-face{width:7.4em;height:7.4em;align-self:flex-start}
+.s-hero.narrow .hc-face svg{width:5.7em;height:5.7em}
+.s-hero.narrow .hc-status{flex-wrap:wrap;row-gap:.1em}
+.s-hero.narrow .hc-status em{margin-left:0}
+.s-hero.narrow .fa-l{flex-direction:column;align-items:flex-start;gap:.1em}
+.s-hero.narrow .hc-cam{flex-wrap:wrap}
+.s-cap{font:600 16px/1.4 var(--f-body);color:var(--k-ink-2);margin:0}
+.s-step{border:1px solid var(--k-line);border-radius:var(--r-md);background:var(--k-bg);padding:14px;display:flex;flex-direction:column;gap:10px;cursor:pointer}
+.s-step.cur{border-color:var(--k-clay);box-shadow:0 0 0 1px var(--k-clay)}
+.s-step .p-step h3{font-size:20px}
+.s-step .pay{font-size:13px}
+.s-step .box.took{flex-direction:column;align-items:flex-start;gap:6px}
+.s-n{font:800 12px/1 var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--k-muted)}
+
+/* ------------------------------------------------------------------ below the stage */
+.below{max-width:1080px;margin:40px auto 0;display:flex;flex-direction:column;gap:40px}
+.below h2{margin:0 0 4px;font:500 28px/1.2 var(--f-display);text-wrap:balance}
+.below .lede{margin:0 0 16px;color:var(--k-ink-2);font-weight:600;max-width:65ch}
+.below .lg{font-size:15.5px;grid-template-columns:200px 1fr 250px 190px;column-gap:20px}
+.below ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;max-width:75ch;color:var(--k-ink-2);font-weight:600}
+.below ul.plain b{color:var(--k-ink)}
+.below code{font:400 .9em var(--f-mono);color:var(--k-ink-2);overflow-wrap:anywhere}
+.files{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:6px 24px;font:400 13.5px/1.5 var(--f-mono);color:var(--k-ink-2)}
+.files div{overflow-wrap:anywhere}
+.files span{color:var(--k-muted);font-family:var(--f-body);font-weight:700}
+@media (max-width:820px){
+  .below .lg{display:flex;flex-direction:column}
+  .below .lg-h{display:none}
+  .below .lg-c{border-top:0;padding:2px 0}
+  .below .lg-c.m{border-top:1px solid var(--k-line);padding-top:14px;margin-top:8px}
+  .below .lg-c.a::before{content:"Through: ";color:var(--k-muted);font-weight:800}
+  .below .lg-c.t::before{content:"Measured: ";color:var(--k-muted);font-weight:800}
+}
+@media (prefers-reduced-motion: reduce){
+  .tab,.ctl,.cta,.node,.edge{transition:none}
+}
+.page.manual *{transition:none!important}
+</style>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="kaiku-glow-grad">
+      <stop offset="0" style="stop-color:var(--k-glow);stop-opacity:1"/>
+      <stop offset="1" style="stop-color:var(--k-glow);stop-opacity:0"/>
+    </radialGradient>
+    <clipPath id="kaiku-clip-eye-l"><ellipse cx="76" cy="112" rx="9" ry="12.5"/></clipPath>
+    <clipPath id="kaiku-clip-eye-r"><ellipse cx="124" cy="112" rx="9" ry="12.5"/></clipPath>
+    <!-- Kaiku, from design/mascot.svg (generated from design/mascot.spec.json). The scarf shows where --k-scarf is 1. -->
+    <symbol id="kaiku" viewBox="0 0 200 200">
+      <ellipse cx="100" cy="184" rx="56" ry="7" style="fill:var(--k-mascot-shade);opacity:.55"/>
+      <path d="M112 76 C112 54 126 40 146 40 C163 40 176 53 178 70 C179 79 171 82 166 75 C160 65 151 61 141 68 C137 71 135 75 135 79 Z" style="fill:var(--k-mascot-body);stroke:var(--k-mascot-outline);stroke-width:1.5"/>
+      <path d="M150 48 C162 50 170 59 172 70 C172 74 169 75 167 72 C161 62 153 57 144 58 C142 53 145 48 150 48 Z" style="fill:var(--k-mascot-ear-inner)"/>
+      <circle cx="126" cy="74" r="4" style="fill:var(--k-mascot-shade)"/>
+      <path d="M100 64 C145 64 174 94 174 130 C174 162 143 176 100 176 C57 176 26 162 26 130 C26 94 55 64 100 64 Z" style="fill:var(--k-mascot-body);stroke:var(--k-mascot-outline);stroke-width:1.5"/>
+      <path d="M30 142 C40 164 68 176 100 176 C132 176 160 164 170 142 C152 158 128 164 100 164 C72 164 48 158 30 142 Z" style="fill:var(--k-mascot-shade);opacity:.7"/>
+      <ellipse cx="100" cy="160" rx="30" ry="17" style="fill:url(#kaiku-glow-grad);opacity:.7"/>
+      <ellipse cx="100" cy="160" rx="14" ry="9" style="fill:url(#kaiku-glow-grad)"/>
+      <ellipse cx="100" cy="160" rx="5.5" ry="3.5" style="fill:var(--k-glow);opacity:.85"/>
+      <g style="opacity:var(--k-scarf,0)">
+        <path d="M27 126 C60 142 140 142 173 126 L174 139 C140 156 60 156 26 139 Z" style="fill:var(--k-mascot-scarf)"/>
+        <path d="M27 132.5 C60 149 140 149 173 132.5" style="fill:none;stroke:var(--k-mascot-scarf-stripe);stroke-width:2.5;stroke-linecap:round"/>
+        <path d="M128 146 C131 156 132 164 129 176 L143 174 C146 162 143 152 139 144 Z" style="fill:var(--k-mascot-scarf)"/>
+      </g>
+      <ellipse cx="62" cy="127" rx="8" ry="4.5" style="fill:var(--k-mascot-blush);opacity:.4"/>
+      <ellipse cx="138" cy="127" rx="8" ry="4.5" style="fill:var(--k-mascot-blush);opacity:.4"/>
+      <ellipse cx="76" cy="112" rx="9" ry="12.5" style="fill:var(--k-mascot-eye)"/>
+      <circle cx="79.5" cy="106" r="3" style="fill:var(--k-mascot-shine)"/>
+      <g clip-path="url(#kaiku-clip-eye-l)"><path d="M64 70 H88 V97 Q76 101 64 97 Z" style="fill:var(--k-mascot-body)"/></g>
+      <ellipse cx="124" cy="112" rx="9" ry="12.5" style="fill:var(--k-mascot-eye)"/>
+      <circle cx="127.5" cy="106" r="3" style="fill:var(--k-mascot-shine)"/>
+      <g clip-path="url(#kaiku-clip-eye-r)"><path d="M112 70 H136 V97 Q124 101 112 97 Z" style="fill:var(--k-mascot-body)"/></g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="page" id="page" data-layout="wide">
+  <div class="wrap" id="wrap">
+    <div class="stage" id="stage">
+      <header class="top">
+        <div class="brand">
+          <svg viewBox="0 0 200 200" role="img" aria-label="Kaiku"><use href="#kaiku"/></svg>
+          <b>Kaiku</b><span>how one sentence travels through its mind</span>
+        </div>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Scenes"></div>
+      </header>
+
+      <div class="world" id="world"></div>
+      <div class="hero" id="hero" aria-hidden="true"></div>
+      <div class="intro" id="intro">
+        <h2 id="introTitle"></h2>
+        <p id="introLine"></p>
+        <button class="cta" id="cta" type="button">Follow her words</button>
+      </div>
+
+      <aside class="panel" id="panel" aria-live="polite">
+        <div class="p-head" id="pHead"></div>
+        <div class="p-step" id="pStep"></div>
+        <div class="box crosses" id="pCross"></div>
+        <div class="box stays" id="pStays"></div>
+        <div class="box took" id="pTook"></div>
+        <div class="src" id="pSrc"></div>
+        <div class="p-node" id="pNode" hidden></div>
+      </aside>
+
+      <section class="legendview" id="legendview" aria-label="Every model at a glance">
+        <h2>Every model, when Kaiku uses it, and through which API</h2>
+        <div class="lg" id="lgStage"></div>
+        <div class="lg-foot">Measured on 14 Nov 2026 with a simulated record. The number in brackets is how many calls or turns a figure comes from.</div>
+      </section>
+
+      <div class="stack" id="stack"></div>
+
+      <footer class="bar">
+        <button class="ctl" id="btnApp" type="button" aria-pressed="false" title="Zoom back to the app (A)">
+          <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/></svg><span>Back to the app</span></button>
+        <button class="ctl" id="btnPrev" type="button" title="Previous hop (left arrow)" aria-label="Previous hop">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="ctl main" id="btnPlay" type="button" title="Play or pause (space)">
+          <svg viewBox="0 0 24 24" id="icoPlay"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg><span id="lblPlay">Play</span></button>
+        <button class="ctl" id="btnNext" type="button" title="Next hop (right arrow)">
+          <span>Next hop</span><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+        <button class="ctl" id="btnScene" type="button" title="Next scene (N)" aria-label="Next scene">
+          <span>Next scene</span><svg viewBox="0 0 24 24"><path d="M6 5l7 7-7 7M13 5l7 7-7 7"/></svg></button>
+        <div class="scrub" id="scrub" role="slider" aria-label="Timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"></div>
+        <div class="badges"><span class="badge">Simulated record</span><span class="badge">Measured 14 Nov 2026</span></div>
+      </footer>
+    </div>
+  </div>
+
+  <div class="below">
+    <section>
+      <h2>Every model, when Kaiku uses it, and through which API</h2>
+      <p class="lede">Seven models and one path with no model at all. Her state and the crisis path are on the last row: rules, never a model.</p>
+      <div class="lg" id="lgBelow"></div>
+    </section>
+    <section>
+      <h2>What the gates hold back</h2>
+      <ul class="plain">
+        <li><b>Device gate.</b> With her switch "Camera during activities" on (off by default), the phone or Mac counts face movement while a game or the check-in runs. Each frame is looked at in memory and let go. One record of numbers per task leaves the device; it has no field for a picture, face points, an identity or a feeling.</li>
+        <li><b>Home gate.</b> Only observations (<code>obs.*</code>) and tool calls reach Kaiku's cloud. Raw sensor streams, audio and pictures do not. The cloud refuses anything else by type.</li>
+        <li><b>Live gate.</b> Her voice, and pictures only if she switched them on for a walk, go straight from the device to Gemini Live with a token that works once, for one model, for five minutes. Kaiku's cloud is not on that path and stores no audio.</li>
+        <li><b>Music gate.</b> The robot's drum game is the one other call that passes the cloud by: when music is switched on (it is off by default), the hub opens its own connection to Lyria RealTime and sends a style and a tempo. The style is one of five fixed phrases, picked by her mood dial; her name, her state and the dial number are not sent. The music comes back as sound and stays on the home network.</li>
+        <li><b>Model gate.</b> The voice model gets a small card in plain words: her name, up to three notes she chose to tell Kaiku, her routines, her own ratings today, what was left open, how the last talk sounded, and a tone. Never the state, a score or watch data. Gemma gets clean facts for the companion (no digits, no state words, no health words) and structured evidence for the practitioner's review. Every answer is checked by code before it is used, and every paid call passes a spend cap first.</li>
+        <li><b>Care gate.</b> Her practitioner sees evidence, the review and a graph of activities and routines. Her notebook appears as counts and themes only, and only if she shares it. Memories and transcripts are never read by a care route.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>How this was measured</h2>
+      <ul class="plain">
+        <li><b>One simulated person.</b> "Aino" is an authored record of sixteen days (every observation is marked <code>sim: true</code>), seeded through the real routes into a private copy of the cloud. Every payload on this page is a real output for that record, trimmed.</li>
+        <li><b>Real model calls, 14 Nov 2026.</b> Three short Gemini Live conversations (five spoken turns) held by a test client standing in for the Mac and iPhone apps: the same session route, one-use token, Live connection and tool route, with a synthetic test voice. Then five questions to the mind, three voice renders and one practitioner review. Other timings are medians from the project's own call ledger of the same day; the count is given with each number.</li>
+        <li><b>What the voice chose.</b> In those five turns Gemini Live called <code>feel</code> twice and <code>recall</code> three times, and never <code>ask_mind</code>. The mind's answers shown here come from questions we sent to the same tool route.</li>
+        <li><b>Not measured.</b> Pictures from real glasses and the robot's hardware were not on the bench. Those hops say "not measured".</li>
+        <li><b>The drum game.</b> One real run on 14 Nov 2026: real Lyria RealTime and the real hub, with the head's software twin. The taps came from the twin, not a person, and no flashed head, real speaker or real knock has been measured. In that run the hub had no cloud address, so the game's record waited in its queue at home. One spoken exchange with Gemini Live also ran through the twin's microphone and speaker: Kaiku's answer began 2.14 s after her last word.</li>
+        <li><b>Face signs.</b> The record's 57 face records are authored, like the rest of it. No real camera or face has been measured: the apps ran on a stand-in source on the simulator. The gentler reply is from the evaluation's text stand-in for the voice (<code>gemini-3.8-flash</code>, one run per scenario, the cue set on a test card), not the spoken Live voice. On Aino's 16-day record the cue itself has not fired: it waits for an established usual. The compare and review times in that scene are from the reviews run while the feature was built; the count is given with each number.</li>
+        <li><b>Google's side.</b> Gemini Live keeps conversation state for up to 24 hours so a dropped call can resume. That is the provider's retention, not a Kaiku store.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Where it lives in the code</h2>
+      <div class="files" id="files"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+/* ====================================================================== setup */
+var qs = new URLSearchParams(location.search);
+var hash0 = (location.hash || '').replace('#','');
+var AUTOPLAY = qs.get('autoplay') === '1' || hash0 === 'autoplay';
+var RECORD = qs.get('record') === '1';
+var MANUAL = qs.get('clock') === 'manual';
+var SPEED = Math.max(0.25, Math.min(4, parseFloat(qs.get('speed')) || 1));
+var FAST = qs.get('pace') === 'fast';   /* the whole flow in about a minute, for the README GIF (scripts/record_flow.py) */
+var th = qs.get('theme');
+if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th);
+var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+var REDUCED = qs.get('motion') === '0' || (qs.get('motion') !== '1' && mq && mq.matches);
+
+var $ = function(id){ return document.getElementById(id); };
+var page = $('page'), wrap = $('wrap'), stage = $('stage'), world = $('world'), heroEl = $('hero');
+if (RECORD) page.classList.add('rec');
+if (MANUAL) page.classList.add('manual');
+var NS = 'http://www.w3.org/2000/svg';
+function S(tag, attrs, parent){ var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function clamp(x,a,b){ return x < a ? a : x > b ? b : x; }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function smooth(a,b,x){ var t = clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); }
+function easeInOut(t){ t = clamp(t,0,1); return t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }   /* soft-in-out */
+function easeOut(t){ t = clamp(t,0,1); return 1 - Math.pow(1-t,3.2); }                           /* gentle-out */
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ====================================================================== the map */
+var VB = {w:880, h:608}, MAPW = 66.6, U = MAPW / VB.w, MAP = {x:0, y:5.4}, CEN = [50, 24.4];
+var ZONES = [
+  {id:'home',   x:4,   y:6,   w:152, h:392, t:'At home', s:'her own devices'},
+  {id:'clinic', x:4,   y:410, w:152, h:192, t:'At the clinic', s:''},
+  {id:'cloud',  x:220, y:96,  w:424, h:428, t:'Kaiku cloud', s:'one record, one mind'},
+  {id:'models', x:706, y:6,   w:170, h:596, t:'Google models', s:''}
+];
+/* Gates. A, B and C are the cloud's borders. D and E sit on the two lanes that go from a device straight to a
+   model, above and below the cloud: `lane` gives the lane's y, and where its label and its chips go. */
+var MEM = {
+  A:{x:220, y1:104, y2:398, label:'HOME GATE', ly:288, name:'home gate'},
+  C:{x:220, y1:414, y2:516, label:'CARE GATE', ly:486, name:'care gate'},
+  B:{x:644, y1:104, y2:516, label:'MODEL GATE', ly:412, name:'model gate'},
+  D:{x:432, y1:24,  y2:70,  label:'Live gate', name:'live gate', lane:{y:56, label:17, pass:27, stay:64}},
+  E:{x:432, y1:542, y2:594, label:'Music gate', name:'music gate', lane:{y:568, label:537, pass:544, stay:544}},
+  /* the phone's own gate, drawn only in the face-signs scene: what it holds back stays inside the device node */
+  F:{x:152, y1:105, y2:129, label:'Device gate', name:'device gate', only:'face', thin:true,
+     lane:{y:117, label:90, lx:160, pass:96, stay:110, off:8, passMax:48, stayMax:60, held:true}}
+};
+var NODES = [
+  {id:'dev', z:'home', x:12, y:34, w:136, h:96, t:'iPhone or Mac', s:['Talk and','check-in'], icon:'kaiku'},
+  {id:'glasses', z:'home', x:12, y:146, w:136, h:60, t:'Glasses', s:['a voice','on walks'], icon:'glasses'},
+  {id:'robot', z:'home', x:12, y:222, w:136, h:60, t:'Robot', s:['ear dial,','knock drum'], icon:'kaiku'},
+  {id:'hub', z:'home', x:12, y:298, w:136, h:76, t:'Home hub', s:['raw data stays here,','a few numbers go on']},
+  {id:'dash', z:'clinic', x:12, y:440, w:136, h:140, t:'Dashboard', s:['for her practitioner'], dash:true},
+  {id:'gate', z:'cloud', x:292, y:128, w:136, h:62, t:'Session gate', s:['context card,','one-use Live token']},
+  {id:'book', z:'cloud', x:438, y:128, w:136, h:62, t:'Notebook + graph', s:['what she chose','to tell Kaiku']},
+  {id:'tools', z:'cloud', x:292, y:206, w:136, h:62, t:'Mind tools', s:['feel, recall, remember'], tag:'CODE'},
+  {id:'router', z:'cloud', x:438, y:206, w:136, h:62, t:'Mind router', s:['ask_mind: notebook','first, then Gemma']},
+  {id:'record', z:'cloud', x:292, y:284, w:136, h:62, t:'The record', s:['observations only']},
+  {id:'check', z:'cloud', x:438, y:284, w:136, h:62, t:'Validators', s:['check every','model answer'], tag:'CODE'},
+  {id:'rules', z:'cloud', x:292, y:362, w:136, h:62, t:'Rule engine', s:['her usual, a verdict,','then her state'], tag:'CODE'},
+  {id:'review', z:'cloud', x:438, y:362, w:136, h:62, t:'Review builder', s:['evidence in,','checked findings out']},
+  {id:'brake', z:'cloud', x:292, y:440, w:136, h:62, t:'Safety + budget', s:['crisis phrases and','spend caps, by rule']},
+  {id:'voice', z:'cloud', x:438, y:440, w:136, h:62, t:'Voice lines', s:['fixed script,','rendered once']},
+  {id:'live', z:'models', x:716, y:30, w:152, h:62, t:'Gemini Live', m:'gemini-3.8-live', s:['hears her, speaks as Kaiku']},
+  {id:'embed', z:'models', x:716, y:131, w:152, h:56, t:'Embedding 2', m:'gemini-embedding-2', s:['search by meaning']},
+  {id:'gemma', z:'models', x:716, y:206, w:152, h:62, t:'Gemma 4', m:'gemma-4-26b-a4b-it', s:['first to reason']},
+  {id:'flash', z:'models', x:716, y:286, w:152, h:56, t:'Gemini 3.8 Flash', m:'gemini-3.8-flash', s:['fallback']},
+  {id:'argon', z:'models', x:716, y:352, w:152, h:56, t:'Gemini 4 Argon', m:'gemini-4-argon', s:['escalation, 20 a day']},
+  {id:'tts', z:'models', x:716, y:440, w:152, h:62, t:'Gemini TTS', m:'gemini-3.8-flash-tts', s:['voice Sulafat']},
+  {id:'lyria', z:'models', x:716, y:540, w:152, h:56, t:'Lyria RealTime', m:'lyria-realtime-exp', s:['music for the drum']}
+];
+var NODE = {}; NODES.forEach(function(n){ NODE[n.id] = n; });
+var EDGES = {
+  dev_live:'M148,56 H716',
+  glasses_live:'M148,166 C186,166 186,56 222,56 H716',
+  dev_gate:'M148,100 C204,100 236,159 292,159',
+  dev_tools:'M148,118 C210,118 230,237 292,237',
+  glasses_gate:'M148,176 C204,176 236,170 292,170',
+  glasses_record:'M148,190 C220,190 220,304 292,304',
+  robot_hub:'M80,282 V298',
+  hub_record:'M148,336 C204,336 236,322 292,322',
+  hub_lyria:'M148,356 C174,356 188,368 188,394 V544 Q188,568 212,568 H716',
+  dev_cam:'M148,117 H196', dev_record:'M196,117 C214,117 214,150 220,165 S236,296 292,296',
+  dev_voice:'M148,124 C198,124 248,150 256,220 V418 Q256,432 270,432 H492 Q506,432 506,436 V440',
+  tools_router:'M428,237 H438',
+  tools_book:'M372,206 C372,196 468,200 468,190',
+  router_book:'M506,206 V190',
+  book_embed:'M574,159 H716',
+  router_gemma:'M574,237 H716',
+  gemma_check:'M716,256 C662,256 632,315 574,315',
+  check_router:'M506,284 V268',
+  router_flash:'M574,252 C632,252 654,314 716,314',
+  flash_argon:'M792,342 V352',
+  argon_check:'M716,380 C656,380 632,328 574,328',
+  record_rules:'M360,346 V362',
+  rules_review:'M428,393 H438',
+  review_gemma:'M574,384 C652,384 626,246 716,246',
+  check_review:'M506,346 V362',
+  review_dash:'M506,424 V428 Q506,432 500,432 H258 C206,432 206,500 148,500',
+  voice_tts:'M574,471 H716'
+};
+var DASHED = {router_flash:1, flash_argon:1, argon_check:1};
+
+var svg = S('svg', {viewBox:'0 0 '+VB.w+' '+VB.h, role:'img', 'aria-label':'Map of where a message travels: her devices at home, Kaiku\'s cloud, Google\'s models and the practitioner\'s dashboard, with a gate on every border and two lanes that pass the cloud by.'}, world);
+var gZones = S('g', {}, svg), gMem = S('g', {}, svg), gEdges = S('g', {}, svg), gLive = S('g', {}, svg),
+    gNodes = S('g', {}, svg), gHit = S('g', {}, svg), gChips = S('g', {}, svg), gPulse = S('g', {}, svg);
+
+ZONES.forEach(function(z){
+  S('rect', {class:'zone z-'+z.id, x:z.x, y:z.y, width:z.w, height:z.h, rx:16}, gZones);
+  var cloud = z.id === 'cloud', tx = cloud ? z.x + z.w - 18 : z.x + 10, ty = z.y + (cloud ? 22 : 20);
+  var t = S('text', {class:'zt', x:tx, y:ty}, gZones); t.textContent = z.t;
+  if (cloud) t.setAttribute('text-anchor', 'end');   /* at the right: the left of this band is the home gate's chip shelf */
+  if (!z.s) return;
+  /* the cloud's second line follows its title, whatever the font; the others sit at the zone's right edge */
+  if (cloud){ var ts = S('tspan', {class:'zs', dx:9}, t); ts.textContent = z.s; }
+  else { var s2 = S('text', {class:'zs', x:z.x + z.w - 10, y:ty, 'text-anchor':'end'}, gZones); s2.textContent = z.s; }
+});
+/* the two lanes that do not pass through the cloud, and the dotted link from the gate that mints the token */
+var LANES = [{x:166, y:48, t:'voice, both ways, device to model'}, {x:236, y:589, t:'music, from the hub to the model'}];
+LANES.forEach(function(l){ var t = S('text', {class:'lane-label', x:l.x, y:l.y}, gMem); t.textContent = l.t; });
+S('path', {class:'token-link', d:'M396,128 C396,104 432,104 432,72'}, gMem);
+var PORE = {};
+Object.keys(MEM).forEach(function(k){
+  var m = MEM[k], gm = m.only ? S('g', {class:'only only-' + m.only}, gMem) : gMem;
+  S('line', {class:'mem-band' + (m.thin ? ' thin' : ''), x1:m.x, y1:m.y1, x2:m.x, y2:m.y2}, gm);
+  S('line', {class:'mem-core', x1:m.x, y1:m.y1, x2:m.x, y2:m.y2}, gm);
+  if (m.lane){ var tl = S('text', {class:'mem-label', x:m.lane.lx || m.x, y:m.lane.label, style:'letter-spacing:.06em;font-size:9px' + (m.lane.lx ? ';text-anchor:start' : '')}, gm); tl.textContent = m.label; }
+  else {   /* the name sits on the band; a plate of the band's own colour keeps the dotted line out of the letters */
+    m.plate = S('rect', {class:'mem-plate', x:m.x - 4.5, y:m.ly - 32, width:9, height:64}, gm);
+    var t = S('text', {class:'mem-label', x:m.x, y:m.ly, transform:'rotate(-90 '+m.x+' '+m.ly+')', dy:'3'}, gm); t.textContent = m.label; m.text = t; }
+  PORE[k] = S('circle', {class:'pore', r:4.2, cx:m.x, cy:m.y1}, gMem);
+});
+var EDGE = {}, LANE_EDGE = {dev_live:1, hub_lyria:1};   /* the two lanes are always faintly there: they are part of the map */
+Object.keys(EDGES).forEach(function(id){
+  var p = S('path', {class:'edge' + (DASHED[id] ? ' dash' : '') + (LANE_EDGE[id] ? ' lane' : ''), d:EDGES[id]}, gEdges);
+  var hit = S('path', {class:'edge-hit', d:EDGES[id], 'data-edge':id}, gHit);
+  EDGE[id] = {id:id, el:p, hit:hit, d:EDGES[id], L:0, pts:[]};
+});
+function glyph(n, g){
+  if (n.icon === 'kaiku'){ S('use', {href:'#kaiku', x:n.x + 8, y:n.y + (n.id === 'dev' ? 30 : 13), width:(n.id === 'dev' ? 40 : 34), height:(n.id === 'dev' ? 40 : 34)}, g); return n.id === 'dev' ? 0 : 38; }
+  if (n.icon === 'glasses'){ var x = n.x + 12, y = n.y + 22;
+    S('path', {class:'glyph', d:'M'+x+','+(y+4)+' h4 a8,8 0 0 1 16,0 a4,4 0 0 1 4,0 a8,8 0 0 1 16,0 h-16 m-4,0 h-16 M'+(x+4)+','+(y+4)+' v6 a8,6 0 0 0 16,0 v-6 M'+(x+24)+','+(y+4)+' v6 a8,6 0 0 0 16,0 v-6'}, g); return 50; }
+  return 0;
+}
+/* Every line of map text knows how wide it may be (`data-max`, in map units): its node's inner width, less the
+   icon and the tag. `fitMapText` runs once the fonts are in and narrows any line that a wider fallback font
+   pushes past that, so no label ever leaves its box. With the page's own fonts nothing needs narrowing. */
+var NODE_PAD = 9;
+function line(g, cls, x, y, text, max){ var t = S('text', {class:cls, x:x, y:y, 'data-max':Math.round(max)}, g); t.textContent = text; return t; }
+NODES.forEach(function(n){
+  var g = S('g', {class:'node z-'+n.z+'-node', 'data-node':n.id, tabindex:'0', role:'button', 'aria-label':n.t}, gNodes);
+  S('rect', {class:'nb', x:n.x, y:n.y, width:n.w, height:n.h, rx:11}, g);
+  var off = glyph(n, g), right = n.x + n.w - NODE_PAD;
+  var tx = n.x + 11 + off, ty = n.y + 22;
+  if (n.id === 'dev'){ tx = n.x + 11; }
+  line(g, 'nt', tx, ty, n.t, (n.tag ? n.x + n.w - 43 : right) - tx);
+  var y = ty + 14;
+  if (n.id === 'dev'){ tx = n.x + 54; y = n.y + 50; }
+  if (n.m){ line(g, 'nm', tx, y, n.m, right - tx); y += 12.5; }
+  (n.s || []).forEach(function(s){ line(g, 'ns', tx, y, s, right - tx); y += 12; });
+  if (n.tag){ var tg = S('g', {class:'tag'}, g); S('rect', {x:n.x + n.w - 39, y:n.y + 9, width:31, height:13, rx:6.5}, tg);
+    var tt = S('text', {x:n.x + n.w - 23.5, y:n.y + 18.4}, tg); tt.textContent = n.tag; }
+  if (n.dash){
+    var pill = S('rect', {class:'pill-state', x:n.x + 11, y:n.y + 48, width:68, height:16, rx:8}, g);
+    var pt = S('text', {class:'pill-text', x:n.x + 19, y:n.y + 59.2}, g); pt.textContent = 'Needs a call'; n.pill = [pill, pt];
+    [[76,104],[90,84],[104,112],[118,66]].forEach(function(b){ S('line', {class:'bar-line', x1:n.x + 13, y1:n.y + b[0], x2:n.x + 13 + b[1], y2:n.y + b[0]}, g); });
+  }
+  n.g = g;
+});
+function fitMapText(){
+  Array.prototype.forEach.call(svg.querySelectorAll('text[data-max]'), function(t){
+    var max = +t.getAttribute('data-max'), w = 0;
+    t.removeAttribute('textLength'); t.removeAttribute('lengthAdjust');
+    try { w = t.getComputedTextLength(); } catch(err){ w = 0; }
+    if (w > max){ t.setAttribute('textLength', max); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
+  });
+  Object.keys(MEM).forEach(function(k){ var m = MEM[k]; if (!m.plate) return; var w = 58; try { w = m.text.getComputedTextLength() || 58; } catch(err){} m.plate.setAttribute('y', m.ly - w / 2 - 3); m.plate.setAttribute('height', w + 6); });
+  NODES.forEach(function(n){ if (!n.pill) return; var w = 0; try { w = n.pill[1].getComputedTextLength(); } catch(err){ w = 52; } n.pill[0].setAttribute('width', Math.ceil(w + 16)); });
+}
+var pulseHalo = S('circle', {class:'pulse-halo', r:11}, gPulse), pulseDot = S('circle', {class:'pulse-dot', r:5.6}, gPulse);
+gPulse.style.opacity = 0;
+
+/* ====================================================================== the story (every payload is a real output, trimmed) */
+var SCENES_ALL = [
+{ id:'sentence', tab:'One sentence', where:'Mac quick talk', words:'I am not feeling too well.',
+  hero:{node:'dev', kind:'talk', label:'Mac quick talk', status:'Listening', her:'I am not feeling too well.'},
+  outro:{node:'dev', kind:'talk', label:'Mac quick talk', status:'Kaiku is speaking', her:'I am not feeling too well.', kaiku:'That sounds heavy. I\u2019m here with you, and no need to talk if you don\u2019t want to.'},
+  introT:'Aino says one sentence to Kaiku', introL:'Sixteen days into being home after treatment. A simulated record, real model calls.',
+  outroT:'Kaiku answered 2.6 seconds after she stopped', outroL:'Its mind chose how to meet her in 6 ms, by rule. The voice never saw a score.',
+  steps:[
+  { id:'session', title:'Before she speaks, the app asks for a session', route:['Mac app','Session gate'], gate:'A',
+    nodes:['dev','gate'], path:[['dev_gate',1],['dev_gate',-1]], gates:[{m:'A', n:2, pass:'the card', stays:['state','scores','API key']}],
+    pay:'<b>context_card</b> {\n first_name: "Aino",  tone: "extra-gentle",\n memories: ["Calling Maija in the evening", \u2026],\n open_thread: "the long lake loop with Leena on\n   Saturday",\n <i>and, as plain sentences: her routines, her own\n   ratings today, how the last talk sounded</i>\n}\n<b>live_token</b>  <i>one use, this model only, 5 minutes</i>',
+    stays:[['The state','Her record reads "needs a call" today. Only the tone crosses.'],['Scores, baselines, watch data','The card has no key for them; the assembler rejects any that look like one.'],['The Gemini key','The app gets a token that works once, for one model, for 5 minutes.']],
+    took:['845 ms','Median of 3 sessions (577 to 1,295 ms), token included. Code builds the card: no model call.'],
+    src:'cloud/kaiku_cloud/mind/card.py · assemble.py · live_token.py' },
+  { id:'voice', title:'Her voice goes straight to Gemini Live', route:['Microphone','Gemini Live'], gate:'D',
+    nodes:['dev','live'], path:[['dev_live',1]], gates:[{m:'D', pass:'her voice', stays:['not recorded','not through Kaiku\u2019s cloud']}],
+    pay:'<b>setup</b>   persona + the card + the tool list\n<b>audio</b>   16 kHz, streamed as she speaks\n<b>heard</b>   "not feeling too well"',
+    note:'Spoken by a synthetic test voice for this measurement.',
+    stays:[['Kaiku\u2019s cloud hears nothing','Audio travels between the device and Gemini Live only.'],['No recording','Kaiku stores no audio, on the device or in the cloud.'],['Her words as text','Kept only if she turned on "Keep our conversations" (off by default), and never after a crisis phrase.']],
+    took:['1.2 s','Median for the Live connection to be ready (3 sessions, 1.0 to 1.6 s).'],
+    src:'apps/apple/KaikuKit/Sources/KaikuKit/Talk/LiveSession.swift' },
+  { id:'feel', title:'Gemini Live notices a feeling and calls feel', route:['Gemini Live','Kaiku\u2019s mind'], gate:'A',
+    nodes:['live','dev','tools'], path:[['dev_live',-1],['dev_tools',1]], gates:[{m:'A', pass:'feel call', stays:['audio']}],
+    pay:'<b>feel</b> {\n kind: "other",\n heard: { valence: "low", energy: "low",\n          tone: ["flat"], via: "voice" },\n about: "not feeling well",\n said: "Not feeling too well"\n}',
+    stays:[['The audio','It stays in the Live conversation. The cloud gets a few labels and her words as text.'],['Her exact words','They shape this plan and are not stored. The short topic is kept to pick up next time.'],['A crisis phrase','The phrase gate checks every argument first, by rule. A hit keeps none of her words: it raises the safety flag and shows the scripted help.']],
+    took:['1.5 to 1.7 s','After she stopped speaking, in 2 conversations. Live waits for 0.9 s of silence before it ends her turn.'],
+    src:'contracts/python/kaiku_contracts/companion_tools.py · cloud/kaiku_cloud/mind/session.py' },
+  { id:'decide', title:'Kaiku\u2019s mind decides by rule, not by model', route:['Mind tools','Notebook + graph'], inside:'Reads, inside the cloud',
+    nodes:['tools','book'], path:[['tools_book',1],['tools_book',-1]],
+    pay:'what she told Kaiku helps       <i>her notebook</i>\nhow her talks sounded, 7 days   <i>summaries, no words</i>\nher own ratings today           <i>check-ins</i>\nthe best recorded response      <i>activities</i>\nthe tone of the day             <i>extra-gentle</i>',
+    stays:[['No model','Stance, depth and the single offer come from rules in one small file.'],['The state','This step cannot change it. The flag for her practitioner stays with the rule engine.']],
+    took:['5 to 6 ms','In the 2 conversations. Median 1.9 ms over 10 direct calls.'],
+    src:'cloud/kaiku_cloud/mind/feel.py' },
+  { id:'plan', title:'The plan goes back to the voice', route:['Kaiku\u2019s mind','Gemini Live'], gate:'A',
+    nodes:['tools','dev','live'], path:[['dev_tools',-1],['dev_live',1]], gates:[{m:'A', pass:'the plan', stays:['scores','state','notebook']}],
+    pay:'stance: "comfort",  depth: "stay",\nreflect_hint: "Give back the thing and its feeling\n in their own words, slowly and softly. \u2026 It has\n sounded heavy on 5 days this week: you may say,\n once, that it has been a heavy few days.",\nrecall: "They told you this helps them: \\"Drumming\n with Kaiku before breakfast\\".",\nmay_offer: "sitting quietly together for a minute"',
+    stays:[['Scores and the state','The plan carries a stance, a hint and one possible offer.'],['The rest of the notebook','One remembered line comes along, in her own words.'],['An activity offer','On an extra-gentle day only sitting quietly may be offered, once.']],
+    took:['6 ms','The app\u2019s round trip to the cloud for feel (5 ms in the second conversation).'],
+    src:'cloud/kaiku_cloud/mind/feel.py · config/kaiku.toml [live]' },
+  { id:'reply', title:'Kaiku answers in its own voice', route:['Gemini Live','Mac speaker'], gate:'D',
+    nodes:['live','dev'], path:[['dev_live',-1]], gates:[{m:'D', pass:'Kaiku\u2019s voice', stays:[]}],
+    pay:'<b>audio</b>  voice "Sulafat", 4.5 s\n<b>says</b>   "That sounds heavy. I\u2019m here with you, and\n        no need to talk if you don\u2019t want to."\n<i>Second conversation, on the iPhone:</i>\n        "It\u2019s been a heavy few days. You\u2019re not\n        feeling well, and that\u2019s alright. I\u2019m here."',
+    stays:[['What Kaiku keeps','One row: device, start, end, tool names. No audio.'],['For next time','A summary, not her words, and only while she lets Kaiku remember. The next card said: "The talk this evening sounded like a hard one (flat, quiet). Be gentle; do not quote it back."']],
+    took:['2.6 s','From the end of her sentence to Kaiku\u2019s first sound. Median 2.3 s over 5 turns (1.5 to 2.6 s).'],
+    src:'apps/apple/KaikuKit/Sources/KaikuKit/Talk/Conversation.swift · cloud/kaiku_cloud/mind/affect.py' }
+  ]},
+{ id:'mind', tab:'Ask the mind', where:'iPhone, Talk', words:'Do you remember who visits me on Sundays, and what we could do together?',
+  hero:{node:'dev', kind:'talk', label:'iPhone, Talk', status:'Listening', her:'Do you remember who visits me on Sundays, and what we could do together?'},
+  outro:{node:'dev', kind:'talk', label:'iPhone, Talk', status:'Kaiku is speaking', her:'Do you remember who visits me on Sundays, and what we could do together?', kaiku:'Your grandson Eetu visits on Sundays. Would you like to do a short activity together, like breathing for a minute?'},
+  introT:'A question about her own life', introL:'The voice has tools for what the card does not hold.',
+  outroT:'Looked up in her own notebook in 39 ms', outroL:'Gemma is there when a lookup is not enough, and its answers are checked before Kaiku may say them.',
+  steps:[
+  { id:'recall', title:'Gemini Live looks it up with recall', route:['Gemini Live','Notebook'], gate:'A',
+    nodes:['live','dev','tools','book'], path:[['dev_live',-1],['dev_tools',1],['tools_book',1]], gates:[{m:'A', pass:'a topic', stays:['audio']}],
+    pay:'<b>recall</b> { topic: "visits" }\n<b>back</b>   { memories:\n         ["Grandson Eetu visits on Sundays"] }\n<b>Kaiku</b>  "Your grandson Eetu visits on Sundays.\n        Would you like to do a short activity\n        together, like breathing for a minute?"',
+    stays:[['A model','A word search in her own notebook. No model runs in Kaiku\u2019s cloud for this.'],['The rest of the notebook','At most 3 notes that match the topic come back.']],
+    took:['39 ms','For the lookup (3 ms for a second one in the same turn). First sound 2.3 s after she stopped.'],
+    src:'cloud/kaiku_cloud/mind/memory.py · session.py' },
+  { id:'ask', title:'For more than a lookup the voice can call ask_mind', route:['Gemini Live','Mind router'], gate:'A',
+    nodes:['dev','tools','router'], path:[['dev_tools',1],['tools_router',1]], gates:[{m:'A', pass:'question', stays:['audio']}],
+    pay:'<b>ask_mind</b> {\n question: "What could she look forward to this\n            weekend?",\n kind: "plan"\n}',
+    note:'Sent on the same tool route by our test. In the 5 recorded voice turns the voice chose recall, never ask_mind.',
+    stays:[['The conversation','One question of at most 300 characters. No audio, no transcript.'],['A model, when one note is enough','"Who is my sister?" came back in 18 ms with no model: You told me: "Sister Maija rings most evenings".']],
+    took:['18 ms','When one note answers it (1 question). Otherwise the router goes on to the next hops.'],
+    src:'cloud/kaiku_cloud/mind/router.py' },
+  { id:'embed', title:'The router finds the notes that fit', route:['Mind router','Embedding 2'], gate:'B',
+    nodes:['router','book','embed'], path:[['router_book',1],['book_embed',1],['book_embed',-1]], gates:[{m:'B', pass:'question', stays:['scores','state']}],
+    pay:'<b>out</b>   "task: question answering | query: What\n       could she look forward to this weekend?"\n<b>back</b>  768 numbers\n<b>match</b> done in the cloud, top 3 of her notes:\n       mem:14   mem:4   mem:2',
+    stays:[['Health details','Never in the notebook at all: a note about medicine, sleep or treatment is refused when she tells it.'],['The matching','Vectors are compared inside Kaiku\u2019s cloud. Each note was sent once, for its vector, when she chose to keep it.']],
+    took:['629 ms','Median for a question (5 calls, 450 to 1,032 ms). A note takes 341 ms (median of 108).'],
+    src:'cloud/kaiku_cloud/mind/graph.py · cloud/kaiku_cloud/llm/gemini.py' },
+  { id:'gemma', title:'Gemma reasons over a few clean facts', route:['Mind router','Gemma 4'], gate:'B',
+    nodes:['router','gemma'], path:[['router_gemma',1]], gates:[{m:'B', pass:'3 notes', stays:['digits','state','health']}],
+    pay:'question: "What could she look forward to this\n           weekend?",   kind: "plan",\nfacts:\n mem:14 "The long lake loop with Leena on Saturday"\n mem:4  "Grandson Eetu visits on Sundays"\n mem:2  "Sister Maija rings most evenings"\n + 10 lines like "Simulated: The phone app\n   reported an outing yesterday."',
+    stays:[['Anything with a digit','Our test line "Mood dial 3 of 5 this week" is refused by the same rule.'],['State and score words','"Consensus needs_call since Monday": refused.'],['Health and watch words','"Resting pulse was higher": refused. Transcripts are never read here.']],
+    took:['2.3 s','Median of 5 Gemma calls for ask_mind (1.6 to 7.3 s).'],
+    src:'cloud/kaiku_cloud/mind/router.py (clean_fact, build_prompt)' },
+  { id:'checked', title:'Code checks the answer before Kaiku may say it', route:['Gemma 4','Validators','the voice'], gate:'B',
+    nodes:['gemma','check','router','tools','dev'], path:[['gemma_check',1],['check_router',1],['tools_router',-1],['dev_tools',-1]], gates:[{m:'B', pass:'answer', stays:['bad cite','digits']},{m:'A', pass:'answer', stays:[]}],
+    pay:'answer: "You have the long lake loop with Leena\n         on Saturday and grandson Eetu visits on\n         Sunday.",\nroute: "gemma",   confidence: 1.0,\ncites: ["mem:14", "mem:4"]',
+    stays:[['A cite that does not exist','Every cited id must be one of the facts that were sent, or the answer is thrown away.'],['A digit or a state word','Rejected, with one corrective retry.'],['A pick between notes that disagree','Rejected. Kaiku asks her which is right.']],
+    took:['3.0 s','The whole route, median of the 3 questions Gemma answered (2.9 to 3.1 s).'],
+    src:'cloud/kaiku_cloud/mind/router.py (validate)' },
+  { id:'fallback', title:'If Gemma cannot answer: Flash, then Argon, then a script', route:['Mind router','Flash','Argon'], gate:'B',
+    nodes:['router','flash','argon','check'], path:[['router_flash',1],['flash_argon',1],['argon_check',1],['check_router',1]], gates:[{m:'B', pass:'the facts', stays:['over cap']}],
+    pay:'"What does she enjoy on a quiet afternoon at home?"\nGemma   1.6 s   rejected: missing citation\nGemma   7.3 s   rejected: wording\nFlash   3.4 s   rejected\nArgon   4.6 s   rejected\nKaiku   "I\u2019m not sure about that one. Could you\n        tell me?"          <i>the scripted line</i>',
+    note:'This happened once in our 5 questions.',
+    stays:[['Argon after 20 calls a day','Per home. Then Flash only.'],['Any call over the spend cap','Refused, and Kaiku falls back.'],['A guess','When nothing passes the checks, Kaiku says it is not sure.']],
+    took:['17.5 s','For the whole chain, once. The device waits up to 120 s for the mind.'],
+    src:'cloud/kaiku_cloud/mind/router.py · config/kaiku.toml [mind] [budget]' }
+  ]},
+{ id:'walk', tab:'A walk', where:'Glasses, on a walk', words:'A walk with Kaiku in her ear, through the glasses.', plain:true,
+  hero:{node:'glasses', kind:'walk'}, outro:{node:'glasses', kind:'walk', done:true},
+  introT:'A walk with the glasses', introL:'Kaiku is a voice in her ear. It can see only if she lets it.',
+  outroT:'The pictures went to the live conversation, nowhere else', outroL:'Kaiku\u2019s cloud got minutes and steps.',
+  steps:[
+  { id:'walkcard', title:'A walk opens like any talk, with a walk card', route:['iPhone, with the glasses','Session gate'], gate:'A',
+    nodes:['glasses','gate'], path:[['glasses_gate',1],['glasses_gate',-1]], gates:[{m:'A', n:2, pass:'the card', stays:['state','scores']}],
+    pay:'walk_style: "quiet",\noutdoor_likes: ["The market hall on Saturdays",\n                "The lake loop past the old sauna"],\n<b>walk</b> { look_every_s: 30 }',
+    stays:[['The state and scores','As in every session: a tone, never the state.'],['Where she walks','No route or track is stored.']],
+    took:['65 ms','Card and instruction, first call (16 ms the second time), on a copy of the cloud with no key, so no token was minted.'],
+    src:'cloud/kaiku_cloud/mind/walk.py · card.py' },
+  { id:'frames', title:'If she lets Kaiku see, pictures go to Gemini Live only', route:['Glasses camera','Gemini Live'], gate:'D',
+    nodes:['glasses','live'], path:[['glasses_live',1]], gates:[{m:'D', pass:'1 picture a second', stays:['not stored','not to Kaiku\u2019s cloud']}],
+    pay:'<b>realtimeInput.video</b> {\n mimeType: "image/jpeg",\n data: <i>one 360 × 640 frame, about once a second</i>\n}\n<i>with her voice, on the same connection</i>',
+    stays:[['Kaiku\u2019s cloud','No picture is sent to it, stored, logged or queued.'],['Any measurement','Nothing is worked out from a picture: no observation, no state, no crisis trigger.'],['Off by default','Her own switch. Pictures stop when she mutes, pauses or ends the walk, or leaves the app.']],
+    took:['not measured','No glasses were on the bench. Checked so far: the gate in a unit test, a mock camera stream, one real Live call with a generated picture.'], unmeasured:true,
+    src:'apps/apple/KaikuKit/Sources/KaikuKit/Talk/Conversation.swift (sendFrame) · docs/decisions.md D43' },
+  { id:'clock', title:'The walk has its own clock, and silence is an answer', route:['iPhone','Gemini Live'], gate:'D',
+    nodes:['glasses','live'], path:[['glasses_live',1],['glasses_live',-1]], gates:[{m:'D', pass:'a nudge', stays:[]}],
+    pay:'<i>every 30 s, as a line nobody said:</i>\n"A look around, not said by them. Only if something\n plainly worth it is in view (striking light, water,\n a tree in blossom, an animal, something that looks\n like one of their own places), say one short remark\n about it. Ordinary ground, road, wall or sky:\n answer with silence."',
+    stays:[['A reply with no word in it','The phone plays a nudge\u2019s reply only once its transcript has a real word.'],['The count in a spotting game','It lives on the phone and counts only what she says she found.']],
+    took:['not measured','Not timed by us. The team recorded on 14 Nov that 9 of 14 declined nudges still carried 0.7 to 2.8 s of sound, hence the first rule above.'], unmeasured:true,
+    src:'config/kaiku.toml [walk.quiet] · docs/decisions.md D45' },
+  { id:'outing', title:'What Kaiku\u2019s cloud gets from a walk is numbers', route:['iPhone','The record'], gate:'A',
+    nodes:['glasses','record'], path:[['glasses_record',1]], gates:[{m:'A', pass:'minutes', stays:['pictures','audio','route']}],
+    pay:'type: "obs.outing",  source: "phone",  sim: true,\npayload: { minutes: 36.0, steps: 3744,\n           method: "steps" }',
+    note:'From the simulated record, 13 Nov.',
+    stays:[['Pictures and audio','An observation has no field for them.'],['Daylight','Not claimed: a camera picture is not a light measurement.']],
+    took:['20 ms','For the cloud to store a batch and run the rule again (median of 3 batches).'],
+    src:'contracts/python/kaiku_contracts/payloads.py · cloud/kaiku_cloud/api/main.py' }
+  ]},
+{ id:'robot', tab:'Robot to practitioner', where:'The robot, 13 Nov', words:'The robot\u2019s morning ritual: dial, breathing, drum.', plain:true,
+  hero:{node:'robot', kind:'robot', status:'Morning ritual', label:'simulated, 13 Nov', chips:['mood 4','energy 4','sleep 4','82 taps at 103 bpm'], line:'Dial, breathe, drum. The raw taps stay at home.'}, outro:{node:'dash', kind:'dash'},
+  introT:'The robot\u2019s morning ritual', introL:'What leaves the home is a handful of numbers. A rule reads them. Gemma explains.',
+  outroT:'Her practitioner sees what changed and why', outroL:'Gemma\u2019s words, every sentence cited. The numbers are printed by code.',
+  steps:[
+  { id:'raw', title:'Raw streams never leave the home', route:['Robot','Home hub'], inside:'Moves, inside the home',
+    nodes:['robot','hub'], path:[['robot_hub',1]],
+    pay:'<b>raw.head.tap</b>  { t_ms }            <i>each knock</i>\n<b>raw.head.ear</b>  { value, pressed }  <i>the dial</i>\n<b>raw.hub.face</b>  { x_norm, y_norm, size }\n               <i>where a face is, never the picture</i>',
+    stays:[['Camera frames','Read in memory to find a face, then gone. Never written or sent.'],['Tap times and pulse samples','Kept at home for 30 days for audit, never uplinked.']],
+    took:['not measured','No robot was on this bench. The head\u2019s current firmware runs the ritual on its own, not yet through the hub: the robot observations in this record come from its simulated twin.'], unmeasured:true,
+    src:'hub/kaiku_hub/store.py · hub/AGENTS.md · docs/decisions.md D44' },
+  { id:'obs', title:'Only observations cross to the cloud', route:['Home hub','The record'], gate:'A',
+    nodes:['hub','record'], path:[['hub_record',1]], gates:[{m:'A', pass:'obs.*', stays:['raw taps','frames','audio']}],
+    pay:'type: "obs.drum_session",  source: "hub",  sim: true,\npayload: { tempo_bpm: 103.0, duration_s: 48.0,\n           regularity: 0.81, taps: 82 }\n<b>and a raw message, sent on purpose:</b>\n"type \'raw.head.tap\' is not uplinkable (obs.* only)"',
+    stays:[['Every raw message','The cloud refused ours with the line above.'],['Audio, pictures, transcripts','No observation type has a field for them.']],
+    took:['20 ms','To store a batch and run the rule again (median of 3 batches, 20 to 26 ms).'],
+    src:'cloud/kaiku_cloud/api/main.py (post_events) · contracts/python/kaiku_contracts/registry.py' },
+  { id:'rule', title:'A rule decides her state. No model takes part.', route:['The record','Rule engine'], inside:'Worked out, inside the cloud',
+    nodes:['record','rules'], path:[['record_rules',1]],
+    pay:'each measure against her own usual\n  \u2192 away on 3 of the last 5 days?\neach signal group \u2192 a verdict\n<b>state</b>  "needs_call"   rule consensus-v1+db93b715\n  Check-ins & robot  worse     Watch  worse\n  Walks & outings  as usual    Apps  as usual',
+    stays:[['Every model','The same observations and criteria always give the same state.'],['The safety state','Only a safety flag raises it. Measures can reach "needs a call" at most.']],
+    took:['under 20 ms','Inside the ingest time of the hop before.'],
+    src:'config/criteria.toml · cloud/kaiku_cloud/analytics/consensus.py' },
+  { id:'evidence', title:'Gemma reads structured evidence', route:['Review builder','Gemma 4'], gate:'B',
+    nodes:['rules','review','gemma'], path:[['rules_review',1],['review_gemma',1]], gates:[{m:'B', pass:'evidence', stays:['notebook','words','audio']}],
+    pay:'<i>60 of 117 citable records, each like:</i>\n{ id: "course:onset:sleep",\n  label: "Last night\u2019s sleep",\n  detail: "Last night\u2019s sleep first below their\n    usual on 6 Nov: 3 of 5 (usual 4 of 5).",\n  direction: "worse" }',
+    stays:[['Her notebook','People, places, likes and plans are not read for a review.'],['Her words and her voice','No transcript, no audio. Reflections count as a level and themes, and only because she shares them.']],
+    took:['17.1 s','This review. Median 18.1 s over 8 reviews (9.6 to 23.4 s).'],
+    src:'cloud/kaiku_cloud/insight.py (review_evidence, review)' },
+  { id:'validate', title:'Code checks every finding and prints every number', route:['Gemma 4','Validators','Review builder'], gate:'B',
+    nodes:['gemma','check','review'], path:[['gemma_check',1],['check_review',1]], gates:[{m:'B', pass:'findings', stays:['2 failed']}],
+    pay:'<b>Gemma</b>  "Sleep, late-night screen time, and middle\n  of the night\u2019s sleep moved away from usual first,\n  then mood, energy, and first interaction time\n  followed."\n<b>cites</b>  course:onset:sleep, course:onset:late_night \u2026\n<b>code</b>   "Last night\u2019s sleep first below their usual\n  on 6 Nov: 3 of 5 (usual 4 of 5)."',
+    stays:[['2 of 5 findings','Rejected for digits in the prose. Numbers are printed by code beside the words.'],['Cause, forecast, state talk','Checked on every finding: known cite ids, no "because", no state claim, direction as recorded.']],
+    took:['1 call','No retry was needed. The checks are code and add no model time.'],
+    src:'cloud/kaiku_cloud/insight.py (check_finding, validate)' },
+  { id:'dash', title:'What her practitioner sees, and what stays hers', route:['Review builder','Dashboard'], gate:'C',
+    nodes:['review','dash'], path:[['review_dash',1]], gates:[{m:'C', pass:'review', stays:['names','places','words']}],
+    pay:'headline: "Worth a check-in call. Change from usual\n  in Check-ins & robot, Watch. \u2026"\n3 findings, each with its cited facts\ngraph: 13 nodes of activities and routines\n"People in their notebook": 3 notes, as a count',
+    stays:[['People, places, likes, plans, what helps','Her own graph has 17 nodes. The care team\u2019s has 13: activities and routines only.'],['Memories and transcripts','No care route reads them. This is tested.'],['Everything, by default','Sharing is her switch and starts off. In this record she turned it on.']],
+    took:['147 ms','To load the review data with no model call (1 run).'],
+    src:'cloud/kaiku_cloud/week.py · insight.py · api/dashboard.py' }
+  ]},
+/* The drum, "Tap it back" (D51): on the robot's drum step, when a generated song can play, Kaiku plays a short
+   song at a set tempo through the head's own speaker, hushes it, and she taps the beat back. Numbers are from one
+   real run on 14 Nov 2026: real Lyria RealTime and the real hub, with the head's software twin doing the tapping
+   (no flashed head, no real speaker, no person). */
+{ id:'drum', tab:'The drum', where:'Tap it back', words:'Kaiku plays a short song, then she taps its beat back.', plain:true,
+  hero:{node:'robot', kind:'robot', status:'Tap it back', label:'real run, 14 Nov', chips:['94 bpm','129 bpm','79 bpm'], line:'A short song, then quiet. She taps its beat back from memory.'},
+  outro:{node:'robot', kind:'robot', status:'Kaiku says', label:'real run, 14 Nov', chips:['perfect','great','perfect, second try'], kaiku:'Three songs, and you found the beat in every one.'},
+  introT:'The drum: tap it back', introL:'Real Lyria RealTime and the real hub. The taps came from the head’s software twin, not a person.',
+  outroT:'Three songs in 66.6 seconds, scored by code', outroL:'She hears a word, never a number, and nothing here moves her state.',
+  steps:[
+  { id:'pick', title:'Today’s three tempos come from the date, by rule', route:['Home hub','Robot'], inside:'Decided, inside the home',
+    nodes:['hub','robot'], path:[['robot_hub',-1]],
+    pay:'<b>[tap_back]</b>  level_bpm      = [100, 126, 76]\n            level_vary_bpm = [6, 8, 4]    <i>by the date</i>\n            level_taps     = [8, 8, 12]\n<b>14 Nov</b>      94, 129 and 79 bpm',
+    note:'The same day always gives the same three songs. The next day gives three other tempos.',
+    stays:[['A model','The tempos are arithmetic on the date.'],['The game itself, without a song','When no generated song can play, the drum step is free drumming as before.']],
+    took:['not measured','Arithmetic inside the hub. It was not timed.'], unmeasured:true,
+    src:'hub/kaiku_hub/perception/tap_back.py (level_plan) · config/kaiku.toml [tap_back]' },
+  { id:'song', title:'The hub asks Lyria for a song at that tempo', route:['Home hub','Lyria RealTime'], gate:'E',
+    nodes:['hub','lyria'], path:[['hub_lyria',1]], gates:[{m:'E', pass:'a style, a tempo', stays:['her name','her state','dial number']}],
+    pay:'<i>once, as the music opens</i>\n<b>prompt</b>  "light acoustic groove, hand drums, marimba"\n<i>for each song</i>\n<b>config</b>  { bpm: 94, density: 0.66, brightness: 0.66 }\n        reset_context, play',
+    note:'The style is one of five fixed phrases, picked by her mood dial (3 of 5 in this run).',
+    stays:[['Her name, her state, the dial number','None of them is in the prompt or the config.'],['Kaiku’s cloud','The hub opens its own connection, with its own key, after a spend cap check.']],
+    took:['0.71 s','For the music session to open (0.38 s in an earlier run; one connect took 8.7 s).'],
+    src:'hub/kaiku_hub/live/lyria.py (start, song) · hub/kaiku_hub/rituals/steps.py' },
+  { id:'speaker', title:'The music plays on the head’s own speaker', route:['Lyria RealTime','Home hub','Robot'], gate:'E',
+    nodes:['lyria','hub','robot'], path:[['hub_lyria',-1],['robot_hub',-1]], gates:[{m:'E', pass:'music', stays:[]}],
+    pay:'<b>in</b>     48 kHz stereo, from Lyria\n<b>hub</b>    down-mixed and resampled to 16 kHz mono\n<b>out</b>    20 ms frames to the head, on the home network:\n       kaiku/v1/&lt;home&gt;/audio/head/speaker\n<b>run</b>    1,747 frames, all 640 bytes, 0 dry gaps\n<b>tempo</b>  asked 94: 93.90 · 129: 127.65 · 79: 79.90',
+    stays:[['The sound','It stays on the home network: never stored, logged or uplinked.'],['Two sounds at once','One stream holds the speaker at a time. Kaiku’s voice never waits behind music.']],
+    took:['8.0 s','Of song heard for each level (6.0 s on a replay). Frames at most 81 ms ahead of the clock and 27 ms behind.'],
+    src:'hub/kaiku_hub/live/head_audio.py · player.py · contracts/python/kaiku_contracts/topics.py' },
+  { id:'score', title:'Hush, her turn, and code scores the taps', route:['Robot','Home hub'], inside:'Scored, inside the home',
+    nodes:['robot','hub'], path:[['robot_hub',1]],
+    pay:'<b>tempo</b>   60000 / median gap between her taps\n<b>error</b>   % off the song’s tempo (also half, double)\n<b>steady</b>  1 − variation of the gaps\n<b>band</b>    perfect ≤ 4 %, great ≤ 8 %, nice ≤ 15 %,\n        beyond that: again\n<b>run</b>     94: tapped 95.4, 1.5 %, perfect\n        129: tapped 137.9, 6.9 %, great\n        79: again, then 81.4, 3.1 %, perfect',
+    note:'She hears a word: "Perfect! You kept its beat." "Great! That was very close." "Oh, not quite. Let’s try that one again."',
+    stays:[['Her tap times','They stay in the hub. Taps count only once the head’s speaker is quiet: it gave no sound in her turns.'],['A number, said to her','Never. Unsteady taps lower perfect and great one band. One retry.']],
+    took:['66.6 s','The whole game in the run: three songs and one replay.'],
+    src:'hub/kaiku_hub/perception/tap_back.py (score_try, band_of) · hub/kaiku_hub/rituals/tap_back.py' },
+  { id:'numbers', title:'The record gets numbers only, and no measure reads them', route:['Home hub','The record'], gate:'A',
+    nodes:['hub','record'], path:[['hub_record',1]], gates:[{m:'A', pass:'obs.*', stays:['the music','tap times']}],
+    pay:'type: "obs.tap_back",  source: "hub",\npayload: { levels: [\n   { level: 1, target_bpm: 94.0, tapped_bpm: 95.4,\n     error_pct: 1.5, steadiness: 1.0, taps: 8,\n     band: "perfect", tries: 1 }, … two more ],\n  levels_played: 3, levels_passed: 3, error_pct: 3.8,\n  steadiness: 0.998, taps: 40, duration_s: 66.6,\n  song: "music" }',
+    stays:[['The music and her tap times','An observation has no field for either.'],['Her state','No measure reads it. It is in her own History, as songs on the beat and timing.']],
+    took:['not measured','In this run the hub had no cloud address: the record waited in its queue at home. A batch of other observations took 20 ms (median of 3).'], unmeasured:true,
+    src:'contracts/python/kaiku_contracts/payloads.py (TapBack) · docs/decisions.md D51' }
+  ]},
+/* Face signs during a task (D52). With her switch "Camera during activities" on, the phone counts movements of
+   her face while a game or the check-in runs and sends numbers only. The scene shows a change in movement against
+   her own usual and never names a feeling. The record's 57 face records are authored (sim: true); the reply on the
+   closing card is from the evaluation's text stand-in for the Live voice, with the cue set on a test card. */
+{ id:'face', tab:'Face signs', where:'iPhone, a game', words:'A game, with her camera switch on.', plain:true, stackHero:true,
+  hero:{node:'dev', kind:'game', status:'Playing Firefly', label:'simulated, 8 Nov', cam:'Camera on: face movement only', off:'Turn off',
+        meters:[{label:'Smiling', usual:.139, day:.027, max:.2, u:'0.14', d:'0.03'}, {label:'Expression range', usual:.339, day:.178, max:.5, u:'0.34', d:'0.18'}],
+        line:'Counted on the phone. No picture is kept or sent.'},
+  outro:{node:'dev', kind:'talk', noctl:true, label:'evaluation, in text', status:'Kaiku replies', her:'Did the lantern one. A bit of a nothing day.', kaiku:'A bit of a nothing day. We don’t have to fill it; I’m right here.'},
+  introT:'Face movement during a game', introL:'Her own switch, off by default. The camera is read on her phone and only numbers leave it.',
+  outroT:'Kaiku goes gently and never says why', outroL:'A text stand-in for the voice, in an evaluation with the cue set on a test card. Not the spoken Live voice.',
+  steps:[
+  { id:'ondevice', title:'The camera is read on her phone', route:['Camera','iPhone'], gate:'F', inside:'Counted, inside the phone',
+    nodes:['dev'], path:[['dev_cam',1]], gates:[{m:'F', pass:'numbers', stays:['pictures','video']}],
+    pay:'<b>arkit_blendshapes</b>  <i>an iPhone with TrueDepth: 30 looks a second</i>\n<b>vision_landmarks</b>   <i>a Mac, other iPhones: 15 a second,</i>\n                   <i>with no smile, brow or gaze numbers</i>\n<b>on screen</b>  "Camera on: face movement only"  <i>Turn off</i>',
+    note:'One tap on Turn off: off for this task, and what was sampled is thrown away.',
+    stays:[['Every frame','Looked at in memory and let go. Nothing is recorded.'],['The live conversation','Nothing from this camera goes to it. It never runs in Talk or on a walk.']],
+    took:['not measured','No real camera or face has been measured yet, only a stand-in source on the simulator.'], unmeasured:true,
+    src:'apps/apple/KaikuKit/Sources/KaikuKit/TaskCapture/FaceSigns.swift · TaskCamera.swift' },
+  { id:'signs', title:'Numbers, not pictures, cross to the record', route:['iPhone','The record'], gate:'A',
+    nodes:['dev','record'], path:[['dev_record',1]], gates:[{m:'A', pass:'obs.*', stays:['pictures','identity']}],
+    pay:'type: "obs.face_signs",  source: "phone",  sim: true,\npayload: { task: "firefly",\n  method: "arkit_blendshapes",  coverage: 0.95,\n  duration_s: 60.0,  samples: 1800,\n  smile_share: 0.03,  smiles: 1,  blinks_per_min: 23.1,\n  gaze_on_share: 0.847,  head_movement: 0.129,\n  expression_range: 0.176, … }',
+    note:'From the simulated record, 8 Nov. One record for each game or check-in.',
+    stays:[['A picture, face points, an identity','The contract has no field for them and refuses a field it does not know.'],['A feeling','No field names one. These are counted movements.']],
+    took:['not measured','No face record was timed on its way in. A batch of other observations took 20 ms (median of 3).'], unmeasured:true,
+    src:'contracts/python/kaiku_contracts/payloads.py (FaceSigns) · docs/decisions.md D52' },
+  { id:'usual', title:'Set against her own usual, by rule, with no vote', route:['The record','Rule engine'], inside:'Worked out, inside the cloud',
+    nodes:['record','rules'], path:[['record_rules',1]],
+    pay:'<i>usual: median of her own days · spread: 1.4826 × MAD,</i>\n<i>never under the measure’s floor · away at 2.0 spreads</i>\n<b>8 Nov</b>             value   usual   spreads away\nsmiling           0.027   0.139   2.79 below\nexpression range  0.178   0.339   3.23 below\nblinks a minute   23.35   14.2    3.05 above\n<i>by 13 Nov all three are back within her usual</i>',
+    note:'Day 11 of her record: this usual is still provisional (7 of her own days), and marked early.',
+    stays:[['Her state','These measures are shown, not scored. The rule is consensus-v1+db93b715 with and without the 57 face records.'],['A feeling','The rule compares counts. Nothing says how she felt.']],
+    took:['24 ms','To compare 29 measures with her usual in the first review; 2 to 21 ms in five later ones.'],
+    src:'config/criteria.toml (face_*, role = "shown") · cloud/kaiku_cloud/analytics/drift.py' },
+  { id:'cite', title:'Gemma gets it marked not scored; code writes the sentence', route:['Review builder','Gemma 4'], gate:'B',
+    nodes:['rules','review','gemma'], path:[['rules_review',1],['review_gemma',1]], gates:[{m:'B', pass:'evidence', stays:['pictures']}],
+    pay:'{ id: "course:onset:face_smiles",\n  detail: "Smiling in games first below their usual\n    on 7 Nov: 4% (usual 14%). Shown only: no vote\n    in the consensus.",\n  direction: "worse",  <b>scored: false</b>,\n  now: "back within usual", … }',
+    note:'What her practitioner reads is written by code: "Shown, not scored: expressiveness in games, blink rate in games and smiling in games were away from their usual from 7 Nov and are back within it."',
+    stays:[['No Gemma sentence yet','In 4 real reviews no accepted finding cited a face record. One draft did and was rejected: a date in its prose.'],['A finding on the face alone, or a feeling read off it','Refused by code.']],
+    took:['18.7 s','One Gemma call, the first review with the face records (26 to 30 s in three later ones).'],
+    src:'cloud/kaiku_cloud/insight.py (review, check_finding, face_issue) · course.py' },
+  { id:'gentle', title:'On the next talk Kaiku goes gently and never says why', route:['Session gate','iPhone','Gemini Live'], gate:'A',
+    nodes:['gate','dev','live'], path:[['dev_gate',-1],['dev_live',1]], gates:[{m:'A', pass:'the cue', stays:['numbers','her face']},{m:'D', pass:'words only', stays:[]}],
+    pay:'context_card { tone: "gentle", quieter_in: ["games"] }\n<b>and one sentence in the instruction:</b>\n"For your manner only: they were quieter than their\n usual in today’s games. Go gently: softer and slower,\n shorter turns, ask less, and offer nothing unless\n they ask. Never say this or hint at it, never say\n how they seem or look, and never mention their\n face or a camera."',
+    stays:[['Every number','Only which kind of task crosses. Blinks are never a cue, and there is none with someone else in the room.'],['A young record','The rule needs an established usual, 7 of her own days. On Aino’s 16-day record it has not fired.']],
+    took:['not measured','No spoken turn with the cue was timed. The reply shown is from the evaluation’s text stand-in (1 run).'], unmeasured:true,
+    src:'cloud/kaiku_cloud/mind/face_cue.py · assemble.py · tools/companion_evals/scenarios/face.yaml' }
+  ]},
+{ id:'lines', tab:'Fixed lines', where:'iPhone, a fixed line', words:'Good morning. I\u2019m glad you\u2019re here.', kaikuWords:true,
+  hero:{node:'dev', kind:'talk', label:'iPhone, Talk', status:'Kaiku says', kaiku:'Good morning. I\u2019m glad you\u2019re here.'},
+  outro:{node:'dev', kind:'talk', label:'iPhone, Talk', status:'From the cache, 5 ms', kaiku:'Good morning. I\u2019m glad you\u2019re here.'},
+  introT:'The lines Kaiku always says the same way', introL:'One voice everywhere. The script is a file, not a model\u2019s choice.',
+  outroT:'Rendered once, then played from the cache', outroL:'If the voice is unavailable Kaiku shows the words and stays silent.',
+  steps:[
+  { id:'key', title:'The app asks for a line by its key', route:['iPhone app','Voice lines'], gate:'A',
+    nodes:['dev','voice'], path:[['dev_voice',1]], gates:[{m:'A', pass:'a key', stays:[]}],
+    pay:'GET /v1/voice/greet.morning?lang=en\n<b>script</b>  "Good morning. I\u2019m glad you\u2019re here."\n<b>back</b>    a WAV in Kaiku\u2019s voice, from the cache',
+    note:'The iPhone plays this greeting when a live conversation cannot start, and as the voice sample under You.',
+    stays:[['Anything about her','The 45 keyed lines are the same for everyone.'],['Wording by a model','Apps ask by key. The words live in one file.']],
+    took:['5 ms','From the cache (2 runs: 5 and 6 ms).'],
+    src:'config/voice_lines.toml · cloud/kaiku_cloud/voice.py' },
+  { id:'tts', title:'The first time, Gemini TTS renders it', route:['Voice lines','Gemini TTS'], gate:'B',
+    nodes:['voice','tts'], path:[['voice_tts',1],['voice_tts',-1]], gates:[{m:'B', pass:'the line', stays:['her data','crisis']}],
+    pay:'text:  "Good morning. I\u2019m glad you\u2019re here."\nvoice: "Sulafat"\nstyle: "warm, gentle, unhurried, softly smiling;\n        a small friendly companion"\n<b>back</b>   audio, kept on disk for next time',
+    stays:[['Her data','Only the line, the voice name and the style go out.'],['The crisis script','Never synthesised. It is shown exactly as written.']],
+    took:['4.1 s','To render this line (4.5 s for a second one). After that, 5 to 6 ms.'],
+    src:'cloud/kaiku_cloud/voice.py (synthesize)' },
+  { id:'say', title:'The apps\u2019 own short lines pass the crisis gate first', route:['iPhone app','Safety','Voice lines'], gate:'A',
+    nodes:['dev','brake','voice'], path:[['dev_voice',1]], gates:[{m:'A', pass:'a line', stays:[]}],
+    pay:'POST /v1/voice/say\n{ text: "It\u2019s been a heavy few days. I\u2019m here.",\n  lang: "en" }              <i>rendered in 4.5 s</i>\n<b>a crisis phrase, sent on purpose:</b>\n422 "crisis text is shown verbatim, never voiced here"',
+    note:'A say line can carry her own topic, such as the daily invitation. It is cached under a hash of the text.',
+    stays:[['A crisis phrase','Refused by the phrase gate in 3 ms, before any model.'],['A stand-in voice','If TTS cannot answer, Kaiku shows the words and stays silent.']],
+    took:['4.5 s','First render of this line, then 6 ms from the cache. The refusal took 3 ms.'],
+    src:'cloud/kaiku_cloud/api/main.py (post_voice_say) · voice.py' }
+  ]}
+];
+var SCENES = SCENES_ALL.filter(function(sc){ return !sc.waiting || qs.get('waiting') === '1' || qs.get(sc.id) === '1'; });
+SCENES.forEach(function(sc, i){ sc.kicker = 'Scene ' + (i + 1) + ' of ' + SCENES.length + ' \u00b7 ' + (sc.waiting ? 'waiting for facts' : sc.where); });
+var LEGEND = [
+  ['Gemini Live','gemini-3.8-live','Every spoken conversation: Talk and check-in on iPhone and Mac, and walks with the glasses. It hears her, speaks as Kaiku and chooses the tools. On the robot only when the hub\u2019s voice is switched on (off by default): then through the head\u2019s own microphone and speaker.','Live API over a WebSocket. Apps get a one-use token from the cloud (model locked, 5 minutes each). The robot hub, when switched on, uses its own key and a session meter.','<b>2.3 s</b> to first sound (5 turns) \u00b7 <b>2.1 s</b> through the robot head\u2019s twin (1)'],
+  ['Gemma 4','gemma-4-26b-a4b-it','First to reason behind ask_mind. Writes the practitioner\u2019s review. Picks which records answer a practitioner\u2019s question. Orders the evidence in a state explanation. Proposes tidying of the notebook graph at night. Labels how a conversation she chose to keep sounded.','Gemini API, generateContent (hosted Gemma). Every answer passes validators: one retry, then the deterministic text.','<b>2.3 s</b> ask_mind (5) · <b>18.1 s</b> review (8) · <b>1.9 s</b> label (48)'],
+  ['Gemini 3.8 Flash','gemini-3.8-flash','Fallback only: ask_mind after Gemma fails twice, and second in the explanation chain.','Interactions API, JSON schema, store = false.','<b>3.4 s</b> (1)'],
+  ['Gemini 4 Argon','gemini-4-argon','Escalation in ask_mind after Gemma fails: first for care, emotional or conflicting questions, otherwise when Flash is under 0.6 confidence. At most 20 calls per home per day. The weekly practitioner brief. Today\u2019s focus for the card, nightly on the deployed cloud.','Interactions API, JSON schema, store = false.','<b>7.7 s</b> brief (6) · <b>4.6 s</b> ask_mind (1) · focus: not measured'],
+  ['Gemini Embedding 2','gemini-embedding-2','A vector for each notebook entry when she lets Kaiku keep it, and for a question on its way to ask_mind or to the card\u2019s choice of notes.','embedContent, 768 dimensions.','<b>341 ms</b> a note (108) · <b>629 ms</b> a question (5)'],
+  ['Gemini TTS','gemini-3.8-flash-tts','The fixed script lines and the apps\u2019 own short lines in the voice Sulafat, rendered once and cached. Never the crisis script.','generateContent with audio output, on the Google Cloud backend this build runs.','<b>4.1 to 4.5 s</b> to render (2) · <b>5 ms</b> cached (2)'],
+  ['Lyria RealTime','lyria-realtime-exp','The robot’s drum game, Tap it back: a short song at a set tempo, when the hub’s music is switched on (KAIKU_MUSIC=lyria) and a song can play. Off by default; otherwise free drumming.','Live music over a WebSocket (Developer API), straight from the hub. Kaiku’s cloud is not on the path.','<b>0.38 to 0.71 s</b> to open (2) · 8.7 s once'],
+  ['No model','rules in Python','Her state: baseline, verdict, consensus. The crisis path. The context card, the feel plan, recall, the daily invitation, the spend cap and every validator.','config/criteria.toml and config/safety_phrases.toml, read by code in the cloud and on the hub.','<b>20 ms</b> ingest + rule (3) · <b>5 to 6 ms</b> feel (2)']
+];
+var NODEINFO = {
+  dev:['iPhone or Mac app','Where she talks with Kaiku, checks in and plays. It holds no Gemini key: the cloud hands it a one-use token for each conversation. With her camera switch on it counts face movement during a game or check-in; the pictures never leave it.','apps/apple/KaikuKit/Sources/KaikuKit/Talk/'],
+  glasses:['Glasses','Kaiku as a voice in her ear on a walk, through the iPhone. The camera is used only with her own switch, and its pictures go to the live conversation only.','apps/apple/KaikuKit/Sources/KaikuKit/Walk/'],
+  robot:['Robot','A small body for the morning ritual: an ear dial for mood, energy and sleep, a breathing minute, a knock drum, and its own speaker and microphone. Today the head runs the ritual on a standalone firmware and lends the hub its drum step. The drum game and the sound path were shown on its software twin, not on a flashed head.','firmware/atech-head/ · firmware/unoq-sensors/ · docs/decisions.md D44, D51'],
+  hub:['Home hub','Turns raw streams from the robot into a few derived numbers per ritual, and runs the drum game. Raw data stays on the home network. It sends the head its sound (music, chimes, Kaiku’s voice) as 20 ms frames, and with music switched on it talks straight to Lyria RealTime.','hub/kaiku_hub/'],
+  dash:['Practitioner dashboard','One page per person: the state, what changed and why, Gemma\u2019s cited review, the graph of activities and routines.','apps/web/'],
+  gate:['Session gate','Builds the context card and the instruction for each conversation by code, and mints the one-use Live token. Over the spend cap there is no token and the microphone stays closed.','cloud/kaiku_cloud/mind/session.py · card.py · live_token.py'],
+  book:['Notebook + graph','Short facts she chose to tell Kaiku, and a graph built from them by code. Person-facing only. Health details are refused at the door.','cloud/kaiku_cloud/mind/memory.py · graph.py'],
+  tools:['Mind tools','Where the voice model\u2019s tool calls land: feel, recall, remember, forget. The crisis phrase gate runs first on every argument. All code.','cloud/kaiku_cloud/mind/session.py · feel.py'],
+  router:['Mind router','Answers ask_mind: her notebook first, then Gemma, then Flash and Argon as fallbacks, then a scripted line. It keeps neither the question nor the answer, only a ledger row for which route answered.','cloud/kaiku_cloud/mind/router.py'],
+  record:['The record','Every observation from every device, with its source and whether it is simulated. Nothing but obs.* is accepted.','cloud/kaiku_cloud/api/main.py · store/db.py'],
+  check:['Validators','Code that checks every model answer before it is used: citation ids, digits, wording, direction, causal words. A miss means a retry, then deterministic text.','cloud/kaiku_cloud/mind/router.py · insight.py'],
+  rules:['Rule engine','Her own usual per measure, a verdict per signal group, then the state. Deterministic. The criteria are data in one file.','config/criteria.toml · cloud/kaiku_cloud/analytics/'],
+  review:['Review builder','Collects citable evidence, asks Gemma what it shows, checks each finding and prints the numbers itself.','cloud/kaiku_cloud/insight.py'],
+  brake:['Safety + budget','The crisis phrase gate (a scripted reply, never a model) and the spend caps that every paid call must pass.','config/safety_phrases.toml · contracts/python/kaiku_contracts/budget.py'],
+  voice:['Voice lines','Every fixed line Kaiku says, by key, rendered once in its one voice and cached on disk.','config/voice_lines.toml · cloud/kaiku_cloud/voice.py'],
+  live:['Gemini Live','gemini-3.8-live. The only part that hears her. It speaks as Kaiku and decides when to call a tool. On the robot, when its voice is switched on, the conversation runs through the head\u2019s own microphone and speaker: shown once, on the head\u2019s software twin. Beside today\u2019s standalone head the hub opens no conversation.','config/kaiku.toml [models] [live] \u00b7 hub/kaiku_hub/live/ \u00b7 hub/AGENTS.md (follow mode)'],
+  embed:['Gemini Embedding 2','gemini-embedding-2. Turns a note or a question into 768 numbers so the cloud can find notes by meaning.','cloud/kaiku_cloud/llm/gemini.py (embed)'],
+  gemma:['Gemma 4','gemma-4-26b-a4b-it, hosted through the Gemini API. The first model to reason, always over facts chosen by code and always checked afterwards.','cloud/kaiku_cloud/llm/gemma.py · gemma_hosted.py'],
+  flash:['Gemini 3.8 Flash','gemini-3.8-flash. Used only when Gemma cannot give a valid answer.','cloud/kaiku_cloud/llm/gemini.py'],
+  argon:['Gemini 4 Argon','gemini-4-argon. The escalation step for ask_mind, capped at 20 calls per home per day, and the writer of the weekly practitioner brief.','cloud/kaiku_cloud/mind/router.py · brief.py'],
+  tts:['Gemini TTS','gemini-3.8-flash-tts, voice Sulafat. Renders the fixed lines. The crisis script is never sent to it.','cloud/kaiku_cloud/voice.py'],
+  lyria:['Lyria RealTime','lyria-realtime-exp. Streams the song for the robot’s drum game, Tap it back. The hub reaches it directly, never through Kaiku’s cloud, and only when music is switched on (KAIKU_MUSIC=lyria). Off by default: then the drum step is free drumming.','hub/kaiku_hub/live/lyria.py · config/kaiku.toml [models] [music] [tap_back]']
+};
+var FILES = [
+  ['Context card','cloud/kaiku_cloud/mind/card.py'],['Instruction','cloud/kaiku_cloud/mind/assemble.py'],['Live token','cloud/kaiku_cloud/mind/live_token.py'],
+  ['Tools and crisis gate','cloud/kaiku_cloud/mind/session.py'],['feel plan','cloud/kaiku_cloud/mind/feel.py'],['Mind router','cloud/kaiku_cloud/mind/router.py'],
+  ['Notebook rules','cloud/kaiku_cloud/mind/memory.py'],['Graph and vectors','cloud/kaiku_cloud/mind/graph.py'],['Review and validators','cloud/kaiku_cloud/insight.py'],
+  ['Gemma switch','cloud/kaiku_cloud/llm/gemma.py'],['Gemini text, embeddings','cloud/kaiku_cloud/llm/gemini.py'],['Voice lines, TTS','cloud/kaiku_cloud/voice.py'],
+  ['Rule criteria','config/criteria.toml'],['Model ids, caps','config/kaiku.toml'],['Spend cap','contracts/python/kaiku_contracts/budget.py'],
+  ['Call ledger','cloud/kaiku_cloud/llm/ledger.py'],['Live client','apps/apple/KaikuKit/Sources/KaikuKit/Talk/LiveSession.swift'],['Drum music','hub/kaiku_hub/live/lyria.py'],['Tap it back','hub/kaiku_hub/rituals/tap_back.py'],['Tap it back score','hub/kaiku_hub/perception/tap_back.py'],['Head sound','hub/kaiku_hub/live/head_audio.py'],['Face signs','apps/apple/KaikuKit/Sources/KaikuKit/TaskCapture/FaceSigns.swift'],['Face cue','cloud/kaiku_cloud/mind/face_cue.py'],
+  ['Drum step','hub/kaiku_hub/rituals/steps.py'],['Tapped tempo','hub/kaiku_hub/perception/taps.py'],['Why','docs/decisions.md (D33, D35, D43, D44, D45)']
+];
+
+/* ====================================================================== measuring paths, building the timeline */
+function measureEdges(){
+  Object.keys(EDGE).forEach(function(id){
+    var e = EDGE[id], L = 0;
+    try { L = e.el.getTotalLength(); } catch(err){ L = 0; }
+    e.L = L || 100; e.pts = [];
+    var n = Math.max(12, Math.ceil(e.L / 5));
+    for (var i = 0; i <= n; i++){ var p; try { p = e.el.getPointAtLength(e.L * i / n); } catch(err){ p = {x:0,y:0}; } e.pts.push([p.x, p.y, e.L * i / n]); }
+  });
+}
+function prepStep(st){
+  var pts = [], acc = 0, legs = [];
+  st.path.forEach(function(pd){
+    var e = EDGE[pd[0]], dir = pd[1];
+    var arr = dir > 0 ? e.pts : e.pts.slice().reverse();
+    if (pts.length){ var last = pts[pts.length-1], first = arr[0]; var gap = Math.hypot(first[0]-last[0], first[1]-last[1]); if (gap > 1) acc += gap; }
+    var d0 = acc;
+    arr.forEach(function(p){ var d = dir > 0 ? p[2] : e.L - p[2]; pts.push([p[0], p[1], d0 + d]); });
+    acc = d0 + e.L;
+    legs.push({e:e, dir:dir, d0:d0, d1:acc});
+  });
+  st.pts = pts; st.total = acc || 1; st.legs = legs;
+  st.travel = FAST ? clamp(st.total * 1.5, 600, 800) * PACE : clamp(st.total * 4.3, 1300, 2700);
+  (st.gates || []).forEach(function(g){
+    var M = MEM[g.m], count = 0; g.f = null;
+    for (var i = 1; i < pts.length; i++){
+      var a = pts[i-1], b = pts[i];
+      if (a[0] !== b[0] && (a[0]-M.x) * (b[0]-M.x) <= 0){
+        var u = (M.x - a[0]) / (b[0] - a[0]), y = a[1] + (b[1]-a[1]) * u;
+        if (y >= M.y1 - 3 && y <= M.y2 + 3){ count++; if (count === (g.n || 1)){ g.f = (a[2] + (b[2]-a[2]) * u) / st.total; g.x = M.x; g.y = y; g.dir = b[0] > a[0] ? 1 : -1; break; } }
+      }
+    }
+  });
+}
+function pointAt(st, p){
+  var d = clamp(p,0,1) * st.total, pts = st.pts, lo = 0, hi = pts.length - 1;
+  while (hi - lo > 1){ var m = (lo + hi) >> 1; if (pts[m][2] <= d) lo = m; else hi = m; }
+  var a = pts[lo], b = pts[hi], u = (d - a[2]) / Math.max(1e-6, b[2] - a[2]);
+  return [a[0] + (b[0]-a[0]) * clamp(u,0,1), a[1] + (b[1]-a[1]) * clamp(u,0,1)];
+}
+var D = FAST ? {hold0:1000, hold:700, out:700, dwell:1000, backIn:600, backHold:700, pan:600, toLegend:500, legend:3000, rest:300, long:0, q:.5}
+             : {hold0:3400, hold:2700, out:1500, dwell:3000, backIn:1200, backHold:2400, pan:1300, toLegend:900, legend:9000, rest:650, long:500, q:1};
+var SEGS = [], TOTAL = 0, STEPS = [], PACE = 1;
+function buildTimeline(){
+  measureEdges();
+  var t = 0; SEGS = []; STEPS = [];
+  function push(o){ o.t0 = t; t += o.dur; o.t1 = t; SEGS.push(o); return o; }
+  SCENES.forEach(function(sc, si){
+    sc.t0 = t;
+    if (si > 0) push({type:'pan', si:si, dur:D.pan});
+    sc.hold = push({type:'hold', si:si, dur: si === 0 ? D.hold0 : D.hold});
+    sc.out = push({type:'out', si:si, dur:D.out});
+    sc.steps.forEach(function(st, ki){
+      prepStep(st);
+      st.seg = push({type:'step', si:si, ki:ki, dur: st.travel + D.dwell + (st.pay.split('\n').length > 6 ? D.long : 0), travel: st.travel});
+      st.si = si; st.ki = ki; STEPS.push(st);
+    });
+    sc.back = push({type:'back', si:si, dur:D.backIn + D.backHold});
+    sc.t1 = t;
+  });
+  push({type:'toLegend', si:SCENES.length, dur:D.toLegend});
+  push({type:'legend', si:SCENES.length, dur:D.legend});
+  TOTAL = t;
+}
+function segAt(t){ for (var i = 0; i < SEGS.length; i++) if (t < SEGS[i].t1) return SEGS[i]; return SEGS[SEGS.length-1]; }
+
+/* ====================================================================== hero cards (the app view) */
+var ICO = {
+  mic:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  spk:'<svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>',
+  end:'<svg viewBox="0 0 24 24"><path d="M4 14c5-5 11-5 16 0l-2.5 2.5-3-1.5v-2.5c-1.7-.5-3.3-.5-5 0V15l-3 1.500z"/></svg>'
+};
+function heroHTML(h){
+  if (h.kind === 'talk'){
+    return '<div class="hc talk" style="--k-scarf:1"><div class="hc-face"><svg viewBox="0 0 200 200"><use href="#kaiku"/></svg></div><div class="hc-main">' +
+      '<div class="hc-status"><i></i><span>' + esc(h.status) + '</span><em>' + esc(h.label) + '</em></div>' +
+      (h.her ? '<p class="hc-her">' + esc(h.her) + '</p>' : '') + (h.kaiku ? '<p class="hc-kaiku">' + esc(h.kaiku) + '</p>' : '') +
+      (h.noctl ? '' : '<div class="hc-ctl"><span>' + ICO.mic + '</span><span>' + ICO.spk + '</span><span class="end">' + ICO.end + '</span></div>') + '</div></div>';
+  }
+  if (h.kind === 'walk'){
+    return '<div class="hc walk"><div class="hc-face"><svg viewBox="0 0 200 200"><use href="#kaiku"/></svg></div><div class="hc-main">' +
+      '<div class="hc-status"><i></i><span>Walking with Kaiku</span><em>iPhone + glasses</em></div><div class="hc-rows">' +
+      '<div class="hc-row"><span>Style</span><b>Quiet</b></div>' +
+      '<div class="hc-row"><span>Let Kaiku see through the glasses</span><div class="hc-toggle"></div></div>' +
+      '<div class="hc-row"><span>' + (h.done ? 'Pictures went to the live conversation only' : 'Her own switch. It starts off.') + '</span></div></div></div></div>';
+  }
+  if (h.kind === 'robot'){
+    return '<div class="hc robot" style="--k-scarf:1"><div class="hc-face"><svg viewBox="0 0 200 200"><use href="#kaiku"/></svg></div><div class="hc-main">' +
+      '<div class="hc-status"><i></i><span>' + esc(h.status) + '</span><em>' + esc(h.label) + '</em></div>' +
+      '<div class="hc-chips">' + h.chips.map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' +
+      (h.kaiku ? '<p class="hc-kaiku" style="margin-top:.25em">' + esc(h.kaiku) + '</p>' : '') +
+      (h.line ? '<div class="hc-rows"><div class="hc-row"><span>' + esc(h.line) + '</span></div></div>' : '') + '</div></div>';
+  }
+  if (h.kind === 'game'){
+    return '<div class="hc game"><div class="hc-face">' + FACE_ART + '</div><div class="hc-main">' +
+      '<div class="hc-status"><i></i><span>' + esc(h.status) + '</span><em>' + esc(h.label) + '</em></div>' +
+      '<div class="hc-cam"><i></i><span>' + esc(h.cam) + '</span>' + (h.off ? '<b>' + esc(h.off) + '</b>' : '') + '</div>' +
+      '<div class="fa-meters">' + h.meters.map(function(m){
+        var pc = function(x){ return (x / m.max * 100).toFixed(1); };
+        return '<div class="fa-m"><div class="fa-l"><span>' + esc(m.label) + '</span><span class="fa-n">usual ' + esc(m.u) + '<b data-fa="day"> \u00b7 8 Nov ' + esc(m.d) + '</b></span></div>' +
+          '<div class="fa-bar"><i data-fa="bar" data-from="' + pc(m.usual) + '" data-to="' + pc(m.day) + '"></i><u style="left:' + pc(m.usual) + '%"></u></div></div>'; }).join('') + '</div>' +
+      '<div class="hc-rows"><div class="hc-row"><span>' + esc(h.line) + '</span></div></div></div></div>';
+  }
+  return '<div class="hc dash"><div class="hd-top"><b>Aino</b><span class="hd-pill">Needs a call</span><span class="hd-sim">Simulated record</span></div>' +
+    '<div class="hd-kicker">Change from usual · by Gemma, checked by code</div>' +
+    '<p class="hd-find">Sleep, late-night screen time, and middle of the night\u2019s sleep moved away from usual first, then mood, energy, and first interaction time followed.</p>' +
+    '<p class="hd-fact">Last night\u2019s sleep first below their usual on 6 Nov: 3 of 5 (usual 4 of 5).</p>' +
+    '<div class="hd-foot">4 cited records · every number printed by code</div></div>';
+}
+/* The drawn face: a few movement points on a simple face, in the page's own colours. `v` runs from 0 (an easy
+   smile) to 1 (a quieter, stiller face); the card's two bars move with it from her usual (the mark) to the day's
+   value, both read from the record. No feeling is named anywhere. */
+var FACE_ART = '<svg class="fa-svg" viewBox="12 14 96 96"><circle class="fa-head" cx="60" cy="62" r="42"/>' +
+  '<ellipse class="fa-blush" data-fa="blush" cx="36" cy="72" rx="7" ry="4"/><ellipse class="fa-blush" data-fa="blush" cx="84" cy="72" rx="7" ry="4"/>' +
+  '<path class="fa-line" data-fa="brow-l" d=""/><path class="fa-line" data-fa="brow-r" d=""/>' +
+  '<ellipse class="fa-eye" data-fa="eye" cx="45" cy="56" rx="4.2" ry="5.4"/><ellipse class="fa-eye" data-fa="eye" cx="75" cy="56" rx="4.2" ry="5.4"/>' +
+  '<path class="fa-line" data-fa="mouth" d=""/><path class="fa-mesh" data-fa="mesh" d=""/>' +
+  '<circle class="fa-pt" data-fa="p0" r="2"/><circle class="fa-pt" data-fa="p1" r="2"/><circle class="fa-pt" data-fa="p2" r="2"/><circle class="fa-pt" data-fa="p3" r="2"/><circle class="fa-pt" data-fa="p4" r="2"/></svg>';
+function faceArt(root, v){
+  if (!root || !root.querySelector('.fa-svg')) return;
+  var q = function(k){ return root.querySelectorAll('[data-fa="' + k + '"]'); }, e = 1 - v;
+  var cy = 78 - 3 * e, dip = 80.5 + 9.5 * e;                      /* mouth corners lift and the curve deepens with a smile */
+  q('mouth')[0].setAttribute('d', 'M43,' + cy.toFixed(2) + ' Q60,' + dip.toFixed(2) + ' 77,' + cy.toFixed(2));
+  var by = 43.5 - 1.6 * e;
+  q('brow-l')[0].setAttribute('d', 'M38,' + (by + 1.2).toFixed(2) + ' Q45,' + (by - 2.2 * e).toFixed(2) + ' 52,' + (by + .6).toFixed(2));
+  q('brow-r')[0].setAttribute('d', 'M68,' + (by + .6).toFixed(2) + ' Q75,' + (by - 2.2 * e).toFixed(2) + ' 82,' + (by + 1.2).toFixed(2));
+  Array.prototype.forEach.call(q('eye'), function(el){ el.setAttribute('ry', (5.9 - 1.3 * e).toFixed(2)); });
+  Array.prototype.forEach.call(q('blush'), function(el){ el.style.opacity = (.12 + .5 * e).toFixed(3); });
+  var mid = (cy + dip) / 2 + .6, P = [[43, cy], [60, mid], [77, cy], [45, by - 1.1 * e - 4], [75, by - 1.1 * e - 4]];
+  P.forEach(function(pt, i){ var c = q('p' + i)[0]; c.setAttribute('cx', pt[0]); c.setAttribute('cy', pt[1].toFixed(2)); });
+  q('mesh')[0].setAttribute('d', 'M' + P[3][0] + ',' + P[3][1].toFixed(2) + ' L' + P[0][0] + ',' + P[0][1].toFixed(2) + ' L' + P[1][0] + ',' + P[1][1].toFixed(2) + ' L' + P[2][0] + ',' + P[2][1].toFixed(2) + ' L' + P[4][0] + ',' + P[4][1].toFixed(2) + ' Z');
+  Array.prototype.forEach.call(q('bar'), function(bar){ bar.style.width = lerp(+bar.getAttribute('data-from'), +bar.getAttribute('data-to'), v).toFixed(1) + '%'; });
+  Array.prototype.forEach.call(q('day'), function(el){ el.style.opacity = smooth(.55, .9, v).toFixed(3); });
+}
+function heroSize(h){ return h.kind === 'dash' ? [40, 24, 150] : [46, 21, 152]; }   /* w em, least h em, map units it stands for */
+var HERO_MAX = 24.6;   /* em: the tallest card that clears the top bar and the caption under it */
+var fits = {panel:1, tight:false, legend:1, top:1, compact:false, card:1};
+function fitCard(box, least){   /* the card is as tall as its words. Nothing is cut. */
+  var hc = box.firstElementChild, em = parseFloat(getComputedStyle(box).fontSize) || 12.8;
+  if (!hc) return;
+  box.style.height = 'auto'; hc.style.height = 'auto'; hc.classList.remove('noctl');
+  var f = 1, set = function(v){ f = v; hc.style.setProperty('--hf', v.toFixed(2)); }, tall = function(){ return hc.offsetHeight / em; };
+  set(1);
+  /* a long reply: first the call buttons make room, then the words take the next of four type sizes */
+  if (tall() > HERO_MAX && hc.querySelector('.hc-ctl')) hc.classList.add('noctl');
+  while (tall() > HERO_MAX && f > .71) set(f - .1);
+  /* guard, for a wider fallback font */
+  fits.card = 1; while (tall() > HERO_MAX && f > .5){ set(f - .05); fits.card = +f.toFixed(2); }
+  box.style.height = Math.max(least, Math.ceil(tall() * 20) / 20) + 'em'; hc.style.height = '100%';
+}
+function focusOf(h){ var n = NODE[h.node]; return [n.x + n.w/2, n.y + n.h/2]; }
+function smaxOf(h){ var z = heroSize(h); return z[0] / (z[2] * U); }
+
+/* ====================================================================== panel */
+var pHead = $('pHead'), pStep = $('pStep'), pCross = $('pCross'), pStays = $('pStays'), pTook = $('pTook'), pSrc = $('pSrc'), pNode = $('pNode');
+var LOCK = '<svg viewBox="0 0 12 12" style="width:.85em;height:.85em;vertical-align:-.08em;margin-right:.35em;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round"><rect x="2.500" y="5.500" width="7" height="5" rx="1.200" fill="currentColor" stroke="none"/><path d="M4 5.500V4a2 2 0 0 1 4 0v1.500"/></svg>';
+function headHTML(sc){
+  return '<div class="bubble' + (sc.plain ? ' plain' : '') + '">' + esc(sc.words) + '</div>';
+}
+function stepHTML(sc, st, stacked){
+  var r = st.route.map(esc).join(' <span class="arr">\u2192</span> ');
+  var gate = st.gate ? '<span class="gate">' + MEM[st.gate].name + '</span>' : '';
+  return {
+    step:'<div class="kicker">' + (stacked ? '' : esc(sc.kicker) + ' \u00b7 ') + 'Hop ' + (st.ki + 1) + ' of ' + sc.steps.length + '</div><h3>' + esc(st.title) + '</h3><div class="route">' + r + gate + '</div>',
+    cross:'<div class="lab">' + esc(st.inside || 'Crosses') + '</div><pre class="pay">' + st.pay + '</pre>' + (st.note ? '<div class="note">' + esc(st.note) + '</div>' : ''),
+    stays:'<div class="lab">Stays behind</div><ul>' + st.stays.map(function(s){ return '<li>' + LOCK + '<b>' + esc(s[0]) + '.</b> ' + esc(s[1]) + '</li>'; }).join('') + '</ul>',
+    took:'<div class="num' + (st.unmeasured ? ' nm0' : '') + '">' + esc(st.took[0]) + '</div><div class="tx"><div class="lab">Took</div><span>' + esc(st.took[1]) + '</span></div>',
+    src: esc(st.src)
+  };
+}
+function legendHTML(){
+  var h = '<div class="lg-h">Model</div><div class="lg-h">When Kaiku uses it</div><div class="lg-h">Through</div><div class="lg-h">Measured</div>';
+  LEGEND.forEach(function(r){
+    h += '<div class="lg-c m"><b>' + esc(r[0]) + '</b><code>' + esc(r[1]) + '</code></div><div class="lg-c w">' + esc(r[2]) + '</div><div class="lg-c a">' + esc(r[3]) + '</div><div class="lg-c t">' + r[4] + '</div>';
+  });
+  return h;
+}
+$('lgStage').innerHTML = legendHTML(); $('lgBelow').innerHTML = legendHTML();
+$('files').innerHTML = FILES.map(function(f){ return '<div><span>' + esc(f[0]) + '</span> ' + esc(f[1]) + '</div>'; }).join('');
+
+/* ====================================================================== tabs, scrubber */
+var tabsEl = $('tabs'), scrub = $('scrub'), TABS = [];
+SCENES.concat([{id:'models', tab:'All models'}]).forEach(function(sc, i){
+  var b = document.createElement('button'); b.className = 'tab'; b.type = 'button'; b.setAttribute('role','tab'); b.textContent = sc.tab; b.id = 'tab-' + sc.id;
+  b.addEventListener('click', function(){ gotoScene(i, true); });
+  tabsEl.appendChild(b); TABS.push(b);
+});
+var SCSEG = [];
+function buildScrub(){
+  scrub.innerHTML = ''; SCSEG = [];
+  SCENES.forEach(function(sc){ var d = document.createElement('div'); d.className = 'sc-seg'; d.style.flex = (sc.t1 - sc.t0) + ' 1 0'; d.innerHTML = '<i></i>'; scrub.appendChild(d); SCSEG.push({el:d, fill:d.firstChild, t0:sc.t0, t1:sc.t1}); });
+  var d = document.createElement('div'); d.className = 'sc-seg'; d.style.flex = (D.toLegend + D.legend) + ' 1 0'; d.innerHTML = '<i></i>'; scrub.appendChild(d);
+  SCSEG.push({el:d, fill:d.firstChild, t0:SCENES[SCENES.length-1].t1, t1:TOTAL});
+}
+
+/* ====================================================================== state + render */
+var T = 0, playing = null, stopAt = Infinity, lastTs = 0, layout = 'wide';
+var app = {on:false, z:0};
+var cur = {si:-1, ki:-2, hero:null, nodeCard:null};
+var liveEls = [], chipEls = [];
+
+var userActed = false;
+function setScene(si){
+  if (userActed && !RECORD && si !== cur.si && cur.si !== -1){ try { history.replaceState(null, '', '#' + (SCENES[si] ? SCENES[si].id : 'models')); } catch(err){} }
+  cur.si = si; cur.ki = -2; svg.setAttribute('data-scene', SCENES[si] ? SCENES[si].id : 'models');
+  TABS.forEach(function(b, i){ b.setAttribute('aria-selected', i === si ? 'true' : 'false'); });
+  var sc = SCENES[si];
+  var used = {}, edges = {};
+  if (sc) sc.steps.forEach(function(st){ st.nodes.forEach(function(n){ used[n] = 1; }); st.path.forEach(function(p){ edges[p[0]] = 1; }); });
+  NODES.forEach(function(n){ n.g.classList.toggle('dim', !!sc && !used[n.id]); n.g.classList.remove('on'); });
+  Object.keys(EDGE).forEach(function(id){ var e = EDGE[id]; e.el.classList.toggle('in', !!edges[id]); e.el.classList.remove('done'); e.hit.classList.toggle('in', !!edges[id]); });
+  if (sc){ pHead.innerHTML = headHTML(sc); }
+  renderStack();
+}
+function clearLive(){ liveEls.forEach(function(l){ l.el.remove(); }); liveEls = []; chipEls.forEach(function(c){ c.g.remove(); }); chipEls = []; Object.keys(PORE).forEach(function(k){ PORE[k].style.opacity = 0; }); }
+var SHELF = 57;
+function chip(kind, label, x, y, anchor, max){
+  var g = S('g', {class:'chip ' + kind}, gChips);
+  var r = S('rect', {height:14, rx:7, x:0, y:0}, g);
+  var tx = kind === 'stay' ? 13 : 6.5;
+  if (kind === 'stay'){ S('rect', {class:'lkb', x:4.6, y:6.3, width:5.6, height:4.4, rx:1}, g); S('path', {class:'lk', d:'M5.8,6.3 V5 a1.6,1.6 0 0 1 3.2,0 V6.3'}, g); }
+  var t = S('text', {x:tx, y:10.1}, g); t.textContent = label;
+  var w = 0; try { w = t.getComputedTextLength(); } catch(err){ w = 0; } if (!w) w = label.length * 4.6;
+  if (max && w + tx + 6.5 > max){ w = max - tx - 6.5; t.setAttribute('textLength', w); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }   /* a wider fallback font: keep the chip on its shelf */
+  w = Math.ceil(w + tx + 6.5); r.setAttribute('width', w);
+  var gx = anchor === 'end' ? x - w : x;
+  return {g:g, x:gx, y:y, w:w};
+}
+function setStep(si, ki){
+  cur.ki = ki; clearLive();
+  var sc = SCENES[si]; if (!sc) return;
+  var used = {};
+  NODES.forEach(function(n){ n.g.classList.remove('on'); });
+  Object.keys(EDGE).forEach(function(id){ EDGE[id].el.classList.remove('done'); });
+  for (var k = 0; k < ki; k++) sc.steps[k].path.forEach(function(p){ EDGE[p[0]].el.classList.add('done'); });
+  if (ki < 0 || ki >= sc.steps.length){
+    if (ki >= sc.steps.length) sc.steps.forEach(function(st){ st.path.forEach(function(p){ EDGE[p[0]].el.classList.add('done'); }); });
+    pStep.innerHTML = ''; pCross.innerHTML = ''; pStays.innerHTML = ''; pTook.innerHTML = ''; pSrc.innerHTML = '';
+    return;
+  }
+  var st = sc.steps[ki];
+  st.nodes.forEach(function(n){ NODE[n].g.classList.add('on'); });
+  st.legs.forEach(function(leg){
+    var el = S('path', {class:'edge-live' + (DASHED[leg.e.id] ? ' alt' : ''), d:leg.e.d}, gLive); el.style.strokeDasharray = '0 ' + (leg.e.L + 10);
+    liveEls.push({el:el, leg:leg});
+  });
+  (st.gates || []).forEach(function(g){
+    if (g.f == null) return;
+    var M = MEM[g.m], set = {gate:g, items:[]};
+    if (M.lane){   /* on a lane: what crosses goes ahead of the gate, what stays lines up behind it */
+      var off = M.lane.off || 12, px = g.dir > 0 ? g.x + off : g.x - off;
+      set.items.push({c:chip('pass', g.pass, px, M.lane.pass, g.dir > 0 ? 'start' : 'end', M.lane.passMax || 150), kind:'pass'});
+      var x = g.dir > 0 ? g.x - 12 : g.x + 12;
+      (g.stays || []).forEach(function(s){
+        var c = chip('stay', s, x, M.lane.stay, g.dir > 0 ? 'end' : 'start', M.lane.stayMax || 110); if (M.lane.held) c.g.classList.add('held');
+        set.items.push({c:c, kind:'stay'}); x = g.dir > 0 ? c.x - 5 : c.x + c.w + 5; });
+    } else {       /* on a border of the cloud: each side has a shelf SHELF wide between the gate and the nodes */
+      set.items.push({c:chip('pass', g.pass, g.dir > 0 ? g.x + 11 : g.x - 11, g.y - 22, g.dir > 0 ? 'start' : 'end', SHELF), kind:'pass'});
+      (g.stays || []).forEach(function(s, i){ set.items.push({c:chip('stay', s, g.dir > 0 ? g.x - 11 : g.x + 11, g.y + 8 + i * 17, g.dir > 0 ? 'end' : 'start', SHELF), kind:'stay'}); });
+    }
+    set.pore = PORE[g.m]; set.pore.setAttribute('cx', g.x); set.pore.setAttribute('cy', M.lane ? M.lane.y : g.y);
+    chipEls.push.apply(chipEls, set.items.map(function(it){ it.gate = g; it.g = it.c.g; it.pore = set.pore; return it; }));
+  });
+  var h = stepHTML(sc, st);
+  pStep.innerHTML = h.step; pCross.innerHTML = h.cross; pStays.innerHTML = h.stays; pTook.innerHTML = h.took; pSrc.innerHTML = h.src;
+}
+function showHero(h){
+  if (cur.hero === h) return; cur.hero = h;
+  var z = heroSize(h); heroEl.style.width = z[0] + 'em'; heroEl.innerHTML = heroHTML(h); fitCard(heroEl, z[1]);
+}
+/* Guards for a wider fallback font or a longer text than today's: with the page's own fonts none of them engages. */
+function fitPanel(){
+  var panel = $('panel'); panel.classList.remove('tight'); panel.style.setProperty('--pf', 1); fits.panel = 1; fits.tight = false;
+  if (layout !== 'wide') return;
+  var over = function(){
+    var last = null; Array.prototype.forEach.call(panel.children, function(k){ if (!k.hidden && k.offsetHeight) last = k; });
+    return last ? last.offsetTop + last.offsetHeight - panel.clientHeight : 0;
+  };
+  if (over() <= 0) return;
+  panel.classList.add('tight'); fits.tight = true;
+  var f = 1; while (over() > 0 && f > .72){ f -= .03; panel.style.setProperty('--pf', f.toFixed(2)); }
+  fits.panel = +f.toFixed(2);
+}
+function fitLegend(){
+  var lv = $('legendview'), last = lv.lastElementChild, f = 1; lv.style.setProperty('--lf', 1);
+  if (layout === 'wide') while (last.offsetTop + last.offsetHeight > lv.clientHeight && f > .7){ f -= .02; lv.style.setProperty('--lf', f.toFixed(2)); }
+  fits.legend = +f.toFixed(2);
+}
+function fitTop(){
+  var top = stage.querySelector('.top'), brand = top.querySelector('.brand'), f = 1;
+  top.classList.remove('compact'); tabsEl.style.fontSize = ''; fits.compact = false;
+  var over = function(){ return brand.scrollWidth > brand.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1; };
+  if (layout === 'wide' && over()){
+    top.classList.add('compact'); fits.compact = true;
+    while (over() && f > .7){ f -= .04; tabsEl.style.fontSize = f.toFixed(2) + 'em'; }
+  }
+  fits.top = +f.toFixed(2);
+}
+function fade(el, a, dy){ el.style.opacity = a; el.style.transform = dy ? 'translateY(' + ((1 - a) * dy) + 'em)' : ''; }
+
+function render(){
+  var seg = segAt(T), tau = T - seg.t0, si = seg.si;
+  if (si !== cur.si) setScene(si);
+  var sc = SCENES[si];
+  var Z = 0, h = sc ? sc.hero : null, legendA = 0, ki = -1, introA = 0, outro = false, panE = null;
+  if (seg.type === 'pan'){ Z = 1; panE = REDUCED ? 1 : easeInOut(tau / seg.dur); }
+  else if (seg.type === 'hold'){ Z = 1; }
+  else if (seg.type === 'out'){ Z = REDUCED ? (tau > seg.dur * .5 ? 0 : 1) : 1 - easeInOut(tau / seg.dur); }
+  else if (seg.type === 'step'){ ki = seg.ki; }
+  else if (seg.type === 'back'){ ki = sc.steps.length; outro = true; h = sc.outro; Z = REDUCED ? (tau > 300 ? 1 : 0) : easeInOut(tau / D.backIn); }
+  else if (seg.type === 'toLegend'){ var p = SCENES[SCENES.length-1]; h = p.outro; outro = true; Z = 1; legendA = REDUCED ? 1 : smooth(.2, 1, tau / seg.dur); }
+  else if (seg.type === 'legend'){ legendA = 1; }
+  if (layout === 'stack'){ renderStackState(si, ki, seg); updateButtons(seg); return; }
+
+  if (sc && ki !== cur.ki && seg.type !== 'toLegend') setStep(si, ki);
+  if (!sc && cur.ki !== -9){ clearLive(); cur.ki = -9; }
+
+  /* manual "back to the app" override */
+  var Zeff = Z;
+  if (app.z > 0 && sc){ Zeff = Math.max(Z, app.z); if (seg.type === 'step' || seg.type === 'back'){ var last = seg.type === 'back' || seg.ki === sc.steps.length - 1; h = last ? sc.outro : sc.hero; outro = last; } }
+
+  /* camera */
+  var prev = si > 0 ? SCENES[Math.min(si, SCENES.length) - 1] : null;
+  var f, smax, shown = h, heroA;
+  if (seg.type === 'pan' && prev){
+    var a = prev.outro, b = sc.hero, fa = focusOf(a), fb = focusOf(b);
+    f = [lerp(fa[0], fb[0], panE), lerp(fa[1], fb[1], panE)];
+    shown = panE < .5 ? a : b; smax = smaxOf(shown); showHero(shown);   /* size first: the camera reads it */
+    heroA = Math.abs(2 * panE - 1);
+    var dip = 1 - .14 * Math.sin(Math.PI * panE);
+    placeCamera(f, lerp(smaxOf(a), smaxOf(b), panE) * dip, CEN, smax, heroA, 1);
+  } else if (h){
+    showHero(h);
+    f = focusOf(h); smax = smaxOf(h);
+    var s = Math.exp(Math.log(smax) * Zeff);
+    var home = [MAP.x + f[0] * U, MAP.y + f[1] * U];
+    var c = [lerp(home[0], CEN[0], Zeff), lerp(home[1], CEN[1], Zeff)];
+    heroA = smooth(.3, .78, Zeff);
+    if (seg.type === 'toLegend') heroA *= 1 - legendA;
+    placeCamera(f, s, c, smax, heroA, Zeff);
+  } else {
+    world.style.transform = ''; heroEl.style.opacity = 0;
+  }
+  if (shown) showHero(shown);
+  var mapA = (1 - smooth(.42, .94, Zeff)) * (1 - legendA);
+  world.style.opacity = mapA; world.style.visibility = mapA < .01 ? 'hidden' : 'visible';
+  var breath = REDUCED ? 0 : Math.sin(T / 4000 * Math.PI * 2);
+  faceArt(heroEl, REDUCED ? 1 : seg.type === 'pan' ? 0 : seg.type === 'hold' ? smooth(.22, .86, tau / seg.dur) : 1);
+  var face = heroEl.querySelector('.hc-face svg'); if (face) face.style.transform = 'translateY(' + (-.09 * (breath + 1)) + 'em) scale(1,' + (1 + .012 * (breath + 1)) + ')';
+
+  /* caption under the app view */
+  introA = smooth(.82, 1, Zeff) * (1 - legendA) * (seg.type === 'pan' ? Math.abs(2 * panE - 1) : 1);
+  var intro = $('intro'); intro.style.opacity = introA; intro.style.visibility = introA < .01 ? 'hidden' : 'visible';
+  if (sc || prev){
+    var who = (seg.type === 'pan' && panE < .5) ? prev : (sc || prev), useOut = outro || (seg.type === 'pan' && panE < .5);
+    var tt = useOut ? who.outroT : who.introT, ll = useOut ? who.outroL : who.introL;
+    if ($('introTitle').textContent !== tt){ $('introTitle').textContent = tt; $('introLine').textContent = ll; }
+    var cta = $('cta'); cta.hidden = RECORD || AUTOPLAY && playing === 'all';
+    cta.textContent = app.on ? 'Back to the map' : useOut ? (si < SCENES.length - 1 ? 'Next scene' : 'See every model') : (si === 0 ? 'Follow her words' : 'Follow it');
+  }
+
+  /* panel */
+  var panelA = (1 - smooth(0, .07, Zeff)) * (1 - legendA), panel = $('panel');
+  panel.style.opacity = panelA; panel.style.transform = 'translateX(' + (Zeff * 3) + 'em)'; panel.style.visibility = panelA < .01 ? 'hidden' : 'visible';
+  var nodeMode = !!cur.nodeCard;
+  pNode.hidden = !nodeMode; [pStep, pCross, pStays, pTook, pSrc].forEach(function(el){ el.hidden = nodeMode; });
+  var pk = si + ':' + cur.ki + ':' + (cur.nodeCard || ''); if (pk !== cur.panelKey){ cur.panelKey = pk; fitPanel(); }
+  var lv = $('legendview'); lv.style.opacity = legendA; lv.style.visibility = legendA < .01 ? 'hidden' : 'visible'; lv.style.transform = 'translateY(' + ((1 - legendA) * 1.2) + 'em)';
+
+  /* the hop itself */
+  if (seg.type === 'step' && sc){
+    var st = sc.steps[ki], tr = REDUCED ? 1 : st.travel;
+    var p = REDUCED ? 1 : easeInOut(tau / tr), d = p * st.total;
+    var pt = pointAt(st, p), alt = false;
+    st.legs.forEach(function(leg){ if (DASHED[leg.e.id] && d >= leg.d0 - .5 && d <= leg.d0 + leg.e.L + .5) alt = true; });
+    gPulse.setAttribute('class', alt ? 'alt' : '');
+    gPulse.style.opacity = 1; pulseDot.setAttribute('cx', pt[0]); pulseDot.setAttribute('cy', pt[1]); pulseHalo.setAttribute('cx', pt[0]); pulseHalo.setAttribute('cy', pt[1]);
+    pulseHalo.setAttribute('r', REDUCED ? 11 : 10 + 2.4 * Math.sin(T / 520));
+    liveEls.forEach(function(l){
+      var L = l.leg.e.L, drawn = clamp(d - l.leg.d0, 0, L);
+      if (l.leg.dir > 0){ l.el.style.strokeDasharray = drawn + ' ' + (L + 10); l.el.style.strokeDashoffset = 0; }
+      else { l.el.style.strokeDasharray = drawn + ' ' + (L + 10); l.el.style.strokeDashoffset = -(L - drawn); }
+      l.el.style.opacity = drawn > .5 ? 1 : 0;
+    });
+    chipEls.forEach(function(it){
+      var tc = REDUCED ? 0 : crossTime(st, it.gate.f), a = REDUCED ? 1 : clamp((tau - tc) / (320 * D.q), 0, 1), e = easeOut(a);
+      var dx = it.kind === 'pass' ? (1 - e) * -10 * it.gate.dir : (1 - e) * 7 * it.gate.dir;
+      it.g.setAttribute('transform', 'translate(' + (it.c.x + dx) + ',' + it.c.y + ')'); it.g.style.opacity = a;
+      it.pore.style.opacity = a;
+    });
+    var tc0 = st.gates && st.gates[0] && st.gates[0].f != null ? crossTime(st, st.gates[0].f) : 500;
+    if (REDUCED){ [pStep, pCross, pStays, pTook, pSrc].forEach(function(el){ fade(el, 1, 0); }); }
+    else {
+      var q = D.q;
+      fade(pStep, clamp(tau / (300 * q), 0, 1), .5); fade(pCross, clamp((tau - 140 * q) / (320 * q), 0, 1), .5);
+      fade(pStays, clamp((tau - Math.max(tc0, 420 * q)) / (340 * q), 0, 1), .5); var tk = FAST ? tr * .4 : tr - 120;   /* at the fast pace the time is up for a full second */
+      fade(pTook, clamp((tau - tk) / (340 * q), 0, 1), .5); fade(pSrc, clamp((tau - tk - 120 * q) / (340 * q), 0, 1), 0);
+    }
+  } else { gPulse.style.opacity = 0; }
+  fade(pHead, 1, 0);
+
+  /* scrubber */
+  SCSEG.forEach(function(s, i){ var fr = clamp((T - s.t0) / (s.t1 - s.t0), 0, 1); s.fill.style.width = (fr * 100) + '%'; s.el.classList.toggle('cur', T >= s.t0 && T < s.t1); });
+  scrub.setAttribute('aria-valuenow', Math.round(T / TOTAL * 100));
+  updateButtons(seg);
+}
+function crossTime(st, f){ /* when the eased pulse reaches fraction f of its path */
+  if (f == null) return 0; var lo = 0, hi = 1;
+  for (var i = 0; i < 18; i++){ var m = (lo + hi) / 2; if (easeInOut(m) < f) lo = m; else hi = m; }
+  return lo * st.travel;
+}
+function placeCamera(f, s, c, smax, heroA, Zeff){
+  var tx = c[0] - MAP.x - s * f[0] * U, ty = c[1] - MAP.y - s * f[1] * U;
+  world.style.transform = 'translate(' + tx.toFixed(3) + 'em,' + ty.toFixed(3) + 'em) scale(' + s.toFixed(4) + ')';
+  var z = [parseFloat(heroEl.style.width) || 46, parseFloat(heroEl.style.height) || 21];
+  heroEl.style.transform = 'translate(' + (c[0] - z[0]/2).toFixed(3) + 'em,' + (c[1] - z[1]/2).toFixed(3) + 'em) scale(' + (s / smax).toFixed(4) + ')';
+  heroEl.style.opacity = heroA; heroEl.style.visibility = heroA < .01 ? 'hidden' : 'visible';
+}
+function updateButtons(seg){
+  var on = !!playing || (MANUAL && AUTOPLAY && T < TOTAL - 5);   /* a recorded auto-play is playing */
+  $('lblPlay').textContent = on ? 'Pause' : (T >= TOTAL - 5 ? 'Replay' : 'Play');
+  $('icoPlay').innerHTML = on ? '<path d="M8 5v14M16 5v14"/>' : '<path d="M8 5l11 7-11 7z" fill="currentColor"/>';
+  $('btnApp').setAttribute('aria-pressed', app.on ? 'true' : 'false');
+  $('btnApp').lastElementChild.textContent = app.on ? 'Back to the map' : 'Back to the app';
+}
+
+/* ====================================================================== stacked version */
+var stackEl = $('stack'), stackKey = '';
+function renderStack(){
+  if (layout !== 'stack'){ stackKey = ''; return; }
+  var si = cur.si, sc = SCENES[si], key = 's' + si;
+  if (stackKey === key) return; stackKey = key;
+  if (!sc){ stackEl.innerHTML = '<p class="s-cap">Every model is listed below, with when Kaiku uses it and through which API.</p>'; return; }
+  var h = '<div class="p-head"><div class="kicker">' + esc(sc.kicker) + '</div>' + headHTML(sc) + '</div><div class="s-hero" id="sHero"></div><p class="s-cap">' + esc(sc.introL) + '</p>';
+  sc.steps.forEach(function(st, ki){
+    var x = stepHTML(sc, st, true);
+    h += '<div class="s-step" data-ki="' + ki + '" tabindex="0"><div class="p-step">' + x.step + '</div><div class="box crosses">' + x.cross + '</div><div class="box stays">' + x.stays + '</div><div class="box took">' + x.took + '</div><div class="src">' + x.src + '</div></div>';
+  });
+  h += '<p class="s-cap"><b>' + esc(sc.outroT) + '.</b> ' + esc(sc.outroL) + '</p>';
+  stackEl.innerHTML = h;
+  var sh = $('sHero'); sh.innerHTML = heroHTML(sc.stackHero || sc.outro.kind === 'dash' ? sc.hero : sc.outro); sizeStackHero(); faceArt(sh, 1);
+  Array.prototype.forEach.call(stackEl.querySelectorAll('.s-step'), function(el){
+    el.addEventListener('click', function(){ playing = null; seek(SCENES[cur.si].steps[+el.dataset.ki].seg.t0 + SCENES[cur.si].steps[+el.dataset.ki].travel + D.rest); });
+  });
+}
+function sizeStackHero(){ var sh = $('sHero'); if (!sh) return; var w = sh.clientWidth, narrow = w < 500; sh.classList.toggle('narrow', narrow); sh.style.fontSize = (narrow ? clamp(w / 36, 8.6, 11) : w / 46) + 'px'; }
+var stackCur = -5;
+function renderStackState(si, ki, seg){
+  if (si >= SCENES.length){ if (stackKey !== 's' + si){ cur.si = si; renderStack(); } return; }
+  var cards = stackEl.querySelectorAll('.s-step');
+  Array.prototype.forEach.call(cards, function(el, i){ el.classList.toggle('cur', i === ki); });
+  if (ki !== stackCur){ stackCur = ki; if (playing && ki >= 0 && cards[ki] && cards[ki].scrollIntoView) cards[ki].scrollIntoView({block:'center', behavior: REDUCED ? 'auto' : 'smooth'}); }
+}
+
+/* ====================================================================== clock + controls */
+function seek(t){ T = clamp(t, 0, TOTAL); cur.nodeCard = null; clearSel(); render(); }
+function tick(ts){
+  if (!lastTs) lastTs = ts; var dt = Math.min(64, ts - lastTs); lastTs = ts;
+  var dirty = false;
+  if (app.on && app.z < 1){ app.z = REDUCED ? 1 : Math.min(1, app.z + dt / 900); dirty = true; }
+  if (!app.on && app.z > 0){ app.z = REDUCED ? 0 : Math.max(0, app.z - dt / 900); dirty = true; }
+  if (playing && !MANUAL){
+    T += dt * SPEED; dirty = true;
+    if (T >= stopAt){ T = stopAt; playing = null; stopAt = Infinity; }
+    if (T >= TOTAL){ T = TOTAL; playing = null; document.documentElement.setAttribute('data-flow-done', '1'); }
+  }
+  if (dirty) render();
+  else if (!MANUAL && !REDUCED && !playing){
+    var ph = (ts % 7000) / 7000, loop = smooth(.12, .45, ph) - smooth(.82, .98, ph);
+    faceArt(layout === 'stack' ? $('sHero') : (segAt(T).type === 'hold' ? heroEl : null), loop);
+  }
+  requestAnimationFrame(tick);
+}
+function appEase(){ return app.z; }
+function play(){ if (T >= TOTAL - 5) T = 0; app.on = false; cur.nodeCard = null; clearSel(); playing = 'all'; stopAt = Infinity; render(); }
+function pause(){ playing = null; stopAt = Infinity; render(); }
+function playTo(t){ app.on = false; cur.nodeCard = null; clearSel(); playing = 'step'; stopAt = t; render(); }
+function restOf(st){ return st.seg.t0 + st.travel + D.rest; }
+function next(){
+  var seg = segAt(T), sc = SCENES[seg.si];
+  if (!sc){ return; }
+  if (seg.type === 'pan' || seg.type === 'hold'){ T = Math.max(T, sc.hold.t1 - 1); playTo(restOf(sc.steps[0])); return; }
+  if (seg.type === 'out'){ playTo(restOf(sc.steps[0])); return; }
+  if (seg.type === 'step'){
+    var st = sc.steps[seg.ki];
+    if (T < restOf(st) - 20){ playTo(restOf(st)); return; }
+    if (seg.ki + 1 < sc.steps.length){ T = sc.steps[seg.ki + 1].seg.t0; playTo(restOf(sc.steps[seg.ki + 1])); return; }
+    T = sc.back.t0; playTo(sc.back.t0 + D.backIn + D.backHold / 3); return;
+  }
+  if (seg.type === 'back'){ if (seg.si + 1 < SCENES.length){ var n = SCENES[seg.si + 1]; T = n.t0; playTo(n.hold.t1 - 1); } else { T = sc.t1; playTo(TOTAL - 1); } return; }
+}
+function prev(){
+  var seg = segAt(T), sc = SCENES[seg.si];
+  playing = null; stopAt = Infinity; app.on = false;
+  if (!sc){ var l = SCENES[SCENES.length-1]; seek(l.back.t0 + D.backIn + D.backHold / 3); return; }
+  if (seg.type === 'step'){ if (seg.ki > 0){ seek(restOf(sc.steps[seg.ki - 1])); } else { seek(sc.hold.t1 - 1); } return; }
+  if (seg.type === 'back'){ seek(restOf(sc.steps[sc.steps.length - 1])); return; }
+  if (seg.si > 0){ var p = SCENES[seg.si - 1]; seek(p.back.t0 + D.backIn + D.backHold / 3); } else seek(sc.hold.t1 - 1);
+}
+function gotoScene(i, user){
+  playing = null; stopAt = Infinity; app.on = false; app.z = 0;
+  if (i >= SCENES.length){ seek(TOTAL - 1); }
+  else seek(SCENES[i].hold.t1 - 1);
+  if (user){ try { history.replaceState(null, '', '#' + (SCENES[i] ? SCENES[i].id : 'models')); } catch(err){} }
+}
+function toggleApp(){ var seg = segAt(T); if (!SCENES[seg.si]) return; if (seg.type === 'hold' || seg.type === 'pan'){ next(); return; } playing = null; stopAt = Infinity; app.on = !app.on; render(); }
+function clearSel(){ NODES.forEach(function(n){ n.g.classList.remove('sel'); }); }
+function openNode(id){
+  var info = NODEINFO[id]; if (!info) return;
+  playing = null; stopAt = Infinity; app.on = false;
+  var seg = segAt(T);
+  if (seg.type === 'pan' || seg.type === 'hold' || seg.type === 'out' || seg.type === 'back'){ var sc0 = SCENES[seg.si]; if (sc0) T = restOf(sc0.steps[0]); }
+  clearSel(); NODE[id].g.classList.add('sel');
+  var hops = [];
+  SCENES.forEach(function(sc, si){ sc.steps.forEach(function(st){ if (st.nodes.indexOf(id) >= 0) hops.push(st); }); });
+  var h = '<div class="kicker">On the map</div><h3>' + esc(info[0]) + '</h3><p>' + esc(info[1]) + '</p><div class="src" style="margin-top:.6em">' + esc(info[2]) + '</div><div class="hops">';
+  hops.slice(0, 5).forEach(function(st){ h += '<button class="hopbtn" type="button" data-si="' + st.si + '" data-ki="' + st.ki + '"><small>' + esc(SCENES[st.si].tab) + ' · hop ' + (st.ki + 1) + '</small>' + esc(st.title) + '</button>'; });
+  h += '</div>'; pNode.innerHTML = h; cur.nodeCard = id;
+  Array.prototype.forEach.call(pNode.querySelectorAll('.hopbtn'), function(b){ b.addEventListener('click', function(){ var st = SCENES[+b.dataset.si].steps[+b.dataset.ki]; seek(restOf(st)); }); });
+  render();
+}
+gNodes.addEventListener('click', function(ev){ var g = ev.target.closest ? ev.target.closest('.node') : null; if (g) openNode(g.getAttribute('data-node')); });
+gNodes.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' || ev.key === ' '){ var g = ev.target.closest('.node'); if (g){ ev.preventDefault(); ev.stopPropagation(); openNode(g.getAttribute('data-node')); } } });
+gHit.addEventListener('click', function(ev){
+  var id = ev.target.getAttribute('data-edge'), sc = SCENES[cur.si]; if (!id || !sc) return;
+  for (var k = 0; k < sc.steps.length; k++){ if (sc.steps[k].path.some(function(p){ return p[0] === id; })){ playing = null; seek(restOf(sc.steps[k])); return; } }
+});
+$('btnPlay').addEventListener('click', function(){ if (playing) pause(); else play(); });
+$('btnNext').addEventListener('click', next); $('btnPrev').addEventListener('click', prev); $('btnApp').addEventListener('click', toggleApp);
+function nextScene(){ var seg = segAt(T); gotoScene(SCENES[seg.si] ? seg.si + 1 : 0, true); }
+$('btnScene').addEventListener('click', nextScene);
+$('cta').addEventListener('click', function(){
+  if (app.on){ app.on = false; render(); return; }
+  var seg = segAt(T), sc = SCENES[seg.si];
+  if (sc && (seg.type === 'hold' || seg.type === 'pan')){ T = Math.max(T, sc.hold.t1 - 1); playTo(sc.back.t0 + D.backIn + D.backHold / 3); }   /* the whole scene, to the reply */
+  else next();
+});
+scrub.addEventListener('click', function(ev){ var r = scrub.getBoundingClientRect(); playing = null; stopAt = Infinity; app.on = false; seek((ev.clientX - r.left) / r.width * TOTAL); });
+page.addEventListener('click', function(ev){ userActed = true; }, true);
+document.addEventListener('keydown', function(){ userActed = true; }, true);
+stage.addEventListener('click', function(ev){ var b = ev.target.closest ? ev.target.closest('button') : null; if (b && ev.detail > 0) b.blur(); });
+document.addEventListener('keydown', function(ev){
+  if (ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+  if (ev.key === 'Escape'){ if (cur.nodeCard){ cur.nodeCard = null; clearSel(); render(); } return; }
+  if (ev.key === ' ' && ev.target && ev.target.tagName === 'BUTTON') return;
+  if (ev.key === ' '){ ev.preventDefault(); if (playing) pause(); else play(); }
+  else if (ev.key === 'ArrowRight'){ ev.preventDefault(); next(); }
+  else if (ev.key === 'ArrowLeft'){ ev.preventDefault(); prev(); }
+  else if (ev.key === 'a' || ev.key === 'A'){ toggleApp(); }
+  else if (ev.key === 'n' || ev.key === 'N'){ nextScene(); }
+  else if (/^[1-9]$/.test(ev.key) && +ev.key <= SCENES.length + 1){ gotoScene(+ev.key - 1, true); }
+});
+
+/* ====================================================================== layout */
+function fit(){
+  var w = wrap.clientWidth, next = (w >= 1040 || RECORD) ? 'wide' : 'stack';   /* below this the map's small type stops being readable */
+  if (next !== layout){ layout = next; page.setAttribute('data-layout', layout); stackKey = ''; cur.si = -1; cur.ki = -2; cur.hero = null; }
+  stage.style.fontSize = layout === 'wide' ? (w / 100) + 'px' : '';
+  if (layout === 'stack'){ renderStack(); sizeStackHero(); }
+  cur.panelKey = ''; fitTop(); fitLegend();
+  render();
+}
+buildTimeline();
+if (FAST && TOTAL > 70000){   /* more scenes: every part of the fast take gets a little shorter, never under four fifths */
+  PACE = Math.max(.8, 70000 / TOTAL); Object.keys(D).forEach(function(k){ if (k !== 'q') D[k] *= PACE; }); buildTimeline();
+}
+buildScrub();
+fit();
+if (window.ResizeObserver) new ResizeObserver(fit).observe(wrap); else window.addEventListener('resize', fit);
+if (mq && mq.addEventListener) mq.addEventListener('change', function(e){ if (qs.get('motion') == null){ REDUCED = e.matches; render(); } });
+
+var start = SCENES.findIndex ? SCENES.findIndex(function(s){ return s.id === hash0 || s.id === qs.get('scene'); }) : -1;
+if (hash0 === 'models' || qs.get('scene') === 'models') start = SCENES.length;
+if (AUTOPLAY && !MANUAL){ T = 0; playing = 'all'; }
+else if (start >= 0){ gotoScene(start, false); }
+else if (!MANUAL){ T = SCENES[0].hold.t1 - 1; }
+render();
+function ready(){
+  fitMapText(); measureEdges(); SCENES.forEach(function(sc){ sc.steps.forEach(prepStep); }); cur.ki = -2; cur.hero = null; cur.panelKey = ''; fitTop(); fitLegend(); render();
+  document.documentElement.setAttribute('data-flow-ready', '1');
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(ready); else ready();
+window.__flow = {
+  total: function(){ return TOTAL; },
+  seek: function(t){ playing = null; cur.nodeCard = null; clearSel(); T = clamp(t, 0, TOTAL); render(); },
+  marks: function(){ return SCENES.map(function(sc){ return {id:sc.id, t0:sc.t0, hold:sc.hold.t0, intro:sc.hold.t1 - 1, outro:sc.back.t0 + D.backIn + D.backHold / 3, t1:sc.t1, steps:sc.steps.map(function(st){ return {id:st.id, t0:st.seg.t0, rest:restOf(st), t1:st.seg.t1}; })}; }).concat([{id:'models', t0:SCENES[SCENES.length-1].t1, t1:TOTAL}]); },
+  layout: function(){ return layout; },
+  fits: function(){ return JSON.parse(JSON.stringify(fits)); },   /* 1 and false everywhere = no guard had to step in */
+  nodes: function(){ return NODES.map(function(n){ return n.id; }); },
+  node: function(id){ openNode(id); }
+};
+requestAnimationFrame(tick);
+})();
+</script>

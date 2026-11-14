@@ -134,8 +134,10 @@ observed response is not evidence of treatment effect.
 - **Derived numbers only.** The cloud rejects raw audio and images. Camera frames are processed in memory.
   During a conversation the person started, audio is streamed to Gemini Live. Conversation text is stored only
   after a separate opt-in and is never shown to practitioners.
-- **Hardware honesty.** Robot pulse, room light and tap force are not measured in this build. The music adapter
-  (Lyria RealTime) is not part of the demo.
+- **Hardware honesty.** Robot pulse, room light and tap force are not measured in this build. Drum music
+  (Lyria RealTime, in the style of the mood dial and following the tapped tempo) is optional and off by default:
+  it ran through a whole ritual with simulated taps and the sound saved to a file, and has not yet played in a
+  room.
 
 ## What's next
 A pilot with a neuromodulation unit: compare the consensus with clinician assessment for eight to twelve weeks

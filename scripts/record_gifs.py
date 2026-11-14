@@ -58,7 +58,7 @@ GIFS: dict[str, dict] = {
     # answer → "What do you think?", the one offer → the phone locked: her thanks and Kaiku's answer on the bar
     "ios-checkin-hard-day": {"clip": "iphone-8-checkin-hard-day", "width": 340, "hold": 2.5, "limit": 3.0, "pieces": [
         (11.5, 5.0, 1.5), (16.0, 12.5, 2.2), (37.5, 11.0, 2.2), (57.5, 10.5, 2.2), (74.0, 21.5, 2.4)]},
-    # Your days: the garden → "Today, so far" → What Kaiku saw today, each line with its switch
+    # History → Your days: the garden → "Today, so far" → What Kaiku saw today, each line with its switch
     "ios-today-so-far": {"clip": "iphone-3-today-so-far", "width": 340, "hold": 1.5, "pieces": [
         (9.5, 3.0, 1.5), (13.0, 17.0, 2.4), (31.5, 12.0, 2.4)]},
     # You → Glasses check with no glasses connected → the self-test running → its three results

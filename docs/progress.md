@@ -1288,11 +1288,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   plain statements on a hard day (proactive audio was on outside walks); "That's it" is below the fold on the
   dials-only check-in. The `apps/apple/AGENTS.md` "Recording a demo" section is stale.
 
-## 2026-11-14 14:15 — Claude Code — robot (A): hotspot network, both boards live; docs + D48
+## 2026-11-14 14:15 — Claude Code — robot (A): hotspot network, both boards live; docs + D54
 - Did: moved the robot to an iPhone hotspot (venue Wi-Fi dropped both boards at the same moments). UNO Q: broker
   `.env` → the Mac's hotspot IP, `kaiku-sensors` = App Lab default app (autostart), hotspot retried forever and the
   venue Wi-Fi no longer auto-joined. Atech: hotspot `secrets.h` (per laptop). `ppg_source = "camera"` (no KY-053).
-  Knob cap bore → Ø9.65. Docs: D48, `robot-network-handover.md` rewritten (status, bring-up order, what we tried,
+  Knob cap bore → Ø9.65. Docs: D54, `robot-network-handover.md` rewritten (status, bring-up order, what we tried,
   open items), UNO Q + Atech `AGENTS.md`, wiring, BOM, assembly, privacy, electronics spec (current-build note).
 - Verified: both boards on the Mac's broker over the hotspot (UNO Q .12: health, faces, distance, light; Atech .13:
   health, pan, `cmd.head` eyes); a UNO Q face woke the head from idle; UNO Q app restarts by itself after a reboot.
@@ -1328,12 +1328,12 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   running": `app start` afterwards worked. The MQTT firmware and the wiring/BOM/decision docs still describe a display.
 - Next: decide whether the display is gone for good (then D44, wiring, BOM, MQTT firmware); set the pan sign.
 
-## 2026-11-14 22:30 — Claude Code — firmware (A), config, sim, docs: no KY-031; taps from the head's orientation sensor (D49)
+## 2026-11-14 22:30 — Claude Code — firmware (A), config, sim, docs: no KY-031; taps from the head's orientation sensor (D55)
 - Did: the KY-031 knock switch was removed from the robot. UNO Q sketch (0.3.0) + app: knock ISR, `on_knock`,
   `motor_moving`, the `raw.head.pan` listener, `raw.head.tap` and `knocks` in health are gone. Standalone head: every
   tap the orientation sensor feels is published as `raw.head.tap {t_ms, force, src: imu}`; it no longer listens for
   taps on the bus; taps are ignored while the motor runs and 400 ms after, and at most one per 120 ms.
-  `[robot] drum_input = "imu"`. `modules.toml`, sensors sim health, link bench, wiring, BOM, assembly, handover, D49.
+  `[robot] drum_input = "imu"`. `modules.toml`, sensors sim health, link bench, wiring, BOM, assembly, handover, D55.
 - Verified: `make check` except one sim test (`test_follow_loop_on_a_real_broker...`) that failed once in the full
   run with the live robot on the same broker and passes alone. Head built and flashed, back on the broker, and it
   sends no taps when nobody touches it.
