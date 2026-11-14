@@ -499,3 +499,37 @@ final class WalkSurfaceTests: XCTestCase {
         #endif
     }
 }
+
+/// The moving lines beside "Listening" (`CallWave`): they must visibly move while the microphone is open, follow
+/// the voice, and stay inside their box.
+final class CallWaveTests: XCTestCase {
+    func testAQuietRoomStillMovesWhileListening() {
+        let heights = stride(from: 0.0, to: 2.0, by: 0.05).map { CallWave.height(line: 2, voice: 0, time: $0, moving: true) }
+        XCTAssertGreaterThan(heights.max()! - heights.min()!, 1.0, "a quiet, open microphone should still show movement")
+        XCTAssertTrue(heights.allSatisfy { $0 >= 3 && $0 <= 14 })
+    }
+
+    func testAVoiceLiftsTheLines() {
+        for i in 0..<5 {
+            let quiet = (0..<40).map { CallWave.height(line: i, voice: 0, time: Double($0) * 0.05, moving: true) }.max()!
+            let loud = (0..<40).map { CallWave.height(line: i, voice: 1, time: Double($0) * 0.05, moving: true) }.max()!
+            XCTAssertGreaterThan(loud, quiet + 2, "line \(i)")
+            XCTAssertLessThanOrEqual(loud, 14)
+        }
+    }
+
+    func testStillWhenNotMoving() {
+        // Reduce Motion, or a state that is not listening or speaking: the same height at every moment, and only
+        // the dot it rests as when there is no voice.
+        let a = CallWave.height(line: 1, voice: 0.6, time: 0.1, moving: false)
+        let b = CallWave.height(line: 1, voice: 0.6, time: 7.3, moving: false)
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(CallWave.height(line: 1, voice: 0, time: 3, moving: false), 3)
+    }
+
+    func testLevelMapping() {
+        XCTAssertEqual(CallStatus.level(db: -90), 0)
+        XCTAssertEqual(CallStatus.level(db: 0), 1)
+        XCTAssertEqual(CallStatus.level(db: -35), 0.5, accuracy: 0.001)
+    }
+}

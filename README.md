@@ -19,13 +19,13 @@ Kaiku (Finnish for "echo") helps people stay well at home after TMS treatment fo
 
 <table align="center">
 <tr>
-<td align="center" valign="middle"><img src="docs/media/ios-today-path.gif" width="150" alt="iPhone app: today's path"><br><sub><b>iPhone</b><br>Today's path: weather dial, the Lantern game, the sky she lit</sub></td>
+<td align="center" valign="middle"><img src="docs/media/ios-today-path.gif" width="150" alt="iPhone app: Kaiku's invitation on Today, the check-in as a small chat, the Lantern game"><br><sub><b>iPhone</b><br>Today's path: Kaiku's invitation, the check-in as a small chat (typed lines, real Gemini Live replies), the Lantern game, the sky she lit</sub></td>
 <td align="center" valign="middle"><img src="docs/media/web-dashboard.gif" width="400" alt="Web: the practitioner dashboard"><br><sub><b>Web</b><br>The practitioner dashboard on the public simulated record</sub></td>
 <td align="center" valign="middle"><img src="docs/media/mac-app.gif" width="195" alt="Mac app screens"><br><sub><b>Mac</b><br>In-app renders of the real Mac screens, stepped through (not a screen capture)<!-- MAC-GIF-CAPTION --></sub></td>
 </tr>
 </table>
 
-<p align="center"><sub>iPhone clips are recorded on the iPhone simulator against a local service holding the simulated record, with no model calls; the dashboard clip is the public deployment with its cached Gemma review.</sub></p>
+<p align="center"><sub>iPhone clips are recorded on the iPhone simulator against a local service holding the simulated record, without sound. In the three conversation clips (the check-in chat here, the hard day and Talk below) her lines are typed with the microphone off, and every reply is Gemini Live's own answer in that take; the other iPhone clips make no model calls. The dashboard clip is the public deployment with its cached Gemma review.</sub></p>
 
 ## The problem and the idea
 
@@ -84,7 +84,7 @@ flowchart TD
 
 <table align="center">
 <tr>
-<td align="center" valign="top"><img src="docs/media/ios-checkin-chat.png" width="190" alt="iPhone: a hard-day check-in where Kaiku stays and offers one thing"><br><sub>A hard day: Kaiku stays and offers one thing</sub></td>
+<td align="center" valign="top"><img src="docs/media/ios-checkin-hard-day.gif" width="190" alt="iPhone: a hard-day check-in, typed, with real Gemini Live replies: Kaiku stays, offers one thing once, and answers on the Lock Screen"><br><sub>A hard day (simulator, typed lines, real Gemini Live replies, no sound): Kaiku stays, offers sitting quietly together once, and answers her last line on the Lock Screen</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-today-invitation.png" width="190" alt="iPhone: Today with one invitation from Kaiku"><br><sub>Today: one invitation, from something she said</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-walk-styles.png" width="190" alt="iPhone: the walk start with three walk styles"><br><sub>A walk: Calm, Playful or Chatty</sub></td>
 </tr>
@@ -97,8 +97,9 @@ flowchart TD
 - **None of this sets the state.** The consensus stays code. The plan shapes a conversation; it never changes what the practitioner sees as the state.
 
 **Where it stands:** shown with real Gemini Live replies to typed input on the iPhone simulator. An ordinary day
-closed in three turns; on a hard day ("my cat died") Kaiku stayed, offered sitting quietly together once and
-went on after the offer was taken. Not yet heard through a real microphone.
+closed in three turns, by Kaiku. On a hard day (the clip: her mother's ninetieth birthday) Kaiku stayed, made one
+offer and kept answering after the phone was locked. In one earlier take it gave no reply to two plain
+statements; the cause (a setting meant for walks) is being fixed. Not yet heard through a real microphone.
 
 ## The surfaces
 
@@ -108,7 +109,7 @@ went on after the offer was taken. Not yet heard through a real microphone.
 <tr>
 <td align="center" valign="top"><img src="docs/media/ios-first-run.gif" width="170" alt="iPhone: first-run setup"><br><sub>First-run setup to Today (iPhone simulator)</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-seed-shelf.gif" width="170" alt="iPhone: Seed shelf game"><br><sub>Seed shelf, a measured game</sub></td>
-<td align="center" valign="top"><img src="docs/media/ios-talk.gif" width="170" alt="iPhone: Talk"><br><sub>Talk: a typed message and Kaiku's reply</sub></td>
+<td align="center" valign="top"><img src="docs/media/ios-talk.gif" width="170" alt="iPhone: Talk as a call, continuing on the Lock Screen"><br><sub>Talk is a call (simulator, typed lines, real Gemini Live replies, no sound): Kaiku muted for one answer, which still comes as captions; then the phone locked, the reply on the Lock Screen bar, and "End" there</sub></td>
 <td align="center" valign="top"><img src="docs/media/ios-today-so-far.gif" width="170" alt="iPhone: Your days"><br><sub>Your days: "Today, so far" (what was noticed, from which device, what is shared)</sub></td>
 </tr>
 </table>

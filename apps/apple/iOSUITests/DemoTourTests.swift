@@ -2,10 +2,22 @@ import XCTest
 
 /// The iPhone demo recordings (`apps/apple/scripts/record_app_demo.sh ios`): one method per clip, driven like a
 /// person would at a person's pace (read, then tap). Needs a local cloud seeded with the one person
-/// (`KAIKU_TEST_CLOUD`, home `KAIKU_TEST_HOME`, default `aino`) and no model keys: where Kaiku's voice would
-/// play, the app shows its words. A control that is missing is logged as `DEMO-MISSING` with what was on screen
-/// (and a screenshot in `KAIKU_SHOT_DIR`), and the flow goes on, so a recording doubles as a smoke test.
-/// `DEMO-STEP <name> <epoch>` lines are the chapter marks the recorder turns into time codes.
+/// (`KAIKU_TEST_CLOUD`, home `KAIKU_TEST_HOME`, default `aino`). A control that is missing is logged as
+/// `DEMO-MISSING` with what was on screen (and a screenshot in `KAIKU_SHOT_DIR`), and the flow goes on, so a
+/// recording doubles as a smoke test. `DEMO-STEP <name> <epoch>` lines are the chapter marks the recorder turns
+/// into time codes; `DEMO-SAID` / `DEMO-LOCK` are the words that were on screen (the record of a real take).
+///
+/// Conversations (the check-in chat of `testB_TodayPath`, `testD_Talk`, `testH_CheckInHardDay`) are typed, never
+/// spoken: the simulator's microphone is the Mac's, so the recorder revokes the app's microphone permission and
+/// these flows never ask for it. What the person types is written here (or given in `KAIKU_DEMO_*_SAY`, lines
+/// separated by `|`) and goes out through the Debug launch arguments `-kaikuTalkSay` / `-kaikuTalkSayLater` /
+/// `-kaikuTalkSayDelay`: the real Live socket, also while the phone is locked. What Kaiku answers is never
+/// written anywhere: it is the real model's reply, so those takes need a service with a model key (paid: one
+/// Live session each). On a service without a live voice the same flows fall back to what a person would do
+/// there (the dials; the one line of a Talk that cannot start). `KAIKU_DEMO_ARGS="-kaikuTalkDemo live"` runs a
+/// flow on the scripted Live for free, to check the taps and the Lock Screen: its lines are hand-written layout
+/// text, so such a take must never be shown as a clip. `KAIKU_DEMO_SOUND=1` lets Kaiku's voice play on the Mac
+/// (default: `-kaikuMute YES`; the recording has no sound either way).
 final class DemoTourTests: XCTestCase {
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     var env: [String: String] { ProcessInfo.processInfo.environment }
@@ -38,6 +50,230 @@ final class DemoTourTests: XCTestCase {
         app.launchArguments = args + extra
         app.launch()
         pause(2.5)
+    }
+
+    // MARK: a conversation, typed (see the note at the top)
+
+    /// What she types. Only her side: Kaiku's side is whatever the real model answers. No apostrophes or
+    /// quotes in a line: on its way to the app as a launch argument a ' is read as a quote (seen 2026-11-14:
+    /// "That's all for now." arrived, and was shown, as "Thats\ all\ for\ now."). The same goes for
+    /// `KAIKU_DEMO_*_SAY`.
+    static let ordinaryDay = ["Quite an ordinary one. I aired the bedding and made a pot of soup.",
+                              "Nothing much planned. Maija rings at seven, as usual.",
+                              "That is all for now. See you later, Kaiku."]
+    static let hardDay = ["It has been a hard day. My mother would have turned ninety today, and I miss her more than I expected.",
+                          "She always baked cardamom buns on her birthday. I could not face making them today. Is that silly, Kaiku?",
+                          "I do not really know what to do with the evening. What do you think?",
+                          "Thank you for staying with me, Kaiku."]
+    static let talkLines = ["Hi Kaiku. I walked the lake loop with Leena this morning.",
+                            "It was cold but bright. We saw two swans by the old sauna.",
+                            "I am putting the phone in my pocket now. Stay with me on the way to the market hall?"]
+
+    /// Extra launch arguments for a free check of a flow, e.g. `KAIKU_DEMO_ARGS="-kaikuTalkDemo live"`.
+    var extraArgs: [String] { (env["KAIKU_DEMO_ARGS"] ?? "").split(separator: " ").map(String.init) }
+    /// The scripted Live: no network, no model. Its words are layout text, never Kaiku's: not for a shown clip.
+    var scripted: Bool { extraArgs.contains("-kaikuTalkDemo") }
+    /// Kaiku's voice stays off the Mac's speakers unless asked for (the recording has no sound either way).
+    var quiet: [String] { (env["KAIKU_DEMO_SOUND"] == "1" ? [] : ["-kaikuMute", "YES"]) + extraArgs }
+
+    func lines(_ name: String, _ standard: [String]) -> [String] {
+        guard let raw = env[name], !raw.isEmpty else { return standard }
+        return raw.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    func seconds(_ name: String, _ standard: Double) -> Double { Double(env[name] ?? "") ?? standard }
+
+    /// The launch arguments that type `lines`: the first once Kaiku has said hello, each next one `delay` seconds
+    /// after the one before, wherever the app is by then (Debug builds; nothing is typed on the scripted Live).
+    func typed(_ lines: [String], every delay: Double) -> [String] {
+        guard let first = lines.first, !scripted else { return [] }
+        var args = ["-kaikuTalkSay", first, "-kaikuTalkSayDelay", "\(Int(delay))"]
+        if lines.count > 1 { args += ["-kaikuTalkSayLater", lines.dropFirst().joined(separator: "|")] }
+        return args
+    }
+
+    /// The texts on screen from ONE snapshot (element-by-element queries race with a screen that is changing).
+    func texts(_ root: XCUIApplication) -> [String] {
+        root.debugDescription.components(separatedBy: "\n").compactMap { line in
+            guard line.contains("StaticText"), let r = line.range(of: "label: '") else { return nil }
+            return String(line[r.upperBound...].dropLast())
+        }
+    }
+
+    /// The words of the conversation as they came, for `DEMO-SAID` (a caption grows while Kaiku speaks: the
+    /// longer text takes the place of its beginning).
+    var heard: [String] = []
+    private var lastListen = Date.distantPast
+    func listen(force: Bool = false) {
+        guard force || Date().timeIntervalSince(lastListen) > 2.5 else { return }
+        lastListen = Date()
+        for t in texts(app) where t.count > 16 && !t.hasPrefix("Or just turn") {
+            if heard.contains(where: { $0.hasPrefix(t) }) { continue }
+            if let i = heard.firstIndex(where: { t.hasPrefix($0) }) { heard[i] = t } else { heard.append(t) }
+        }
+    }
+
+    func logSaid() {
+        listen(force: true)
+        print("DEMO-SAID \(heard.joined(separator: " | "))")
+    }
+
+    /// Waits for `done`, at most `limit` seconds. Meanwhile it keeps the words that pass and marks the moment an
+    /// activity card appears as a chapter.
+    private var cardSeen = false
+    @discardableResult
+    func wait(_ limit: Double, until done: () -> Bool = { false }) -> Bool {
+        let end = Date().addingTimeInterval(limit)
+        while Date() < end {
+            if done() { return true }
+            if !cardSeen, app.descendants(matching: .any).matching(identifier: "activity.card").firstMatch.exists {
+                cardSeen = true
+                step("card")
+            }
+            listen()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        return done()
+    }
+
+    /// Follows her typed lines as they appear (they go out by themselves): a chapter per line. Stops early when
+    /// the conversation has closed. Returns how many appeared and when the last one did.
+    func follow(_ lines: [String], every delay: Double, closed: XCUIElement? = nil, first: Int = 1) -> (seen: Int, at: Date) {
+        var seen = 0, at = Date()
+        for (i, line) in lines.enumerated() {
+            let bubble = app.staticTexts[line].firstMatch
+            let there = wait(first + i == 1 ? 40 : delay + 15) { bubble.exists || closed?.exists == true }
+            guard there, bubble.exists else {
+                if closed?.exists != true { miss("typed line \(first + i)") }
+                break
+            }
+            seen += 1
+            at = Date()
+            step("line-\(first + i)")
+        }
+        return (seen, at)
+    }
+
+    /// Locks the phone and wakes it: the call goes on as a bar on the Lock Screen. Watches the bar for `seconds`
+    /// (a line typed meanwhile and Kaiku's answer arrive there as its caption) and prints what it says.
+    func lockScreen(for seconds: Double) {
+        XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+        pause(2)
+        XCUIDevice.shared.press(.home)                      // wake to the Lock Screen
+        pause(2)
+        for label in ["Always Allow", "Allow"] where springboard.buttons[label].exists {
+            // A simulator asks "Allow Live Activities?" once per install, on top of the bar.
+            print("DEMO-NOTE the Live Activities prompt covered the bar: answered now, record this clip again")
+            springboard.buttons[label].tap()
+            pause(1.5)
+            break
+        }
+        step("lock-screen")
+        var last: [String] = []
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            var now = texts(springboard)
+            if !now.contains(where: { $0.contains("Talking with Kaiku") }) {
+                XCUIDevice.shared.press(.home)              // the simulator's Lock Screen went dark: wake it once
+                pause(1.5)
+                now = texts(springboard)
+            }
+            if now != last {
+                print("DEMO-LOCK \(now.joined(separator: " | "))")
+                last = now
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        if !last.contains(where: { $0.contains("Talking with Kaiku") }) { miss("call bar on the Lock Screen") }
+    }
+
+    /// "End" on the Lock Screen's bar ends the call without opening the app; then back into the app.
+    func endOnLockScreen() {
+        let end = springboard.buttons["End"].firstMatch
+        if end.waitForExistence(timeout: 5) {
+            step("end-on-lock-screen")
+            pause(1)
+            end.tap()
+            pause(3.5)
+            if springboard.buttons["End"].firstMatch.exists { miss("the bar is still there after End") }
+        } else { miss("End on the Lock Screen") }
+        XCUIDevice.shared.press(.home)
+        pause(1)
+        app.activate()
+        pause(2)
+        step("back-in-app")
+    }
+
+    /// Today's one invitation from Kaiku (for the seeded person: something she said that was left open). It is
+    /// read here, not answered: an answer is final for the day.
+    func invitation() {
+        let card = app.descendants(matching: .any).matching(identifier: "today.invitation").firstMatch
+        guard card.waitForExistence(timeout: 6) || app.buttons["Not now"].exists else { miss("today.invitation"); return }
+        step("invitation")
+        pause(4.5)
+    }
+
+    /// The quiet way through the check-in, and the only one on a service without a live voice: Kaiku's hello is
+    /// on screen as text, she turns the three dials, "That's it", and Kaiku answers what was dialled in one line.
+    func dials() {
+        step("check-in-dials")
+        pause(3.5)
+        turnDial("Mood", to: 0.62)
+        turnDial("Energy", to: 0.45)
+        turnDial("Last night's sleep", to: 0.7)
+        // "That's it" sits under the third dial, below the fold on a 6.3-inch phone. Scroll from the words above
+        // the dials: on 2026-11-14 a drag that started on a dial card did not move the page.
+        let done = app.buttons["That's it"].firstMatch
+        for _ in 0..<3 where done.exists && !done.isHittable {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.44))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)),
+                       withVelocity: .slow, thenHoldForDuration: 0.1)
+            pause(0.8)
+        }
+        tap("That's it", after: 4.5, scrolls: false)
+    }
+
+    /// Today's first stop. With Kaiku on the line it is a small chat: her typed lines, Kaiku's real answers, and
+    /// then either Kaiku wraps it up (an ordinary day: "Good to see you") or it simply goes on (a hard or a very
+    /// good day) until she ends it. `lock`: the phone is locked before her last line, which is then answered on
+    /// the Lock Screen, and the call is ended from there. Returns true when the take ended on the end screen.
+    @discardableResult
+    func checkIn(_ said: [String], every delay: Double, lock: Bool = false) -> Bool {
+        let end = app.buttons["call.end"].firstMatch
+        let closed = app.staticTexts["Good to see you."].firstMatch
+        let voiceless = element(containing: "can't talk right now")
+        wait(25) { end.exists || closed.exists || voiceless.exists }
+        guard end.exists || closed.exists else { dials(); return true }
+        step("check-in-chat")
+        if scripted { wait(7) } else {
+            let inApp = lock ? Array(said.dropLast()) : said
+            let r = follow(inApp, every: delay, closed: closed)
+            if lock && r.seen == inApp.count {
+                // lock a few seconds before her last line is due: it and Kaiku's answer arrive on the Lock Screen
+                wait(max(4, delay - 7 - Date().timeIntervalSince(r.at))) { closed.exists }
+            } else {
+                // Kaiku's answer to her last line; on an ordinary day it also wraps the chat up
+                wait(delay + 14) { closed.exists }
+            }
+        }
+        if lock, !closed.exists, end.exists {
+            lockScreen(for: scripted ? 8 : 24)
+            endOnLockScreen()
+            logSaid()
+            shot("check-in-after-lock")
+            return false
+        }
+        if !closed.exists, end.exists {
+            // nothing counts turns or sets a timer: the chat goes on until she ends it
+            wait(4)
+            step("enough")
+            end.tap()
+        }
+        logSaid()
+        guard see("Good to see you", timeout: 12) else { return false }
+        step("check-in-end")
+        pause(4.5)
+        return true
     }
 
     func pause(_ s: Double = 1.5) { Thread.sleep(forTimeInterval: s) }
@@ -253,23 +489,27 @@ final class DemoTourTests: XCTestCase {
         pause(5)
     }
 
-    // MARK: b · today's path: weather → Kaiku's suggestion → Lantern → today's rotating game → "All done for today"
+    // MARK: b · today's path: Kaiku's invitation → the check-in chat → Kaiku's suggestion → Lantern → today's rotating game → "All done for today"
 
     func testB_TodayPath() {
-        launch()
+        let said = lines("KAIKU_DEMO_CHECKIN_SAY", Self.ordinaryDay)
+        let every = seconds("KAIKU_DEMO_CHECKIN_DELAY", 15)
+        launch(quiet + typed(said, every: every))
         step("today")
         _ = see("Today's path", timeout: 12)
-        pause(4)
+        pause(2.5)
+        invitation()
 
-        step("weather-check")
-        tap(containing: "Weather check", after: 2.5)
-        turnDial("Mood", to: 0.62)
-        turnDial("Energy", to: 0.45)
-        turnDial("Last night's sleep", to: 0.7)
-        tap("That's it", after: 3.5)
+        // The first stop is a small chat with Kaiku (still titled "Weather check" on the path).
+        step("check-in")
+        if !tap(containing: "Weather check", timeout: 5, after: 2) { tap("Start here", after: 2) }
+        checkIn(said, every: every)
+
+        // Back to Today, where the first stop is now ticked, then Kaiku's suggestion from the path (the nudge
+        // decides: a walk, a breath or "Tell Kaiku"). Not "Up next" on the check-in's end screen: that leaves the
+        // check-in on the Today tab's stack, and coming back to that tab at the end of the path starts a new
+        // conversation behind the end screen (seen 2026-11-14; on a keyed service it reserves a Live session).
         if app.buttons["Back"].exists { back() }
-
-        // Kaiku's suggestion for today (the nudge decides: a walk, a breath or "Tell Kaiku")
         tab("Today", after: 3)
         step("suggestion")
         if button(containing: "Kaiku picked this").waitForExistence(timeout: 5) {
@@ -304,6 +544,7 @@ final class DemoTourTests: XCTestCase {
         step("all-done")
         if app.buttons["Back"].exists { back() }
         tab("Today", after: 2)
+        if !element(containing: "All done for today").waitForExistence(timeout: 3), app.buttons["Back"].exists { back() }
         _ = see("All done for today", timeout: 10)
         pause(5)
     }
@@ -422,43 +663,63 @@ final class DemoTourTests: XCTestCase {
         pause(2)
     }
 
-    // MARK: d · Talk: the one voice control, the honest "voice unavailable" state, a starter instead
+    // MARK: d · Talk is a call: Kaiku in the centre, captions of both sides, the call bar; then the Lock Screen
 
+    /// With a live voice on the service: the call opens with the Talk tab, she types two lines and Kaiku answers
+    /// each (Kaiku is muted for the second: its words keep coming as captions), she locks the phone, her last
+    /// line and Kaiku's answer arrive on the Lock Screen's bar, and "End" there ends the call. The microphone
+    /// button is never pressed (with the permission off it opens Settings). Without a live voice: the one line
+    /// and the one action Talk shows instead. `KAIKU_DEMO_TALK_SAY` / `_DELAY`, `KAIKU_DEMO_LOCK=0` (stay in the app).
     func testD_Talk() {
-        launch()
+        let said = lines("KAIKU_DEMO_TALK_SAY", Self.talkLines)
+        let every = seconds("KAIKU_DEMO_TALK_DELAY", 17)
+        let lock = env["KAIKU_DEMO_LOCK"] != "0"
+        launch(quiet + ["-kaiku.talk.voiceMuted", "NO"] + typed(said, every: every))
         step("today")
         pause(2.5)
-        tab("Talk", after: 4)
+        tab("Talk", after: 1)
         step("talk")
-        // Kaiku greets aloud as Talk opens. KAIKU_DEMO_TALK_OPEN / _WAIT (seconds) give a live conversation
-        // the time to greet and to answer; the defaults suit the typed path without a live voice.
-        pause(Double(env["KAIKU_DEMO_TALK_OPEN"] ?? "") ?? 2)
-        if env["KAIKU_DEMO_VOICE_TAP"] == "1", tap("Talk with Kaiku", timeout: 5, after: 1.5) {
-            allowSystemAlert(timeout: 3)
-            step("voice-state")
-            pause(7)                                         // connecting → the reason voice is not there, in words
+        let end = app.buttons["call.end"].firstMatch
+        guard end.waitForExistence(timeout: 40) else {
+            // no call on this service: Talk says so in one line, with the one action that helps
+            miss("call (no live voice on this service)")
+            pause(5)
+            shot("talk-no-call")
+            return
         }
-        // Without the voice she answers with one of the starters ("Not sure where to start?").
-        // She types (`KAIKU_DEMO_TYPE=0` picks a starter instead; typing hung the app before 7421f1c).
-        if env["KAIKU_DEMO_TYPE"] != "0" {
-            // by position, not by its placeholder: the label is gone as soon as there is text
-            let composer = app.textFields.firstMatch
-            if composer.waitForExistence(timeout: 4) {
-                step("typing")
-                composer.tap(); pause(1)
-                for word in "I walked to the lake today.".split(separator: " ") { composer.typeText(word + " "); pause(0.25) }
-                pause(1)
-                tap("Send", after: 5)
-            } else { miss("talk composer") }
+        step("call")
+        let voice = app.buttons["call.voice"].firstMatch
+        var last = Date()
+        if scripted {
+            wait(4)
+            voice.tap(); wait(3); voice.tap(); wait(2)
         } else {
-            step("starter")
-            scroll(0.2); pause(1.5)
-            if !tap(containing: "I went outside for a bit", timeout: 4, after: 2) { tap(containing: "Something good happened", timeout: 3, after: 2) }
+            let inApp = lock ? Array(said.dropLast()) : said
+            for (i, line) in inApp.enumerated() {
+                let r = follow([line], every: every, first: i + 1)
+                guard r.seen == 1 else { break }
+                last = r.at
+                if inApp.count > 1, i == inApp.count - 2 {
+                    wait(min(9, every - 6))                 // Kaiku's answer to this line
+                    if voice.exists { step("mute-kaiku"); voice.tap() }   // from here Kaiku is captions only
+                }
+            }
+            wait(min(9, every - 8))                         // the answer to her last in-app line, as captions
+            if voice.exists, voice.label.hasPrefix("Unmute") { step("unmute-kaiku"); voice.tap(); pause(1) }
         }
-        step("reply")
-        pause(Double(env["KAIKU_DEMO_TALK_WAIT"] ?? "") ?? 6)
-        // what was said, for the recorder (Kaiku's lines are re-rendered in its voice for the silent recording)
-        print("DEMO-SAID \(app.staticTexts.allElementsBoundByIndex.suffix(10).map(\.label).joined(separator: " | "))")
+        if lock {
+            if !scripted { wait(max(1, every - 6 - Date().timeIntervalSince(last))) }
+            lockScreen(for: scripted ? 8 : 24)
+            endOnLockScreen()
+            _ = see("Call ended", timeout: 10)
+        } else {
+            wait(every)
+            step("end")
+            end.tap()
+            _ = see("Call ended", timeout: 10)
+        }
+        pause(4)
+        logSaid()
         shot("talk-end")
     }
 
@@ -531,31 +792,63 @@ final class DemoTourTests: XCTestCase {
         finishGame(wait: 70)
     }
 
-    /// A walk with simulated glasses (`-kaikuGlasses mock`): the walk screen, Dynamic Island, Lock Screen.
+    /// A walk with simulated glasses (`-kaikuGlasses mock`): the three walk styles chosen where the walk starts,
+    /// the walk screen, the spotting game counted on the phone, the Dynamic Island. Typed nowhere, spoken
+    /// nowhere: without a microphone the walk has no conversation, and says so on screen.
     func testG_GlassesWalkSimulated() {
-        launch(["-kaikuGlasses", "mock", "-kaikuRoute", "walk"])
-        step("walk")
-        pause(2.5)
+        launch(quiet + ["-kaikuGlasses", "mock", "-kaikuRoute", "walk"])
+        step("walk-start")
+        pause(3.5)
+        // Calm · Playful · Chatty: each shows its one line; she settles on Playful
+        for (style, name) in [("Playful", "style-playful"), ("Chatty", "style-chatty"), ("Calm", "style-calm"), ("Playful", "style-chosen")] {
+            if tap(style, timeout: 4, after: 0.3, scrolls: false) { step(name); pause(2.6) }
+        }
         if !tap("Walk with Kaiku", timeout: 3, after: 3) { tap("Start the walk", after: 3) }
         allowSystemAlert(timeout: 3)
+        step("walking")
         _ = see("glasses", timeout: 6)
         pause(6)
-        tap("Found one", after: 2)
+        // the spotting game: a find marked on the phone starts the count ("1 of 3"), the card shows it
+        let goal = app.descendants(matching: .any).matching(identifier: "walk.goal").firstMatch
+        tap("Found one", after: 1.5, scrolls: false)
+        if goal.waitForExistence(timeout: 4) { step("spotting-game") } else { miss("walk.goal") }
+        pause(4)
+        tap("Found one", timeout: 4, after: 3, scrolls: false)
         XCUIDevice.shared.press(.home)
         pause(3)
         step("island")
         springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03)).press(forDuration: 1.2)
         pause(3)
         let found = springboard.buttons["Found one"]
-        if found.exists { found.tap(); pause(2) }
+        if found.exists { found.tap(); pause(2.5) }
         XCUIDevice.shared.press(.home)
         pause(1)
         app.activate()
-        pause(2)
+        pause(3)
         step("endwalk")
         let started = Date()
-        while Date().timeIntervalSince(started) < 45 && app.buttons["End walk"].exists { Thread.sleep(forTimeInterval: 1) } // > 1 min walk
+        while Date().timeIntervalSince(started) < 40 && app.buttons["End walk"].exists { Thread.sleep(forTimeInterval: 1) } // > 1 min walk
         tap("End walk", after: 4)
+        step("walk-summary")
+        pause(3)
         tap("Done", after: 2)
+    }
+
+    /// A check-in on a hard day (needs a service with a live voice, paid: one Live session). Today → the first
+    /// stop → she types that the day is hard; Kaiku's answers are the real model's, and the chat goes on for as
+    /// long as she likes. By default the phone is locked before her last line: Kaiku's answer to it arrives on
+    /// the Lock Screen's bar and the call is ended there (`KAIKU_DEMO_LOCK=0`: she ends it in the app instead).
+    /// `KAIKU_DEMO_HARD_SAY` / `_DELAY` change the lines and their spacing.
+    func testH_CheckInHardDay() {
+        let said = lines("KAIKU_DEMO_HARD_SAY", Self.hardDay)
+        let every = seconds("KAIKU_DEMO_HARD_DELAY", 21)
+        launch(quiet + typed(said, every: every))
+        step("today")
+        _ = see("Today's path", timeout: 12)
+        pause(3)
+        step("check-in")
+        if !tap(containing: "Weather check", timeout: 5, after: 2) { tap("Start here", after: 2) }
+        checkIn(said, every: every, lock: env["KAIKU_DEMO_LOCK"] != "0")
+        pause(3)
     }
 }

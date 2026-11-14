@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
-# Record demo videos of the Kaiku Apple apps against a local seeded cloud (no paid calls: template LLM, no Live).
+# Record demo videos of the Kaiku Apple apps against a local seeded cloud.
 #   apps/apple/scripts/record_app_demo.sh [ios|mac|mac-snap|post|all]      (default all = ios mac post)
+# The cloud decides what a take costs. Without a model key (KAIKU_NO_DOTENV=1, template LLM) nothing is paid: the
+# check-in is done with the dials and Talk shows the one line of a call that cannot start. With a key, the check-in
+# chat of testB, testD_Talk and testH_CheckInHardDay are real Gemini Live calls answered by the real model (one
+# Live session each): give that cloud its own ledger and cap (KAIKU_SPEND_DB, KAIKU_BUDGET_TOTAL_USD).
+# Conversations are typed, never spoken: the simulator's microphone is the Mac's, so before every take except the
+# fresh install of testA the app's microphone and camera permissions are revoked (KAIKU_KEEP_MIC=1 leaves them).
 # Env: KAIKU_TEST_CLOUD (default http://127.0.0.1:18020; must be seeded with the one person:
 #        uv run python -m kaiku_cloud.jobs.single_person --url $KAIKU_TEST_CLOUD), KAIKU_TEST_HOME (default aino),
 #      TESTS (ios: space-separated method:clip pairs; default the five flows a–e; extras: testF_Firefly:iphone-6-firefly
-#        testG_GlassesWalkSimulated:iphone-7-glasses-walk-simulated), SPEED (post: default 1 = real time), SHOTS (dir
+#        testG_GlassesWalkSimulated:iphone-7-glasses-walk-simulated testH_CheckInHardDay:iphone-8-checkin-hard-day),
+#      FRESH=1 (ios: uninstall and install the app before each take, so today's path starts at 0 of 4; a fresh
+#        install asks about Live Activities on top of the Lock Screen bar twice ("Allow", the next time "Always
+#        Allow"): run a take with a Lock Screen on the scripted Live twice first,
+#        TEST_RUNNER_KAIKU_DEMO_ARGS="-kaikuTalkDemo live", which answers both; then record without FRESH),
+#      KAIKU_NO_BUILD=1 (ios: no xcodegen and no build: use the app and the tour already built in $DERIVED),
+#      TEST_RUNNER_KAIKU_DEMO_* (ios: handed to the tour as KAIKU_DEMO_*: what is typed, pacing, the scripted
+#        Live for a free check of a flow; see the top of iOSUITests/DemoTourTests.swift),
+#      SPEED (post: default 1 = real time), CLIPS (post: only these clip names; default every raw clip), SHOTS (dir
 #        for step screenshots, default $OUT/shots), KAIKU_BUILD_SERVICE=1 (ios: build with $KAIKU_TEST_CLOUD as the
 #        app's configured service: first run connects by itself and the hello line is spoken),
 #      SIM_UDID (a booted-or-bootable iPhone simulator; default: one named "Kaiku Demo 17 Pro", created if missing),
@@ -55,11 +69,15 @@ record_ios() {
   xcrun simctl bootstatus "$udid" -b >/dev/null
   open -a Simulator --args -CurrentDeviceUDID "$udid" || true
   xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 || true
-  (cd "$APPLE" && xcodegen -q)
-  # KAIKU_BUILD_SERVICE=1 builds the app with this cloud as its configured service (KAIKU_SERVICE_URL), so a fresh
-  # install connects by itself during setup and Kaiku's hello is spoken (cached voice lines cost nothing).
-  xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" -destination "platform=iOS Simulator,id=$udid" \
-    -derivedDataPath "$DERIVED" build-for-testing -quiet ${KAIKU_BUILD_SERVICE:+KAIKU_SERVICE_URL="$CLOUD"}
+  # KAIKU_NO_BUILD=1 records with the app and tour already built in $DERIVED: for a working tree that is in the
+  # middle of somebody's change (a rebuild would pick up half of it, or fail).
+  if [ -z "${KAIKU_NO_BUILD:-}" ]; then
+    (cd "$APPLE" && xcodegen -q)
+    # KAIKU_BUILD_SERVICE=1 builds the app with this cloud as its configured service (KAIKU_SERVICE_URL), so a fresh
+    # install connects by itself during setup and Kaiku's hello is spoken (cached voice lines cost nothing).
+    xcodebuild -project "$APPLE/Kaiku.xcodeproj" -scheme "Kaiku iOS" -destination "platform=iOS Simulator,id=$udid" \
+      -derivedDataPath "$DERIVED" build-for-testing -quiet ${KAIKU_BUILD_SERVICE:+KAIKU_SERVICE_URL="$CLOUD"}
+  fi
   # the recording cloud shows up on the "nearby services" step (Bonjour carries no home ID and no credentials)
   local port="${CLOUD##*:}"; port="${port%%/*}"
   dns-sd -R "$SERVICE_NAME" _kaiku-api._tcp local. "$port" service=kaiku-api path=/v1/discovery scheme=http v=1 >/dev/null 2>&1 & local adv=$!
@@ -70,6 +88,17 @@ record_ios() {
       xcrun simctl uninstall "$udid" fi.kaiku.app 2>/dev/null || true
       # a pairing lives in the Keychain and survives an uninstall: clear it, on the dedicated simulator only
       [ -n "${SIM_UDID:-}" ] || xcrun simctl keychain "$udid" reset 2>/dev/null || true;;
+    *)
+      if [ -n "${FRESH:-}" ]; then                                         # a new day: today's path at 0 of 4
+        xcrun simctl terminate "$udid" fi.kaiku.app 2>/dev/null || true
+        xcrun simctl uninstall "$udid" fi.kaiku.app 2>/dev/null || true
+        xcrun simctl install "$udid" "$DERIVED/Build/Products/Debug-iphonesimulator/Kaiku.app"
+      fi
+      # typed takes only: the simulator's microphone and camera are the Mac's, so the app may not open them
+      if [ -z "${KAIKU_KEEP_MIC:-}" ]; then
+        xcrun simctl privacy "$udid" revoke microphone fi.kaiku.app 2>/dev/null || true
+        xcrun simctl privacy "$udid" revoke camera fi.kaiku.app 2>/dev/null || true
+      fi;;
     esac
     xcrun simctl io "$udid" recordVideo --codec h264 --force "$RAW/$name.mp4" 2>"$RAW/$name.rec" & local rec=$!
     # the first frame is written several seconds after the command starts: time zero is "Recording started"
@@ -254,6 +283,7 @@ post() {
   for f in "$RAW"/*.mp4; do
     [ -f "$f" ] || continue
     name=$(basename "${f%.*}")
+    if [ -n "${CLIPS:-}" ]; then case " $CLIPS " in *" $name "*) ;; *) continue;; esac; fi
     case "$name" in
       iphone-1-first-run) title="Kaiku — first run";;
       iphone-2-today-path) title="Kaiku — today's path";;
@@ -262,6 +292,7 @@ post() {
       iphone-5-you-glasses-check) title="Kaiku — You, sharing choices and Glasses check";;
       iphone-6-firefly) title="Kaiku — Firefly";;
       iphone-7-glasses-walk-simulated) title="Kaiku — walk with glasses (simulated glasses)";;
+      iphone-8-checkin-hard-day) title="Kaiku — a check-in on a hard day";;
       mac-tour) title="Kaiku — Mac app and notch island";;
       mac-menubar) title="Kaiku — Mac menu bar";;
       *) title="Kaiku — $name";;
@@ -280,7 +311,8 @@ post() {
         trim=$(awk -v l="$lag" 'NR == 1 { t = $2 - l - 3; printf "%.2f", (t > 0 ? t : 0) }' "$RAW/$name.steps")
       fi
     fi
-    local note="Simulated record · no model calls in this take · Kaiku words are on screen"
+    # what the title card may claim depends on the service the take ran against: say only what is sure
+    local note="iPhone simulator · simulated record · typed, no microphone · no sound"
     # 2.5 s title card, then the clip (speed ${SPEED:-1}x), scaled to ≤1080 high, h264 CRF tuned for < 25 MB
     local vf="scale=-2:'min(1080,ih)',setpts=PTS/${SPEED:-1},fps=30,format=yuv420p"
     local size; size=$("$FFMPEG" -i "$f" 2>&1 | sed -n 's/.*Video:.* \([0-9]\{3,\}\)x\([0-9]\{3,\}\).*/\1 \2/p' | head -1)

@@ -14,7 +14,8 @@
 - Rule: the demo only shows what runs. Claims are checked against `docs/track-readiness.md` §5.
 
 ## Recordings (gitignored: `demo/recordings/`)
-No keys, no paid calls (`KAIKU_NO_DOTENV=1`, template LLM, text voice). Both scripts start their own broker/cloud on
+No keys, no paid calls (`KAIKU_NO_DOTENV=1`, template LLM, text voice), with one exception: the three iPhone
+conversation takes (below), which need the real model. The robot and web scripts start their own broker/cloud on
 free ports with a temp DB, so they run beside other dev servers.
 - `scripts/record_robot_demo.sh [OUT]` (default `demo/recordings/robot-sim`, ~3 min): broker :18832 + cloud :18010 +
   `seed_demo --reset` + head/sensors twins driven by `scripts/robot_demo_driver.py` (walk up → greeting → button dial
@@ -28,13 +29,30 @@ free ports with a temp DB, so they run beside other dev servers.
   writes are blocked and the insight is requested with `generate=false`, so it is safe against a service someone
   else is using. Controls are found by role or accessible name; a missing one prints `SKIP` and the take goes on.
   `scripts/record_web_demo.sh [OUT]` runs it against its own throwaway cloud seeded with the one person.
-- `apps/apple/scripts/record_app_demo.sh ios|mac|mac-snap|post` (`apps/apple/AGENTS.md` → Recording a demo): the
-  five iPhone flows as clips with chapter time codes; Mac video needs screen permission, `mac-snap` gives stills.
+- `apps/apple/scripts/record_app_demo.sh ios|mac|mac-snap|post` (`apps/apple/AGENTS.md` → Recording a demo; the
+  script's header and the top of `apps/apple/iOSUITests/DemoTourTests.swift` are current where that section is
+  not): the iPhone flows as clips with chapter time codes; Mac video needs screen permission, `mac-snap` gives
+  stills. `TESTS=method:clip`, `FRESH=1` (a new install: today's path at 0 of 4), `CLIPS=` (post only these).
+  - **Conversation takes are typed and answered by the real model.** `testB_TodayPath` (Kaiku's invitation on
+    Today → the check-in chat on an ordinary day → the suggestion → Lantern → the rotating game),
+    `testD_Talk` (Talk as a call: two typed lines, Kaiku muted for one answer, the phone locked, her last line
+    answered on the Lock Screen's bar, "End" there) and the extra `testH_CheckInHardDay` (a hard day, the lock at
+    the end) type the person's lines through the Debug arguments `-kaikuTalkSay…` and show whatever Gemini Live
+    answers. They need a private service with the key, its own record and its own ledger
+    (`KAIKU_DB_PATH`, `KAIKU_SPEND_DB`, `KAIKU_BUDGET_TOTAL_USD`; seed it before it gets the key so the seeding
+    jobs call no model): one Live session per take, about $0.12 to $0.24 each (2026-11-14). The recorder revokes
+    the app's microphone and camera permission before every such take: the simulator's microphone is the Mac's.
+  - On a service without a key the same flows are free and fall back to what a person would do there (the three
+    dials; the one line of a Talk that cannot start).
+  - `TEST_RUNNER_KAIKU_DEMO_ARGS="-kaikuTalkDemo live"` runs a flow on the scripted Live: for checking the taps
+    and answering the simulator's "Allow Live Activities?" prompt before a real take. Its lines are hand-written
+    layout text: never a clip, a GIF or a piece of the cut.
 - `scripts/record_gifs.py [name ...]` → the README GIFs in `docs/media/` from those clips (pieces listed in the
   script); `scripts/record_voice.py --url <service>` → `recordings/voice/*.wav`, the lines the app plays (cached
   lines are free, a new one is a capped TTS call); `draft_cut.py` (`uv run --with pillow python demo/draft_cut.py`)
-  → `recordings/kaiku-draft-cut.mp4`: the pieces in narrative order with their titles, Kaiku's voice where it
-  speaks, a 2 s card per shot that still needs filming (replaced by `recordings/shot-NN-*.mp4` when present).
-  Narration by time code: `draft-cut-narration.md`.
+  → `recordings/kaiku-draft-cut.mp4`: the pieces in the order of the narrative's shot table with their titles,
+  Kaiku's voice where it speaks, and for every shot that still needs filming either its stand-in (a typed
+  simulator take, the simulated glasses, the app's own renders: marked on screen) or a 2 s card; each is replaced
+  by `recordings/shot-NN-*.mp4` when present. Narration by time code: `draft-cut-narration.md`.
 - Which clip covers which shot of the narrative, what still needs a person with the devices and how to record it:
   `video_shotlist.md`.

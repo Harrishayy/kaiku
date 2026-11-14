@@ -1,7 +1,7 @@
 """Save Kaiku's voice for the silent simulator clips: the same audio the app plays, from a running Kaiku service.
 
     uv run python scripts/record_voice.py --url http://127.0.0.1:8000
-    uv run python scripts/record_voice.py --url <service> --key welcome.hello --say "Thank you for telling me. I'm listening."
+    uv run python scripts/record_voice.py --url <service> --key welcome.hello --say "Any short line, in Kaiku's voice."
 
 `simctl io recordVideo` records no sound, so the cut builder (`demo/draft_cut.py`) lays these files under the
 moments where the app spoke. Fixed lines come from `GET /v1/voice/{key}` (config/voice_lines.toml), anything
@@ -24,10 +24,15 @@ import urllib.request
 import wave
 from pathlib import Path
 
-# the lines the recorded flows play (first run, Talk, the walk) and the typed-path replies of Talk
+# The fixed lines the recorded flows play: first run, the check-in when the service has no live voice (Kaiku's
+# hello and its one line for what was dialled), the walk without a conversation.
 DEFAULT_KEYS = ["welcome.hello", "welcome.done", "greet.morning", "greet.afternoon", "greet.evening",
+                "checkin.hello", "checkin.dials.low", "checkin.dials.tired", "checkin.dials.mid", "checkin.dials.bright",
                 "walk.light_hunt.1", "walk.light_hunt.found", "walk.done"]
-DEFAULT_SAY = ["Thank you for telling me. I'm listening.", "I'm here. Tell me more if you like."]
+# Nothing by default. Talk and the check-in chat are Gemini Live calls now: what Kaiku says there is the model's
+# own audio, which a simulator recording does not hold. `--say` can render the same words in Kaiku's TTS voice, but
+# that is a re-rendering after the fact, not the call: a cut that uses it must say so on screen.
+DEFAULT_SAY: list[str] = []
 
 
 def slug(text: str) -> str:
@@ -60,7 +65,7 @@ def main() -> int:
     ap.add_argument("--out", default="demo/recordings/voice")
     ap.add_argument("--lang", default="en")
     ap.add_argument("--key", action="append", default=[], help="a keyed line (repeatable); default: the recorded flows' lines")
-    ap.add_argument("--say", action="append", default=[], help="any short line (repeatable); default: Talk's two typed-path replies")
+    ap.add_argument("--say", action="append", default=[], help="any short line (repeatable); default: none")
     a = ap.parse_args()
     base = a.url.rstrip("/")
     out = Path(a.out)

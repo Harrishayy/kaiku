@@ -35,18 +35,29 @@ source; groups that come from the same phone are not presented as independent de
 
 - **Phone, first run.** The app finds the Kaiku service, and every signal is a separate opt-in. Nothing
   listens until the person starts a conversation. `[verify]`
-- **Talk.** Kaiku speaks with one voice everywhere (Gemini Live). It remembers only what the person asks it
-  to, and can be told to forget.
-- **Play.** Firefly (reaction timing) and Pebbles (memory span) take about a minute. Measured rounds are kept
-  separate from practice. These are short activities, not validated clinical tests. `[verify: added games]`
+- **Check-in.** The day's first stop is a small chat with Kaiku, like meeting on the street: short on an
+  ordinary day, as long as the person wants on a hard or a very good one. Voice, typing or three dials all count.
+- **Talk.** Kaiku speaks with one voice everywhere (Gemini Live), and Talk is a call: mute yourself or mute
+  Kaiku, the captions keep coming, and on the phone the call goes on behind the Lock Screen. When what the
+  person says carries a clear feeling, Kaiku's mind answers with a small plan (comfort, celebrate, explore or
+  give space; brief or stay; at most one offer), and a suggestion arrives as a card that opens nothing without a
+  yes. It remembers only what the person asks it to, and can be told to forget.
+- **Play.** Lantern (reaction time), Seed shelf (symbol matching), Watering (effort choice), Firefly and
+  Pebbles take a minute or two each. Measured rounds are kept separate from practice. These are short
+  activities, not validated clinical tests.
 - **Walk.** With Meta Gen 2 glasses paired to the iPhone, Kaiku keeps company in the ear with the phone in a
   pocket. Registration goes through Meta's Device Access Toolkit and is explicit; the voice uses Bluetooth. If
-  the glasses disconnect or come off, the walk continues on the phone. No camera is used.
+  the glasses disconnect or come off, the walk continues on the phone. The person chooses how Kaiku walks
+  with them (calm, playful or chatty). Seeing is a separate choice, off by default: with it on, about one
+  picture a second goes to that walk's Gemini Live conversation and nowhere else, so Kaiku can connect what is
+  in view to what the person has told it ("Is that your favourite tree up there?") and keep a spotting game's
+  count. Nothing is stored and no reading is derived from a picture. `[verify on the real glasses]`
 - **Robot.** A small desk robot with animated eyes turns toward the person and offers a three-minute ritual:
   three turns of an ear dial for mood, energy and sleep; a guided breath with a glowing chest; a short rhythm
   tapped on its head, inspired by research on improvisational music therapy. No typing.
-- **Mac.** Optional rhythm of the day: broad app categories, breaks and late-night minutes. Never window
-  titles, URLs or content.
+- **Mac.** Two taps of a key bring Kaiku up from the edge of the screen, in any app, with live captions.
+  Optional rhythm of the day: broad app categories, breaks and late-night minutes. Never window titles, URLs or
+  content.
 - **PHQ-9** every two weeks anchors the record to a validated questionnaire. `[verify: which surface asks it]`
 
 ### From observations to one consensus
@@ -76,7 +87,9 @@ observed response is not evidence of treatment effect.
 ## Technologies used
 
 - **Gemini Live API.** Real-time voice with interruption and function calling on the robot, iPhone, Mac and
-  glasses. Tool calls move the robot's ritual and write to the consented notebook. Clients receive a
+  glasses, with opt-in pictures from the glasses on a walk. Tool calls move the robot's ritual, write to the
+  consented notebook, tell Kaiku's mind about a feeling (non-blocking), put an activity card in the
+  conversation and keep a spotting game's count. Clients receive a
   short-lived token from the cloud and never hold the API key.
 - **Gemini TTS and embeddings.** One consistent voice for fixed lines; semantic recall of the person's own
   notes.
@@ -102,8 +115,9 @@ observed response is not evidence of treatment effect.
    type reports while their energy is lowest.
 2. **Integration.** Live sessions on four surfaces, bootstrapped by the cloud with a small prepared context;
    validated function calls; TTS; embeddings.
-3. **What is new.** The voice has hands: its tool calls advance a physical ritual and a walk, while measurement
-   and safety stay in deterministic code that the model cannot override.
+3. **What is new.** The voice has hands and a mind behind it: its tool calls advance a physical ritual and a
+   walk, and one call tells Kaiku's mind what it heard so code can answer how to meet it for this person. One
+   mind serves four surfaces. Measurement and safety stay in deterministic code that the model cannot override.
 4. **Why Gemini.** A check-in without typing needs low-latency speech that can be interrupted and can act.
    Without Live there is no ritual and no walk companion.
 

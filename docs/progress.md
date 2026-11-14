@@ -1272,3 +1272,18 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   glasses; quick talk has not been triggered by real key presses; Lock Screen buttons with a passcode, a call
   past ten minutes and the one-frame tool answer on the real model are unproven. Opening an activity card leaves
   Talk, which ends the call.
+
+## 2026-11-14 20:15 EET — Claude Code — demo (D), docs, apple (A): clips of the new screens with real replies
+- Did: the iPhone tour (`DemoTourTests`) follows the app as it is now (invitation, the check-in as a chat, Talk as
+  a call with the Lock Screen bar, the three walk styles, a hard-day check-in). Three conversation clips were
+  recorded on the simulator with the microphone revoked, typed lines and real Gemini Live replies:
+  `docs/media/ios-today-path.gif`, `ios-talk.gif`, `ios-checkin-hard-day.gif`. Draft cut rebuilt to the new shot
+  table (stand-ins marked on screen); `docs/demo-narrative.md` and `docs/submission.md` describe the check-in chat,
+  the call, the walk styles and quick talk. The "Listening" indicator is now lines that follow the person's voice
+  (`CallWave`) on the call bar, the Mac popup, the edge bar and the notch.
+- Verified: frames of each GIF looked at; `swift test` 313 passed; the Mac app rebuilt and running for the lead.
+- Broken/blocked (found by the recording run, being fixed): after "Up next" an ended check-in stays on Today's
+  stack and asks for a new conversation behind its end screen (a budget hold, and a microphone that could open
+  unseen); after "End" on the Lock Screen the check-in says nothing; in one real take Kaiku gave no reply to two
+  plain statements on a hard day (proactive audio was on outside walks); "That's it" is below the fold on the
+  dials-only check-in. The `apps/apple/AGENTS.md` "Recording a demo" section is stale.

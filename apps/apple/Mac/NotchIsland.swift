@@ -355,8 +355,12 @@ struct IslandView: View {
                     .frame(width: 30, height: 30)
                     .accessibilityHidden(true)
             } else {
-                Circle().fill(call.micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted).frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
+                if call.micOn, call.status == .listening || call.status == .speaking {
+                    CallWave(status: call.status, level: { QuickTalkModel.shared.meter.level })
+                } else {
+                    Circle().fill(call.micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted).frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
             }
             HStack(spacing: KaikuTokens.Space.s2) {
                 Text(T(call.status.key)).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)

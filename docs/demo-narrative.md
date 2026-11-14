@@ -20,14 +20,14 @@ Rules for every version:
 | Time | On screen | Say (one sentence) | Proves | Real or simulated |
 |---|---|---|---|---|
 | 0:00–0:10 | Morning, a kitchen table. A clinic appointment card with twenty dates crossed out. Aino's phone lies face down. | "For six weeks someone saw Aino almost every day; her TMS course ended, and now nobody does." | Aalto: usefulness. Gemini: the problem. | Acted. |
-| 0:10–0:19 | iPhone, first run: Kaiku's service found nearby, a short list of choices each with its own switch, a voice trial. | "Setting up is a list of choices: every signal is opt-in, and nothing listens until she says so." | Aalto: ease of use. Meta: consent and trust. | Real app on a real iPhone. Verify the final onboarding build. |
-| 0:19–0:33 | Talk tab. She says good morning; Kaiku answers aloud and mentions the walk by the lake. Caption: "Gemini Live. It remembers only what she asked it to." | No narration. Kaiku's own voice carries the shot. | Gemini: integration, why it is essential. | Real Live call. Fallback: none; without the real voice, cut the shot to 6 s of typed chat. |
-| 0:33–0:42 | Firefly on the phone, thirty seconds of play, then the recap card. | "A one-minute game is also a reaction-time reading, compared only with her own usual." | Aalto: smart sensing, creativity. | Real app. |
-| 0:42–0:57 | Outdoors. Gen 2 glasses on, phone going into a pocket. Kaiku's voice: "Found one. Two more to go." She takes the glasses off; the phone shows "the walk goes on with the phone". | "Outside, Kaiku moves to her glasses: head up, hands free, phone in her pocket." | Meta: wearable benefit, device-state handling, audio-first. | Real only if the audio route has been accepted on the device. Fallback: show registration and "connected" on the phone and say "voice over Bluetooth". |
+| 0:10–0:17 | iPhone, first run: Kaiku's service found nearby, a short list of choices each with its own switch. | "Setting up is a list of choices: every signal is opt-in, and nothing listens until she says so." | Aalto: ease of use. Meta: consent and trust. | Real app on a real iPhone. Verify the final onboarding build. |
+| 0:17–0:33 | Today's first stop, the check-in as a small chat. She says it has been a hard day; Kaiku answers aloud, stays, and offers one thing once. She locks the phone: the call goes on as a bar on the Lock Screen. Caption: "Gemini Live. It notices, and acts once." | No narration. Kaiku's own voice carries the shot. | Gemini: integration, why it is essential. Aalto: ease of use. | Real Live call with her real voice. Fallback: the typed check-in recorded on the simulator with real replies, captioned "typed". Never the scripted layout states. |
+| 0:33–0:41 | Lantern on the phone, a few lights, then the sky she lit. | "A one-minute game is also a reaction-time reading, compared only with her own usual." | Aalto: smart sensing, creativity. | Real app. |
+| 0:41–0:57 | Outdoors. Gen 2 glasses on, phone going into a pocket, the walk style set to Playful. Kaiku in her ear: "Is that your favourite tree up there?", then "One! Two to go." She takes the glasses off; the phone shows the walk going on. Caption: "Seeing is her choice: pictures go only to this conversation." | "Outside, Kaiku moves to her glasses: head up, hands free, and it connects what is in view to what she has told it." | Meta: wearable benefit, device-state handling, audio-first, camera with consent. | Real only for what has been accepted on the device (`docs/glasses-test.md`). Fallback: show registration and "connected" on the phone, the mock-glasses walk captioned "simulated glasses", and say "voice over Bluetooth". |
 | 0:57–1:12 | The robot on her desk. Eyes open, three turns of the ear dial, chest glows for a breath, she drums on its head. | "At home the robot speaks first: three turns of an ear, one breath, a drum, and no typing." | Atech: use of modules, live hardware. Aalto: ease, creativity. | Real board for whatever has passed its bench. Anything else is the hardware twin with the caption "simulated hardware". No music unless Lyria plays on the device. |
-| 1:12–1:18 | Mac menu bar: category minutes and breaks, the pause switch. | "Her Mac adds rhythm only: breaks and late nights, never content." | Aalto: smart sensing. Privacy. | Real Mac app. |
-| 1:18–1:31 | Dashboard: four signal-group chips, each with its verdict and its real device source, resolving to one state; the timeline with the dip. | "Each group is compared with her own baseline, and a fixed rule that anyone can read, not a model, combines them; missing data never reads as stable." | Aalto: clinician view. Modal: impact. | Real engine, simulated record. Shown from the deployed URL once it exists. |
-| 1:31–1:45 | Practitioner view: Gemma's review with numbered evidence links, a click opening the cited record, the routine graph, first week beside latest week. | "For her practitioner, Gemma chooses the evidence and every sentence opens the record behind it; the numbers are written by code." | Gemma: impactful, well-executed open model. | Real Gemma call on the simulated record. Fallback: the deterministic summary, labelled as such. |
+| 1:12–1:20 | Her Mac, a document open. Two taps of Control: a small Kaiku grows from the edge of the screen. She says "I'm not feeling too well"; her words and Kaiku's answer appear as captions. | "On her Mac, two taps and Kaiku is there; the Mac itself adds only the rhythm of her day, never content." | Aalto: ease of use, smart sensing. Gemini: one voice everywhere. Privacy. | Real Mac app with her real voice. Fallback: the in-app stills in the README, captioned "rendered". |
+| 1:20–1:32 | Dashboard: four signal-group chips, each with its verdict and its real device source, resolving to one state; the timeline with the dip. | "Each group is compared with her own baseline, and a fixed rule that anyone can read, not a model, combines them; missing data never reads as stable." | Aalto: clinician view. Modal: impact. | Real engine, simulated record. Shown from the deployed URL once it exists. |
+| 1:32–1:45 | Practitioner view: Gemma's review with numbered evidence links, a click opening the cited record, the routine graph, first week beside latest week. | "For her practitioner, Gemma chooses the evidence and every sentence opens the record behind it; the numbers are written by code." | Gemma: impactful, well-executed open model. | Real Gemma call on the simulated record. Fallback: the deterministic summary, labelled as such. |
 | 1:45–1:51 | The practitioner records a follow-up flag; the following days show walks and mood moving back toward usual. Caption: "observed, not proof of cause". | "One click records the follow-up, and the days that follow are there to compare." | Aalto: closed loop. | Real action route, simulated record. |
 | 1:51–1:55 | Robot, phone and glasses on the table. "Kaiku". Small print: research prototype, not a medical device, record shown is simulated. | "Kaiku: a friend on your desk, a voice in your ear, a clearer record for your care team." | All. | — |
 
@@ -58,16 +58,28 @@ button, two LED grids in the chest, a motor for the neck, a speaker and a microp
 and build the project; our own small library connects it to the home network. The same messages come from the
 twin, so the rest of the system never needed the hardware to exist.
 
-**iPhone and Mac.** The apps are the low-effort surface: a weather-style check-in, two short games, a talk
-tab and a private "your days" view. Every reading waits in a queue on the device until the cloud confirms it,
-so a dead network loses nothing. The Mac contributes only the shape of the day: categories, breaks and late
-nights.
+**iPhone and Mac.** The apps are the low-effort surface. The check-in is a small chat with Kaiku, short on an
+ordinary day and as long as she wants on a hard or a very good one; she can also just turn three dials. Talk is
+a call: she can mute herself or mute Kaiku, the captions keep coming, and on the phone the call goes on behind
+the Lock Screen. When Kaiku suggests a game or a journal entry it puts a card in the conversation; nothing opens
+without her yes. On the Mac two taps of a key bring Kaiku up from the edge of the screen without leaving the
+app she is in. Every reading waits in a queue on the device until the cloud confirms it, so a dead network
+loses nothing. The Mac contributes only the shape of the day: categories, breaks and late nights.
+
+**The companion that notices.** When what she says carries a clear feeling, the voice tells Kaiku's mind once.
+Code answers with a small plan: comfort, celebrate, explore or give space; keep it brief or stay; one thing the
+record says helps her; at most one offer per conversation. The same mind serves the phone, the Mac, the
+glasses and the robot, so something said on a walk is known on the phone the next day, and once a day Kaiku may
+bring one thing up itself. None of it changes the practitioner's state: that stays the fixed rule.
 
 **Glasses.** A walk is the one activity where a phone in the hand works against you. The iPhone registers
 with the glasses through Meta's Device Access Toolkit and reads head motion; Kaiku's voice travels over normal
-Bluetooth, so the same conversation continues from the kitchen to the street. No camera is used and the
-glasses do not see anything. If they disconnect or come off, the walk continues on the phone and the record
-says so.
+Bluetooth, so the same conversation continues from the kitchen to the street. She chooses how Kaiku walks with
+her: calm, playful or chatty. Seeing is a separate choice that is off by default: with it on, about one picture
+a second goes to that walk's conversation and nowhere else, nothing is stored, and no reading is derived from a
+picture. Kaiku then connects what is in view to what she has told it, as a question, and keeps a spotting
+game's count on the phone. Say "Kaiku can see" only for a walk with that choice on. If the glasses disconnect or
+come off, the walk continues on the phone and the record says so.
 
 **Cloud and consensus.** One service receives every reading, refuses anything that is not a derived number,
 and compares each one with that person's own recent history. Each signal group gets a verdict: as usual,
@@ -111,8 +123,9 @@ in parallel, and a separate GPU class serves Gemma and costs nothing while idle.
    safety state on the dashboard. No model is involved. It will miss indirect language and it does not call
    anyone. Kaiku is not a crisis service.
 6. **What leaves the home?** Derived numbers only; the cloud rejects anything else. Camera frames are
-   processed in memory. The exception is the voice: during a conversation she started, audio goes to Gemini
-   Live. Conversation text is kept only if she turns that on, and practitioners never see it.
+   processed in memory. The exceptions are the voice and, only if she turns it on, the glasses' view: during
+   a conversation she started, audio goes to Gemini Live, and on a walk with "Let Kaiku see" on about one
+   picture a second goes to that same conversation and nowhere else. Conversation text is kept only if she turns that on, and practitioners never see it.
 7. **Why a robot and not just an app?** Initiative. An app waits; the robot looks up when she walks past. It
    also makes the check-in physical: a turn, a breath, a rhythm.
 8. **Are the signal groups independent?** No, and the dashboard does not pretend so. Several can come from

@@ -39,6 +39,57 @@ public enum CallStatus: String, Codable, Sendable, CaseIterable {
     }
 }
 
+extension CallStatus {
+    /// The microphone's level (dB, about −90 quiet … 0 loud) as 0…1 for the moving lines.
+    public static func level(db: Float) -> Double { min(1, max(0, (Double(db) + 55) / 40)) }
+}
+
+/// The moving lines beside the call's state. While Kaiku listens they follow the person's voice, and keep a
+/// small slow movement when the room is quiet (the microphone is open, so "Listening" visibly listens). While
+/// Kaiku speaks they roll evenly. Still in every other state. Reduce Motion: no movement, only the height the
+/// voice gives them.
+public struct CallWave: View {
+    let status: CallStatus
+    /// 0…1. Read inside this view, so only these few lines follow the level as it changes.
+    var level: (() -> Double)?
+    var tint: Color
+    /// Snapshots pin the movement.
+    var at: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(status: CallStatus, level: (() -> Double)? = nil, tint: Color = KaikuTokens.Colors.sage, at: Date? = nil) {
+        self.status = status; self.level = level; self.tint = tint; self.at = at
+    }
+
+    /// The middle lines stand taller, like a voice.
+    private static let shape: [Double] = [0.55, 0.85, 1, 0.7, 0.45]
+
+    /// One line's height (pure, tested): never below the dot it rests as, never above the full height.
+    public static func height(line i: Int, voice: Double, time t: Double, moving: Bool, full: Double = 14, rest: Double = 3) -> Double {
+        let v = min(1, max(0, voice))
+        let wobble = moving ? 0.5 + 0.5 * sin(t * 7 + Double(i) * 1.7) : 0.6
+        // A quiet room still moves a little: 0.22 of the way up, slowly; a voice takes it the rest.
+        let reach = moving ? 0.22 + 0.78 * v : v
+        return rest + (full - rest) * reach * (0.3 + 0.7 * wobble) * shape[i % shape.count]
+    }
+
+    public var body: some View {
+        let alive = status == .listening || status == .speaking
+        let voice = status == .speaking ? 0.75 : (level?() ?? 0)
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || !alive || at != nil)) { tl in
+            let t = (at ?? tl.date).timeIntervalSinceReferenceDate
+            HStack(alignment: .center, spacing: 2) {
+                ForEach(0..<5, id: \.self) { i in
+                    Capsule().fill(tint)
+                        .frame(width: 2, height: Self.height(line: i, voice: alive ? voice : 0, time: t, moving: alive && !reduceMotion))
+                }
+            }
+            .frame(width: 18, height: 14)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// The call bar: how long it has been going, the one short state, mute me, mute Kaiku, type, end.
 public struct CallBar: View {
     let since: Date?
@@ -51,11 +102,15 @@ public struct CallBar: View {
     let toggleVoice: () -> Void
     var toggleTyping: (() -> Void)? = nil
     let end: () -> Void
+    /// The person's voice, 0…1, for the moving lines beside "Listening".
+    var level: (() -> Double)? = nil
 
     public init(since: Date?, status: CallStatus, micOn: Bool, voiceMuted: Bool, typing: Bool? = nil,
+                level: (() -> Double)? = nil,
                 toggleMic: @escaping () -> Void, toggleVoice: @escaping () -> Void, toggleTyping: (() -> Void)? = nil,
                 end: @escaping () -> Void) {
         self.since = since; self.status = status; self.micOn = micOn; self.voiceMuted = voiceMuted; self.typing = typing
+        self.level = level
         self.toggleMic = toggleMic; self.toggleVoice = toggleVoice; self.toggleTyping = toggleTyping; self.end = end
     }
 
@@ -65,8 +120,12 @@ public struct CallBar: View {
     public var body: some View {
         VStack(spacing: KaikuTokens.Space.s2) {
             HStack(spacing: KaikuTokens.Space.s2) {
-                Image(systemName: status.symbol).foregroundStyle(micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted)
-                    .accessibilityHidden(true)
+                if status == .listening || (status == .speaking && !voiceMuted) {
+                    CallWave(status: status, level: level, tint: micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted)
+                } else {
+                    Image(systemName: status.symbol).foregroundStyle(micOn ? KaikuTokens.Colors.sage : KaikuTokens.Colors.muted)
+                        .accessibilityHidden(true)
+                }
                 Text(T(status.key) + (voiceMuted && status == .speaking ? " · " + T("call.kaiku.muted") : ""))
                     .foregroundStyle(KaikuTokens.Colors.ink).lineLimit(1).minimumScaleFactor(0.8)
                 if let since {
