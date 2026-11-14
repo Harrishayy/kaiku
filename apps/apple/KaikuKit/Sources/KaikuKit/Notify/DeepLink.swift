@@ -16,7 +16,10 @@ public enum DeepLink: Equatable, Sendable {
         case "today": return .tab(.today)
         case "talk": return .tab(.talk)
         case "days": return .tab(.days)
-        case "you": return .tab(.you)
+        case "you":
+            // kaiku://you/memories · /saw · /voice · /quiet · /devices · /help (demo recordings, Mac links)
+            if let r = rest.first.flatMap(KaikuRoute.init(rawValue:)), r.tab == .you { return .route(r) }
+            return .tab(.you)
         case "checkin", "weather": return .route(.weather)
         case "walk": return .route(.walk)
         case "breathe": return .route(.breathe)

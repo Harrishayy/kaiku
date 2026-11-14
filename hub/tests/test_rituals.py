@@ -194,3 +194,14 @@ async def test_nudge_outcome_next_day(ctx):
     assert out.arm == "daylight_walk" and out.accepted
     assert out.next_day.mood == 4 and out.next_day.energy == 4
     assert out.reward == pytest.approx(0.5 + 0.125 * 1.5, abs=1e-3)
+
+
+def test_breathe_closing_line_only_claims_what_the_data_shows():
+    from kaiku_hub.rituals.steps import closing_line
+
+    settled = "Lovely. Your heart settled nicely."
+    assert closing_line({"hr_bpm": -3.0}) == settled
+    assert closing_line({"rmssd_ms": 4.0, "hr_bpm": 1.0}) == settled
+    assert closing_line({"hr_bpm": -1.0, "rmssd_ms": 1.0}) != settled  # tiny change: no claim
+    assert closing_line({"hr_bpm": 2.0}) != settled
+    assert closing_line({}) != settled  # no clean pre/post: no claim

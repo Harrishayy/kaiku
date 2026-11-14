@@ -409,3 +409,235 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `copy.apple.json`. Mac snapshots draw the sidebar themselves and can't render toggles/text fields; the 720×480
   static render clips the header (real window scrolls). Menu bar popover / island untouched (owned by A3).
 - Next: real-device pass on haptics + sound levels; iPhone tilt → eyes.
+
+## 2026-11-14 03:45 — Claude Code — demo capture (robot sim replay + web recordings)
+- Did: `scripts/record_robot_demo.sh` records one key-less end-to-end sim run (own broker/cloud on free ports, temp
+  DB, seeded cohort, head/sensors twins driven by `scripts/robot_demo_driver.py`, hub in text voice, glasses/laptop/
+  Mac/phone posts) to `demo/recordings/robot-sim/` (bus JSONL, stamped hub log, markers, cloud responses).
+  `scripts/record_web_demo.sh` records /me, /clinician, the patient view and /play/firefly as MP4s (Playwright 1.58.0).
+  `demo/recordings/` is gitignored; how to regenerate is in `demo/AGENTS.md`. A progress page (claude.ai artifact)
+  replays the run (pan, eyes, knocks, button dial, chest breathing + pulse, lines, context chips) next to the cloud
+  results and a plan 01–07 status table.
+- Fixed (hub, owner B please review): with the current knock build (`drum_input = knock`, no `force`) every
+  `raw.head.tap` during DRUM raised `TypeError` in `Hub.on_raw` (`float(None)`), so `[drumming · …]` never reached
+  Live. `DrumFeel.add` now takes `force=None` and uses tempo alone; test `test_drum_feel_knock_switch_has_no_force`.
+- Verified: full ritual completed (greet → dial ×3 by button presses → breathe 60 s → drum 42 knocks → suggestion →
+  close); context events `[it's late]`, `[light · dim]`, `[breathing · heart calmer]`, `[drumming · lively]`; Aino's
+  consensus `needs_call` with 4 sources; context card has no state words; `ask_mind` memory route in the ledger.
+- Contract changes: none
+- Broken/blocked: text voice opens no Live session, so no model tool calls happen in the hub (the script calls
+  `ask_mind` itself). In a shorter run (breathe 40 s) the heart-rate delta was +0.1 bpm and no `heart calmer` event
+  fired, yet the scripted line still said "Your heart settled nicely" (the line doesn't follow the same rule).
+  Recorded at night, so the greeting is the Finnish night line. The firefly flow must not click the first button
+  ("I'm not OK" is first).
+- Next: upload the app recordings into the page's video slots.
+
+## 2026-11-14 02:30 — Claude Code — apple (conversation pipeline: real-time talk through Meta glasses)
+- Did: one conversation engine for every Apple surface (`Talk/Conversation.swift`): cloud bootstrap
+  (`POST /v1/companion/session`) → Gemini Live with **server VAD + barge-in** (`START_OF_ACTIVITY_INTERRUPTS`;
+  `interrupted` flushes Kaiku's queued voice at once), affective dialog, proactive audio, sliding context
+  compression, session resumption (reconnect on `goAway`/drop with the handle; same token until it expires, then a
+  fresh one), `ask_mind` as a `NON_BLOCKING` tool (`WHEN_IDLE`), safety gate on every transcript + on-device
+  listener. `LiveSession` is now the pure protocol layer (setup builder + parser, unit-tested);
+  `ConversationAudio` puts mic + playback on one voice-processing engine (echo cancel) and prefers the glasses'
+  HFP mic. Talk = open conversation (tap Kaiku to stop/start listening), no more hold-to-talk. The walk opens a
+  live companion on the `glasses` surface (walking persona, `log_walk_moment` → Found one) and feeds it context
+  events (`[found one · 2 of 3]`, `[walk · 10 min]`, glasses lost); "Quiet walk" toggle. Field names checked in
+  the Gemini docs + installed SDK converters; Meta audio path per the DAT "Microphones and speakers" guide.
+- Verified: `swift test` 80/80 (10 new in `LiveSessionTests`); iOS simulator, iOS device (MWDAT linked) and Mac
+  builds green. Local cloud (key-less): `{surface: glasses, intent: walk}` session for demo-aino returns the
+  walking persona, 11 tools and graph memories in the card; `ask_mind` "Where does Aino like to walk?" → route
+  memory, cite `mem:3`; care question → "ask your care team"; `recall rain` → the seeded memory.
+- Contract changes: none.
+- Broken/blocked: **not yet run against real Gemini Live or real glasses** (no key in `.env`). VAD tuning is in
+  `LiveSession.Tuning` (code) until a session-response field carries it (contracts owner). `look_at_this` says the
+  camera isn't connected (DAT camera stream not wired). The Display web app has no mic, so it is not in the
+  speech path.
+- Next: paste `GEMINI_API_KEY`, run on an iPhone with Ray-Ban Meta connected, tune VAD on a real walk.
+
+## 2026-11-14 02:45 — Claude Code — apple + cloud (Live verified for real; no robotic voice)
+- Did: **cloud** `mind/live_token.py`: the token request used `liveConnectConstraints` (SDK name; the REST API
+  rejects it → every app/glasses session silently fell back to scripted). Now `bidiGenerateContentSetup: {model}` +
+  `fieldMask: "model"` (as google-genai's tokens.py; without the mask the token would lock every setup field and
+  drop the device's persona/tools). **apple**: `enableAffectiveDialog` removed from the Live setup (gemini-3.8-live
+  closes with 1007 "invalid argument" when it is true — bisected live, SDK + raw key too); close reason kept on
+  `LiveSession`; opt-in paid `LiveIntegrationTests` + `scripts/live_e2e.sh`. Voice: the on-device synthesizer is
+  gone (`VoiceLines`): cached Gemini TTS, else fetched on demand, else silent; glasses-lost notice is a toast.
+- Verified (real Gemini, ~1 min each): iphone + glasses surfaces — setup accepted, Kaiku speaks, spoken
+  interruption → `interrupted` (+ pending tool cancelled), transcription, `recall(walking)` → graph → "You like
+  walking by the lake, Aino." Evidence: `demo/recordings/live-e2e/glasses/timeline.png` (+ wav, events).
+  `swift test` 81 (1 skipped = the paid test), iOS + Mac builds green, cloud mind tests green.
+- Broken/blocked: **hub (owner B)**: `gemini_live.live_config` sets `enable_affective_dialog=True` → every robot
+  Live session closes with 1007 (reproduced with the SDK + key). Also the hub's offline voice is macOS `say` /
+  espeak and `.env` has `KAIKU_VOICE=text` → robotic; lead's rule: never a synthesizer, use cached `/v1/voice`.
+  **Budget**: daily cap $4 hit ($3.98, mostly evals) → only 1 of 99 voice lines pre-rendered; apps stay silent for
+  uncached lines until `make voice-prerender` runs with budget. **Signing**: accept the Apple PLA for team
+  the lead's team; iPhone 14 shows "unavailable" in devicectl.
+
+## 2026-11-14 02:50 — Claude Code — contracts + cloud + apple (opt-in transcripts, D33; voice lines rendered)
+- Did: contract `EpisodeIn.transcript` (optional, non-breaking) + `TranscriptTurn`, `Transcript`,
+  `TranscriptsResponse`, `EpisodeResult.transcript_stored`; `make contracts`. Cloud: `transcripts` table, stored only
+  when sent and never after a crisis (outcome or any crisis-phrase turn), `GET/DELETE /v1/me/transcripts[/{id}]`,
+  `jobs/transcripts_export.py` (de-identified Gemma chat JSONL). Apple: `transcripts` signal (off by default) in
+  onboarding, What Kaiku remembers (switch, count, delete all) and What Kaiku saw today; `Conversation.stop` sends
+  the transcript only with consent. Budget `daily_usd` 4 → 6 (lead); `make voice-prerender`: all lines × en/fi/sv
+  rendered, 0 failed (spend total $5.45 / $10).
+- Verified: `make check` 516 passed; `swift test` 82 (+1 paid skipped); iOS + Mac builds green. Real Gemini Live
+  glasses runs: 3 of 4 pass (one run Kaiku stayed silent on the opener — proactive audio); transcript stored via the
+  real episode route and exported (`demo/recordings/live-e2e/glasses/gemma_train.jsonl`, home id hashed).
+- Broken/blocked: **config (persona)**: on the glasses surface Kaiku once said "I'm a little robot" — the glasses
+  label in `config/surfaces.toml` says "a voice in the person's glasses"; persona owner please check. Robot hub,
+  glasses web app and web /me don't send transcripts yet. Per-conversation reading in the app not built (API has it).
+
+## 2026-11-14 02:35 — Claude Code — apple + cloud (Mac window bugs, garden per day, Today's path)
+- Did: Mac: fixed the game window breaking (root cause: the split view measured the non-scrolling game pane at a
+  tiny width → fixed-vertical text → ~1000–1600 pt minimum → pane outgrew the window, clipping the sidebar list,
+  "I'm not OK", title and Start). `fillsProposal()` on non-scrolling panes; scene backgrounds no longer tint the
+  sidebar; one back button (system toolbar) + the screen's title in the toolbar; bigger game previews; brand Start
+  button everywhere. Verified at 980×720 and full screen. Garden: `Garden.days` (14 local days: count + kinds,
+  additive contract field) → day plots that grow with what was done, kind icons + legend, tap a day to read it;
+  Today shows 7 days, Your days 14. Today's path (Duolingo-style): weather check → Kaiku's suggestion → a game,
+  ticks per day, one lit "Start here / Next" button, on Today, Play and every game's end ("Up next: …").
+- Verified: cloud + contracts pytest green, `swift test` 70 green, ui_copy_check clean, Mac + iOS builds, screenshots
+  against a seeded local cloud (demo-aino).
+- Contract changes: `GardenDay` + `Garden.days` (additive, no version bump); `make contracts` run.
+- Broken/blocked: design (D) — upstream `path.*`, `garden.*`, `play.all` from copy.apple.json.
+
+## 2026-11-14 04:40 — Claude Code — one Gemini voice in the apps: continuous Live, TTS everywhere, Talk layout
+- Did: cloud mints the apps' Live token with Kaiku's whole setup locked in (`bidiGenerateContentSetup`: persona,
+  Sulafat voice, tools, automatic VAD + barge-in, transcriptions, resumption, sliding window) and returns it as
+  `live_setup`; VAD knobs in `config/kaiku.toml [live]`. New `POST /v1/voice/say` (any short app line in the same
+  Gemini voice, cached by hash, never a crisis line). Apps: Talk is a continuous conversation (tap Kaiku to open the
+  mic, Gemini takes turns, talking or typing over Kaiku interrupts it, tap again to stop) on one audio engine with
+  voice processing (echo cancellation); every line outside Live (greeting, "I'm back", scripted replies) is Gemini
+  TTS from the cloud, the on-device synthesizer only when offline with nothing cached. Talk layout: header-sized
+  Kaiku on a clear background + status line + mic button, the transcript gets the rest; bubbles up to 80 % width,
+  never squeezed; pinned to the newest line, also when the keyboard opens. `make e2e-intelligence` added.
+- Fixed: the old token request used `liveConnectConstraints` (the SDK's name); the REST API answers 400, so every
+  mint failed soft to null and the apps always fell back to scripted lines + Apple's voice.
+- Verified (real calls, key from .env + ADC): `make e2e-intelligence` ALL PASS — token minted, setupComplete 1.3 s,
+  typed turn 5.3 s audio + transcript, spoken turn (macOS `say` → 16 kHz) ended by automatic VAD with input
+  transcript + audio answer, a model tool call forwarded to the cloud, barge-in → `interrupted`; TTS keyed line and
+  /v1/voice/say wav (cached on repeat); ask_mind "What is my sister called?" → Maija; nightly-mind graph 7 nodes /
+  7 edges → constellation non-empty. iOS simulator against a local cloud: typed turn → Kaiku's real Live reply as a
+  bubble. `make check` 513 passed, `swift test` 74 green, iOS sim + Mac builds green, ui_copy_check clean.
+- Contract changes: `CompanionSessionResponse.live_setup` (optional, additive), `VoiceSayRequest`; `make contracts`.
+- Broken/blocked: `enableAffectiveDialog` makes constrained sessions fail (1007 on the first turn) → off. Mic + echo
+  cancellation need a real-device pass (simulator mic). Live output transcripts sometimes join words (API text).
+  Ephemeral tokens need GEMINI_API_KEY (Developer API); ADC alone can't mint them — the hub path is unchanged.
+- Next: real-device Talk pass (iPhone speaker + AirPods + glasses, Mac built-in mic).
+
+## 2026-11-14 — Claude Code — contracts, cloud, web, sim, config, docs [dashboard: the week + What Kaiku has learned]
+- Did: `cloud/kaiku_cloud/week.py` + `api/dashboard.py`: `GET /v1/me/week`, `GET /v1/me/graph`, `GET|PUT /v1/me/sharing`,
+  `GET /v1/patients/{id}/week`, `GET /v1/patients/{id}/graph`. Routines (daily / most days / weekday rhythm, usual time,
+  kept/partly/slipped) from obs (ritual, walks, drum, breathing, check-ins, laptop, games, sleep onset) + episodes
+  (person, or care team when shared); going well / worth a look from per-metric drift, verdicts, bandit, safety flags,
+  PHQ-9 cadence; graph view with obs-only activities, routine nodes and evidence counts. Web: `components/LearnedGraph.tsx`
+  (column layout, click → labelled links) and `components/WeekPanels.tsx` on `/me` (warm, en/fi headings) and the
+  clinician patient page. Seed: Aino gets 10 memories, Monday/Thursday check-ins, sharing on. D33 (privacy: care team
+  sees the graph only when the person shares; default off; never people/places/likes/plans).
+- Verified: `make check` green (527); `pnpm build`; Playwright screenshots of /me and the patient page (desktop + 390 px).
+- Contract changes: additive (`CareSharing`, `WeekSummary`, `Routine`, `WeekItem`, `KnowledgeGraph`, `GraphNode`,
+  `GraphEdge`), `SCHEMA_VERSION` 1; `make contracts` run.
+- Broken/blocked: none. Week sentences are English only (fi shows them as-is). Apple apps don't show the week/graph yet (A).
+
+## 2026-11-14 — Claude Code — contracts, cloud, web, docs [dashboard demo-readability: one record, next steps, audit fixes]
+- Did: `WeekSummary.sources` (one record: what robot / phone & Mac / glasses / watch added per day + counts) and
+  `WeekSummary.next_steps` (care team, fixed rules, allowed wording, optional action button). Web: `RecordStrip` on /me
+  and the patient page; "Suggested next steps" panel. Audit fixes: usual range clamped at 0 for never-negative
+  metrics; evidence "How unusual" in words (+ z explained) instead of a mono z column; direction coloured
+  clay (change) / sage (other way) with arrows; chart axis text readable (smaller viewBox, 12.5 px), dates "16 Oct";
+  chart caption "Latest 543 min" + a "change from usual" pill; a legend under every chart; timeline groups get a
+  chevron + "Show / hide"; brand mascot on a clay-soft tile; clinician list names larger, SIMULATED quiet; rule line
+  and "What Kaiku saw today" in the body font; /me no longer prints the raw pairing URL (copy button only) and shows
+  the name memory as "Kaiku calls you Aino" instead of a deletable memory row; `num()` no longer turns 8900 into 89.
+- Verified: `make check` green; `pnpm build`; Playwright screenshots of /me, /clinician, patient page (desktop + 390 px).
+- Contract changes: additive (`SourceWeek`, `SourceCount`, `NextStep`), `SCHEMA_VERSION` 1; `make contracts` run.
+- Broken/blocked: none.
+
+## 2026-11-14 03:00 — Claude Code — integration (ui-lead + conversation engine + dashboard into companion-apps)
+- Did: merged three parallel streams. One Live engine on Apple: `Conversation` / `ConversationAudio` / the pure
+  `LiveSession` protocol layer (resumption, compression, non-blocking tools, glasses walk companion, opt-in
+  transcripts); the voice agent's `LiveAudio` and its locked-setup Talk model were dropped. Talk keeps the new
+  layout (header-sized Kaiku = tap to mute/unmute, full-width chat, bubbles ≤ 80 %, welcome + starters) on top of
+  `Conversation`. Cloud tokens lock only the model (`fieldMask: model`) so device setup fields aren't silently
+  ignored; `live_setup` is still returned and the loudspeaker VAD comes from `config/kaiku.toml [live]`.
+  `VoiceLines` = Gemini TTS keyed + `/v1/voice/say`, never a synthesizer. Two D33s: transcripts keep D33, the
+  dashboard sharing decision is now D34 (references updated).
+- Verified: `make check` 538 passed; `swift test` 84 (1 paid skip); iOS + Mac builds; web build; ui_copy_check clean.
+- Contract changes: none beyond the merged branches (`make contracts` re-run).
+
+## 2026-11-14 — Codex — docs (independent integration audit)
+- Did: read-only implementation audit across cloud/contracts, Apple/web/glasses, hub/firmware and sims, with three
+  independent reviewers. Inspected the running clinician list and patient record in the local in-app browser.
+  No application fixes, deployment, real-user data, or changes to existing work; this entry records the audit.
+  The working tree changed externally during review (latest observed base f5165b1); findings were rechecked.
+- Verified: `make check` passed (ruff, 538 Python tests including real-MQTT tests, web typecheck); web's 21 tests
+  and production static build passed. Latest Swift suite: 83 passed, one opt-in Live test skipped (84 total).
+  Initial sandbox socket failures disappeared with permitted local-network execution. `make setup` could sync
+  Python but pnpm's noninteractive modules-directory prompt aborted; installed web dependencies built successfully.
+  `make doctor` verified credentials and all six configured model metadata endpoints, but the default broker and
+  cloud were not running. Isolated services were used for the integration runs instead.
+- Verified: `make smoke` passed all 17 API checks. `scripts/record_robot_demo.sh` completed greet/dial/breathe/drum/
+  nudge/close and glasses/laptop/Mac/phone posts (2,776 recorded bus messages); cloud consensus remained the expected
+  needs_call for synthetic Aino. This harness uses text voice, no music, and manually invokes ask_mind.
+  `make e2e-intelligence` passed real ephemeral-token Live typed/spoken turns, automatic VAD, barge-in, keyed/dynamic
+  TTS/cache, deterministic memory recall and graph generation. It bypasses the production Apple microphone and hub
+  voice adapters. A separate real ask_mind emotional request returned the Argon route. Hosted Gemma explanation
+  fell back after two outputs failed validation; a third direct adapter/validator probe succeeded. A fresh actual
+  hub-config Live probe was blocked before networking by the existing five-minute budget reservation; caps unchanged.
+- Verified: `make tune N=40`: synthetic needs_call precision 0.972 / recall 0.904; false calls 0.031 per patient-month;
+  median lead 6 days. Removing robot data dropped synthetic needs_call recall to 0.167. Not clinical validation.
+- Broken/blocked (Apple A): Conversation.startAudio never assigns ConversationAudio.onPCM; no production caller of
+  LiveSession.sendAudio, so real microphone speech never reaches Gemini. Native crisis UI promises team contact
+  independent of upload/delivery; care-team button only shows a toast. Talk/walk record_dial bypass check-in consent.
+  Mock glasses readings use the normal sim=false envelope. Advertised PHQ-9/friend tools and Talk-started walk are
+  unhandled. Episode finalization is not durable offline; same-day Health summary IDs prevent later corrections.
+- Broken/blocked (hub B): reproduced spoken-crisis self-cancellation in GeminiLiveVoice.close_session, before script
+  or safety_flag (CancelledError, zero flags). end_ritual/end_session skip only the current step instead of stopping.
+  Attention-triggered sessions open the microphone before affirmative ritual consent. Hub still enables affective
+  dialogue despite the earlier recorded 1007 rejection. Normal ritual completion does not finalize a cloud episode.
+- Broken/blocked (cloud C): reproduced unauthenticated record reads, sharing changes, transcript deletion, and
+  Safety -> Watch acknowledgement even with both tokens configured. Tokens do not bind a home identity. Reproduced
+  stable consensus seven days after every source stopped. Source votes map by observation type, not physical device,
+  so phone reports/walks/games can appear as robot/glasses/Apps. Crisis transcript updates leave older transcripts
+  stored and completed retries overwrite crisis; export retains names/places absent from the notebook. Shared
+  what-helps labels can include names despite the clinician graph's promise to withhold people/places. App-direct
+  Live usage bypasses the claimed universal budget/usage ledger. No outbound care-team alert/delivery workflow found.
+- Broken/blocked (D/hardware A): web has no chat/Live companion client; both standalone glasses app folders and
+  friendlink firmware remain documentation-only. Full Atech firmware validation and UNO Q compilation are still
+  documented as blocked/unverified; physical glasses/audio/sensor integration was not established by this audit.
+  No external personal messaging integration found. Web safety uploads have no persistent retry queue.
+- Contract changes: none.
+- Next: owners fix microphone wiring, robot crisis/stop/consent, API authorization/home isolation, stale-data policy
+  and honest alert delivery before claiming end-to-end readiness. Acceptance must exercise actual device controllers
+  across two surfaces, tool effects, fresh observations on the dashboard, and offline/crisis recovery; socket-only
+  Live tests and seeded dashboards cannot substitute for that pass. Full findings delivered in the audit chat.
+- Live (real, after the merge): `make e2e-intelligence` ALL PASS (token locks only the model; `live_setup` frame);
+  `apps/apple/scripts/live_e2e.sh iphone` failed once — the model opened Talk by calling `start_activity(tell)`
+  instead of greeting (the app would have left Talk for the game). Fixed both ways: the persona's surface lines say
+  "start one only when the person asks… greet them first" (`mind/assemble.py`), and TalkModel refuses
+  `start_activity` until the person has spoken. Re-run: passed (greeting → barge-in → recall → spoken answer).
+
+### 2026-11-14 — Codex audit addendum: check-in ingestion is not check-in monitoring
+- Reproduced with 35 days of synthetic mood/energy/sleep answers (4 for 28 days, then 1 for seven): Apple/default
+  and web `context=adhoc` produce zero mood/energy/sleep metric points, robot verdict insufficient, confidence 1.0.
+  Identical `context=ritual` answers produce all three series and a worse robot verdict. Current criteria filter
+  all three metrics to ritual, while Apple SelfReport defaults to adhoc and web MeView explicitly sends adhoc.
+  Ordinary app weather checks reach the record/garden/routines but their values do not affect these monitoring
+  metrics. Owners C/A/D: align the intended criteria with producers and test resulting verdicts, not just ingest.
+- Clarification: type-only source mapping demonstrates misleading device labels, not that a phone's present
+  weather producer alone creates a sufficient robot vote. The missing metrics above prevent that specific claim.
+- Final combined `make check` rerun passed: 538 tests + lint/typecheck. Other active edits were not changed by this audit.
+
+## 2026-11-14 03:10 — Claude Code — apple (iPhone signing, app icon, store prep)
+- Did: device signing with the lead's paid team (passed on the command line, not committed): entitlements are plain
+  files chosen by `CODE_SIGN_ENTITLEMENTS`, `KAIKU_APP_GROUP` / `KAIKU_ENTITLEMENTS_SUFFIX` build settings (CLI
+  signing can't assign an App Group → `.nogroup` variant; widget shows its placeholder until the group is assigned
+  in the portal). `scripts/run_on_iphone.sh`. App icon from the real MascotView (`AppIconRenderTests`, opt-in;
+  glow pinned via `GlowClock.fixedHour` so the icon doesn't depend on build time): iOS light + dark 1024, Mac set
+  16–1024 on the macOS grid (`scripts/make_app_icon.sh`). Privacy manifests (app, widget, Mac), export compliance
+  flag, local-network + updated mic usage strings. App Store Connect app is "Kaikuu" (name taken).
+- Verified: signed device build OK; icon + manifests present in the built .app bundles (iOS + Mac).
+- Broken/blocked: install on the iPhone waits for Developer Mode on the phone. Cloud for the phone runs on the LAN
+  (`uvicorn kaiku_cloud.api.local:app --host 0.0.0.0 --port 8000`).

@@ -3,7 +3,7 @@
 name: bench-button
 board: 14port
 modules:
-  - {id: button_module, instance: btn, port: 11}   # lid
+  - {id: button, instance: btn, port: 11}   # lid
 code:
   loop: |
     static bool down = false; static uint32_t at = 0, n = 0;

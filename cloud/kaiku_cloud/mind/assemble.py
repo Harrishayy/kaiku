@@ -94,7 +94,8 @@ def render_surface(name: str, s: dict[str, Any], tools: list[str] | None = None)
         f"Tools you may use here: {', '.join(tools)}.",
     ]
     if "start_activity" in tools:
-        lines.append(f"Activities you can start here: {', '.join(s['activities'])}.")
+        lines.append(f"Activities you can start here: {', '.join(s['activities'])}. Start one only when the person "
+                     "asks for it or says yes to your offer; when a conversation opens, greet them first.")
     lines += [f"- {r}" for r in s.get("rules", [])]
     return "\n".join(lines)
 

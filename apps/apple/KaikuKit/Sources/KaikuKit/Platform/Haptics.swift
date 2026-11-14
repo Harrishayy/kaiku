@@ -63,5 +63,5 @@ public enum KaikuPlatform {
     public static var device: PlayDevice { isPhone ? .phone : .mac }
     public static var surface: CompanionSurface { isPhone ? .iphone : .mac }
     /// Side padding (layout.md → Sizes): 18 pt iPhone, 26 pt Mac pane.
-    public static var sidePadding: CGFloat { isPhone ? 18 : 26 }
+    public static var sidePadding: CGFloat { isPhone ? 22 : 28 }
 }

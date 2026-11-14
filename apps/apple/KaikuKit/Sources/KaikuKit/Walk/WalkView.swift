@@ -44,6 +44,13 @@ public struct WalkView: View {
                 Text(T("walk.minutes", n: walk.minutes)).kText(.body).foregroundStyle(KaikuTokens.Colors.muted).wraps()
             }
             GlassesLine(state: walk.glasses, idle: false)
+            if walk.companion != nil {
+                Button(walk.companionMuted ? T("walk.talk.unmute") : T("walk.talk.mute")) {
+                    walk.setTalking(walk.companionMuted)
+                }
+                .buttonStyle(.kSecondary)
+                .accessibilityHint(T("walk.talk.on"))
+            }
             VStack(spacing: KaikuTokens.Space.s2) {
                 Button(T("lh.found")) { walk.foundOne() }.buttonStyle(.kPrimary).disabled(walk.found >= WalkModel.goal)
                 Button(T("lh.end")) { Task { await walk.end() } }.buttonStyle(.kSecondary)

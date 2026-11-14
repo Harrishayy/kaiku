@@ -91,7 +91,7 @@ class DrumFeel:
     up: float = 1.15
     down: float = 0.85
     times: list[int] = field(default_factory=list)
-    forces: list[float] = field(default_factory=list)
+    forces: list[float | None] = field(default_factory=list)
 
     def reset(self) -> None:
         self.times, self.forces = [], []
@@ -101,15 +101,16 @@ class DrumFeel:
         iv = [b - a for a, b in zip(times, times[1:], strict=False) if 0 < b - a <= 2000]
         return 60000.0 / median(iv) if iv else None
 
-    def add(self, t_ms: int, force: float) -> str | None:
-        """Add a tap; returns a VOCAB key once there are `window` taps, else None."""
+    def add(self, t_ms: int, force: float | None) -> str | None:
+        """Add a tap; returns a VOCAB key once there are `window` taps, else None.
+        `force` is None for the KY-031 knock switch (timing only): then tempo alone decides."""
         if self.times and (t_ms < self.times[-1] or t_ms - self.times[-1] < self.refractory_ms):
             if t_ms < self.times[-1]:
                 self.reset()  # device clock reset
             else:
                 return None
         self.times.append(int(t_ms))
-        self.forces.append(float(force))
+        self.forces.append(None if force is None else float(force))
         n = self.window
         if len(self.times) < n:
             return None
@@ -117,9 +118,11 @@ class DrumFeel:
         t0, t1 = self._tempo(self.times[:n]), self._tempo(self.times[-n:])
         if t0 and t1:
             ratios.append(t1 / t0)
-        f0, f1 = sum(self.forces[:n]) / n, sum(self.forces[-n:]) / n
-        if f0 > 0:
-            ratios.append(f1 / f0)
+        first, last = self.forces[:n], self.forces[-n:]
+        if None not in first and None not in last:
+            f0, f1 = sum(first) / n, sum(last) / n  # type: ignore[arg-type]
+            if f0 > 0:
+                ratios.append(f1 / f0)
         if not ratios:
             return "drum.steady"
         r = sum(ratios) / len(ratios)

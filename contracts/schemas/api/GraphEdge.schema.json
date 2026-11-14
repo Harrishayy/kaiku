@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "dst": {
+      "title": "Dst",
+      "type": "integer"
+    },
+    "evidence": {
+      "minimum": 0,
+      "title": "Evidence",
+      "type": "integer"
+    },
+    "rel": {
+      "enum": [
+        "knows",
+        "goes_to",
+        "likes",
+        "helped_by",
+        "plans",
+        "did",
+        "helped",
+        "about",
+        "keeps",
+        "of"
+      ],
+      "title": "Rel",
+      "type": "string"
+    },
+    "src": {
+      "title": "Src",
+      "type": "integer"
+    },
+    "weight": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "src",
+    "dst",
+    "rel",
+    "weight",
+    "evidence"
+  ],
+  "title": "GraphEdge",
+  "type": "object"
+}

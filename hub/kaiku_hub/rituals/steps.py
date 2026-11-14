@@ -216,6 +216,13 @@ def _delta(pre: dict[str, float], post: dict[str, float]) -> dict[str, float]:
     return {k: round(post[k] - pre[k], 2) for k in pre if k in post}
 
 
+def closing_line(delta: dict[str, float]) -> str:
+    """Only say the heart settled when the numbers say so (HR down >= 2 bpm or RMSSD up >= 3 ms)."""
+    if delta.get("hr_bpm", 0) <= -2 or delta.get("rmssd_ms", 0) >= 3:
+        return "Lovely. Your heart settled nicely."
+    return "Thank you for breathing with me."
+
+
 class Breathe(Step):
     """30 s PPG -> HRV pre; paced breathing with chest glow; 30 s PPG -> HRV post.
     Emits obs.hrv_session and obs.intervention_response{activity: breathe}."""
@@ -252,11 +259,12 @@ class Breathe(Step):
             return
         await ctx.emit("obs.hrv_session", payload, quality=quality)
         pre_m, post_m = _measures(pre), _measures(post)
+        d: dict[str, float] = {}
         if pre_m and post_m:
+            d = _delta(pre_m, post_m)
             await ctx.emit("obs.intervention_response",
-                           {"activity": "breathe", "pre": pre_m, "post": post_m, "delta": _delta(pre_m, post_m)},
-                           quality=quality)
-        await ctx.say("Lovely. Your heart settled nicely.")
+                           {"activity": "breathe", "pre": pre_m, "post": post_m, "delta": d}, quality=quality)
+        await ctx.say(closing_line(d))
 
 
 class Drum(Step):

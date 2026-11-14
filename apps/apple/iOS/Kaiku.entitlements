@@ -10,7 +10,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.fi.kaiku</string>
+		<string>$(KAIKU_APP_GROUP)</string>
 	</array>
 </dict>
 </plist>

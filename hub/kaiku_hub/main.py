@@ -332,7 +332,7 @@ class Hub:
         if name == "head/tap":
             self.machine.feed(Event("tap", p))
             if self.machine.state == "drum":
-                await self.notice(self.drum_feel.add(int(p["t_ms"]), float(p["force"])))
+                await self.notice(self.drum_feel.add(int(p["t_ms"]), p.get("force")))
         elif name == "head/ear":
             if self.machine.running:
                 self.machine.feed(Event("ear", p))

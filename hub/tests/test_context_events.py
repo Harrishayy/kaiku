@@ -147,6 +147,15 @@ def test_drum_feel_relative_to_ritual_start():
     assert out == "drum.steady"
 
 
+def test_drum_feel_knock_switch_has_no_force():
+    """KY-031 knock (current build) sends no force: tempo alone decides, never a crash."""
+    feel = DrumFeel(window=6)
+    first, t = taps(feel, 6, 0, 600, None)
+    assert first == "drum.steady"
+    lively, _ = taps(feel, 6, t, 400, None)
+    assert lively == "drum.lively"
+
+
 def test_drum_feel_ignores_double_triggers():
     feel = DrumFeel(window=2)
     assert feel.add(0, 1.0) is None

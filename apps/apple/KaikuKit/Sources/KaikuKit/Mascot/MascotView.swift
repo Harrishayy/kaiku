@@ -341,7 +341,11 @@ public enum GlowClock {
         return (Color(.sRGB, red: r, green: g, blue: b, opacity: 1), lo.intensity + (hi.intensity - lo.intensity) * t)
     }
 
+    /// Pins the hour (app icon render: the icon must not depend on when it was built). nil = the real clock.
+    nonisolated(unsafe) public static var fixedHour: Double?
+
     public static func current(_ now: Date = Date()) -> (Color, Double) {
+        if let h = fixedHour { return at(hour: h) }
         let c = Calendar.current.dateComponents([.hour, .minute], from: now)
         return at(hour: Double(c.hour ?? 12) + Double(c.minute ?? 0) / 60)
     }

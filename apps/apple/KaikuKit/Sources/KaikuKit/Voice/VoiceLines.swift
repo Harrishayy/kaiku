@@ -1,19 +1,26 @@
 @preconcurrency import AVFoundation
+import CryptoKit
 import Foundation
 import Network
 
-/// Kaiku's scripted voice on the phone (plan 05 §2): the same keyed lines as the robot (`GET /v1/voice?lang=`),
-/// audio prefetched after pairing on Wi-Fi into Caches (`GET /v1/voice/{key}`), played with AVAudioPlayer.
-/// Offline / 503 / not cached yet → the on-device synthesizer speaks the same line, so there is always a voice.
+/// Kaiku's one voice outside a Live conversation (D27): every line is Gemini TTS audio from the cloud, in the same
+/// prebuilt voice as Live and the robot (`config/kaiku.toml [voice]`).
+///   keyed lines   `GET /v1/voice/{key}`  — prefetched on Wi-Fi after pairing, fetched on demand on a miss
+///   other lines   `POST /v1/voice/say`   — the app's own copy ("talk.resumed", …), cached here by text hash
+/// Both cached in Caches/KaikuVoice and played with AVAudioPlayer. Never an on-device synthesizer: with no cloud
+/// and nothing cached Kaiku stays silent (the text is always on screen) — a robotic voice breaks its warmth.
 /// Cached text also gives notification titles the exact words Kaiku says aloud.
 @MainActor
 public final class VoiceLines {
     public static let shared = VoiceLines()
 
     private var player: AVAudioPlayer?
-    private let synth = AVSpeechSynthesizer()
     private var prefetching = false
     private var texts: [String: [String: String]] = [:]   // lang → key → text
+    /// Bumped by every play/say/stop: a late network answer for an older request stays silent.
+    private var request = 0
+    /// The cloud client for on-demand fetches (set by prefetch and by Talk).
+    public var api: APIClient?
     /// Silence everything (tests, screenshots: `-kaikuMute YES`).
     public var muted = UserDefaults.standard.bool(forKey: "kaikuMute")
 
@@ -28,6 +35,15 @@ public final class VoiceLines {
 
     static func audioURL(_ key: String, _ lang: String) -> URL { dir.appendingPathComponent("\(lang).\(key).wav") }
     static func textURL(_ lang: String) -> URL { dir.appendingPathComponent("lines.\(lang).json") }
+    /// Dynamic lines: keyed by a hash of language + normalised text (the cloud caches the same way).
+    static func sayURL(_ text: String, _ lang: String) -> URL {
+        let h = SHA256.hash(data: Data("\(lang)|\(normalise(text))".utf8)).prefix(10).map { String(format: "%02x", $0) }.joined()
+        return dir.appendingPathComponent("say.\(lang).\(h).wav")
+    }
+
+    static func normalise(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
 
     /// The cloud's wording for a line (cached), if known.
     public func text(_ key: String, lang: KaikuLanguage) -> String? {
@@ -41,8 +57,9 @@ public final class VoiceLines {
     }
 
     /// After pairing / on foreground: all lines' text, then audio for the ones not cached yet — only on an
-    /// unmetered network (Wi-Fi / wired). Stops at the first 503 (no TTS on the cloud: the synthesizer covers it).
+    /// unmetered network (Wi-Fi / wired). Stops at the first miss (no TTS on the cloud right now).
     public func prefetch(api: APIClient, lang: KaikuLanguage) async {
+        self.api = api
         guard !prefetching else { return }
         prefetching = true
         defer { prefetching = false }
@@ -67,38 +84,58 @@ public final class VoiceLines {
         }
     }
 
-    /// Plays a keyed line: cached audio, else the synthesizer with the cached text (or `fallback`).
+    /// Plays a keyed line in Kaiku's Gemini voice: cached audio, else fetched now; else silent.
     public func play(_ key: String, lang: KaikuLanguage, fallback: String? = nil) {
         guard !muted else { return }
+        request += 1
+        let id = request
         let url = Self.audioURL(key, lang.rawValue)
-        if let p = try? AVAudioPlayer(contentsOf: url) {
-            prepareSession()
-            synth.stopSpeaking(at: .immediate)
-            player = p
-            p.play()
-            return
+        if playFile(url) { return }
+        Task {
+            if let api, let wav = await api.voice(key, lang: lang.rawValue) {
+                try? wav.write(to: url, options: .atomic)
+                if id == request { _ = playData(wav) }
+                return
+            }
         }
-        if let t = text(key, lang: lang) ?? fallback { say(t, lang: lang) }
     }
 
-    /// On-device speech, a fixed voice close to Kaiku's (slightly slow, slightly high).
+    /// Says any short line in Kaiku's Gemini voice (`POST /v1/voice/say`, cached); silent when that fails.
     public func say(_ text: String, lang: KaikuLanguage) {
         guard !muted, !text.isEmpty else { return }
-        prepareSession()
-        player?.stop()
-        let u = AVSpeechUtterance(string: text)
-        u.voice = AVSpeechSynthesisVoice(language: Self.locale(lang))
-        u.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92
-        u.pitchMultiplier = 1.12
-        synth.speak(u)
+        request += 1
+        let id = request
+        let url = Self.sayURL(text, lang.rawValue)
+        if playFile(url) { return }
+        Task {
+            if let api, let wav = await api.sayAudio(Self.normalise(text), lang: lang.rawValue) {
+                try? wav.write(to: url, options: .atomic)
+                if id == request { _ = playData(wav) }
+                return
+            }
+        }
     }
 
     public func stop() {
+        request += 1
         player?.stop()
-        synth.stopSpeaking(at: .immediate)
     }
 
-    public var speaking: Bool { synth.isSpeaking || (player?.isPlaying ?? false) }
+    public var speaking: Bool { player?.isPlaying ?? false }
+
+    private func playFile(_ url: URL) -> Bool {
+        guard let d = try? Data(contentsOf: url) else { return false }
+        return playData(d)
+    }
+
+    private func playData(_ d: Data) -> Bool {
+        guard let p = try? AVAudioPlayer(data: d) else { return false }
+        prepareSession()
+        player?.stop()
+        player = p
+        p.play()
+        return true
+    }
 
     static func locale(_ l: KaikuLanguage) -> String {
         switch l {
@@ -118,5 +155,18 @@ public final class VoiceLines {
             try? s.setActive(true)
         }
         #endif
+    }
+}
+
+extension APIClient {
+    /// `POST /v1/voice/say {text, lang}` → wav in Kaiku's voice (nil on 422/503/offline: caller falls back).
+    public func sayAudio(_ text: String, lang: String) async -> Data? {
+        guard var req = try? request("POST", "/v1/voice/say") else { return nil }
+        req.httpBody = try? JSONEncoder().encode(["text": String(text.prefix(400)), "lang": lang])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 20
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200, data.count > 44 else { return nil }
+        return data
     }
 }

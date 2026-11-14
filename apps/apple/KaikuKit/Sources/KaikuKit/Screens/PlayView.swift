@@ -36,8 +36,9 @@ public struct PlayView: View {
     }
 
     public var body: some View {
-        KScreen(T("play.title"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
-            Text(T("play.body")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+        KScreen(T("play.title"), subtitle: T("play.body"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+            TodayPathCard()
+            SectionHeader(T("play.all"), subtitle: T("play.all.d"), icon: "square.grid.2x2.fill", tone: .honey)
             WideAware { wide in
                 if wide {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: KaikuTokens.Space.s4), GridItem(.flexible())],
@@ -204,7 +205,8 @@ struct SceneBackground: View {
                 KaikuTokens.Colors.bg.opacity(0.001)
             }
         }
-        .ignoresSafeArea()
+        // iPhone: full bleed. Mac: under the toolbar only — never under the sidebar (its glass would take the tint).
+        .ignoresSafeArea(.container, edges: KaikuPlatform.isPhone ? .all : .top)
         .accessibilityHidden(true)
     }
 }
@@ -233,8 +235,9 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
     @State private var round = 0
 
     var body: some View {
-        ZStack {
-            SceneBackground(scene: scene)
+        // The scene is a background, never a layout sibling: on macOS a safe-area-ignoring sibling fed its grown
+        // size back into the pane (it grew past the window and clipped the sidebar + Start button).
+        VStack(spacing: 0) {
             VStack(spacing: KaikuTokens.Space.s3) {
                 topBar
                 Group {
@@ -252,25 +255,36 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
             .padding(.top, KaikuPlatform.isPhone ? KaikuTokens.Space.s2 : KaikuTokens.Space.s4)
             .padding(.bottom, KaikuTokens.Space.s4)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fillsProposal()
+        .background { SceneBackground(scene: scene) }
         .environment(\.colorScheme, scene.isDark ? .dark : colorSchemeFallback)
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        #else
+        .navigationTitle(T(titleKey))
         #endif
     }
 
     @Environment(\.colorScheme) private var colorSchemeFallback
 
-    private var topBar: some View {
+    private func back() { if phase == .play { withAnimation(fade) { phase = .intro } } else { dismiss() } }
+
+    @ViewBuilder private var topBar: some View {
+        #if os(macOS)
+        EscapeKey(action: back)   // Mac: system toolbar back + the game's name as the window title
+        #else
         HStack(spacing: KaikuTokens.Space.s3) {
-            BackButton(onDark: scene.isDark) { if phase == .play { withAnimation(fade) { phase = .intro } } else { dismiss() } }
+            BackButton(onDark: scene.isDark, action: back)
             if !dts.isAccessibilitySize || phase != .play {
                 Text(T(titleKey)).kText(.title3, weight: .semibold).foregroundStyle(scene.ink)
                     .lineLimit(2).layoutPriority(1).accessibilityAddTraits(.isHeader)
             }
             Spacer(minLength: 0)
-            if KaikuPlatform.isPhone { NotOKPill(onDark: scene.isDark) }
+            NotOKPill(onDark: scene.isDark)
         }
+        #endif
     }
 
     private var fade: Animation { KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast) }
@@ -281,7 +295,7 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
             // Dev hook for screenshots (`-kaikuAutostart YES`): skip the intro once.
             let _ = autostartOnce()
             demo()
-                .frame(maxWidth: 360, maxHeight: 230)
+                .frame(maxWidth: KaikuPlatform.isPhone ? 360 : 540, maxHeight: KaikuPlatform.isPhone ? 230 : 340)
                 .frame(minHeight: 150)
                 .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.xl, style: .continuous)
                     .fill(scene.isDark ? KaikuTokens.Colors.nightInk.opacity(0.06) : KaikuTokens.Colors.surface.opacity(0.7)))
@@ -292,7 +306,7 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
             Spacer(minLength: 0)
             VStack(spacing: KaikuTokens.Space.s1) {
                 Button(T("game.start")) { start() }
-                    .buttonStyle(KButtonStyle(scene.isDark ? .night : .primary))
+                    .buttonStyle(KButtonStyle(.primary))
                     .keyboardShortcut(.defaultAction)
                 Button(T("common.nottoday")) { dismiss() }.buttonStyle(KButtonStyle(scene.isDark ? .nightGhost : .ghost))
             }
@@ -329,9 +343,17 @@ struct GameShell<Demo: View, Field: View, EndArt: View>: View {
                 .multilineTextAlignment(.center).wraps().frame(maxWidth: 440)
             Spacer(minLength: 0)
             VStack(spacing: KaikuTokens.Space.s1) {
-                Button(T("game.again")) { start() }
-                    .buttonStyle(KButtonStyle(scene.isDark ? .night : .secondary))
-                    .keyboardShortcut(.defaultAction)
+                if let next = app.nextPathStep {
+                    // Duolingo-style: the end of one step hands you the next, no menu needed.
+                    Button(T("path.upnext", ["name": T(next.titleKey)])) { app.go(next) }
+                        .buttonStyle(KButtonStyle(.primary))
+                        .keyboardShortcut(.defaultAction)
+                    Button(T("game.again")) { start() }.buttonStyle(KButtonStyle(scene.isDark ? .nightGhost : .ghost))
+                } else {
+                    Button(T("game.again")) { start() }
+                        .buttonStyle(KButtonStyle(.primary))
+                        .keyboardShortcut(.defaultAction)
+                }
                 Button(T("game.enough")) { dismiss() }.buttonStyle(KButtonStyle(scene.isDark ? .nightGhost : .ghost))
             }
             .frame(maxWidth: 420)

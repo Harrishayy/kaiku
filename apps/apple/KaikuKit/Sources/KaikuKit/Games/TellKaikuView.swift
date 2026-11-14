@@ -231,8 +231,15 @@ struct Composer: View {
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(KaikuTokens.Colors.surface))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(focused ? KaikuTokens.Colors.focus : KaikuTokens.Colors.line, lineWidth: 1.5))
+                .focusEffectDisabled()
                 .onSubmit(send)
                 .submitLabel(.send)
+                // A multi-line field turns Return into a newline (onSubmit never fires on iOS): Return sends.
+                .onChange(of: text) { _, t in
+                    guard t.hasSuffix("\n") else { return }
+                    text = String(t.dropLast())
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { send() }
+                }
             if let mic { IconButton("mic.fill", label: T("talk.hold"), action: mic) }
             IconButton("arrow.up", label: T("talk.send"), filled: true, action: send)
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)

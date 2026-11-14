@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "description": "A suggested next step for the care team, chosen by fixed rules (never a model). Allowed wording only.",
+  "properties": {
+    "action": {
+      "anyOf": [
+        {
+          "enum": [
+            "flag_booster",
+            "flag_icbt_referral",
+            "acknowledge",
+            "send_message"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the dashboard action that does it, if any",
+      "title": "Action"
+    },
+    "text": {
+      "maxLength": 240,
+      "title": "Text",
+      "type": "string"
+    },
+    "when": {
+      "enum": [
+        "today",
+        "this_week",
+        "next_contact"
+      ],
+      "title": "When",
+      "type": "string"
+    },
+    "why": {
+      "default": "",
+      "maxLength": 240,
+      "title": "Why",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "when"
+  ],
+  "title": "NextStep",
+  "type": "object"
+}

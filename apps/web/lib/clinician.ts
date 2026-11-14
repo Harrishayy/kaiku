@@ -41,7 +41,7 @@ export function num(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   const a = Math.abs(v);
   const s = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
-  return s.replace(/\.?0+$/, '') || '0';
+  return (s.includes('.') ? s.replace(/\.?0+$/, '') : s) || '0'; // 8900 stays 8900; 2.50 → 2.5
 }
 
 const UNITLESS = new Set(['', 'count', 'ratio', '0–1', '1–5']);
@@ -59,8 +59,24 @@ export interface EvidenceRow {
   usual: string;
   z: string;
   direction: string;
+  /** plain words for |z|: "a little", "clearly", "far" (from the usual day-to-day spread) */
+  size: string;
   worse: boolean;
   absZ: number;
+}
+
+/** |z| in plain words: how many of the person's usual day-to-day spreads away from their usual. */
+export function zWords(z: number | null | undefined): string {
+  if (typeof z !== 'number') return '—';
+  const a = Math.abs(z);
+  return a >= 4 ? 'far from usual' : a >= 2.5 ? 'clearly different' : a >= 1.5 ? 'somewhat different' : 'a little';
+}
+
+/** Usual range "(low–high)", never below 0 for a metric that is never negative (minutes, counts, rates). */
+export function usualRange(p: TimelinePoint, unit: string | undefined, nonNegative: boolean): string {
+  if (typeof p.baseline_median !== 'number') return '—';
+  const lo = typeof p.band_low === 'number' && nonNegative ? Math.max(0, p.band_low) : p.band_low;
+  return `${withUnit(p.baseline_median, unit)} (${num(lo)}–${num(p.band_high)})`;
 }
 
 /** Evidence table: every drifting metric any source reports, joined with its timeline numbers, biggest |z| first. */
@@ -79,12 +95,10 @@ export function evidenceRows(c: Consensus, series: MetricSeries[]): EvidenceRow[
         label: s?.label ?? (ruleLabel || e.metric.replace(/_/g, ' ')),
         source: v.source,
         today: last ? withUnit(last.value, s?.unit) : ruleValue || '—',
-        usual:
-          last && typeof last.baseline_median === 'number'
-            ? `${withUnit(last.baseline_median, s?.unit)} (${num(last.band_low)}–${num(last.band_high)})`
-            : '—',
+        usual: last && s ? usualRange(last, s.unit, s.points.every((p) => typeof p.value !== 'number' || p.value >= 0)) : '—',
         z: typeof e.z === 'number' ? `${e.z > 0 ? '+' : e.z < 0 ? '−' : ''}${Math.abs(e.z).toFixed(1)}` : '—',
-        direction: `${e.direction === 'up' ? 'higher' : 'lower'}${e.days ? `, ${e.days} d` : ''}`,
+        direction: `${e.direction === 'up' ? '↑ higher' : '↓ lower'}${e.days ? ` on ${e.days} of the last days` : ''}`,
+        size: zWords(e.z),
         worse,
         absZ: typeof e.z === 'number' ? Math.abs(e.z) : 99,
       });

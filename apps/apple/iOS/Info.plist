@@ -33,6 +33,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>KaikuAppGroup</key>
+	<string>$(KAIKU_APP_GROUP)</string>
 	<key>MWDAT</key>
 	<dict>
 		<key>Analytics</key>

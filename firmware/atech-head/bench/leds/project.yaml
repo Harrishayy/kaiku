@@ -3,8 +3,8 @@
 name: bench-leds
 board: 14port
 modules:
-  - {id: neopixel_grid, instance: ledL, port: 13}
-  - {id: neopixel_grid, instance: ledR, port: 14}
+  - {id: neopixel, instance: ledL, port: 13}
+  - {id: neopixel, instance: ledR, port: 14}
 code:
   loop: |
     static int step = 0; static uint32_t next = 1500;

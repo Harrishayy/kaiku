@@ -57,9 +57,11 @@ bench/<part>/           one-part tests: display, knob, button, leds, motor, spea
 - Secrets only in gitignored `kaiku_link/secrets.h` (public repo).
 
 ## Run standalone
-`pip install atech` (Python ≥ 3.10; the first build downloads ~2.4 GB, once). `cp kaiku_link/secrets.example.h
-kaiku_link/secrets.h`, fill it in. `atech validate . && atech build . && atech upload .` (data cable). Without
-hardware: `make sim NODES=head`.
+`make atech-setup` (once): a venv at `firmware/atech-head/.venv` with the pinned SDK (`requirements.txt`) and the
+ESP32 toolchain inside it (~4 GB), on **espressif32 6.9.0** (Arduino core 2.0.17). Then `source
+firmware/atech-head/.venv/bin/activate` in every terminal (it keeps PlatformIO in the venv). `cp
+kaiku_link/secrets.example.h kaiku_link/secrets.h`, fill it in. `atech validate . && atech build . && atech upload .`
+(data cable). Without hardware: `make sim NODES=head`.
 
 ## Run with sim
 `make broker && make hub` (+ `make sim NODES=sensors` for hall edges), flash, `make tail TOPIC='kaiku/v1/+/raw/head/#'`.
@@ -77,6 +79,12 @@ FROM=-` piped from `atech monitor` (or `FROM=serial:<port>`). Then `make bench P
 FROM=mqtt` with `make hub` and the UNO Q app running. Checker logic: `tools/tests/test_bench.py`.
 
 ## Known issues
+Verified 2026-11-14 with atech 1.0.0a12: all 7 `bench/<part>` projects validate and compile. SDK module IDs are
+`button`, `rotary_encoder`, `neopixel` (not the website's `button_module`, `rotary_encoder_knob`, `neopixel_grid`);
+two-port modules take `ports: [a, b]`; the Speaker method is `playRTTTL`. The SDK leaves the ESP32 platform unpinned
+and the newest (8.x) breaks its own `dc_motor` driver (`ledcSetup`), hence the 6.9.0 pin. Still failing validation:
+the root `project.yaml`, because `kaiku_link` is not yet in the SDK's custom-module shape (`driver:` header/source +
+templates; MQTT libraries go in `libraries:`).
 Not compiled yet (no Atech toolchain on the authoring machine). VERIFY with `atech guide` / `atech info`: the
 `code.setup` key; C++ method names (camelCase assumed from the docs' example: `isPressed`, `getPosition`,
 `enableRing`, `fillScreen`/`fillRect`, `setAll`/`show`, `setSpeed`, `brake`, `playNote`, `setVolume`, `stop`); the

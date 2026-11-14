@@ -31,32 +31,20 @@ public struct TodayView: View {
                         }
                         .frame(maxWidth: .infinity)
                     } else {
-                        MascotWithBubble(state: app.ambientState, text: bubble, size: 144, big: true)
+                        MascotWithBubble(state: app.ambientState, text: bubble, size: 112, big: true)
                     }
                 }
                 actions
             } trailing: {
-                KSection {
-                    NavigationLink(value: KaikuRoute.weather) {
-                        KRow(icon: "sun.max.fill", tint: KaikuTokens.Colors.sky, title: T("today.card.weather.t"),
-                             detail: app.weatherDoneToday ? T("today.card.weather.done") : T("today.card.weather.d"),
-                             accessory: app.weatherDoneToday ? .check : .chevron)
-                    }
-                    .buttonStyle(.kPressRow())
-                    KDivider()
-                    NavigationLink(value: KaikuRoute.breathe) {
-                        KRow(icon: "wind", tint: KaikuTokens.Colors.sage, title: T("today.card.breathe.t"), detail: T("today.card.breathe.d"))
-                    }
-                    .buttonStyle(.kPressRow())
-                }
-                GardenStrip(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
+                TodayPathCard()
+                GardenCard(garden: app.me?.garden ?? Garden()) { app.selectedTab = .days }
             }
         }
         .refreshable { await app.refresh() }
     }
 
     @ViewBuilder private var actions: some View {
-        if let arm, !declined {
+        if let arm, !declined, arm == .drum || arm == .friend_ping {
             VStack(spacing: KaikuTokens.Space.s1) {
                 suggestionButton(arm)
                 Button(T("common.nottoday")) {
@@ -121,6 +109,32 @@ struct GardenStrip: View {
         .buttonStyle(.kPress)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(T("tab.days"))
+    }
+}
+
+/// Today's garden card: "Your garden", this week's seven day plots (big enough to read), a line on what grows it.
+struct GardenCard: View {
+    let garden: Garden
+    let open: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+            Button(action: open) {
+                HStack {
+                    Text(T("garden.title")).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(KaikuTokens.Colors.sage)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.kPress)
+            GardenBeds(garden: garden, weeks: 1, plantHeight: 84)
+            Text(garden.resting ? T("days.resting") : T("garden.legend"))
+                .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+        }
+        .padding(KaikuTokens.Space.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GardenWash())
     }
 }
 

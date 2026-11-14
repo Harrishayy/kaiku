@@ -3,7 +3,9 @@
 /**
  * Clinician patient view (design/ia.md "Clinician", look book): header → consensus chip + one sentence + rule →
  * four source cards → evidence table → explanation ("written by AI, not a decision") + actions → timeline → PHQ-9.
- * English only. Kaiku appears only as a 30 px icon. Never shows the person's memories.
+ * → this week (routines, going well, worth a look; GET /v1/patients/{id}/week) → what Kaiku has learned (graph, only
+ * when the person shares: activities, what helps, routines; never people, places, likes, plans).
+ * English only. Kaiku appears only as a 30 px icon. Never shows the person's memories list.
  */
 
 import Link from 'next/link';
@@ -13,11 +15,13 @@ import {
   type ActionRequest,
   type ActionResult,
   type Consensus,
+  type KnowledgeGraph,
   type MeResponse,
   type MetricSeries,
   type PatientsResponse,
   type Phq9History,
   type TimelineResponse,
+  type WeekSummary,
 } from '@contracts';
 import { api, useApi } from '@/lib/api';
 import { consensusChip, consensusSentence, evidenceRows, VERDICT_WORD } from '@/lib/clinician.ts';
@@ -26,6 +30,9 @@ import { useQueryParam } from '@/lib/params';
 import { Mascot } from '@/components/Mascot';
 import { SourceCard } from '@/components/SourceCard';
 import { Phq9Chart, TimelineChart } from '@/components/TimelineChart';
+import { LearnedGraph, type GraphWords } from '@/components/LearnedGraph';
+import { WeekPanels, type WeekWords } from '@/components/WeekPanels';
+import { RecordStrip } from '@/components/RecordStrip';
 
 type ActionName = ActionRequest['action'];
 
@@ -58,6 +65,8 @@ function Detail({ id }: { id: string }) {
   const timeline = useApi<TimelineResponse>(`/v1/patients/${enc}/timeline`);
   const phq9 = useApi<Phq9History>(`/v1/patients/${enc}/phq9`);
   const me = useApi<MeResponse>(`/v1/me?home_id=${enc}`);
+  const week = useApi<WeekSummary>(`/v1/patients/${enc}/week`, 60_000);
+  const graph = useApi<KnowledgeGraph>(`/v1/patients/${enc}/graph`, 120_000);
   const list = useApi<PatientsResponse>('/v1/patients');
   const summary = list.data?.patients.find((p) => p.id === id);
   const series = useMemo(() => timeline.data?.series ?? [], [timeline.data]);
@@ -154,11 +163,70 @@ function Detail({ id }: { id: string }) {
         <QuickActions id={id} onDone={consensus.reload} />
       </section>
 
+      {week.data && week.data.next_steps && week.data.next_steps.length > 0 && (
+        <NextSteps id={id} steps={week.data.next_steps} onDone={consensus.reload} />
+      )}
+
       <div className="k-srcs">
         {sources.map(({ source, v }) => (
           <SourceCard key={source} source={source} v={v} series={series} />
         ))}
       </div>
+
+      <section className="k-card" aria-labelledby="wk-h">
+        <h2 id="wk-h">This week</h2>
+        <p className="xs mut">
+          Computed by fixed rules from observations against this person’s own usual
+          {week.data?.shared ? ' and, shared by the person, their conversations with Kaiku' : ''}. Not a decision; it never
+          changes the consensus.
+        </p>
+        {!week.data ? (
+          <p className="sm mut">{week.error ? 'Week summary unavailable.' : 'Loading…'}</p>
+        ) : (
+          <>
+            <h3>One record: what each source added</h3>
+            <RecordStrip
+              week={week.data}
+              words={{
+                source: (s) => sourceLabel(s),
+                days: (n) => `${n}/7 days`,
+                none: 'No data',
+                flow: 'Every observation lands in one record per person. The routines, the two lists below, the consensus and the learned map are all computed from it.',
+                dayLetters: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
+              }}
+            />
+            <WeekPanels week={week.data} words={CARE_WEEK} />
+          </>
+        )}
+      </section>
+
+      <section className="k-card" aria-labelledby="kg-h">
+        <div className="row-wrap" style={{ justifyContent: 'space-between' }}>
+          <h2 id="kg-h">What Kaiku has learned</h2>
+          {graph.data?.shared && <span className="k-chip ok">Shared by {name}</span>}
+        </div>
+        {!graph.data ? (
+          <p className="sm mut">{graph.error ? 'Unavailable.' : 'Loading…'}</p>
+        ) : !graph.data.shared ? (
+          <div className="k-empty sm">
+            <b>Not shared.</b>
+            <span>
+              {name} hasn’t turned on “Share with my care team” on their own page. What Kaiku learns stays with them until
+              they do.
+            </span>
+          </div>
+        ) : (
+          <>
+            <p className="xs mut">
+              Activities, what helps and routines, with how many observations, sessions or notes back each one. Click a node
+              to see its links.
+              {graph.data.withheld && graph.data.withheld.length > 0 &&
+                ` Kept private by design: ${graph.data.withheld.map((w) => CARE_GRAPH.types[w].toLowerCase()).join(', ')}.`}
+            </p>
+            <LearnedGraph graph={graph.data} words={CARE_GRAPH} />
+          </>
+        )}
+      </section>
 
         <section className="k-card" aria-labelledby="ev-h" style={{ padding: '12px 6px 4px' }}>
           <h2 id="ev-h" className="lbl" style={{ paddingInline: 10 }}>
@@ -177,7 +245,7 @@ function Detail({ id }: { id: string }) {
                     <th scope="col">Source</th>
                     <th scope="col">Latest</th>
                     <th scope="col">Usual (median, range)</th>
-                    <th scope="col">z</th>
+                    <th scope="col">How unusual</th>
                     <th scope="col">Direction</th>
                   </tr>
                 </thead>
@@ -188,12 +256,19 @@ function Detail({ id }: { id: string }) {
                       <td>{sourceLabel(r.source)}</td>
                       <td>{r.today}</td>
                       <td>{r.usual}</td>
-                      <td className="mono nw">{r.z}</td>
-                      <td className={r.worse ? 'worse nw' : 'nw'}>{r.direction}</td>
+                      <td className="nw">
+                        {r.size}
+                        {r.z !== '—' && <span className="zw">z {r.z}</span>}
+                      </td>
+                      <td className={r.worse ? 'worse' : 'better'}>{r.direction}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className="xs mut k-ev-note">
+                How unusual: the latest value compared with this person’s own usual, measured in their usual day-to-day spread
+                (z). About 2 or more counts as a change. Clay = in the direction that counts as a change; green = the other way.
+              </p>
             </div>
           )}
         </section>
@@ -265,6 +340,103 @@ function Detail({ id }: { id: string }) {
   );
 }
 
+const CARE_WEEK: WeekWords = {
+  routines: 'Routines',
+  well: 'Going well this week',
+  look: 'Worth a look this week',
+  routinesEmpty: 'No regular rhythm found yet (needs about three weeks of data).',
+  wellEmpty: 'Nothing stands out on the positive side this week.',
+  lookEmpty: 'Nothing stands out this week.',
+  status: { kept: 'kept', partly: 'partly', slipped: 'fewer than usual' },
+  sleepStatus: { kept: 'steady', partly: 'shifted a little', slipped: 'shifted' },
+  range: (from, to) => `Last 7 days: ${from} – ${to}. Usual = the 3 weeks before.`,
+  tag: (i) => (i.source ? sourceLabel(i.source) : null),
+  basis: (r) => (r.basis?.includes('episodes') ? 'Includes conversations with Kaiku (shared)' : null),
+};
+
+const CARE_GRAPH: GraphWords = {
+  types: {
+    me: 'Person',
+    activity: 'Activities',
+    routine: 'Routines',
+    helper: 'What helps (told)',
+    person: 'People',
+    place: 'Places',
+    like: 'Likes',
+    plan: 'Plans',
+  },
+  rel: {
+    knows: 'knows',
+    goes_to: 'goes to',
+    likes: 'likes',
+    helped_by: 'helped by',
+    plans: 'plans',
+    did: 'does',
+    helped: 'helped (bandit)',
+    about: 'about',
+    keeps: 'keeps',
+    of: 'routine of',
+  },
+  relIn: {
+    knows: 'known by',
+    goes_to: 'visited by',
+    likes: 'liked by',
+    helped_by: 'helps',
+    plans: 'planned by',
+    did: 'done by',
+    helped: 'helped',
+    about: 'mentioned in',
+    keeps: 'kept by',
+    of: 'routine',
+  },
+  evidence: (n) => `Evidence: ${n}`,
+  links: 'Links',
+  hint: 'Click a node to see what it links to.',
+  none: 'No links.',
+  me: 'Person',
+};
+
+const WHEN: Record<string, string> = { today: 'Today', this_week: 'This week', next_contact: 'Next contact' };
+
+function NextSteps({ id, steps, onDone }: { id: string; steps: NonNullable<WeekSummary['next_steps']>; onDone: () => void }) {
+  const [done, setDone] = useState<Record<string, string>>({});
+  return (
+    <section className="k-card" aria-labelledby="ns-h">
+      <h2 id="ns-h">Suggested next steps</h2>
+      <p className="xs mut">Chosen by fixed rules from the consensus and this week’s record. Suggestions only; the decision is yours.</p>
+      <ul className="steps">
+        {steps.map((s, i) => (
+          <li key={i} className="step">
+            <span className={`step-when ${s.when}`}>{WHEN[s.when]}</span>
+            <div>
+              <b>{s.text}</b>
+              {s.why && <p>{s.why}</p>}
+            </div>
+            {s.action && (
+              <button
+                type="button"
+                className="k-b k-b-soft k-b-small"
+                disabled={Boolean(done[s.action])}
+                onClick={async () => {
+                  try {
+                    await postAction(id, { action: s.action! });
+                    setDone((d) => ({ ...d, [s.action!]: 'Logged' }));
+                    onDone();
+                  } catch {
+                    setDone((d) => ({ ...d, [s.action!]: '' }));
+                  }
+                }}
+              >
+                {done[s.action] || ACTION_LABEL[s.action]}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function ExplanationCard({ c }: { c: Consensus }) {
   const e = c.explanation;
   return (
@@ -312,6 +484,7 @@ function SeriesBySource({ series }: { series: MetricSeries[] }) {
             <summary>
               <h3 style={{ display: 'inline' }}>{sourceLabel(src)}</h3>{' '}
               <span className="xs mut">· {groups.get(src)!.length} metrics</span>
+              <span className="tl-show">Show / hide</span>
             </summary>
             <div className="k-tl-charts">
               {groups.get(src)!.map((s) => (

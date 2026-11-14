@@ -8,6 +8,11 @@
     "ok": {
       "title": "Ok",
       "type": "boolean"
+    },
+    "transcript_stored": {
+      "default": false,
+      "title": "Transcript Stored",
+      "type": "boolean"
     }
   },
   "required": [

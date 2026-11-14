@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from kaiku_contracts.api import Garden, Highlight, Mascot
+from kaiku_contracts.api import Garden, GardenDay, Highlight, Mascot
 from kaiku_contracts.criteria import Criteria
 
 from .analytics.data import PatientData
@@ -75,7 +75,13 @@ def garden_for(events: list[dict[str, Any]], today: date) -> Garden:
     done = interactions(events)
     plants = sum(1 for d, _ in done if today - timedelta(days=GARDEN_DAYS) < d <= today)
     last = max((d for d, _ in done if d <= today), default=None)
-    return Garden(plants=plants, resting=last is not None and (today - last).days >= RESTING_AFTER_DAYS)
+    per: dict[date, list[str]] = {}
+    for d, kind in done:
+        if today - timedelta(days=GARDEN_DAYS) < d <= today:
+            per.setdefault(d, []).append(kind)
+    days = [GardenDay(date=d, count=len(per.get(d, [])), kinds=sorted(set(per.get(d, []))))
+            for d in (today - timedelta(days=i) for i in range(GARDEN_DAYS - 1, -1, -1))]
+    return Garden(plants=plants, resting=last is not None and (today - last).days >= RESTING_AFTER_DAYS, days=days)
 
 
 def together_recently(events: list[dict[str, Any]], today: date) -> bool:

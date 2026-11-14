@@ -37,6 +37,7 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/me?home_id=` | `MeResponse` — person view: plain-language summary, what helps, next suggestion, `mascot`, `highlights` (7 days), `garden` |
 | `GET /v1/voice?lang=en\|fi\|sv` | `VoiceLinesResponse`: every keyed line as text (captions/offline) |
 | `GET /v1/voice/{line_key}?lang=` | `audio/wav` in Kaiku's voice (cached on disk); 404 unknown key; **503 + JSON `{detail, reason, hint}`** when TTS is unavailable and nothing is cached |
+| `POST /v1/voice/say` | `VoiceSayRequest {text ≤ 400, lang}` → `audio/wav`, same voice, cached by text hash (home token); 422 on a crisis phrase (never voiced); 503 + hint without TTS |
 | `GET /v1/nudge?home_id=` | `NudgeResponse` (Thompson sampling) |
 | `GET /v1/commands?home_id=&since=` · `WS /v1/stream/{home_id}?token=` | `cmd.hub` envelopes (clinician_message, phq9_due); delivered once |
 | `GET /v1/events?home_id=&since=&limit=` | `LiveEventsResponse` (newest first) |
@@ -44,14 +45,19 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/eval` | `EvalResult` (per-state precision/recall, false needs_call per patient-month, lead time, ablation) |
 | `POST /v1/admin/recompute?eval=true` · `POST /v1/admin/reset` | recompute (+ simulation) · delete simulated data |
 | `GET /v1/admin/criteria` · `PUT /v1/admin/criteria` · `POST /v1/admin/criteria/preview?eval=1` | criteria in effect · apply/reset a live override · dry-run (`CriteriaResponse` / `CriteriaPreview`) |
-| `POST /v1/companion/session` | `CompanionSessionResponse {session_id, model, voice, system_instruction, tools[], context_card, persona_version, safety_phrases_version, live_token\|null}` (home token) |
+| `POST /v1/companion/session` | `CompanionSessionResponse {session_id, model, voice, system_instruction, tools[], context_card, persona_version, safety_phrases_version, live_token\|null, live_setup}` (home token). `live_setup` = Kaiku's recommended Live setup (persona, voice, tools, `[live]` automatic VAD + barge-in, transcriptions); the token locks only the model (`fieldMask: model`), so devices add resumption / compression / tool behaviour |
 | `POST /v1/companion/tool` | `CompanionToolResult {ok, executor, result, error, crisis}` — crisis check first, then surface + schema, then the effect |
 | `POST /v1/companion/episode` | `EpisodeResult`; 422 if the thread topic is refused or the id belongs to another home |
 | `GET /v1/me/memories?home_id=` | `MemoriesResponse` ("What Kaiku remembers", newest first, expired plans dropped) |
 | `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` | `DeletedResponse` (404 if not that home's) |
+| `GET /v1/me/transcripts?home_id=` | `TranscriptsResponse` — opt-in conversation transcripts, newest first (D33) |
+| `DELETE /v1/me/transcripts/{episode_id}?home_id=` · `DELETE /v1/me/transcripts?home_id=` | `DeletedResponse` (404 if not that home's) |
 | `PUT /v1/me/memory_settings?home_id=` | `MemorySettings {remember}` — false = no memory writes |
 | `POST /v1/companion/tool` `ask_mind` | `result` = `MindAnswer` (route memory › flash › argon › fallback; grounded cites, tags stripped) — see "Gemini-first mind" |
 | `GET /v1/me/constellation?home_id=` | `ConstellationResponse`: people/places/likes/what helps/plans/activities + edges (no health data, scores, states, evidence ids) |
+| `GET /v1/me/week?home_id=` · `GET /v1/patients/{id}/week` | `WeekSummary` (D34): routines (daily / most days / a weekday rhythm, usual time, this week kept/partly/slipped), `going_well`, `worth_a_look` — by code (`week.py`); person wording never has states/scores/z; care team adds metric drift, verdicts, bandit, safety flags, PHQ-9 cadence; both get `sources` (the one record: what robot / apps / glasses / watch added per day, counts only); care team gets `next_steps` (fixed rules: call today on safety, check-in call on needs_call, template-suggested booster/iCBT with their action, PHQ-9 due, slipped routine, best response, disagreeing sources) |
+| `GET /v1/me/graph?home_id=` · `GET /v1/patients/{id}/graph` | `KnowledgeGraph` ("What Kaiku has learned"): graph.py nodes + obs-only activities + routine nodes, evidence counts, detail. Care team: empty + `shared: false` unless the person shares; then only me/activity/helper/routine (`withheld` lists the rest) |
+| `GET /v1/me/sharing?home_id=` · `PUT /v1/me/sharing?home_id=` | `CareSharing {share_with_care_team}` — default **off** (D34) |
 | `POST /v1/companion/postcard` · `GET /v1/me/postcards/{id}` | `PostcardResponse {id, url, cached, model}` (Nano Banana 2 Lite, cached) · the image; **503 + `{detail, reason, hint}`** without a key / over the daily cap |
 | `GET /v1/health/intelligence?days=7` | `IntelligenceHealth`: per day/model/task calls, ok, fallbacks, p50/p95 ms; ask_mind `routes`; fallback rate |
 | `GET /v1/patients/{id}/brief` | `ClinicianBrief` (latest `POST /v1/admin/weekly`; template until then). Never reads the notebook |
@@ -94,8 +100,12 @@ kaiku_cloud/
     brief.py              weekly clinician brief (flagship, metric-id grounded, template fallback)
     postcard.py           walk postcard (fixed style prompt from stats; disk cache; daily cap)
     nightly.py            POST /v1/admin/nightly-mind
-    live_token.py         Gemini Live ephemeral token (REST v1beta auth_tokens, uses=1, 30 min / 1 min to start);
+    live_token.py         Live setup (REST camelCase; VAD knobs `config/kaiku.toml [live]`) + ephemeral token with
+                          only the model locked (`bidiGenerateContentSetup` + `fieldMask: model`; uses=1, 30 min / 1 min to start);
                           None without GEMINI_API_KEY or on any error
+  week.py                 D34 dashboard: routines from obs (+ episodes for the person / when shared), going well /
+                          worth a look (drift_for per metric, verdicts, bandit, safety, PHQ-9), graph view + sharing
+  api/dashboard.py        /v1/me/week|graph|sharing, /v1/patients/{id}/week|graph (registered by main.py)
   api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
   store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv,
                           memories + memories_fts, episodes, threads)
@@ -122,6 +132,7 @@ kaiku_cloud/
     nightly.py            recompute all (+ simulation) inside the API process
 tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py,
                           test_companion.py (mascot, garden, highlights, voice 404/503/cache),
+                          test_week.py (routines, week wording, sharing gate, graph evidence),
                           test_mind.py (session, tools, memory rules, thread across surfaces, routines, tone, token)
 ```
 
@@ -144,13 +155,18 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
 - Thin data is never "stable": < 2 sufficient sources → `watch` with `agreement: low_coverage`.
 - Only `obs.*` is accepted; duplicates by envelope `id` are ignored. With `KAIKU_HOME_TOKEN` set, every
   `POST /v1/events` needs `Authorization: Bearer <token>` (hub, glasses, laptop alike).
-- **Memories, episodes and threads are person-facing only**: no clinician route reads them (tested). Episodes hold
-  no transcript. The context card never contains the consensus state, scores, numbers or wearable data; tone is the
+- **Memories, episodes, threads and transcripts are person-facing only**: no clinician route reads them (tested).
+  Transcripts (D33) exist only when the device sent one (person's opt-in) and are dropped whole if the outcome is
+  `crisis` or any turn matches a crisis phrase; never logged (only a turn count). Training export:
+  `python -m kaiku_cloud.jobs.transcripts_export OUT.jsonl` (de-identified chat JSONL for Gemma). The context card never contains the consensus state, scores, numbers or wearable data; tone is the
   only cue. A crisis phrase in a tool call stores nothing, raises `obs.safety_flag` and returns the scripted message.
 - **ask_mind never decides state and never stores anything.** Code verifies every cite id; an unknown id, a missing
   cite (except `emotional`), bad wording or a pick between conflicting notes → next tier or the scripted line.
   Prompts carry only the question + facts that pass `router.clean_fact` (no digits, state words, wearable/health
-  words). The graph, vectors, constellation and ledger are person-facing / contentless; no clinician route reads them.
+  words). The graph, vectors, constellation and ledger are person-facing / contentless; no clinician route reads them,
+  **except** `GET /v1/patients/{id}/graph` and the episode part of `/week`, and only while the person has
+  `share_with_care_team` on (default off, D34): activities, what helps and routines; never people, places, likes,
+  plans, memories list, episodes or transcripts (tested in `test_week.py`).
 - Every paid call (Flash, Argon, Embedding 2, image) goes through `kaiku_contracts.budget` (guard + metered) and
   writes a `model_calls` row; `BudgetExceeded` = unavailable → fallback.
 - One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
@@ -222,6 +238,7 @@ late-night minutes; glasses as usual with a sub-threshold cadence dip → disagr
 | `GEMINI_API_KEY` | unset → voice serves cache only (503 + hint on a miss) | Gemini TTS for `/v1/voice` |
 | `KAIKU_VOICE_CACHE` | `[voice].cache_dir` (`logs/voice_cache`; `/data/voice_cache` on Modal) | rendered audio |
 | `GEMINI_API_KEY` (mind) | unset → `live_token: null` | mints Gemini Live ephemeral tokens for `/v1/companion/session` |
+| `[week]` in `config/kaiku.toml` | see file | routine thresholds (usual weeks, daily/most-days share, kept/partly ratios, sleep shift, helped_min) for `week.py` |
 | `KAIKU_VOICE_LINES` | `config/voice_lines.toml` | keyed script (re-read on change) |
 
 Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
@@ -238,6 +255,9 @@ uv run pytest cloud/tests   # rule table, hysteresis, acknowledge, low coverage,
                             # criteria edits alone change outcomes, every demo patient's state, LLM fallback +
                             # banned words, bandit, simulation + tuning CLI, every API route incl. criteria + auth
 uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml] [--n 40]   # offline tuning
+make e2e-intelligence       # REAL calls (cents; needs .env GEMINI_API_KEY [+ ADC], or KAIKU_ENV_FILE=): temp cloud +
+                            # seed → session token → Live typed/spoken (VAD)/barge-in → TTS keyed + say → ask_mind
+                            # → nightly-mind graph → constellation. Exit 2 = no key (unit tests stay offline)
 ```
 
 ## Known issues
@@ -251,10 +271,13 @@ uv run python -m kaiku_cloud.jobs.simulate [--criteria A.toml] [--compare B.toml
   change flips one, fix the scenario deliberately — the live demo depends on it.
 - Re-seeding on a later day is a no-op (ids don't depend on the date): `make seed ARGS=--reset` re-anchors to today.
 - `homes.summary` rows written by v1 code are ignored and recomputed on first read.
-- `/v1/voice` has not been called against the live TTS API yet (no key in the build env); the response parser
-  handles both `output_audio` and `steps[].content[]`. Pre-render once a key is available.
-- Companion: Live model/voice come from `config/kaiku.toml [models].gemini_live` / `[voice].name`. The ephemeral token
-  call follows the current docs but has not run against the real API here (no key); it fails soft to null.
+- `/v1/voice` + `/v1/voice/say`: verified with real calls (`make e2e-intelligence`, platform/ADC TTS path).
+- Companion: Live model/voice come from `config/kaiku.toml [models].gemini_live` / `[voice].name`. Ephemeral tokens
+  need `GEMINI_API_KEY` (a Developer API feature; ADC can't mint them). Verified 2026-11-14 with real calls: token
+  with `live_setup` as the setup frame → typed turn, spoken turn (automatic VAD), tool call, barge-in (`interrupted`).
+  `enableAffectiveDialog` makes constrained sessions fail (1007 on the first turn), so `[live].affective_dialog=false`.
+  The REST field is `bidiGenerateContentSetup` (`liveConnectConstraints` is the SDK name; REST answers 400 — the old
+  code always failed soft to null).
   `forget` and `ask_mind` are in the registry on every surface but not yet in `config/surfaces.toml` tool lists (the
   prompt lists the served tools, so they are described anyway; owner of config/persona.md + surfaces.toml: add an
   "ask_mind when unsure" line).

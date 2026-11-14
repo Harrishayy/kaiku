@@ -22,6 +22,27 @@ public enum TalkAudio {
         #endif
     }
 
+    /// Meta glasses (or another HFP headset) connected → take their mic (Meta DAT docs: pick the `.bluetoothHFP`
+    /// port with `setPreferredInput`; the glasses beamform to the wearer's voice). No headset → system default.
+    public static func preferHeadsetInput() {
+        #if os(iOS)
+        let s = AVAudioSession.sharedInstance()
+        if let hfp = s.availableInputs?.first(where: { $0.portType == .bluetoothHFP }) {
+            try? s.setPreferredInput(hfp)
+        }
+        #endif
+    }
+
+    /// The output is a pair of Meta glasses (port name from the Bluetooth device, e.g. "Ray-Ban Meta").
+    public static var glassesConnected: Bool {
+        #if os(iOS)
+        let r = AVAudioSession.sharedInstance().currentRoute
+        return (r.inputs + r.outputs).contains { $0.portType == .bluetoothHFP && $0.portName.localizedCaseInsensitiveContains("meta") }
+        #else
+        return false
+        #endif
+    }
+
     public static func deactivate() {
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)

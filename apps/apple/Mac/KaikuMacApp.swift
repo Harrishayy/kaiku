@@ -14,7 +14,8 @@ struct KaikuMacApp: App {
             KaikuRootView()
                 .environment(app)
                 .frame(minWidth: 720, minHeight: 480)
-                .onOpenURL { url in Task { await app.pair(link: url.absoluteString) } }
+                // kaiku://play/firefly etc. switch screens (same links as iPhone); anything else is a pairing link
+                .onOpenURL { url in if !app.open(url) { Task { await app.pair(link: url.absoluteString) } } }
                 .onAppear { MacCompanion.shared.start(app: app) }
                 .task(id: app.nudge?.arm) { DailyInvitation.schedule(app: app) }
                 #if DEBUG

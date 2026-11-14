@@ -102,6 +102,18 @@
       "title": "BriefSection",
       "type": "object"
     },
+    "CareSharing": {
+      "additionalProperties": false,
+      "description": "GET/PUT /v1/me/sharing — the person's choice to show their care team what Kaiku has learned (the knowledge\ngraph and routines from conversations). Default off (D34). People, places, likes and plans are never shared.",
+      "properties": {
+        "share_with_care_team": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "title": "CareSharing",
+      "type": "object"
+    },
     "ClinicianBrief": {
       "additionalProperties": false,
       "description": "GET /v1/patients/{id}/brief — weekly clinician brief (flagship, grounded in metric ids; template fallback).\nExplains the consensus; never changes it.",
@@ -260,6 +272,19 @@
       "properties": {
         "context_card": {
           "$ref": "#/$defs/ContextCard"
+        },
+        "live_setup": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; the server uses the token's copy either way."
         },
         "live_token": {
           "anyOf": [
@@ -1113,7 +1138,7 @@
     },
     "EpisodeIn": {
       "additionalProperties": false,
-      "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). No transcript, no audio.",
+      "description": "POST /v1/companion/episode — one finished session (also for sessions run offline). Never audio.\n`transcript` only when the person opted in (device consent `transcripts`, off by default); the cloud drops it\nif the outcome is `crisis` or any turn matches a crisis phrase.",
       "properties": {
         "close_thread": {
           "default": false,
@@ -1199,6 +1224,22 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "transcript": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TranscriptTurn"
+              },
+              "maxItems": 600,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opt-in only; person-facing + deletable; never on a clinician route; de-identified for training"
         }
       },
       "required": [
@@ -1216,6 +1257,10 @@
           "type": "string"
         },
         "ok": {
+          "type": "boolean"
+        },
+        "transcript_stored": {
+          "default": false,
           "type": "boolean"
         }
       },
@@ -1465,8 +1510,14 @@
     },
     "Garden": {
       "additionalProperties": false,
-      "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter.",
+      "description": "Reward only (no data). plants = finished interactions in the last 14 days; resting after 3 quiet days.\nIt never wilts and there is no streak counter. `days` = the last 14 local days, oldest first (one plot each).",
       "properties": {
+        "days": {
+          "items": {
+            "$ref": "#/$defs/GardenDay"
+          },
+          "type": "array"
+        },
         "plants": {
           "default": 0,
           "minimum": 0,
@@ -1478,6 +1529,126 @@
         }
       },
       "title": "Garden",
+      "type": "object"
+    },
+    "GardenDay": {
+      "additionalProperties": false,
+      "description": "One plot of the garden: what was done together that local day (kinds: ritual, drum_session, play_session,\nouting, friend_link, weather_check). A quiet day is an empty plot, never a wilted one.",
+      "properties": {
+        "count": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "date": {
+          "format": "date",
+          "type": "string"
+        },
+        "kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "GardenDay",
+      "type": "object"
+    },
+    "GraphEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "dst": {
+          "type": "integer"
+        },
+        "evidence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rel": {
+          "enum": [
+            "knows",
+            "goes_to",
+            "likes",
+            "helped_by",
+            "plans",
+            "did",
+            "helped",
+            "about",
+            "keeps",
+            "of"
+          ],
+          "type": "string"
+        },
+        "src": {
+          "type": "integer"
+        },
+        "weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "rel",
+        "weight",
+        "evidence"
+      ],
+      "title": "GraphEdge",
+      "type": "object"
+    },
+    "GraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "description": "how many observations / sessions / memories back this node",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "description": "graph node id; negative = derived for this view (routines, obs-only activities)",
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "me",
+            "person",
+            "place",
+            "like",
+            "helper",
+            "plan",
+            "activity",
+            "routine"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "evidence"
+      ],
+      "title": "GraphNode",
       "type": "object"
     },
     "HeadCmd": {
@@ -2024,6 +2195,67 @@
         "activity"
       ],
       "title": "InterventionResponse",
+      "type": "object"
+    },
+    "KnowledgeGraph": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/graph (\"What Kaiku has learned\") · GET /v1/patients/{id}/graph (only when the person shares;\nthen activities, what helps and routines — never people, places, likes or plans: listed in `withheld`).\nNever health data, scores or states.",
+      "properties": {
+        "audience": {
+          "enum": [
+            "person",
+            "care_team"
+          ],
+          "type": "string"
+        },
+        "computed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/GraphEdge"
+          },
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/GraphNode"
+          },
+          "type": "array"
+        },
+        "shared": {
+          "type": "boolean"
+        },
+        "withheld": {
+          "items": {
+            "enum": [
+              "me",
+              "person",
+              "place",
+              "like",
+              "helper",
+              "plan",
+              "activity",
+              "routine"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "audience",
+        "shared",
+        "nodes",
+        "edges",
+        "computed_at"
+      ],
+      "title": "KnowledgeGraph",
       "type": "object"
     },
     "LaptopSession": {
@@ -2956,6 +3188,53 @@
         }
       },
       "title": "NextDay",
+      "type": "object"
+    },
+    "NextStep": {
+      "additionalProperties": false,
+      "description": "A suggested next step for the care team, chosen by fixed rules (never a model). Allowed wording only.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "flag_booster",
+                "flag_icbt_referral",
+                "acknowledge",
+                "send_message"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the dashboard action that does it, if any"
+        },
+        "text": {
+          "maxLength": 240,
+          "type": "string"
+        },
+        "when": {
+          "enum": [
+            "today",
+            "this_week",
+            "next_contact"
+          ],
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "when"
+      ],
+      "title": "NextStep",
       "type": "object"
     },
     "NodeHealthReport": {
@@ -4013,6 +4292,113 @@
       "title": "Ritual",
       "type": "object"
     },
+    "Routine": {
+      "additionalProperties": false,
+      "description": "A rhythm found BY CODE in the last weeks (obs, and conversations for the person or when shared).",
+      "properties": {
+        "activity": {
+          "description": "ritual | walk | drum | breathe | checkin | laptop | play | sleep",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "enum": [
+              "obs",
+              "episodes"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cadence": {
+          "enum": [
+            "daily",
+            "most_days",
+            "weekly"
+          ],
+          "type": "string"
+        },
+        "day_part": {
+          "anyOf": [
+            {
+              "enum": [
+                "morning",
+                "afternoon",
+                "evening",
+                "night"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "kept",
+            "partly",
+            "slipped"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "description": "worded for the audience",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "this_week": {
+          "description": "days with it in the last 7 days",
+          "maximum": 7,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "usual_per_week": {
+          "maximum": 7,
+          "minimum": 0,
+          "type": "number"
+        },
+        "usual_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "local HH:MM (median of the usual weeks)"
+        },
+        "weekday": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "for weekly routines, e.g. 'Tuesday'"
+        }
+      },
+      "required": [
+        "activity",
+        "label",
+        "cadence",
+        "usual_per_week",
+        "this_week",
+        "status",
+        "text"
+      ],
+      "title": "Routine",
+      "type": "object"
+    },
     "RuleSpec": {
       "additionalProperties": false,
       "description": "A direct trigger: when it fires, the metric's source counts as 'worse' regardless of baselines.",
@@ -4340,6 +4726,25 @@
       "title": "SourceBadge",
       "type": "object"
     },
+    "SourceCount": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "description": "e.g. 'walks', 'minutes outside', 'drum sessions'",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "title": "SourceCount",
+      "type": "object"
+    },
     "SourceNote": {
       "additionalProperties": false,
       "properties": {
@@ -4459,6 +4864,61 @@
         "computed_at"
       ],
       "title": "SourceVerdict",
+      "type": "object"
+    },
+    "SourceWeek": {
+      "additionalProperties": false,
+      "description": "What one source added to the record in the last 7 days (counts only, no content).",
+      "properties": {
+        "counts": {
+          "items": {
+            "$ref": "#/$defs/SourceCount"
+          },
+          "type": "array"
+        },
+        "days": {
+          "description": "days with data",
+          "maximum": 7,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "last_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "per_day": {
+          "description": "observations per day, oldest first",
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 7,
+          "minItems": 7,
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "per_day",
+        "days"
+      ],
+      "title": "SourceWeek",
       "type": "object"
     },
     "SpeechFeatures": {
@@ -4707,6 +5167,98 @@
       "title": "TimelineResponse",
       "type": "object"
     },
+    "Transcript": {
+      "additionalProperties": false,
+      "description": "One stored conversation (opt-in). Person-facing only: no clinician route returns transcripts.",
+      "properties": {
+        "episode_id": {
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "ritual",
+            "checkin",
+            "walk",
+            "breathe",
+            "talk",
+            "break"
+          ],
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "robot",
+            "glasses",
+            "iphone",
+            "mac",
+            "web"
+          ],
+          "type": "string"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/TranscriptTurn"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "episode_id",
+        "surface",
+        "intent",
+        "start",
+        "turns"
+      ],
+      "title": "Transcript",
+      "type": "object"
+    },
+    "TranscriptTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "person",
+            "kaiku"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 2000,
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "TranscriptTurn",
+      "type": "object"
+    },
+    "TranscriptsResponse": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/transcripts — the person's own stored conversations, newest first.",
+      "properties": {
+        "home_id": {
+          "type": "string"
+        },
+        "transcripts": {
+          "items": {
+            "$ref": "#/$defs/Transcript"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "transcripts"
+      ],
+      "title": "TranscriptsResponse",
+      "type": "object"
+    },
     "VerdictEvidence": {
       "additionalProperties": false,
       "properties": {
@@ -4782,6 +5334,31 @@
         "lines"
       ],
       "title": "VoiceLinesResponse",
+      "type": "object"
+    },
+    "VoiceSayRequest": {
+      "additionalProperties": false,
+      "description": "POST /v1/voice/say — any short line (not in voice_lines.toml) in Kaiku's one voice → audio/wav. Cached by\n(model, voice, lang, text, style); home token required. A crisis phrase in `text` → 422 (the crisis script is\nshown verbatim, never voiced from here).",
+      "properties": {
+        "lang": {
+          "default": "en",
+          "enum": [
+            "en",
+            "fi",
+            "sv"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 400,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "VoiceSayRequest",
       "type": "object"
     },
     "WearableDaily": {
@@ -4900,6 +5477,156 @@
         "device"
       ],
       "title": "WearableDaily",
+      "type": "object"
+    },
+    "WeekItem": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "routine",
+            "helped",
+            "metric",
+            "source",
+            "phq9",
+            "safety",
+            "moments"
+          ],
+          "type": "string"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "criteria metric name this rests on"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "robot",
+                "glasses",
+                "laptop",
+                "wearable"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "WeekItem",
+      "type": "object"
+    },
+    "WeekSummary": {
+      "additionalProperties": false,
+      "description": "GET /v1/me/week (person wording) · GET /v1/patients/{id}/week (care team). Derived deterministically from\nobs, per-metric drift against the person's own usual, the bandit and (person / shared only) conversations.\nNo model decides anything here; it never changes the consensus.",
+      "properties": {
+        "audience": {
+          "enum": [
+            "person",
+            "care_team"
+          ],
+          "type": "string"
+        },
+        "by": {
+          "const": "rule",
+          "default": "rule",
+          "type": "string"
+        },
+        "computed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "going_well": {
+          "items": {
+            "$ref": "#/$defs/WeekItem"
+          },
+          "type": "array"
+        },
+        "home_id": {
+          "type": "string"
+        },
+        "next_steps": {
+          "description": "care team only",
+          "items": {
+            "$ref": "#/$defs/NextStep"
+          },
+          "type": "array"
+        },
+        "routines": {
+          "items": {
+            "$ref": "#/$defs/Routine"
+          },
+          "type": "array"
+        },
+        "rule_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "care team only"
+        },
+        "shared": {
+          "description": "the person shares what Kaiku learned with the care team",
+          "type": "boolean"
+        },
+        "sources": {
+          "description": "the one record: what each source added",
+          "items": {
+            "$ref": "#/$defs/SourceWeek"
+          },
+          "type": "array"
+        },
+        "week_end": {
+          "format": "date",
+          "type": "string"
+        },
+        "week_start": {
+          "format": "date",
+          "type": "string"
+        },
+        "worth_a_look": {
+          "items": {
+            "$ref": "#/$defs/WeekItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "home_id",
+        "audience",
+        "week_start",
+        "week_end",
+        "routines",
+        "going_well",
+        "worth_a_look",
+        "shared",
+        "computed_at"
+      ],
+      "title": "WeekSummary",
       "type": "object"
     }
   },

@@ -114,7 +114,8 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 `make setup` · `make broker` · `make sim [NODES=head,sensors,friendlink,glasses,laptop]` · `make hub` ·
 `make tail TOPIC=...` · `make record` / `make replay FILE=` · `make cloud-local` · `make seed` · `make web` ·
 `make test` · `make check` · `make doctor` · `make contracts` · `make agents` · `make criteria` · `make tune` ·
-`make cloud-deploy` · `make voice-prerender` · `make demo-reset` · `make design` · `make eval-companion [DRY=1]`
+`make cloud-deploy` · `make voice-prerender` · `make demo-reset` · `make design` · `make eval-companion [DRY=1]` ·
+`make e2e-intelligence` (real model calls: Live, TTS, mind, graph)
 
 ## Tech rules
 - Python ≥ 3.11 via **uv** only (`uv add --package <member> <dep>`; uv workspace: `contracts/python`, `hub`,

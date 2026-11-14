@@ -1,8 +1,9 @@
 """Seed the cloud with the simulated demo cohort (Aino + 7 others) across all three sources. Idempotent:
 event ids are deterministic per patient, and the cloud dedupes by id. Sends the pairing token as Bearer when
 KAIKU_HOME_TOKEN is set (and the admin token for reset/recompute when KAIKU_ADMIN_TOKEN is set).
-Also gives Aino a few memories, three Tuesday walks and an open thread (through the real companion endpoints), so
-the demo context card reads "the lake, like we said".
+Also gives Aino memories, three Tuesday walks, Monday/Thursday weather checks and an open thread (through the real
+companion endpoints), so the demo context card reads "the lake, like we said" and "What Kaiku has learned" is rich;
+and turns on her care-team sharing (D34) so the clinician page shows her graph.
 
     uv run python -m sim.seed_demo                      # KAIKU_CLOUD_URL or http://localhost:8000
     uv run python -m sim.seed_demo --url https://<modal-url>
@@ -24,7 +25,10 @@ from sim.patients import DEMO_PATIENTS, demo_events
 BATCH = 200
 DEMO_HOME = "demo-aino"
 AINO_MEMORIES = [("name", "Aino"), ("people", "Her sister is Maija"), ("places", "Likes walking by the lake"),
-                 ("what_helps", "A cup of tea on the balcony helps"), ("likes", "Loves the smell of rain")]
+                 ("what_helps", "A cup of tea on the balcony helps"), ("likes", "Loves the smell of rain"),
+                 ("people", "Neighbour Pekka walks his dog at noon"), ("places", "The forest path behind the house"),
+                 ("likes", "Loves Sibelius on the radio"), ("what_helps", "Calling Maija on Sunday evenings helps"),
+                 ("plans", "Coffee with Maija on Saturday")]
 AINO_THREAD = {"skill": "walk_companion", "topic": "the walk by the lake"}
 
 
@@ -42,6 +46,13 @@ def seed_companion(client: httpx.Client, url: str, now: datetime | None = None) 
             "start": (last_tue - timedelta(days=7 * k)).replace(hour=15, minute=0).isoformat(),
             "end": (last_tue - timedelta(days=7 * k)).replace(hour=15, minute=25).isoformat(),
             "tools_used": ["start_activity", "log_walk_moment"], "outcome": "completed"} for k in range(3)]
+    # weather checks on the phone, Mondays and Thursdays at 09:00 Helsinki for four weeks -> a weekday rhythm on /me
+    for k in range(28):
+        d = now - timedelta(days=k + 1)
+        if d.weekday() in (0, 3):
+            eps.append({"id": f"seed-checkin-{d.date()}", "surface": "iphone", "intent": "checkin",
+                        "start": d.replace(hour=7, minute=0).isoformat(), "end": d.replace(hour=7, minute=3).isoformat(),
+                        "tools_used": ["record_dial"], "outcome": "completed"})
     y = now - timedelta(days=1)
     eps.append({"id": f"seed-ritual-{y.date()}", "surface": "robot", "intent": "ritual",
                 "start": y.replace(hour=6, minute=30).isoformat(), "end": y.replace(hour=6, minute=36).isoformat(),
@@ -49,6 +60,9 @@ def seed_companion(client: httpx.Client, url: str, now: datetime | None = None) 
                 "open_thread": AINO_THREAD})
     for ep in eps:
         client.post(f"{url}/v1/companion/episode", json={"home_id": DEMO_HOME, **ep}).raise_for_status()
+    # demo: Aino chose to show her care team what Kaiku learned (D34; default is off for everyone else)
+    client.put(f"{url}/v1/me/sharing", params={"home_id": DEMO_HOME},
+               json={"share_with_care_team": True}).raise_for_status()
 
 
 def main(argv: list[str] | None = None) -> int:

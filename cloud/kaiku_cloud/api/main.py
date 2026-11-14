@@ -51,8 +51,11 @@ from kaiku_contracts.api import (
     PostcardRequest,
     PostcardResponse,
     TimelineResponse,
+    Transcript,
+    TranscriptsResponse,
     VoiceLang,
     VoiceLinesResponse,
+    VoiceSayRequest,
 )
 from kaiku_contracts.jlog import get_logger
 
@@ -235,7 +238,8 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     @app.post("/v1/companion/episode", response_model=EpisodeResult, dependencies=[Depends(require_home_token)])
     def companion_episode(ep: EpisodeIn) -> EpisodeResult:
         try:
-            return EpisodeResult(ok=True, id=mind.record_episode(store, ep))
+            eid = mind.record_episode(store, ep)
+            return EpisodeResult(ok=True, id=eid, transcript_stored=mind.transcript_allowed(ep))
         except ValueError as e:  # includes MemoryRefused (thread topic)
             raise HTTPException(422, str(e)) from None
 
@@ -258,6 +262,24 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         n = store.memory_delete(home_id)
         mind_graph.rebuild(store, home_id)
         return DeletedResponse(deleted=n)
+
+    # Opt-in conversation transcripts — person-facing only; no clinician route reads them (tested).
+    @app.get("/v1/me/transcripts", response_model=TranscriptsResponse)
+    def me_transcripts(home_id: str) -> TranscriptsResponse:
+        return TranscriptsResponse(home_id=home_id, transcripts=[
+            Transcript(episode_id=t["episode_id"], surface=t["surface"], intent=t["intent"], start=t["start"],
+                       turns=t["turns"]) for t in store.transcripts(home_id)])
+
+    @app.delete("/v1/me/transcripts/{episode_id}", response_model=DeletedResponse)
+    def me_transcript_delete(episode_id: str, home_id: str) -> DeletedResponse:
+        n = store.transcript_delete(home_id, episode_id)
+        if not n:
+            raise HTTPException(404, "no such transcript")
+        return DeletedResponse(deleted=n)
+
+    @app.delete("/v1/me/transcripts", response_model=DeletedResponse)
+    def me_transcripts_delete_all(home_id: str) -> DeletedResponse:
+        return DeletedResponse(deleted=store.transcript_delete(home_id))
 
     @app.get("/v1/me/constellation", response_model=ConstellationResponse)
     def me_constellation(home_id: str) -> ConstellationResponse:
@@ -310,6 +332,21 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
                 "hint": "show the text from GET /v1/voice instead; set GEMINI_API_KEY on the cloud or pre-render "
                         "with `make voice-prerender`"})
         return Response(content=data, media_type="audio/wav", headers={"cache-control": "public, max-age=86400"})
+
+    @app.post("/v1/voice/say", response_class=Response, dependencies=[Depends(require_home_token)],
+              responses={200: {"content": {"audio/wav": {}}}, 422: {}, 503: {}})
+    def post_voice_say(req: VoiceSayRequest) -> Response:
+        """A dynamic line (not keyed) in Kaiku's one voice: audio/wav, cached by text hash. 503 + hint without TTS."""
+        if mind._gate().check(req.text):
+            raise HTTPException(422, "crisis text is shown verbatim, never voiced here")
+        try:
+            data = voice.say(req.text, req.lang)
+        except voice.VoiceUnavailable as e:
+            log.warning("voice_unavailable", str(e), key="say", lang=req.lang)
+            return JSONResponse(status_code=503, content={
+                "detail": "voice audio unavailable", "reason": str(e),
+                "hint": "speak the text on the device as a last resort"})
+        return Response(content=data, media_type="audio/wav", headers={"cache-control": "private, max-age=86400"})
 
     # ------------------------------------------------------------------ clinician
     @app.get("/v1/patients", response_model=PatientsResponse)
@@ -445,6 +482,11 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
     @app.get("/v1/health", response_model=HealthOverview)
     def get_health() -> HealthOverview:
         return HealthOverview(homes=store.node_health())
+
+    # ------------------------------------------------------------------ dashboard: the week + graph (D34)
+    from . import dashboard
+
+    dashboard.register(app, store, settings, known_home)
 
     # ------------------------------------------------------------------ static web app (last!)
     web_dir = settings.web_dir

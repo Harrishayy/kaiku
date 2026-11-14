@@ -37,3 +37,6 @@ hardware/datasheets/*
 
 # CAD outputs (STL, STEP, sliced 3MF, renders, overview.html): regenerate, see hardware/cad/README.md
 hardware/cad/out/
+
+# demo screen recordings (apps/apple/scripts/record_app_demo.sh)
+demo/recordings/

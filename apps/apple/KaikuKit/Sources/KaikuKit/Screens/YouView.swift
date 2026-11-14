@@ -11,13 +11,13 @@ public struct YouView: View {
 
     public var body: some View {
         @Bindable var app = app
-        KScreen(T("tab.you"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+        KScreen(T("tab.you"), subtitle: T("you.sub"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
-                KSection {
+                KSection(T("you.sec.privacy"), icon: "hand.raised.fill", tone: .honey) {
                     KToggleRow(icon: "pause.fill", tint: KaikuTokens.Colors.honey, title: T("you.pauseall"),
                                detail: T("you.pauseall.d"), isOn: $app.pausedAll)
                 }
-                KSection {
+                KSection(T("you.sec.kaiku"), subtitle: T("you.sec.kaiku.d"), icon: "sparkles", tone: .clay) {
                     link(.memories, "sparkles", KaikuTokens.Colors.clay, "you.remembers")
                     KDivider()
                     link(.saw, "list.bullet.rectangle", KaikuTokens.Colors.sage, "you.saw")
@@ -25,7 +25,7 @@ public struct YouView: View {
                     link(.help, "heart.fill", KaikuTokens.Colors.clay, "you.help")
                 }
             } trailing: {
-                KSection {
+                KSection(T("you.sec.settings"), icon: "slider.horizontal.3", tone: .sky) {
                     link(.voice, "globe", KaikuTokens.Colors.sky, "you.voice")
                     KDivider()
                     link(.quiet, "moon.fill", KaikuTokens.Colors.sky, "you.quiet")
@@ -38,7 +38,7 @@ public struct YouView: View {
                         NotificationsOffRow()
                     }
                 }
-                KSection {
+                KSection(T("you.sec.connection"), icon: "link", tone: .sage) {
                     HStack(spacing: 0) {
                         KRow(icon: "link", tint: KaikuTokens.Colors.sage, title: app.isPaired ? T("you.paired") : T("you.notpaired"),
                              detail: app.queued > 0 ? T("you.queued", n: app.queued) : nil, accessory: .none)
@@ -70,6 +70,7 @@ public struct MemoriesView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var confirmAll = false
+    @State private var confirmConversations = false
     public init() {}
 
     public var body: some View {
@@ -100,8 +101,21 @@ public struct MemoriesView: View {
                 }
                 Button(T("mem.forgetall")) { confirmAll = true }.buttonStyle(.kSecondary)
             }
+            // Opt-in conversation words (`transcripts` signal): the switch + how many are kept + delete them all.
+            KSection {
+                KToggleRow(title: T("sig.transcripts.t"), detail: T("sig.transcripts.d"),
+                           isOn: Binding(get: { app.consents[.transcripts] ?? false }, set: { app.consents[.transcripts] = $0 }))
+            }
+            if let n = app.conversationsKept, n > 0 {
+                Text(T("conv.kept", n: n)).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                Button(T("conv.forgetall")) { confirmConversations = true }.buttonStyle(.kSecondary)
+            }
         }
-        .task { await app.loadMemories() }
+        .task { await app.loadMemories(); await app.loadConversations() }
+        .confirmationDialog(T("conv.forgetall.confirm"), isPresented: $confirmConversations, titleVisibility: .visible) {
+            Button(T("conv.forgetall"), role: .destructive) { Task { await app.forgetConversations() } }
+            Button(T("common.back"), role: .cancel) {}
+        }
         .confirmationDialog(T("mem.forgetall.confirm"), isPresented: $confirmAll, titleVisibility: .visible) {
             Button(T("mem.forgetall"), role: .destructive) { Task { await app.forgetAll() } }
             Button(T("common.back"), role: .cancel) {}
@@ -138,6 +152,7 @@ public struct SawTodayView: View {
         out.append(Line(id: "mac", text: T("saw.mac"), signal: .mac))
         #endif
         out.append(Line(id: "watch", text: T("saw.watch"), signal: .watch))
+        out.append(Line(id: "transcripts", text: T("saw.transcripts"), signal: .transcripts))
         return out
     }
 

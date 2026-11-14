@@ -230,6 +230,20 @@
     "context_card": {
       "$ref": "#/$defs/ContextCard"
     },
+    "live_setup": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Kaiku's recommended Live BidiGenerateContentSetup (REST camelCase; the token locks only the model): model, voice, system instruction, tools, automatic VAD + barge-in, transcriptions. Send it as the first frame {setup: live_setup}; the server uses the token's copy either way.",
+      "title": "Live Setup"
+    },
     "live_token": {
       "anyOf": [
         {

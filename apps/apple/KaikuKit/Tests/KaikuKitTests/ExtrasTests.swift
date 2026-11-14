@@ -129,6 +129,8 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://checkin")!), .route(.weather))
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://walk")!), .route(.walk))
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://phq9")!), .phq9)
+        XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://you/memories")!), .route(.memories))
+        XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://you/firefly")!), .tab(.you))   // only You's own screens
         XCTAssertNil(DeepLink.parse(URL(string: "kaiku://pair?home=demo-aino")!))   // pairing is not a deep link
         XCTAssertNil(DeepLink.parse(URL(string: "https://example.com/?home=demo-aino")!))
     }

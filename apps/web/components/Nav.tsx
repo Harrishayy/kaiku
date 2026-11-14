@@ -28,7 +28,9 @@ export function Nav() {
     <header className="topbar">
       <div className="topbar-inner">
         <Link href="/" className="brand" aria-label="Kaiku home">
-          <Mascot size={30} still tappable={false} />
+          <span className="brand-mark" aria-hidden="true">
+            <Mascot size={34} still tappable={false} />
+          </span>
           Kaiku
         </Link>
         <nav aria-label="Main">

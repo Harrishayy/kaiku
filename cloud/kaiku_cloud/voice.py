@@ -2,6 +2,7 @@
 
     lines(lang)            -> {key: text}               (GET /v1/voice?lang=)
     audio(key, lang)       -> wav bytes                 (GET /v1/voice/{key}?lang=)
+    say(text, lang)        -> wav bytes                 (POST /v1/voice/say: dynamic lines, same voice, cached)
     python -m kaiku_cloud.voice [--lang en,fi,sv]       pre-render every line into the cache (needs GEMINI_API_KEY)
 
 Voice name, model, default style, cache dir and timeout: config/kaiku.toml [voice]. Cache key = hash of
@@ -204,6 +205,32 @@ def audio(key: str, lang: str) -> bytes:
     tmp.write_bytes(data)
     tmp.replace(path)
     log.info("voice_rendered", key, lang=lang, bytes=len(data))
+    return data
+
+
+SAY_MAX = 400
+
+
+def say_path(text: str, lang: str) -> Path:
+    style = str(get("voice", "style", "warm, gentle"))
+    h = hashlib.sha256("|".join([tts_model(), voice_name(), lang, text, style]).encode()).hexdigest()[:16]
+    return cache_dir() / "say" / lang / f"{h}.wav"
+
+
+def say(text: str, lang: str) -> bytes:
+    """Any short line (the apps' own copy: "talk.resumed", scripted replies) in Kaiku's voice. Cached by hash."""
+    text = " ".join(text.split())[:SAY_MAX]
+    if not text:
+        raise ValueError("empty text")
+    path = say_path(text, lang)
+    if path.is_file():
+        return path.read_bytes()
+    data = synthesize(text, str(get("voice", "style", "warm, gentle")), lang)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+    log.info("voice_said", lang, bytes=len(data))  # never the text
     return data
 
 

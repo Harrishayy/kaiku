@@ -54,12 +54,14 @@ http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "GET /v1/patient
         "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions",
         "GET /v1/me", "GET /v1/events", "PUT /v1/health/{home_id}", "GET /v1/health", "POST /v1/admin/recompute",
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
-        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}",
+        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
+        "GET /v1/me/transcripts", "DELETE /v1/me/transcripts/{episode_id}", "DELETE /v1/me/transcripts",
         "GET /v1/me/constellation", "POST /v1/companion/postcard", "GET /v1/me/postcards/{id}",
         "GET /v1/health/intelligence", "GET /v1/patients/{id}/brief", "POST /v1/admin/reflect",
-        "POST /v1/admin/nightly-mind", "POST /v1/admin/weekly"]
+        "POST /v1/admin/nightly-mind", "POST /v1/admin/weekly", "GET /v1/me/week", "GET /v1/me/graph",
+        "GET /v1/me/sharing", "PUT /v1/me/sharing", "GET /v1/patients/{id}/week", "GET /v1/patients/{id}/graph"]
 
 [[module]]
 name = "web"
@@ -104,9 +106,10 @@ summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, Your
 removable = true
 emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
          "obs.wearable_daily", "obs.nudge_outcome"]
-http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}",
+http = ["POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
-        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings"]
+        "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
+        "GET /v1/me/transcripts", "DELETE /v1/me/transcripts"]
 
 [[module]]
 name = "atech-head"

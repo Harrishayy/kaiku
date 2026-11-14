@@ -302,7 +302,7 @@ def test_episode_endpoint_idempotent_and_opens_thread(client):
     body = {"home_id": "h1", "surface": "iphone", "intent": "checkin", "id": "ep-1",
             "start": "2026-11-12T08:00:00Z", "end": "2026-11-12T08:03:00Z", "tools_used": ["record_dial"],
             "outcome": "offline", "open_thread": {"skill": "weather_check", "topic": "the cabin weekend"}}
-    assert client.post("/v1/companion/episode", json=body).json() == {"ok": True, "id": "ep-1"}
+    assert client.post("/v1/companion/episode", json=body).json() == {"ok": True, "id": "ep-1", "transcript_stored": False}
     assert client.post("/v1/companion/episode", json=body).status_code == 200
     assert len(client.app.state.store.episodes("h1")) == 1
     bad = body | {"id": "ep-2", "open_thread": {"skill": "weather_check", "topic": "the medication change"}}
@@ -349,6 +349,20 @@ def test_done_today_from_obs_and_episodes():
 
 
 # ---------------------------------------------------------------- live token
+def test_live_setup_locks_kaiku_and_turns_on_continuous_vad(cohort):
+    j = session(cohort, "demo-aino", "iphone")
+    s = j["live_setup"]  # Kaiku's recommended setup, built even without a key (the token locks only the model)
+    assert s["model"] == "models/gemini-3.8-live"
+    assert s["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] == j["voice"]
+    assert s["systemInstruction"]["parts"][0]["text"] == j["system_instruction"]
+    ric = s["realtimeInputConfig"]
+    assert ric["automaticActivityDetection"]["disabled"] is False  # Gemini takes turns: continuous conversation
+    assert ric["activityHandling"] == "START_OF_ACTIVITY_INTERRUPTS"  # barge-in
+    assert "inputAudioTranscription" in s and "outputAudioTranscription" in s  # the safety gate reads the input
+    assert "enableAffectiveDialog" not in s["generationConfig"]  # breaks constrained sessions (config/kaiku.toml)
+    assert {d["name"] for d in s["tools"][0]["functionDeclarations"]} == {t["name"] for t in j["tools"]}
+
+
 def test_live_token_none_without_key():
     assert live_token.mint("gemini-3.8-live", api_key="") is None
 
@@ -363,6 +377,8 @@ def test_live_token_minted_with_mock_transport():
     t = live_token.mint("gemini-3.8-live", api_key="k", now=NOW, transport=httpx.MockTransport(handler))
     assert t.token == "auth_tokens/abc" and t.expires_at == NOW + timedelta(minutes=30)
     assert seen["key"] == "k" and seen["body"]["uses"] == 1
-    assert seen["body"]["liveConnectConstraints"]["model"] == "models/gemini-3.8-live"
+    assert seen["body"]["bidiGenerateContentSetup"]["model"] == "models/gemini-3.8-live"
+    assert seen["body"]["fieldMask"] == "model"  # lock only the model, never the device's setup
+    assert "liveConnectConstraints" not in seen["body"]  # the SDK's name: the REST API answers 400
     down = httpx.MockTransport(lambda r: httpx.Response(500))
     assert live_token.mint("gemini-3.8-live", api_key="k", transport=down) is None

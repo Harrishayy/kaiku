@@ -59,11 +59,13 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
                           "start": memory.iso(now), "tools": []})
     model, voice = models()
     pv = assemble.persona_version(persona)
-    log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv)
+    setup = live_token.setup(model, voice, instruction, tools)
+    token = mint(model, live_setup=setup)
+    log.info("companion_session", req.intent, home=req.home_id, surface=req.surface, persona=pv, live=token is not None)
     return CompanionSessionResponse(
         session_id=sid, model=model, voice=voice, system_instruction=instruction,
         tools=[CompanionTool(**t) for t in tools], context_card=card, persona_version=pv,
-        safety_phrases_version=safety_version(), live_token=mint(model))
+        safety_phrases_version=safety_version(), live_token=token, live_setup=setup)
 
 
 def _strings(v: Any) -> list[str]:
@@ -156,6 +158,13 @@ def end_session(store: Store, call: CompanionToolCall, a: dict[str, Any], now: d
     return res
 
 
+def transcript_allowed(ep: EpisodeIn) -> bool:
+    """An opt-in transcript is kept unless the conversation touched a crisis: then nothing of it is stored."""
+    if not ep.transcript or ep.outcome == "crisis":
+        return False
+    return not any(_gate().check(t.text) for t in ep.transcript)
+
+
 def record_episode(store: Store, ep: EpisodeIn) -> str:
     eid = ep.id or str(uuid7())
     old = store.episode(eid)
@@ -172,4 +181,9 @@ def record_episode(store: Store, ep: EpisodeIn) -> str:
             memory.close_threads_for(store, ep.home_id, ep.intent, end)
     if ep.open_thread:
         memory.open_thread(store, ep.home_id, ep.open_thread.skill, ep.open_thread.topic, end)
+    if transcript_allowed(ep):
+        store.transcript_upsert({"episode_id": eid, "home_id": ep.home_id, "surface": ep.surface, "intent": ep.intent,
+                                 "start": memory.iso(ep.start),
+                                 "turns": [t.model_dump() for t in ep.transcript or []]})
+        log.info("transcript_stored", ep.surface, home=ep.home_id, turns=len(ep.transcript or []))  # never the text
     return eid

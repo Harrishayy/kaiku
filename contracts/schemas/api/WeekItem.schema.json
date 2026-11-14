@@ -1,0 +1,60 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "enum": [
+        "routine",
+        "helped",
+        "metric",
+        "source",
+        "phq9",
+        "safety",
+        "moments"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "metric": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "criteria metric name this rests on",
+      "title": "Metric"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "enum": [
+            "robot",
+            "glasses",
+            "laptop",
+            "wearable"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    },
+    "text": {
+      "maxLength": 240,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "text"
+  ],
+  "title": "WeekItem",
+  "type": "object"
+}

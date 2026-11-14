@@ -29,6 +29,17 @@ cache_dir = "logs/voice_cache"           # rendered audio (wav), keyed by model+
 timeout_s = 20
 lang_codes = { en = "en-US", fi = "fi-FI", sv = "sv-SE" }
 
+[live]
+# Gemini Live session setup the cloud locks into the apps' ephemeral token (cloud/kaiku_cloud/mind/live_token.py).
+# Continuous conversation: Gemini's automatic VAD takes turns, speaking over Kaiku interrupts it (barge-in).
+# Field names + enums: Gemini Live API reference "AutomaticActivityDetection" (geminiDocs MCP, 2026-11-14).
+start_sensitivity = "START_SENSITIVITY_LOW"   # fewer false starts from room noise / TV
+end_sensitivity = "END_SENSITIVITY_LOW"       # people pause mid-thought: don't cut them off
+prefix_padding_ms = 120
+silence_ms = 900                              # quiet this long = the person's turn is over
+affective_dialog = false                      # true breaks the session (1007 "invalid argument" on the first turn, real call 2026-11-14)
+context_compression = true                    # sliding window: long chats don't hit the context limit
+
 [attention]
 # Robot attention ladder (hub/kaiku_hub/attention.py): nobody -> appeared -> approaching -> at_desk.
 face_source = "laptop"   # laptop (hub camera, OpenCV) | unoq_yolo (UNO Q App Lab boxes on raw/hub/face) | off
@@ -138,7 +149,7 @@ max_model_len = 8192
 # HARD caps for all paid model calls (Gemini API / Vertex / Modal GPU), enforced by kaiku_contracts/budget.py.
 # Team rule (2026-11-14): stay under $10 overall while testing. Over the cap every caller uses its fallback.
 total_usd = 10.0
-daily_usd = 4.0
+daily_usd = 6.0                            # raised 4 → 6 on 2026-11-14 by the lead: pre-render all voice lines (never a robotic voice)
 argon_per_home_day = 20                    # flagship calls per home per local day (ask_mind, reflection, consolidation, briefs); then Flash only
 images_per_home_day = 3                    # walk postcards per home per local day
 
@@ -173,3 +184,18 @@ care_team = "Questions about treatment, medicines or appointments are best answe
 contact = "You can reach your care team through the clinic's usual phone line or message service during office hours."
 booster = "Some people get extra sessions later on. Whether that fits you is something to talk about with your care team."
 everyday = "Small everyday things often help after treatment: daylight, moving a little, regular meals and staying in touch with people."
+
+[week]
+# Dashboard "this week" (cloud/kaiku_cloud/week.py, D34). Routines are found in the usual weeks before the last 7 days.
+usual_weeks = 3          # weeks of "usual" before this week
+min_occurrences = 3      # fewer days than this in the usual weeks = not a routine
+daily_share = 0.8        # share of usual days with it -> "every day"
+most_days_share = 0.45   # -> "most days"; below: a weekday rhythm if that weekday had it in weekday_min_weeks weeks
+weekday_min_weeks = 3
+kept_ratio = 0.8         # this week's days / usual per week >= this -> kept
+partly_ratio = 0.5       # >= this -> partly, below -> slipped
+sleep_shift_min = 45     # median sleep onset this week within ± this of usual -> kept (beyond 2x -> slipped)
+helped_min = 0.4         # bandit mean effect (0..1): the best-responding activities at or above this "help most"
+helped_min_tries = 3
+max_items = 6            # per list
+max_metric_items = 3     # care team: drifting metrics listed one by one (the rest summarised in one line)

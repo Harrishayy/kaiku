@@ -18,13 +18,20 @@ Imports nothing from the repo at build time. Ground-truth files are **copied** i
 Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 5).
 
 ## Consumes (topics/endpoints)
-- `GET /v1/me` (mascot mood, garden, highlights, next suggestion), `GET /v1/nudge` (the one suggestion),
+- `GET /v1/me` (mascot mood, garden + `garden.days` = one plot per local day for 14 days, highlights, next suggestion), `GET /v1/nudge` (the one suggestion),
   `GET /v1/events?home_id=&since=` (today's receipt + robot connection state).
 - `GET /v1/me/memories`, `DELETE /v1/me/memories[/{id}]`, `PUT /v1/me/memory_settings` (What Kaiku remembers).
-- `POST /v1/companion/session {surface: iphone|mac, intent: talk}` → `live_token` → Gemini Live WebSocket
-  (`BidiGenerateContentConstrained?access_token=`); `POST /v1/companion/tool` for `executor: cloud` tools;
-  `POST /v1/companion/episode` when Talk closes (no transcript). `GET /v1/voice?lang=` (all line texts) +
-  `GET /v1/voice/{key}?lang=` (audio, prefetched on Wi-Fi into Caches; 503/offline → on-device synthesizer).
+- `POST /v1/companion/session {surface: iphone|mac, intent: talk}` (Talk) or `{surface: glasses, intent: walk}`
+  (the walk companion, through Meta glasses) → `live_token` (locks only the model) + `live_setup` (persona, voice,
+  `[live]` turn detection) → Gemini Live WebSocket (`BidiGenerateContentConstrained?access_token=`); the device's own
+  setup frame adds resumption, compression and tool behaviour, and on the loudspeaker takes the cloud's VAD.
+  `POST /v1/companion/tool` for `executor: cloud` tools (`ask_mind`, `recall`, `remember`… — the knowledge graph
+  stays in the cloud); `POST /v1/companion/episode` when the conversation closes (+ `transcript` only with the
+  opt-in `transcripts` signal, D33). `GET /v1/me/transcripts` + `DELETE /v1/me/transcripts` (count + delete all in
+  What Kaiku remembers). See "Conversation pipeline". Kaiku's voice outside Live is always Gemini TTS:
+  `GET /v1/voice?lang=` (line texts), `GET /v1/voice/{key}?lang=` (prefetched on Wi-Fi, fetched on demand on a miss),
+  `POST /v1/voice/say` (the app's own lines, cached by text hash). **Never an on-device synthesizer**: cloud
+  unreachable AND nothing cached → silent, the text stays on screen.
 - iPhone: Apple Health (read-only, HealthKit), Meta glasses via the DAT SDK (MWDAT 1.0.1, SPM; Motion = dev/beta
   channel), local notifications (no APNs), ActivityKit (no push), App Intents.
 - All shapes: `contracts/schemas/` (mirrored in `KaikuKit/Model/Contracts.swift`).
@@ -52,6 +59,12 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
 project.yml                 XcodeGen: KaikuKit + MWDAT (SPM) + "Kaiku iOS" (17.2+) + "Kaiku Widgets" (extension) +
                             "Kaiku iOS UITests" + "Kaiku Mac" (14+); entitlements: HealthKit, App Group group.fi.kaiku
 scripts/sync_design.sh      copy design/ + config/safety_phrases.toml into KaikuKit (plain copies)
+scripts/make_app_icon.sh    app icons from MascotView (AppIconRenderTests, opt-in) → iOS + Mac AppIcon sets
+scripts/run_on_iphone.sh    sign (KAIKU_TEAM), install + launch on a paired iPhone, paired to the cloud on this LAN
+scripts/live_e2e.sh         paid real Gemini Live check (barge-in, graph tool, opt-in transcript) → demo/recordings
+iOS|Mac/Assets.xcassets     AppIcon (generated; light + dark on iOS) · */PrivacyInfo.xcprivacy (App Store manifests)
+iOS|Widgets/*.entitlements  plain files picked by CODE_SIGN_ENTITLEMENTS (+ `.nogroup` variants, see Config & env)
+scripts/record_app_demo.sh  demo videos of both apps (DemoTourTests + Mac screen capture); demo_mouse.swift helper
 iOS/KaikuApp.swift          shell: WindowGroup + pairing deep link
 Mac/KaikuMacApp.swift       shell: Window (min 720×480) + MenuBarExtra popover (+ debug "simulate a late evening")
 Mac/MacCompanion.swift      Mac extras: usage sampler (NSWorkspace + CGEventSource idle, 30 s), peek evaluation,
@@ -65,7 +78,8 @@ iOS/SurfaceSnapshots.swift  DEBUG: -kaikuSurfaceSnapshot <dir> → Live Activity
 iOS/Resources/              kaiku-chime.caf (0.8 s notification sound)
 Shared/WalkIntents.swift    LiveActivityIntents Found one / End walk (compiled into app + widget extension)
 Widgets/KaikuWidgets.swift  widget extension: Walk + Breathe Live Activities, Kaiku widget (small/medium/lock)
-iOSUITests/                 end-to-end against a local cloud (weather → self_report, pebbles → play_session, memories)
+iOSUITests/                 end-to-end against a local cloud (weather → self_report, pebbles → play_session, memories);
+                            DemoTourTests = the paced feature tour the demo recordings are made from
 KaikuKit/Sources/KaikuKit/
   Design/Tokens.swift       COPY of design/generated/Tokens.swift (never edit here)
   Design/Theme.swift        Dynamic Type for token styles (@ScaledMetric, heading caps), stacksMascot
@@ -81,19 +95,25 @@ KaikuKit/Sources/KaikuKit/
   Components/               buttons, NotOK pill, screen/header, cards, rows, toggles, segmented, WeatherDial, toast,
                             bubbles, empty/loading/offline/error states, RingStage; Polish.swift (KTone soft fills,
                             KPressStyle press/hover, KBackdrop time-of-day wash, MascotHalo, KAdaptiveColumns)
-  Screens/                  Screens.swift (tabs, routes, parity list, root/tab bar/sidebar), Today, Weather check,
+  Screens/                  TodayPath.swift (Today's path: weather → suggestion → game, on Today/Play/game ends;
+                            GardenBeds day plots + DayPlant), Screens.swift (tabs, routes, parity list, root/tab bar/sidebar), Today, Weather check,
                             Play, Your days, You (+ remembers, saw today, voice, quiet hours, devices, help),
                             Crisis, Onboarding, MenuBarPopover
   Games/                    Firefly, Pebble path, Breathe, Tell Kaiku (+ Composer, mic card)
-  Talk/                     TalkView/TalkModel, LiveSession (Gemini Live WS), AudioCapture (+ SpeechFeatures VAD)
+  Talk/                     Conversation (one spoken conversation: bootstrap, Live, tools, safety, resumption),
+                            LiveSession (Gemini Live WS protocol: pure setup builder + frame parser),
+                            ConversationAudio (mic + Kaiku's voice on one voice-processing engine, HFP glasses mic,
+                            barge-in flush), TalkView/TalkModel (compact header Kaiku = tap to mute/unmute,
+                            full-width transcript, TalkBubble ≤ 80 %, welcome + starters), AudioCapture (Tell Kaiku)
   Platform/                 Haptics, platform constants, QR scanner (iOS), Sound (synthesised soft UI tones)
   Mac/                      pure Mac-extras logic (tested): MacIslandGeometry/Shape/Layout (the island), MacUsage (bundle-id → category table, aggregator,
                             ScreenActivity payload, MacUsageStore = the local aggregate), MacPeek (peek rules +
                             ledger, invitation time)
   Notify/                   NudgeScheduler (pure plan: quiet hours, windows, one invitation/day, snooze once,
                             done-on-any-surface), Notifier (UN requests, categories, answers, ignored after 4 h), DeepLink
-  Voice/                    VoiceLines (cache + synthesizer fallback), TalkAudio (HFP session, interruptions, routes),
-                            OnDeviceListener (Speech, on-device only → safety gate + SpokenDial), SpokenDial (en/fi/sv)
+  Voice/                    VoiceLines (Gemini TTS: keyed + /v1/voice/say, cached; silent when unavailable, never a synthesizer),
+                            TalkAudio (HFP session, interruptions, routes), OnDeviceListener (Speech, on-device only:
+                            safety backstop + SpokenDial; never shown or said), SpokenDial (en/fi/sv)
   Walk/                     WalkModel (light hunt walk, draft recovery), WalkView, GaitAnalyzer + DaylightCounter,
                             KaikuActivities (ActivityKit attributes + start/update/end)
   Glasses/                  GlassesAdapter protocol, MockGlasses + MockGait (synthetic IMU)
@@ -113,11 +133,41 @@ One screen list (`KaikuScreen` in `Screens/Screens.swift`) rendered by both targ
 | `today` · `weatherCheck` | ✓ | ✓ | haptic tick per dial step (trackpad on Mac) |
 | `play` · `firefly` · `pebbles` · `tell` · `breathe` | ✓ | ✓ | Breathe also runs a Live Activity on iPhone |
 | `walk` | ✓ | — | iPhone only: Light hunt walk (+ glasses, Live Activity, Dynamic Island) |
-| `talk` | ✓ | ✓ | Live only with a cloud token; scripted typed path otherwise |
+| `talk` | ✓ | ✓ | continuous Gemini Live with a cloud token (tap Kaiku to talk/stop, typing too); scripted typed path otherwise |
 | `days` · `markDay` | ✓ | ✓ | day marks are local (no contract yet) |
 | `you` · `memories` · `saw` · `voice` · `quiet` · `devices` · `help` | ✓ | ✓ | Devices: glasses (ready / connected during a walk), watch (Health); debug "Try it out" section |
 | `crisis` | ✓ | ✓ | full screen on iPhone, sheet on Mac |
 | `menuBarPopover` | — | ✓ | platform-only; + notch island (not a screen: an overlay panel, see Mac extras) |
+
+## Conversation pipeline (Talk + glasses walk)
+```
+Meta glasses mics (HFP, beamformed) / phone / Mac mic
+  → ConversationAudio: one AVAudioEngine, voice processing (echo cancel), 16 kHz PCM16 → LiveSession → Gemini Live
+  ← Kaiku's voice 24 kHz ← Live, played on the same engine (glasses speakers over HFP)
+person talks over Kaiku → server VAD → `interrupted` → queued voice flushed at once → Live listens (barge-in)
+Live tool call → device tool (Conversation.deviceTool: express, record_dial, start_activity, log_walk_moment,
+  look_at_this) or POST /v1/companion/tool (ask_mind → mind router: memory / knowledge graph / Flash / Argon;
+  recall, remember, forget, suggest_nudge, end_session) → result back into the conversation
+```
+- Setup (`LiveSession.setup`, tested): server VAD with `START_OF_ACTIVITY_INTERRUPTS`; start sensitivity HIGH on a
+  headset route (glasses), LOW on a loudspeaker (echo leftovers must not interrupt); end LOW + 800 ms silence
+  (slow speakers with long pauses aren't cut off); affective dialog; proactive audio; input + output
+  transcription; context-window sliding compression (walks > 15 min); session resumption. `ask_mind` is
+  `NON_BLOCKING` (Kaiku keeps talking while the mind thinks; answer scheduled `WHEN_IDLE`).
+- Context events: the walk sends `[walk started · …]`, `[found one · n of 3]`, `[walk · 10 min]`, `[glasses
+  disconnected · …]`; Talk sends `[the person just opened Talk]` (Kaiku greets in its live voice) and
+  `[back after an interruption …]`. Same wording as the hub's `send_context`.
+- Reconnect: `goAway` or a drop → reconnect with the last resumption handle; same token until 60 s before its
+  `expires_at`, else a fresh token from `POST /v1/companion/session` (episode + tools keep the first session id).
+  Three failures in a row → `unavailable` (Talk: typed scripted path; walk: scripted voice lines).
+- Safety: input transcripts (also joined with the previous partial) + the on-device listener (restarted every
+  50 s) run `SafetyGate` first; a hit stops the conversation (`outcome: crisis`) and opens the crisis screen.
+- Glasses: Ray-Ban Meta / Ray-Ban Display paired in the Meta AI app and connected to the iPhone over Bluetooth
+  are the mic + speaker (HFP, `TalkAudio.preferHeadsetInput`). The DAT session (IMU, later camera) is separate and
+  optional; the conversation works with Bluetooth alone. The Display web app has no mic (Meta docs), so speech
+  never goes through it. The robot runs its own Live session in the hub; the same mind serves both.
+- UI: Talk = open conversation; tap Kaiku to stop / start listening (`talk.live`, `talk.muted`). Walk screen:
+  "Quiet walk" / "Talk with Kaiku".
 
 ## Mac extras (A3)
 - **Notch island** (`Mac/NotchIsland.swift`, design/ia.md → Mac extras): ONE non-activating borderless window at
@@ -157,7 +207,8 @@ One screen list (`KaikuScreen` in `Screens/Screens.swift`) rendered by both targ
   (`ParityTests` checks). Copy keys go to `design/copy.json` (or `copy.apple.json` until upstreamed).
 - **New game:** a view using `GameShell` (intro → play → gentle end) that calls `finish(PlaySession)`; add its
   card in `PlayView`. New `play_session` fields are a contract change first.
-- **New device tool (Talk):** handle it in `TalkModel.tool`; cloud tools need nothing here.
+- **New device tool:** handle it in the surface's `Conversation.deviceTool` (`TalkModel.deviceTool`,
+  `WalkModel.walkTool`); cloud tools need nothing here.
 - **New look:** change `design/`, `make design`, `apps/apple/scripts/sync_design.sh`.
 - **New notification kind:** a `NudgeScheduler.Kind` + rule in `plan` (+ tests), a category in `Notifier`.
 - **New glasses / wearable vendor:** a `GlassesAdapter` (events: state, imu, brightness, tap), chosen in
@@ -170,12 +221,13 @@ One screen list (`KaikuScreen` in `Screens/Screens.swift`) rendered by both targ
 - Only token colours; `crisis` only on the crisis screen. Crisis screen: no mascot, no motion, scripted text verbatim
   from `config/safety_phrases.toml`; "I'm not OK" on every screen (header on iPhone, sidebar + popover on Mac).
 - Never on screen: scores, streaks, trends, state words, dev text. Firefly ends with a jar, never a number.
-- No audio, transcript, typed text or camera frame is stored or sent. Speech features are computed in memory.
+- No audio or camera frame is stored or sent. Conversation words leave the device only as the episode's
+  `transcript`, only with the opt-in `transcripts` signal (off by default), never after a crisis (D33).
 - Every obs goes through `OfflineQueue` with an id fixed at creation (retries are duplicates the cloud ignores).
 - The local safety gate gives the same answer as `kaiku_contracts.safety` on `safety_cases.json` (tested).
 - Notifications: at most one invitation a day + one check-in reminder + PHQ-9 once; never in quiet hours, never a
   crisis message, never time-sensitive; never mention Health/watch data. Rules live only in `NudgeScheduler`.
-- The on-device listener only runs with `requiresOnDeviceRecognition`; transcripts are never kept or sent.
+- The on-device listener only runs with `requiresOnDeviceRecognition`; its partial transcripts are never kept or sent.
 - Widgets and Live Activities never call the network: they read the App Group snapshot / activity state.
 - Layout holds `design/layout.md`'s stress case (fi + long name + large text + 320 pt): text wraps, rows stack at
   accessibility sizes, headings cap their growth, fixed game screens give the field the room.
@@ -207,6 +259,7 @@ iPhone (A2): `-kaikuRoute walk -kaikuAutostart YES` (start a walk), `-kaikuGlass
 `-kaikuGlassesDropAfter 20` (glasses disconnect mid-walk), `-kaikuNotifyTest checkin|invite -kaikuNotifyDelay 8`
 (the real notification in n s), `-kaikuHealthSample YES` (DEBUG: write a sample night to Health + sync),
 `-kaikuMute YES` (no voice), `-kaikuSurfaceSnapshot <dir>` (DEBUG: Live Activity / island / widget PNGs).
+Talk: `-kaikuTab talk -kaikuTalkSay "text"` types one message once Live is up (real Live path, for screenshots).
 
 ## Run with sim
 ```
@@ -228,7 +281,35 @@ Expect: Today greets Aino with the cozy (scarf) mascot; the weather check lands 
 `obs.self_report` with `channel: phone`; a game posts `obs.play_session`; You → What Kaiku remembers lists the
 seeded memories. With `KAIKU_HOME_TOKEN` set on the cloud, add `&t=<token>` to the pairing link.
 
+## Recording a demo
+`apps/apple/scripts/record_app_demo.sh [ios|mac|post|all]` against a seeded local cloud (no paid calls:
+`KAIKU_NO_DOTENV=1`, template LLM, no Live token → Talk shows its typed offline path):
+```
+KAIKU_NO_DOTENV=1 KAIKU_DB_PATH=/tmp/k.db uv run --package kaiku-cloud uvicorn kaiku_cloud.api.main:app --port 18020 &
+KAIKU_NO_DOTENV=1 KAIKU_CLOUD_URL=http://127.0.0.1:18020 uv run python -m sim.seed_demo --reset
+KAIKU_TEST_CLOUD=http://127.0.0.1:18020 apps/apple/scripts/record_app_demo.sh all   # → demo/recordings/ (gitignored)
+```
+- **ios**: `iOSUITests/DemoTourTests` (paced ~1.5 s a step, numbered so they run in story order), one
+  `simctl io recordVideo` per method on a dedicated "Kaiku Demo 17 Pro" simulator (app uninstalled first →
+  onboarding): `test1Tour` (onboarding + paste-link pairing → Today → weather dials → Firefly, Pebble path, Breathe,
+  Tell Kaiku → Talk typed → Your days → You: remembers, saw today, devices), `test2GlassesWalk` (mock glasses,
+  Dynamic Island expanded + Found one, Lock Screen Live Activity, End walk), `test3Notification` (check-in reminder →
+  "Low"), `test4Health` (sample night → Devices). A missing control logs `DEMO-MISSING` and the tour goes on.
+- **mac**: one launch of the Debug build; `kaiku://` links switch screens (the Mac shell now follows them like
+  iPhone; `kaiku://you/<memories|saw|voice|quiet|devices|help>` added for both), keys play the games, the menu bar
+  popover's debug "Simulate a late evening" makes the island peek, `scripts/demo_mouse.swift` hovers/clicks it.
+  Needs Screen Recording + Accessibility for the terminal. The full-screen capture is cropped to the Kaiku window +
+  notch (`mac-tour`) and the popover (`mac-menubar`) and then deleted, so no other window ends up in a video.
+- **post**: title card, trims the home-screen wait, 1.25× speed, ≤ 1080 p h264, plus `<clip>-sheet.png` and
+  `<clip>.gif` previews.
+
 ## Config & env
+- Signing / store: App Store Connect name **Kaikuu** (Kaiku was taken), bundle `fi.kaiku.app`; home-screen name
+  stays "Kaiku". Build settings `KAIKU_APP_GROUP` (default `group.fi.kaiku`; App Group ids are unique across Apple
+  teams) and `KAIKU_ENTITLEMENTS_SUFFIX` (`.nogroup` = sign without the App Group until one is assigned to the
+  team's App IDs in the developer portal — command-line signing can't assign it; the widget then shows its
+  placeholder). The team id is passed on the command line (`KAIKU_TEAM`), never committed.
+  `ITSAppUsesNonExemptEncryption = NO` (TLS only).
 No `config/*.toml` keys are read at runtime. Bundled copies: `design/copy.json`, `design/mascot.spec.json`,
 `design/generated/Tokens.swift`, `config/safety_phrases.toml`. Pairing (cloud URL, home id, token) is in the
 Keychain; settings (language, consents, pauses, quiet hours, day marks) in UserDefaults. Info.plist usage strings
@@ -241,7 +322,7 @@ The app has no heartbeat (not a bus node). You → "Paired with Kaiku at home" +
 the queue; the offline banner shows when the cloud is unreachable. Builds green + `swift test` green = healthy.
 
 ## Tests
-`cd apps/apple/KaikuKit && swift test` (49 tests): safety fixture parity with the Python matcher, every phrase hits,
+`cd apps/apple/KaikuKit && swift test` (`LiveSessionTests` = Live setup + frame parsing; `LiveTalkTests` = say-cache key, cloud VAD on the loudspeaker): safety fixture parity with the Python matcher, every phrase hits,
 scripts verbatim; design copies fresh; copy keys exist (en + fi, placeholders match, overlay never shadows
 copy.json); payloads ⊆ schema properties and required present, enums and device tools match the registry;
 UUIDv7 layout; pairing links; pebble span/miss/accuracy, firefly scoring, median/IQR, speech features VAD; mascot
@@ -260,8 +341,17 @@ mock walk, standing still), daylight, wearable builder (merge, midpoint, no data
 payloads ⊆ schemas. UI: `Kaiku iOS UITests` (needs a seeded cloud): `KaikuFlowTests` + `ExtrasFlowTests`.
 
 ## Known issues
-- Gemini Live path is written to the documented WebSocket protocol but **not exercised against the real API** (no
-  key in dev; the cloud returns `live_token: null`). Output audio plays 24 kHz PCM; barge-in = `interrupted`.
+- Gemini Live verified against the real API (2026-11-14, `scripts/live_e2e.sh iphone|glasses`, paid ~1 min):
+  setup accepted, barge-in (`interrupted` + tool cancellation), input transcription, `recall` → cloud graph →
+  spoken answer. Evidence in `demo/recordings/live-e2e/<surface>/` (events.jsonl, kaiku.wav, person.wav,
+  timeline.png). `enableAffectiveDialog` is NOT sent: gemini-3.8-live closes with 1007 when it is true.
+  Not yet run on a physical iPhone + glasses (signing: the team must accept the latest Apple Program License
+  Agreement; App Group + HealthKit need the paid team). VAD tuning lives in `LiveSession.Tuning` (device code, not config) until a
+  contract field carries it. A reconnect that needs a fresh token opens a second cloud episode that stays open.
+  `look_at_this` answers "camera not connected" (no DAT camera stream yet).
+- `make e2e-intelligence` (repo root, paid, a few cents): token → typed, spoken (automatic VAD) and barge-in turns,
+  Gemini TTS keyed + `/v1/voice/say`, `ask_mind` from memory, graph rebuild. Live's output transcript sometimes
+  joins words ("itpeaceful"): that text comes from the API as-is.
 - `copy.apple.json` holds ~90 keys `design/copy.json` lacks (no-name greetings, suggestion lines per nudge arm, A2 notification / walk / widget / Live Activity lines,
   offline Talk, scripted replies, receipt lines with numbers, pairing errors, a11y labels). Design owner: upstream
   them, then delete them here. Also `days.sheet.title`, `saw.*`, `mem.1..3`, `talk.say1` in copy.json are demo
@@ -293,3 +383,10 @@ payloads ⊆ schemas. UI: `Kaiku iOS UITests` (needs a seeded cloud): `KaikuFlow
 - The care-team call button shows a toast only (no "please call me" endpoint).
 - Mac `-kaikuSnapshot` uses ImageRenderer (no ScrollView, toggles/text fields render as placeholders); real
   window capture needs screen-recording permission.
+
+## Invariants (layout on Mac)
+- Non-scrolling panes (games, Talk) wrap in `fillsProposal()`: NavigationSplitView measures the detail at a tiny
+  width, where vertically fixed wrapping text reports a huge minimum height; without it the split view outgrew
+  the window (sidebar list under the traffic lights, crisis pill, game title and Start button clipped).
+- Game scenes are a `.background`, never a layout sibling; on Mac they only extend under the toolbar, never under
+  the sidebar. Mac pushed screens use the system toolbar back button + `navigationTitle`; Esc via `EscapeKey`.

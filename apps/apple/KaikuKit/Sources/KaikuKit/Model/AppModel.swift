@@ -6,10 +6,15 @@ import SwiftUI
 /// `sig.<id>.{t,d}`. Check-ins + walks default on, the rest off (design/ia.md → Onboarding).
 public enum Signal: String, CaseIterable, Identifiable, Sendable {
     case checkins, walks, voice, mac, watch
+    /// Keep the words of conversations with Kaiku (opt-in, off by default): the person can read and delete them;
+    /// never shown to the care team; used de-identified to teach Kaiku's own model. Crisis talk is never kept.
+    case transcripts
     public var id: String { rawValue }
     public var defaultOn: Bool { self == .checkins || self == .walks }
     /// Signals this platform can actually produce (others are shown but explained as another device's).
-    public static var forThisDevice: [Signal] { KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .watch] : [.checkins, .voice, .mac] }
+    public static var forThisDevice: [Signal] {
+        KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .watch, .transcripts] : [.checkins, .voice, .mac, .transcripts]
+    }
 }
 
 public enum VoicePace: String, CaseIterable, Sendable { case slow, normal }
@@ -67,6 +72,8 @@ public final class AppModel {
     public var sounds: Bool { didSet { defaults.set(sounds, forKey: KSound.enabledKey) } }
     /// Days the person marked in Your days (local only: no contract carries day marks yet).
     public var marks: [String: HighlightKind] { didSet { saveDict(marks.mapValues(\.rawValue), "kaiku.marks") } }
+    /// Game (PlayGame raw value) → the local day it was last finished on this device. Drives Today's path ticks.
+    public var playedDays: [String: String] { didSet { saveDict(playedDays, "kaiku.played") } }
     /// Name override for layout stress tests (`-kaikuName Annemarie-Kristiina`); otherwise from memories.
     @ObservationIgnored private let nameOverride: String?
 
@@ -80,6 +87,7 @@ public final class AppModel {
         }
         self.pairing = p
         api = APIClient(pairing: p)
+        VoiceLines.shared.api = api   // lines not cached yet are fetched in Kaiku's real voice (never a synthesizer)
         queue = OfflineQueue()
         onboarded = defaults.bool(forKey: "kaiku.onboarded") || defaults.bool(forKey: "kaikuSkipOnboarding")
         let langRaw = defaults.string(forKey: "kaiku.lang") ?? KaikuLanguage.system.rawValue
@@ -98,6 +106,7 @@ public final class AppModel {
         sounds = defaults.object(forKey: KSound.enabledKey) as? Bool ?? true
         let m = defaults.dictionary(forKey: "kaiku.marks") as? [String: String] ?? [:]
         marks = m.compactMapValues { HighlightKind(rawValue: $0) }
+        playedDays = defaults.dictionary(forKey: "kaiku.played") as? [String: String] ?? [:]
         nameOverride = defaults.string(forKey: "kaikuName")
         if let tab = defaults.string(forKey: "kaikuTab").flatMap(KaikuTab.init(rawValue:)) { selectedTab = tab }
         if let r = defaults.string(forKey: "kaikuRoute").flatMap(KaikuRoute.init(rawValue:)) { deepLink = r }
@@ -136,6 +145,7 @@ public final class AppModel {
     }
 
     public var weatherDoneToday: Bool { weatherDoneDay == Self.dayKey(Date()) }
+    public func playedToday(_ game: String) -> Bool { playedDays[game] == Self.dayKey(Date()) }
 
     /// Ambient mascot state: `GET /v1/me → mascot.mood`, `happy` for a moment after a finished interaction,
     /// `sleepy` after 23:00, `thinking` while the first load runs.
@@ -217,6 +227,17 @@ public final class AppModel {
         if (try? await api.deleteAllMemories()) != nil { toast = T("toast.deleted") } else { memories = before; offline = true }
     }
 
+    /// Stored conversations (opt-in `transcripts` signal); nil = not loaded / offline.
+    public var conversationsKept: Int?
+
+    public func loadConversations() async {
+        conversationsKept = (try? await api.transcripts())?.transcripts.count
+    }
+
+    public func forgetConversations() async {
+        if (try? await api.deleteAllTranscripts()) != nil { conversationsKept = 0; toast = T("toast.deleted") } else { offline = true }
+    }
+
     public func setRemember(_ on: Bool) async {
         remember = on
         if let r = try? await api.setRemember(on) { remember = r.remember } else { offline = true }
@@ -257,6 +278,7 @@ public final class AppModel {
 
     /// One finished game → obs.play_session. Speech features only with the voice signal on.
     public func recordPlay(_ session: PlaySession) async {
+        playedDays[session.game.rawValue] = Self.dayKey(Date())
         celebrate()
         guard allowed(.checkins) else { return }
         var s = session

@@ -22,7 +22,8 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
 }
 
 public enum WidgetShared {
-    public static let group = "group.fi.kaiku"
+    /// From Info.plist `KaikuAppGroup` (= build setting KAIKU_APP_GROUP; App Group ids are unique per Apple team).
+    public static let group = Bundle.main.object(forInfoDictionaryKey: "KaikuAppGroup") as? String ?? "group.fi.kaiku"
     static let key = "kaiku.widget"
 
     static var defaults: UserDefaults? { UserDefaults(suiteName: group) }

@@ -14,6 +14,7 @@ public extension EnvironmentValues {
 /// pushed screens put back + title on one row). Publishes the column width for adaptive two-column layouts.
 public struct KScreen<Content: View>: View {
     let title: String?
+    var subtitle: String? = nil
     let back: (() -> Void)?
     let scrolls: Bool
     let maxWidth: CGFloat
@@ -23,9 +24,10 @@ public struct KScreen<Content: View>: View {
     @Environment(\.kaikuStaticLayout) private var staticLayout
     @State private var width: CGFloat = 0
 
-    public init(_ title: String? = nil, back: (() -> Void)? = nil, scrolls: Bool = true, maxWidth: CGFloat = 680,
-                spacing: CGFloat = KaikuTokens.Space.s5, @ViewBuilder content: () -> Content) {
+    public init(_ title: String? = nil, subtitle: String? = nil, back: (() -> Void)? = nil, scrolls: Bool = true,
+                maxWidth: CGFloat = 680, spacing: CGFloat = KaikuTokens.Space.s5, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.subtitle = subtitle
         self.back = back
         self.scrolls = scrolls
         self.maxWidth = maxWidth
@@ -35,8 +37,10 @@ public struct KScreen<Content: View>: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            if staticLayout || !scrolls {
+            if staticLayout {
                 inner.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if !scrolls {
+                inner.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).fillsProposal()
             } else {
                 ScrollView {
                     inner.frame(maxWidth: .infinity)
@@ -50,20 +54,93 @@ public struct KScreen<Content: View>: View {
         .environment(\.kaikuPaneWidth, max(0, min(width - 2 * KaikuPlatform.sidePadding, maxWidth)))
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
+        #else
+        .navigationTitle(back != nil ? (title ?? "Kaiku") : "Kaiku")
         #endif
     }
 
+    /// Mac pushed screens show their title in the window toolbar (next to the system back button), like any Mac app.
+    private var headerTitle: String? {
+        if !KaikuPlatform.isPhone && back != nil { return nil }
+        return scrolls || !dts.isAccessibilitySize ? title : nil
+    }
+
     private var inner: some View {
-        VStack(alignment: .leading, spacing: spacing) {
+        // iPhone breathes a little more than the Mac pane: +6 pt between blocks, room above the floating tab bar.
+        VStack(alignment: .leading, spacing: KaikuPlatform.isPhone ? spacing + 6 : spacing) {
             // Fixed (game) screens give the field the room at accessibility sizes: back + pill only.
-            ScreenHeader(title: scrolls || !dts.isAccessibilitySize ? title : nil, back: back)
+            if back == nil, let t = headerTitle, scrolls {
+                PageHeader(title: t, subtitle: subtitle)
+            } else {
+                ScreenHeader(title: headerTitle, back: back)
+            }
             content
         }
         .padding(.horizontal, KaikuPlatform.sidePadding)
-        .padding(.top, KaikuPlatform.isPhone ? KaikuTokens.Space.s2 : KaikuTokens.Space.s5)
-        .padding(.bottom, KaikuTokens.Space.s5)
+        .padding(.top, KaikuPlatform.isPhone ? KaikuTokens.Space.s3 : KaikuTokens.Space.s5)
+        .padding(.bottom, KaikuPlatform.isPhone && scrolls ? KaikuTokens.Space.s8 + KaikuTokens.Space.s4 : KaikuTokens.Space.s5)
         .frame(maxWidth: maxWidth, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: scrolls ? nil : .infinity, alignment: .top)
+    }
+}
+
+/// A tab's page header: a small clay date line, the big title, one plain line on what the page is for, and the
+/// "I'm not OK" pill top-right on iPhone. Gives every page the same calm, magazine-like start.
+public struct PageHeader: View {
+    let title: String
+    let subtitle: String?
+    public init(title: String, subtitle: String? = nil) { self.title = title; self.subtitle = subtitle }
+
+    static var eyebrow: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: L10n.shared.language.rawValue)
+        f.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
+        return f.string(from: Date())
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+            HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
+                Text(Self.eyebrow.uppercased(with: Locale(identifier: L10n.shared.language.rawValue)))
+                    .kText(.caption, weight: .semibold).tracking(0.8)
+                    .foregroundStyle(KaikuTokens.Colors.clay)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: KaikuTokens.Space.s2)
+                if KaikuPlatform.isPhone { NotOKPill() }
+            }
+            Text(title)
+                .kText(.title1, weight: .bold)
+                .foregroundStyle(KaikuTokens.Colors.ink)
+                .wraps()
+                .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+                Text(subtitle).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.bottom, KaikuTokens.Space.s1)
+    }
+}
+
+/// A section's header: tone icon tile + title (+ one quiet line). Replaces bare grey captions.
+public struct SectionHeader: View {
+    let title: String
+    var subtitle: String? = nil
+    var icon: String? = nil
+    var tone: KTone = .clay
+    public init(_ title: String, subtitle: String? = nil, icon: String? = nil, tone: KTone = .clay) {
+        self.title = title; self.subtitle = subtitle; self.icon = icon; self.tone = tone
+    }
+    public var body: some View {
+        HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
+            if let icon { RowIcon(symbol: icon, tint: tone.ink, side: 30) }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).kText(.callout, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                if let subtitle { Text(subtitle).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps() }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -105,7 +182,23 @@ public struct ScreenHeader: View {
     }
 
     @ViewBuilder private var backButton: some View {
-        if let back { BackButton(action: back) }
+        if let back {
+            #if os(macOS)
+            EscapeKey(action: back)   // Mac: the window toolbar's own back button; Esc still goes back
+            #else
+            BackButton(action: back)
+            #endif
+        }
+    }
+}
+
+/// Mac: an invisible Esc shortcut (the visible back control is the system toolbar's).
+public struct EscapeKey: View {
+    let action: () -> Void
+    public init(action: @escaping () -> Void) { self.action = action }
+    public var body: some View {
+        Button("", action: action).keyboardShortcut(.cancelAction).buttonStyle(.plain)
+            .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
     }
 }
 
@@ -136,12 +229,12 @@ public struct KCard<Content: View>: View {
     let padding: CGFloat
     let tint: Color
     let content: Content
-    public init(padding: CGFloat = KaikuTokens.Space.s4, tint: Color = KaikuTokens.Colors.surface, @ViewBuilder content: () -> Content) {
+    public init(padding: CGFloat = KaikuPlatform.isPhone ? KaikuTokens.Space.s5 - 4 : KaikuTokens.Space.s4, tint: Color = KaikuTokens.Colors.surface, @ViewBuilder content: () -> Content) {
         self.padding = padding
         self.tint = tint
         self.content = content()
     }
-    public init(padding: CGFloat = KaikuTokens.Space.s4, tone: KTone, @ViewBuilder content: () -> Content) {
+    public init(padding: CGFloat = KaikuPlatform.isPhone ? KaikuTokens.Space.s5 - 4 : KaikuTokens.Space.s4, tone: KTone, @ViewBuilder content: () -> Content) {
         self.init(padding: padding, tint: tone.soft, content: content)
     }
     var plain: Bool { tint == KaikuTokens.Colors.surface }
@@ -161,14 +254,19 @@ public struct KCard<Content: View>: View {
 /// Grouped list section: optional caption title, rows separated by hairlines.
 public struct KSection<Content: View>: View {
     let title: String?
+    var subtitle: String? = nil
+    var icon: String? = nil
+    var tone: KTone = .clay
     let content: Content
-    public init(_ title: String? = nil, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
+    public init(_ title: String? = nil, subtitle: String? = nil, icon: String? = nil, tone: KTone = .clay,
+                @ViewBuilder content: () -> Content) {
+        self.title = title; self.subtitle = subtitle; self.icon = icon; self.tone = tone; self.content = content()
+    }
     public var body: some View {
-        VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
             if let title {
-                Text(title).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                SectionHeader(title, subtitle: subtitle, icon: icon, tone: tone)
                     .padding(.horizontal, KaikuTokens.Space.s1)
-                    .accessibilityAddTraits(.isHeader)
             }
             VStack(spacing: 0) { content }
                 .clipShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
@@ -184,7 +282,7 @@ public struct KSection<Content: View>: View {
 
 public struct KDivider: View {
     public init() {}
-    public var body: some View { Rectangle().fill(KaikuTokens.Colors.line).frame(height: 1).padding(.leading, KaikuTokens.Space.s4) }
+    public var body: some View { Rectangle().fill(KaikuTokens.Colors.line).frame(height: 1).padding(.leading, 64) }
 }
 
 public enum KRowAccessory { case chevron, check, none, value(String) }
@@ -225,8 +323,8 @@ public struct KRow: View {
             }
         }
         .padding(.horizontal, KaikuTokens.Space.s4)
-        .padding(.vertical, KaikuTokens.Space.s3 - 2)
-        .frame(minHeight: 54)
+        .padding(.vertical, KaikuPlatform.isPhone ? KaikuTokens.Space.s3 + 2 : KaikuTokens.Space.s3 - 2)
+        .frame(minHeight: KaikuPlatform.isPhone ? 62 : 54)
         .contentShape(Rectangle())
     }
 }
@@ -279,8 +377,8 @@ public struct KToggleRow: View {
         .toggleStyle(.switch)
         .tint(KaikuTokens.Colors.sage)
         .padding(.horizontal, KaikuTokens.Space.s4)
-        .padding(.vertical, KaikuTokens.Space.s3 - 2)
-        .frame(minHeight: 54)
+        .padding(.vertical, KaikuPlatform.isPhone ? KaikuTokens.Space.s3 + 2 : KaikuTokens.Space.s3 - 2)
+        .frame(minHeight: KaikuPlatform.isPhone ? 62 : 54)
     }
 
     private var labels: some View {
@@ -320,7 +418,7 @@ public struct Bubble: View {
                 .background(shape.fill(from == .me ? KaikuTokens.Colors.claySoft : KaikuTokens.Colors.surface)
                     .shadow(color: KaikuTokens.Colors.ink.opacity(from == .me ? 0 : 0.05), radius: 8, y: 3))
                 .overlay(shape.strokeBorder(from == .me ? .clear : KaikuTokens.Colors.line, lineWidth: 1))
-                .contentTransition(.opacity)
+                .contentTransition(.identity)   // a cross-fade of two lengths left ghost text
             if from == .kaiku && !centered { Spacer(minLength: dts.isAccessibilitySize ? 0 : 24) }
         }
     }
@@ -349,5 +447,15 @@ public struct MascotWithBubble: View {
                 Bubble(text, big: big).layoutPriority(1)
             }
         }
+    }
+}
+
+public extension View {
+    /// Takes exactly the size it is offered and reports no minimum of its own. Non-scrolling panes (games, Talk)
+    /// need this on macOS: NavigationSplitView measures its detail at a tiny width, where vertically fixed wrapping
+    /// text reports a huge minimum height — the split view then outgrew the window and clipped the sidebar list,
+    /// the "I'm not OK" pill, the game title and the Start button.
+    func fillsProposal() -> some View {
+        GeometryReader { g in self.frame(width: g.size.width, height: g.size.height) }
     }
 }

@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS memories (
     last_used TEXT,
     UNIQUE(home_id, norm)
 );
-CREATE TABLE IF NOT EXISTS episodes (  -- one row per session; no transcript, no audio
+CREATE TABLE IF NOT EXISTS episodes (  -- one row per session; no audio (opt-in transcripts: own table)
     id TEXT PRIMARY KEY,
     home_id TEXT NOT NULL,
     surface TEXT NOT NULL,
@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS episodes (  -- one row per session; no transcript, no
     outcome TEXT
 );
 CREATE INDEX IF NOT EXISTS episodes_home ON episodes(home_id, start);
+CREATE TABLE IF NOT EXISTS transcripts (  -- opt-in only (device consent `transcripts`); person-facing, deletable
+    episode_id TEXT PRIMARY KEY,
+    home_id TEXT NOT NULL,
+    surface TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    start TEXT NOT NULL,
+    turns TEXT NOT NULL              -- JSON [{role: person|kaiku, text}]
+);
+CREATE INDEX IF NOT EXISTS transcripts_home ON transcripts(home_id, start);
 CREATE TABLE IF NOT EXISTS threads (   -- at most one open per home; continues on any surface
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     home_id TEXT NOT NULL,
@@ -442,6 +451,30 @@ class Store:
                 " outcome=COALESCE(excluded.outcome, episodes.outcome), tools=excluded.tools",
                 (ep["id"], ep["home_id"], ep["surface"], ep["intent"], ep["start"], ep.get("end"),
                  json.dumps(ep.get("tools", [])), ep.get("outcome")))
+
+    def transcript_upsert(self, t: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO transcripts(episode_id,home_id,surface,intent,start,turns) VALUES (?,?,?,?,?,?)"
+                " ON CONFLICT(episode_id) DO UPDATE SET turns=excluded.turns",
+                (t["episode_id"], t["home_id"], t["surface"], t["intent"], t["start"], json.dumps(t["turns"])))
+
+    def transcripts(self, home_id: str | None = None) -> list[dict[str, Any]]:
+        """One home's transcripts (newest first), or all homes' (home_id None: training export only)."""
+        with self._lock:
+            if home_id is None:
+                rows = self._db.execute("SELECT * FROM transcripts ORDER BY start").fetchall()
+            else:
+                rows = self._db.execute("SELECT * FROM transcripts WHERE home_id=? ORDER BY start DESC",
+                                        (home_id,)).fetchall()
+        return [{**dict(r), "turns": json.loads(r["turns"])} for r in rows]
+
+    def transcript_delete(self, home_id: str, episode_id: str | None = None) -> int:
+        with self._lock:
+            if episode_id is None:
+                return self._db.execute("DELETE FROM transcripts WHERE home_id=?", (home_id,)).rowcount
+            return self._db.execute("DELETE FROM transcripts WHERE home_id=? AND episode_id=?",
+                                    (home_id, episode_id)).rowcount
 
     def episode(self, episode_id: str) -> dict[str, Any] | None:
         with self._lock:

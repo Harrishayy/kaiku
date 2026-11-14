@@ -1,75 +1,74 @@
 import SwiftUI
 
-/// Talk: bubbles + hold-to-talk Kaiku (30 s ring) + composer. Starts with POST /v1/companion/session
-/// {surface: iphone|mac}. With a live_token: Gemini Live (LiveSession), device tools handled here, cloud tools
-/// forwarded to /v1/companion/tool. Without one: "Kaiku can talk once it's online" + typed messages that run the
-/// local safety gate and get short scripted replies (copy keys; no AI pretending).
+/// Talk: an open spoken conversation (Conversation: server VAD, barge-in, the mind's tools) + bubbles + composer.
+/// Starts with POST /v1/companion/session {surface: iphone|mac, intent: talk}. Tap Kaiku to stop / start listening.
+/// Without Live (offline, no key, no mic): "Kaiku can talk once it's online" + typed messages that run the local
+/// safety gate and get short scripted replies (copy keys; no AI pretending).
 @Observable @MainActor
 final class TalkModel {
-    struct Line: Identifiable, Equatable { let id = UUID(); let text: String; let me: Bool }
-    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied, paused }
+    struct Line: Identifiable, Equatable { let id: UUID; let text: String; let me: Bool }
+    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied, paused, muted }
 
-    var lines: [Line] = []
-    var mode: Mode = .connecting
-    var holdStart: Date?
     var expression: MascotState?
-    var session: CompanionSessionResponse?
-    private var live: LiveSession?
-    private var capture = AudioCapture()
+    private var scripted: [Line] = []
+    private var scriptedThinking = false
     private var scriptedIndex = 0
-    private var started = Date()
-    private var toolsUsed: [String] = []
+    private(set) var conversation = Conversation(surface: KaikuPlatform.surface, intent: .talk)
     weak var app: AppModel?
-    // A2: on-device listening (safety gate + spoken dial), interruptions / routes, reconnects.
-    private let listener = OnDeviceListener()
     private var audioTokens: [NSObjectProtocol] = []
     private var routeAnnounced = false
-    private var userStopped = false
-    private var reconnects = 0
-    private(set) var lastSpokenDial: Int?
+    private var started = false
+    private var denied = false
 
-    var hasLive: Bool { live != nil }
+    var hasLive: Bool { conversation.isLive }
+    var lastSpokenDial: Int? { conversation.lastSpokenDial }
+
+    var lines: [Line] {
+        conversation.lines.map { Line(id: $0.id, text: $0.text, me: $0.me) } + scripted
+    }
+
+    var mode: Mode {
+        if denied { return .denied }
+        if scriptedThinking { return .thinking }
+        switch conversation.phase {
+        case .idle, .connecting: return started ? .connecting : .connecting
+        case .listening: return .live
+        case .hearing: return .listening
+        case .thinking: return .thinking
+        case .speaking: return .speaking
+        case .muted: return .muted
+        case .paused: return .paused
+        case .unavailable: return .scripted
+        }
+    }
 
     func start(app: AppModel) async {
         self.app = app
-        guard session == nil else { return }
-        started = Date()
-        userStopped = false
+        guard !started else { return }
+        started = true
         if audioTokens.isEmpty {
             audioTokens = TalkAudio.observe { [weak self] ev in self?.audioEvent(ev) }
-            listener.onHit = { [weak self] hit in Task { @MainActor in self?.onDeviceHit(hit) } }
-            // Kaiku says hello in its own voice (cached line; on-device synthesizer when not cached / offline).
+        }
+        let c = conversation
+        c.deviceTool = { [weak self] name, args in await self?.deviceTool(name, args) ?? .object(["ok": .bool(false)]) }
+        c.onCrisis = { [weak self] in self?.app?.crisis(trigger: "phrase") }
+        c.onReady = { [weak c] in c?.context("[the person just opened Talk]") }   // Kaiku greets in its live voice
+        if AudioCapture.permission == .denied { denied = true }
+        let ok = await c.start(app: app)
+        if !ok {
+            // No Live: Kaiku still says hello in its own Gemini voice (cached / fetched line; silent offline).
             VoiceLines.shared.play(Self.greetingKey(), lang: app.language)
         }
-        let req = CompanionSessionRequest(surface: KaikuPlatform.surface, home_id: app.pairing?.homeID ?? "",
-                                          intent: .talk, language: app.language.rawValue)
-        guard app.isPaired, let s = try? await app.api.companionSession(req) else {
-            mode = .scripted
-            return
-        }
-        session = s
-        guard let token = s.live_token?.token else { mode = .scripted; return }
-        let l = LiveSession { [weak self] ev in Task { @MainActor in self?.handle(ev) } }
-        live = l
-        l.connect(token: token, session: s, language: app.language.rawValue)
     }
 
     func stop() {
-        userStopped = true
-        live?.close()
-        live = nil
-        _ = capture.stop()
-        listener.stop()
+        conversation.stop()
         audioTokens.forEach(NotificationCenter.default.removeObserver)
         audioTokens = []
         VoiceLines.shared.stop()
-        guard let app, let s = session else { return }
-        // Close the episode the session opened (no transcript is ever sent).
-        let ep = EpisodeIn(id: s.session_id, home_id: app.pairing?.homeID ?? "", surface: KaikuPlatform.surface, intent: .talk,
-                           start: KaikuTime.iso(started), end: KaikuTime.iso(Date()),
-                           outcome: lines.contains(where: \.me) ? .completed : .skipped, tools_used: toolsUsed)
-        Task { _ = try? await app.api.companionEpisode(ep) }
-        session = nil
+        TalkAudio.deactivate()
+        started = false
+        conversation = Conversation(surface: KaikuPlatform.surface, intent: .talk)
     }
 
     // MARK: input
@@ -77,133 +76,61 @@ final class TalkModel {
     func send(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        lines.append(Line(text: text, me: true))
-        if SafetyGate.shared.check(text) != nil { crisis(); return }
-        if let live, mode != .scripted {
-            live.sendText(text)
-            mode = .thinking
-        } else {
-            scriptedReply()
-        }
+        if hasLive { conversation.send(text: text); return }
+        scripted.append(Line(id: UUID(), text: text, me: true))
+        if SafetyGate.shared.check(text) != nil { app?.crisis(trigger: "phrase"); return }
+        scriptedReply()
     }
 
-    func press() async {
-        guard mode != .listening else { return }
-        switch AudioCapture.permission {
-        case .denied: mode = .denied; return
-        case .undetermined:
-            if !(await AudioCapture.request()) { mode = .denied }
-            return
-        case .granted: break
-        }
-        guard let live else { return }
-        if !OnDeviceListener.authorized { _ = await OnDeviceListener.requestAuthorization() }
-        capture.onPCM = { [weak live] d in live?.sendAudio(d) }
-        let listener = listener
-        capture.onBuffer = { b in listener.append(b) }
-        listener.start(lang: app?.language ?? .en)
-        do {
-            try capture.start()
-            live.activityStart()
-            holdStart = Date()
-            mode = .listening
-        } catch { mode = .denied }
+    /// Tap Kaiku: stop listening ↔ listen again (Kaiku may finish its sentence).
+    func toggleListening() {
+        guard hasLive else { return }
+        conversation.setMuted(mode != .muted)
     }
 
-    func release() {
-        guard mode == .listening else { return }
-        _ = capture.stop()
-        capture.onPCM = nil
-        capture.onBuffer = nil
-        listener.stop()
-        live?.activityEnd()
-        holdStart = nil
-        mode = .thinking
-    }
+    /// The mic is open (Live, not muted / paused).
+    var micOn: Bool { hasLive && mode != .muted && mode != .paused }
 
     private func scriptedReply() {
-        mode = .thinking
+        scriptedThinking = true
         let keys = ["talk.scripted.1", "talk.scripted.2", "talk.scripted.3"]
         let key = keys[scriptedIndex % keys.count]
         scriptedIndex += 1
         Task {
             try? await Task.sleep(nanoseconds: 900_000_000)
-            lines.append(Line(text: T(key), me: false))
-            mode = .speaking
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            if mode == .speaking { mode = .scripted }
+            scripted.append(Line(id: UUID(), text: T(key), me: false))
+            scriptedThinking = false
         }
     }
 
-    private func crisis() {
-        userStopped = true
-        _ = capture.stop()
-        listener.stop()
-        VoiceLines.shared.stop()
-        live?.close()
-        live = nil
-        mode = .scripted
-        app?.crisis(trigger: "phrase")
-    }
+    // MARK: device tools (the model requests, the device decides)
 
-    // MARK: live events
-
-    private func handle(_ ev: LiveSession.Event) {
-        switch ev {
-        case .ready: mode = .live
-        case .userText(let t):
-            if SafetyGate.shared.check(t) != nil { crisis(); return }
-            appendOrExtend(t, me: true)
-        case .kaikuText(let t): appendOrExtend(t, me: false); mode = .speaking
-        case .speaking(let on): mode = on ? .speaking : (live == nil ? .scripted : .live)
-        case .toolCall(let id, let name, let args): Task { await tool(id: id, name: name, args: args) }
-        case .closed:
-            if live != nil { live = nil; if mode != .scripted { mode = .scripted } }
-            reconnect()
-        }
-    }
-
-    private func appendOrExtend(_ t: String, me: Bool) {
-        if let last = lines.last, last.me == me, Date().timeIntervalSince(started) > 0 {
-            lines[lines.count - 1] = Line(text: last.text + t, me: me)
-        } else {
-            lines.append(Line(text: t, me: me))
-        }
-    }
-
-    private func tool(id: String, name: String, args: [String: JSONValue]) async {
-        toolsUsed.append(name)
-        guard let app, let s = session else { return }
-        if ToolExecutor.isDevice(name) {
-            var result: JSONValue = .object(["ok": .bool(true)])
-            switch name {
-            case "express":
-                let f = args["feeling"]?.string ?? "happy"
-                expression = ["sleepy": .sleepy, "cozy": .cozy, "curious": .listening, "proud": .cheering][f] ?? .happy
-            case "record_dial":
-                if let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)), let v = args["value"]?.int ?? lastSpokenDial {
-                    await app.emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel, context: "adhoc"))
-                }
-            case "start_activity":
-                let kind = args["kind"]?.string ?? ""
-                if let r = ["breathe": KaikuRoute.breathe, "firefly": .firefly, "pebbles": .pebbles, "tell": .tell][kind] {
-                    app.deepLink = r
-                    app.selectedTab = r.tab
-                } else { result = .object(["ok": .bool(false), "error": .string("not on this device")]) }
-            default:
-                result = .object(["ok": .bool(false), "error": .string("not on this device")])
+    private func deviceTool(_ name: String, _ args: [String: JSONValue]) async -> JSONValue {
+        guard let app else { return .object(["ok": .bool(false)]) }
+        switch name {
+        case "express":
+            let f = args["feeling"]?.string ?? "happy"
+            expression = ["sleepy": .sleepy, "cozy": .cozy, "curious": .listening, "proud": .cheering][f] ?? .happy
+        case "record_dial":
+            if let item = args["item"]?.string.flatMap(DialItem.init(rawValue:)), let v = args["value"]?.int ?? lastSpokenDial {
+                await app.emit("obs.self_report", SelfReport(item: item, value: v, channel: KaikuPlatform.channel, context: "adhoc"))
             }
-            live?.respond(id: id, name: name, result: result)
-            return
+        case "start_activity":
+            // Only on the person's word: a model that opens a fresh Talk by launching a game would pull them out
+            // of the conversation before they said anything (seen live 2026-11-14).
+            guard conversation.lines.contains(where: \.me) else {
+                return .object(["ok": .bool(false), "error": .string("ask the person first; they haven't asked for an activity")])
+            }
+            let kind = args["kind"]?.string ?? ""
+            guard let r = ["breathe": KaikuRoute.breathe, "firefly": .firefly, "pebbles": .pebbles, "tell": .tell][kind] else {
+                return .object(["ok": .bool(false), "error": .string("not on this device")])
+            }
+            app.deepLink = r
+            app.selectedTab = r.tab
+        default:
+            return .object(["ok": .bool(false), "error": .string("not on this device")])
         }
-        let call = CompanionToolCall(home_id: app.pairing?.homeID ?? "", surface: KaikuPlatform.surface, name: name,
-                                     args: args, session_id: s.session_id)
-        guard let r = try? await app.api.companionTool(call) else {
-            live?.respond(id: id, name: name, result: .object(["ok": .bool(false), "error": .string("offline")]))
-            return
-        }
-        if r.crisis == true { crisis(); return }
-        live?.respond(id: id, name: name, result: r.result ?? .object(["ok": .bool(r.ok)]))
+        return .object(["ok": .bool(true)])
     }
 }
 
@@ -218,38 +145,16 @@ extension TalkModel {
     func audioEvent(_ ev: TalkAudio.Event) {
         switch ev {
         case .interrupted:
-            if mode == .listening { release() }
             VoiceLines.shared.stop()
-            mode = .paused
+            conversation.pause()
         case .resumed:
-            guard mode == .paused else { return }
-            mode = hasLive ? .live : .scripted
-            try? TalkAudio.activate()
-            let line = T("talk.resumed")
-            lines.append(Line(text: line, me: false))
-            VoiceLines.shared.say(line, lang: app?.language ?? .en)
+            guard conversation.phase == .paused else { return }
+            conversation.resume()
+            conversation.context("[back after an interruption, e.g. a phone call]")
         case .routeChanged(let name):
             guard !routeAnnounced, !name.isEmpty else { return }
             routeAnnounced = true
             app?.showToast(T("talk.route", ["name": name]))
-        }
-    }
-
-    func onDeviceHit(_ hit: OnDeviceListener.Hit) {
-        switch hit {
-        case .crisis: crisis()
-        case .dial(let n): lastSpokenDial = n
-        }
-    }
-
-    /// Live sessions have time limits: reconnect (twice at most) and say "I'm still here".
-    func reconnect() {
-        guard !userStopped, reconnects < 2, let app else { return }
-        reconnects += 1
-        session = nil
-        Task {
-            await start(app: app)
-            if hasLive { lines.append(Line(text: T("talk.still"), me: false)) }
         }
     }
 
@@ -264,54 +169,30 @@ public struct TalkView: View {
     @Environment(AppModel.self) private var app
     @State private var model = TalkModel()
     @State private var text = ""
-    @State private var pressing = false
     @State private var bgTask: Task<Void, Never>?
+    @State private var columnWidth: CGFloat = 0
     @Environment(\.scenePhase) private var phase
     @Environment(\.dynamicTypeSize) private var dts
 
     public init() {}
 
-    var holdSize: CGFloat { dts.isAccessibilitySize ? 72 : 124 }
+    /// Header-sized Kaiku: the chat gets the room (no panel, no halo; the mascot draws on a clear background).
+    var mascotSize: CGFloat { dts.isAccessibilitySize ? 48 : 60 }
 
     var mascotState: MascotState {
         switch model.mode {
         case .listening: return .listening
         case .thinking, .connecting: return .thinking
         case .speaking: return .speaking
-        case .paused: return .sleepy
+        case .paused, .muted: return .sleepy
         default: return model.expression ?? app.ambientState
         }
     }
 
     public var body: some View {
-        KScreen(T("tab.talk"), scrolls: false, maxWidth: 760) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: KaikuTokens.Space.s3) {
-                        if model.mode == .scripted || model.mode == .denied && !model.hasLive {
-                            KCard(tint: KaikuTokens.Colors.skySoft) {
-                                Text(T("talk.offline.t")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps()
-                                Text(T("talk.offline.d")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-                            }
-                        }
-                        if model.mode == .denied { MicPermissionCard {} }
-                        if model.lines.isEmpty {
-                            Text(T("talk.hint")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted)
-                                .multilineTextAlignment(.center).wraps().frame(maxWidth: .infinity)
-                                .padding(.top, KaikuTokens.Space.s2)
-                        }
-                        ForEach(model.lines) { l in Bubble(l.text, from: l.me ? .me : .kaiku).id(l.id) }
-                        if model.mode == .thinking { TypingIndicator().frame(maxWidth: .infinity, alignment: .leading) }
-                    }
-                    .padding(.vertical, KaikuTokens.Space.s2)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: model.lines) { _, l in
-                    if let last = l.last { withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { proxy.scrollTo(last.id, anchor: .bottom) } }
-                }
-            }
-            .frame(maxHeight: .infinity)
-            holdArea
+        KScreen(T("tab.talk"), scrolls: false, maxWidth: KaikuPlatform.isPhone ? 760 : 900, spacing: KaikuTokens.Space.s3) {
+            header
+            transcript
             Composer(text: $text, placeholder: T("talk.type")) {
                 model.send(text)
                 text = ""
@@ -326,33 +207,37 @@ public struct TalkView: View {
         }
     }
 
-    private var holdArea: some View {
-        VStack(spacing: KaikuTokens.Space.s1) {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: model.mode != .listening)) { tl in
-                let p = model.holdStart.map { tl.date.timeIntervalSince($0) / 30 } ?? 0
+    // MARK: header — compact Kaiku (tap = talk / stop) + one status line
+
+    private var header: some View {
+        HStack(spacing: KaikuTokens.Space.s3) {
+            Button { model.toggleListening() } label: {
                 ZStack {
-                    ProgressRing(progress: p, width: 5).frame(width: holdSize + 14, height: holdSize + 14).opacity(model.hasLive ? 1 : 0)
-                    MascotHalo(size: holdSize)
-                    MascotView(state: mascotState, size: holdSize, tappable: !model.hasLive)
-                }
-                .onChange(of: p >= 1) { _, full in if full { model.release() } }
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard model.hasLive, !pressing else { return }
-                        pressing = true
-                        Task { await model.press() }
+                    if model.micOn {
+                        ListeningRing(size: mascotSize + 10, active: model.mode == .listening)
                     }
-                    .onEnded { _ in pressing = false; model.release() }
-            )
-            .accessibilityElement()
-            .accessibilityLabel(model.mode == .listening ? T("talk.listening") : T("talk.hold"))
-            .accessibilityAddTraits(model.hasLive ? .isButton : [])
-            if !statusLine.isEmpty {
-                Text(statusLine).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).multilineTextAlignment(.center).wraps()
+                    MascotView(state: mascotState, size: mascotSize, tappable: false)
+                }
+                .frame(width: mascotSize + 12, height: mascotSize + 12)
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(model.micOn ? T("talk.a11y.stop") : T("talk.a11y.start"))
+            .accessibilityAddTraits(.isButton)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(statusLine).kText(.callout, weight: .medium).foregroundStyle(KaikuTokens.Colors.ink)
+                    .lineLimit(2).minimumScaleFactor(0.85)
+                if let sub = subLine {
+                    Text(sub).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast), value: model.mode)
+
+            if model.hasLive {
+                IconButton(model.micOn ? "mic.fill" : "mic", label: model.micOn ? T("talk.a11y.stop") : T("talk.a11y.start"),
+                           filled: model.micOn) { model.toggleListening() }
             }
         }
     }
@@ -360,29 +245,127 @@ public struct TalkView: View {
     private var statusLine: String {
         switch model.mode {
         case .connecting: return T("talk.connecting")
+        case .live: return T("talk.on")
         case .listening: return T("talk.listening")
         case .thinking: return T("talk.thinking")
-        case .live, .speaking: return T("talk.hold")
-        case .scripted, .denied: return ""   // the hint already sits above the bubbles
+        case .speaking: return T("talk.speaking.hint")
+        case .muted: return T("talk.tap")
+        case .scripted, .denied: return T("talk.offline.t")
         case .paused: return T("talk.paused")
+        }
+    }
+
+    private var subLine: String? {
+        switch model.mode {
+        case .scripted: return T("talk.offline.d")
+        default: return nil
+        }
+    }
+
+    // MARK: transcript — full-width column, bubbles up to 80 %, pinned to the newest line
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: KaikuTokens.Space.s2) {
+                    if model.mode == .denied { MicPermissionCard {} }
+                    if model.lines.isEmpty { TalkWelcome { model.send($0) } }
+                    ForEach(model.lines) { l in
+                        TalkBubble(text: l.text, me: l.me, maxWidth: bubbleMax).id(l.id)
+                    }
+                    if model.mode == .thinking { TypingDots().frame(maxWidth: .infinity, alignment: .leading) }
+                    Color.clear.frame(height: 1).id(Self.bottom)
+                }
+                .padding(.vertical, KaikuTokens.Space.s2)
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .frame(maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
+            .onChange(of: model.lines) { _, _ in toBottom(proxy) }
+            .onChange(of: model.mode) { _, _ in toBottom(proxy) }
+            #if os(iOS)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                toBottom(proxy, animated: false)
+            }
+            #endif
+        }
+    }
+
+    private static let bottom = "talk.bottom"
+
+    private var bubbleMax: CGFloat {
+        let w = columnWidth > 0 ? columnWidth : 600
+        return dts.isAccessibilitySize ? w * 0.92 : w * 0.8
+    }
+
+    private func toBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        if animated {
+            withAnimation(KaikuTokens.Easing.gentleOut(KaikuTokens.Duration.fast)) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+        } else {
+            proxy.scrollTo(Self.bottom, anchor: .bottom)
         }
     }
 }
 
-/// Mini thinking Kaiku + three soft dots.
-struct TypingIndicator: View {
+/// One chat bubble: up to `maxWidth` (80 % of the column), never squeezed vertically (the keyboard shrinks the
+/// scroll view, not the text).
+struct TalkBubble: View {
+    let text: String
+    let me: Bool
+    let maxWidth: CGFloat
+
+    private var shape: UnevenRoundedRectangle {
+        me ? UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous)
+           : UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous)
+    }
+
+    var body: some View {
+        Text(text)
+            .kText(.body)
+            .foregroundStyle(KaikuTokens.Colors.ink)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, KaikuTokens.Space.s4)
+            .padding(.vertical, KaikuTokens.Space.s3)
+            .background(shape.fill(me ? KaikuTokens.Colors.claySoft : KaikuTokens.Colors.surface)
+                .shadow(color: KaikuTokens.Colors.ink.opacity(me ? 0 : 0.05), radius: 8, y: 3))
+            .overlay(shape.strokeBorder(me ? .clear : KaikuTokens.Colors.line, lineWidth: 1))
+            .frame(maxWidth: maxWidth, alignment: me ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: me ? .trailing : .leading)
+            .textSelection(.enabled)
+    }
+}
+
+/// A thin breathing ring around the header Kaiku while the mic is open (no filled panel).
+struct ListeningRing: View {
+    let size: CGFloat
+    let active: Bool
     @Environment(\.accessibilityReduceMotion) private var rm
     var body: some View {
-        HStack(spacing: KaikuTokens.Space.s2) {
-            MascotView(state: .thinking, size: 40, tappable: false)
-            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: rm)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                HStack(spacing: 5) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle().fill(KaikuTokens.Colors.muted)
-                            .frame(width: 7, height: 7)
-                            .opacity(rm ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * sin(t * 4 - Double(i) * 0.8)))
-                    }
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: rm || !active)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            let pulse = rm || !active ? 0.5 : 0.5 + 0.5 * sin(t * 2.4)
+            Circle()
+                .strokeBorder(KaikuTokens.Colors.clay.opacity(0.35 + 0.4 * pulse), lineWidth: 2.5)
+                .frame(width: size, height: size)
+                .scaleEffect(1 + 0.04 * pulse)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Three soft dots while Kaiku thinks (the header Kaiku already shows it's thinking).
+struct TypingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var rm
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: rm)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle().fill(KaikuTokens.Colors.muted)
+                        .frame(width: 7, height: 7)
+                        .opacity(rm ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * sin(t * 4 - Double(i) * 0.8)))
                 }
             }
             .padding(.horizontal, KaikuTokens.Space.s3)
@@ -390,5 +373,52 @@ struct TypingIndicator: View {
             .background(Capsule().fill(KaikuTokens.Colors.surface))
         }
         .accessibilityLabel(T("talk.thinking"))
+    }
+}
+
+
+/// Empty Talk: a warm hello card + three conversation starters (tap = send). Nobody faces a blank chat.
+struct TalkWelcome: View {
+    let send: (String) -> Void
+    @Environment(AppModel.self) private var app
+    static let starters: [(String, String, KTone)] = [
+        ("sun.max.fill", "talk.starter.good", .honey),
+        ("figure.walk", "talk.starter.walk", .sage),
+        ("moon.stars.fill", "talk.starter.wind", .sky),
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s4) {
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                Text(T("talk.welcome.t")).kText(.title3, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                Text(T("talk.welcome.d")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+            }
+            .padding(KaikuTokens.Space.s5 - 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous)
+                .fill(LinearGradient(colors: [KaikuTokens.Colors.claySoft, KaikuTokens.Colors.honeySoft.opacity(0.6)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)))
+            Text(T("talk.starters")).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.muted)
+                .padding(.horizontal, KaikuTokens.Space.s1)
+            VStack(spacing: KaikuTokens.Space.s2) {
+                ForEach(Self.starters, id: \.1) { icon, key, tone in
+                    Button { send(T(key)) } label: {
+                        HStack(spacing: KaikuTokens.Space.s3) {
+                            RowIcon(symbol: icon, tint: tone.ink, side: 34)
+                            Text(T(key)).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: "arrow.up.circle.fill").font(.system(size: 20)).foregroundStyle(tone.ink.opacity(0.8))
+                        }
+                        .padding(.horizontal, KaikuTokens.Space.s4).padding(.vertical, KaikuTokens.Space.s3)
+                        .background(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).fill(KaikuTokens.Colors.surface))
+                        .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.md, style: .continuous).strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.kPress)
+                }
+            }
+            Text(T("talk.hint")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
+                .padding(.horizontal, KaikuTokens.Space.s1)
+        }
+        .padding(.top, KaikuTokens.Space.s3)
     }
 }

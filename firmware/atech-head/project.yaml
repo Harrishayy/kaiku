@@ -10,14 +10,14 @@ name: kaiku-head
 board: 14port
 modules_path: ./
 modules:
-  - {id: speaker,             instance: spk,   port: 1}    # 1-2
-  - {id: st7735_tft,          instance: tft,   port: 3}    # 3-4, eyes (head, tuning window)
-  - {id: rotary_encoder_knob, instance: knob,  port: 5}    # 5-6, left ear dial
+  - {id: speaker,             instance: spk,   ports: [1, 2]}    # 1-2
+  - {id: st7735_tft,          instance: tft,   ports: [3, 4]}    # 3-4, eyes (head, tuning window)
+  - {id: rotary_encoder, instance: knob,  ports: [5, 6]}    # 5-6, left ear dial
   - {id: dc_motor,            instance: motor, port: 7}    # pan, 12:40 gear
-  - {id: microphone,          instance: mic,   port: 9}    # 9-10, right ear (v1: unused by the firmware)
-  - {id: button_module,       instance: btn,   port: 11}   # lid; long press = "I'm not OK" (hub decides, >= 2 s)
-  - {id: neopixel_grid,       instance: ledL,  port: 13}   # chest glow, left
-  - {id: neopixel_grid,       instance: ledR,  port: 14}   # chest glow, right
+  - {id: microphone,          instance: mic,   ports: [9, 10]}    # 9-10, right ear (v1: unused by the firmware)
+  - {id: button,       instance: btn,   port: 11}   # lid; long press = "I'm not OK" (hub decides, >= 2 s)
+  - {id: neopixel,       instance: ledL,  port: 13}   # chest glow, left
+  - {id: neopixel,       instance: ledR,  port: 14}   # chest glow, right
   - {id: kaiku_link,          instance: kaiku, port: 0}
 code:
   setup: |

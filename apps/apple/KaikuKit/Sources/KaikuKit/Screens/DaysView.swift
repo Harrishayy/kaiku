@@ -22,40 +22,29 @@ public struct DaysView: View {
     }
 
     public var body: some View {
-        KScreen(T("tab.days"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
+        KScreen(T("tab.days"), subtitle: T("days.sub"), maxWidth: 1000, spacing: KaikuTokens.Space.s4) {
             KAdaptiveColumns(minWidth: 600, leadingFraction: 0.5) {
                 WideAware { wide in
-                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                        GardenPatch(plants: app.me?.garden?.plants ?? 0, resting: app.me?.garden?.resting ?? false, height: wide ? 150 : 76)
-                        Text((app.me?.garden?.resting ?? false) ? T("days.resting") : T("days.garden"))
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                        SectionHeader(T("garden.title"), subtitle: T("garden.recent"), icon: "leaf.fill", tone: .sage)
+                        GardenBeds(garden: app.me?.garden ?? Garden(), weeks: 1, plantHeight: wide ? 130 : 110)
+                        GardenLegend()
+                        Text((app.me?.garden?.resting ?? false) ? T("days.resting") : T("garden.legend"))
                             .kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
                     }
-                    .padding(.horizontal, KaikuTokens.Space.s4)
-                    .padding(.top, KaikuTokens.Space.s4)
-                    .padding(.bottom, KaikuTokens.Space.s4)
+                    .padding(KaikuTokens.Space.s4)
                     .background(GardenWash())
                 }
-                VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                    Text(T("days.week")).kText(.callout).foregroundStyle(KaikuTokens.Colors.ink).wraps().accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                    SectionHeader(T("days.week"), subtitle: T("days.mark"), icon: "calendar", tone: .honey)
                     WeekStrip(days: week, kind: kind) { marking = $0 }
-                    Text(T("days.mark")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
                 }
             } trailing: {
-                WideAware { wide in
-                    if let hs = app.me?.highlights, !hs.isEmpty {
-                        KSection(T("days.highlights")) {
-                            ForEach(Array(hs.prefix(wide ? 5 : 2).enumerated()), id: \.offset) { i, h in
-                                if i > 0 { KDivider() }
-                                KRow(icon: h.kind == .good ? "sun.max.fill" : "cloud.drizzle.fill",
-                                     tint: h.kind == .good ? KaikuTokens.Colors.honey : KaikuTokens.Colors.sky,
-                                     title: h.text, detail: DayName.long(h.date), accessory: .none)
-                            }
-                        }
-                    }
+                if let hs = app.me?.highlights, !hs.isEmpty {
+                    MomentsTimeline(highlights: Array(hs.prefix(6)))
                 }
-                VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
-                    Text(T("days.postcards")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-                        .padding(.horizontal, KaikuTokens.Space.s1).accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                    SectionHeader(T("days.postcards"), icon: "photo.on.rectangle.angled", tone: .sky)
                     HStack(spacing: KaikuTokens.Space.s3) {
                         MascotView(state: .cozy, size: 52, tappable: false)
                         Text(T("empty.postcards")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
@@ -77,6 +66,117 @@ public struct DaysView: View {
             .presentationDragIndicator(.visible)
         }
         .refreshable { await app.refresh() }
+    }
+}
+
+/// "Little moments this week" as a timeline: grouped by day, a soft tone tile per moment, and where it came from
+/// (robot, glasses, phone, Mac, watch) as a small chip — so the week reads like a diary, not a list.
+struct MomentsTimeline: View {
+    let highlights: [Highlight]
+
+    var groups: [(String, [Highlight])] {
+        var order: [String] = []
+        var by: [String: [Highlight]] = [:]
+        for h in highlights {
+            if by[h.date] == nil { order.append(h.date) }
+            by[h.date, default: []].append(h)
+        }
+        return order.map { ($0, by[$0] ?? []) }
+    }
+
+    static let sources: [String: (String, String)] = [
+        "robot": ("circle.hexagongrid.fill", "source.robot"), "glasses": ("eyeglasses", "source.glasses"),
+        "phone": ("iphone", "source.phone"), "laptop": ("laptopcomputer", "source.laptop"),
+        "wearable": ("applewatch", "source.wearable"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+            SectionHeader(T("days.highlights"), subtitle: T("days.highlights.d"), icon: "sparkles", tone: .clay)
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s4) {
+                ForEach(groups, id: \.0) { day, items in
+                    VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) {
+                        Text(DayName.long(day)).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.muted)
+                        ForEach(Array(items.enumerated()), id: \.offset) { i, h in
+                            moment(h, last: i == items.count - 1)
+                        }
+                    }
+                }
+            }
+            .padding(KaikuPlatform.isPhone ? KaikuTokens.Space.s5 - 4 : KaikuTokens.Space.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).fill(KaikuTokens.Colors.surface)
+                    .shadow(color: KaikuTokens.Colors.ink.opacity(0.05), radius: 10, y: 4)
+            )
+            .overlay(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous).strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
+        }
+    }
+
+    private func moment(_ h: Highlight, last: Bool) -> some View {
+        let good = h.kind == .good
+        let tone: KTone = good ? .honey : .sky
+        return HStack(alignment: .top, spacing: KaikuTokens.Space.s3) {
+            VStack(spacing: 0) {
+                RowIcon(symbol: good ? "sun.max.fill" : "cloud.drizzle.fill", tint: tone.ink, side: 34)
+                if !last { Rectangle().fill(KaikuTokens.Colors.line).frame(width: 2).frame(maxHeight: .infinity).padding(.top, 4) }
+            }
+            VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
+                Text(h.text).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                if let (sym, key) = Self.sources[h.source] {
+                    Label(T(key), systemImage: sym)
+                        .kText(.caption, weight: .medium)
+                        .foregroundStyle(KaikuTokens.Colors.ink2)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(KaikuTokens.Colors.bg))
+                        .overlay(Capsule().strokeBorder(KaikuTokens.Colors.line, lineWidth: 1))
+                }
+            }
+            .padding(.bottom, last ? 0 : KaikuTokens.Space.s3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// What the little icons under each plot mean.
+struct GardenLegend: View {
+    let kinds = ["outing", "weather_check", "play_session", "ritual", "drum_session", "friend_link"]
+    var body: some View {
+        FlowRow(spacing: KaikuTokens.Space.s3) {
+            ForEach(kinds, id: \.self) { k in
+                if let (sym, c) = GardenDay.kindStyle[k] {
+                    HStack(spacing: 4) {
+                        Image(systemName: sym).font(.system(size: 11, weight: .bold)).foregroundStyle(c)
+                        Text(T("garden.kind.\(k)")).kText(.caption).foregroundStyle(KaikuTokens.Colors.ink2)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Wraps children onto new lines (legend chips).
+struct FlowRow: Layout {
+    var spacing: CGFloat = 8
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = proposal.width ?? 320
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x > 0 && x + s.width > w { x = 0; y += line + 4; line = 0 }
+            x += s.width + spacing; line = max(line, s.height)
+        }
+        return CGSize(width: w, height: y + line)
+    }
+    func placeSubviews(in b: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = b.minX, y = b.minY, line: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x > b.minX && x + s.width > b.maxX { x = b.minX; y += line + 4; line = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing; line = max(line, s.height)
+        }
     }
 }
 

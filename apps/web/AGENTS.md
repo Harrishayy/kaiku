@@ -13,10 +13,10 @@ the Modal cloud from the same origin as `/v1`.
 
 | route | for | what |
 |---|---|---|
-| `/me/` | person | ambient Kaiku (`/v1/me` mascot mood; `crisis` → crisis screen), greeting, weather check (3 × 1–5 → `obs.self_report` channel web), "I'm not OK", good & hard moments (7 d), garden, pairing QR + link (`?home=&t=`), suggestion, firefly link, what helps, What Kaiku remembers (delete one / all, remembering on/off), What Kaiku saw today (receipt), PHQ-9 due card. en/fi toggle. Never states, scores or trends |
+| `/me/` | person | ambient Kaiku (`/v1/me` mascot mood; `crisis` → crisis screen), greeting, weather check (3 × 1–5 → `obs.self_report` channel web), "I'm not OK", good & hard moments (7 d), garden, pairing QR + link (`?home=&t=`), suggestion, firefly link, what helps, Your week (what each part of Kaiku added: one-record strip per source, rhythms with 7-dot strips, going well, worth a gentle look — `GET /v1/me/week`), What Kaiku has learned (graph `GET /v1/me/graph` + "Share with my care team" switch `PUT /v1/me/sharing`), What Kaiku remembers (delete one / all, remembering on/off), What Kaiku saw today (receipt), PHQ-9 due card. en/fi toggle (cloud sentences stay English). Never states, scores or trends |
 | `/play/firefly/` | person | go/no-go game (60 s), gentle end with a jar, quietly posts `obs.play_session {game: firefly, device: web}` |
 | `/clinician/` | clinician | ranked by consensus; chips "Safety: call today" / "Needs a call" / "Worth a check-in" / "Not enough data" (low coverage) / "Stable"; per-source verdict chips (Home robot, Glasses, Apps, Watch); SIMULATED |
-| `/clinician/patient/?id=` | clinician | header (last data, last PHQ-9) → consensus chip + sentence + rule line + quick action → 4 source cards (≤ 3 metrics with sparkline + usual band; Watch says "No watch connected" when absent) → evidence table (metric, source, latest, usual median + range, z, direction; scrolls inside its card) → timeline by source → summary ("not a decision") → actions → PHQ-9 → what helps. Never memories |
+| `/clinician/patient/?id=` | clinician | header (last data, last PHQ-9) → consensus chip + sentence + rule line + quick action → 4 source cards (≤ 3 metrics with sparkline + usual band; Watch says "No watch connected" when absent) → evidence table (metric, source, latest, usual median + range, z, direction; scrolls inside its card) → Suggested next steps (rule-chosen, with the matching action button) → This week (one record per source, routines, going well, worth a look: `GET /v1/patients/{id}/week`) → What Kaiku has learned (`GET /v1/patients/{id}/graph`; "Not shared" card unless the person opted in; never people/places/likes/plans) → timeline by source → summary ("not a decision") → actions → PHQ-9 → what helps. Never the memories list |
 | `/session/` | person | laptop source: consent → 30 s spoken prompt (+ optional webcam expressivity) → 60 s go/no-go → review numbers → send |
 | `/phq9/` | person | standard wording, every 14 days; item 9 > 0 → fixed crisis panel + `safety_flag` first |
 | `/consent/` | person | privacy in plain language (static) |
@@ -31,14 +31,16 @@ hand-write a type that mirrors a contract model; a missing shape is a contract c
 ## Consumes (topics/endpoints)
 `GET /v1/patients` · `GET /v1/patients/{id}/consensus` · `GET /v1/patients/{id}/timeline` (series named by
 `config/criteria.toml`) · `GET /v1/patients/{id}/phq9` (PHQ-9 is charted from here, never a timeline series) ·
-`GET /v1/me?home_id=` · `GET /v1/me/memories?home_id=` · `GET /v1/events?home_id=&since=&limit=` (also /me's receipt) · `GET /v1/health` · `GET /v1/eval` · `GET /healthz` ·
+`GET /v1/me?home_id=` · `GET /v1/me/memories?home_id=` · `GET /v1/me/week|graph|sharing?home_id=` ·
+`GET /v1/patients/{id}/week|graph` · `GET /v1/events?home_id=&since=&limit=` (also /me's receipt) · `GET /v1/health` · `GET /v1/eval` · `GET /healthz` ·
 admin: `GET /v1/admin/criteria`, `POST /v1/admin/criteria/preview?eval=1`.
 
 ## Emits (topics/endpoints)
 - `POST /v1/events`, all `source: "laptop"`, built with `lib/envelope.ts` (UUIDv7, UTC ms `Z`): `obs.laptop_session`,
   `obs.phq9 {mode: "laptop"}`, `obs.safety_flag` (`phq9_item9` | `manual`, `handled_locally: true`),
   `obs.self_report {context: adhoc, channel: web}` (weather check), `obs.play_session {game: firefly, device: web}`.
-- `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` · `PUT /v1/me/memory_settings?home_id=`.
+- `DELETE /v1/me/memories/{id}?home_id=` · `DELETE /v1/me/memories?home_id=` · `PUT /v1/me/memory_settings?home_id=` ·
+  `PUT /v1/me/sharing?home_id=` (`CareSharing`).
 - `POST /v1/patients/{id}/actions` (flag_booster | flag_icbt_referral | acknowledge | send_message).
 - admin: `PUT /v1/admin/criteria` (`CriteriaUpdate`; `criteria: null` = reset to file).
 - Never audio, images or transcripts.
@@ -59,6 +61,10 @@ components/
                     Clinician · Team menu)
   ui.tsx            StateChip, VerdictChip, AgreementBadge, DeviceIndicator, Loading/ErrorBox/Empty/StaleNote (older pages)
   SourceCard.tsx    one consensus source card with sparklines, data-driven (works for any future source)
+  LearnedGraph.tsx  knowledge graph in columns (told → person → activities → routines), deterministic layout,
+                    click/Enter = links panel with relation words; GraphWords per audience (person i18n / care English)
+  RecordStrip.tsx   the one record: per-source 7-day bars + counts (WeekSummary.sources)
+  WeekPanels.tsx    routines (7-dot strip, kept/partly/slipped) + going well + worth a look; WeekWords per audience
   TimelineChart.tsx generic MetricSeries chart (label/unit/source/worse_when from the cloud) + Phq9Chart
   CrisisPanel.tsx   FIXED crisis text (mirrors config/safety_phrases.toml [script]) — never generated
   NotOkButton.tsx   manual safety trigger · Nav.tsx
