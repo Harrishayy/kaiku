@@ -19,8 +19,7 @@ modules:
   - {id: dc_motor,            instance: motor, port: 13}   # pan, 12:40 gear
   - {id: microphone,          instance: mic,   ports: [9, 10]}    # 9-10, right ear (v1: unused by the firmware)
   - {id: button,       instance: btn,   port: 7}    # lid; long press = "I'm not OK" (hub decides, >= 2 s)
-  - {id: neopixel,       instance: ledL,  port: 11}   # chest glow, left (11 = GPIO43/44, UART0: may flicker at boot)
-  - {id: neopixel,       instance: ledR,  port: 14}   # chest glow, right
+  # no LED grids in this build (2026-11-14): ports 11 and 14 free
 code:
   globals: |
     #include "kaiku_link.h"
@@ -32,9 +31,9 @@ code:
     io.knobRing     = [](bool on) { knob.enableRing(on); };
     io.displayFill  = [](uint16_t c) { tft.fillScreen(c); };
     io.displayRect  = [](int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) { tft.fillRect(x, y, w, h, c); };
-    io.ledsFill     = [](uint8_t r, uint8_t g, uint8_t b) { ledL.setAll(r, g, b); ledL.show(); ledR.setAll(r, g, b); ledR.show(); };
+    io.ledsFill     = [](uint8_t r, uint8_t g, uint8_t b) { (void)r; (void)g; (void)b; };   // no LED grids fitted
     io.motorSpeed   = [](int s) { motor.setSpeed(s); };
-    io.motorBrake   = []() { motor.stop(); };   // NOT motor.brake(): both lines HIGH ran the real motor (bench 2026-11-14)
+    io.motorBrake   = []() { motor.stop(); };   // coast; the motor needs a power module on the 12 V rail (USB-C alone leaves it dead, bench 2026-11-14)
     io.tone         = [](uint16_t hz, uint16_t ms, float v) { spk.setVolume(v); spk.playNote(hz, ms); };
     io.speakerStop  = []() { spk.stop(); };
     knob.setAcceleration(false);   // one count per click; the driver accelerates fast turns (up to 5x) by default

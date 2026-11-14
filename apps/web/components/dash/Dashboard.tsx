@@ -327,6 +327,11 @@ function HeaderFacts({
             {patient.display_name}
           </span>
         )}
+        {consensus.simulated && (
+          <span className="d-sim" title="This record was seeded from simulated sources, not connected devices">
+            Simulated record
+          </span>
+        )}
       </div>
       <div className="d-fact">
         <span className="d-fact-k">Record</span>

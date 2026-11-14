@@ -77,7 +77,7 @@ drum_sway = false        # no head sway while drumming: knocks are ignored while
 
 [unoq]
 # UNO Q Linux app (firmware/unoq-sensors/python/): camera -> derived numbers only, frames never stored or sent.
-camera_index = 2         # /dev/video2 on the UNO Q (0/1 are the Qualcomm codec); verified 2026-11-14
+camera_index = -1        # -1 = auto (stable /dev/v4l/by-id name); the UNO Q renumbers video0-3 between boots
 frame_w = 640
 frame_h = 480
 fps = 15

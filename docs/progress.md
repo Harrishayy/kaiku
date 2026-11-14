@@ -1077,3 +1077,94 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   citing reflections on the live record; public URL checked from outside (dashboard 200, admin 401).
 - Broken/blocked: nothing run on real glasses, robot, Atech board or a real microphone; no outside testers; the
   draft cut and deck carry placeholders; credential PDFs remain in older commits (history not rewritten).
+
+## 2026-11-14 10:00 — Claude Code — history rewritten (challenge PDFs purged); simulated-record label restored
+- Did: removed `docs/tracks/*.pdf` (venue credentials, credit code) from every commit on all five branches and
+  eleven tags with git filter-repo and force-pushed. **Every clone must be re-cloned, or `git fetch origin` then
+  `git reset --hard origin/<branch>` (rebase unpushed work with `git rebase --onto origin/<branch> <old-base>`);
+  never merge or push a branch based on the old history, which would bring the files back.** The dashboard header
+  shows a small "Simulated record" label again (lead's decision); reaction times read slower/faster and clock
+  measures later/earlier in the Consensus panel too.
+- Verified: no commit in any ref touches those paths; tip tree identical before and after; web checks; both
+  services recomputed.
+- Broken/blocked: GitHub may still serve the old commits by hash until it garbage-collects; the credit code
+  should be treated as exposed.
+## 2026-11-14 06:30 — Claude Code — firmware (A): both boards together on the broker
+- Did: first joint run, both boards on the venue Wi-Fi, broker on the laptop, both powered from the PD hub.
+  Fixes: Atech `Serial.setTxTimeoutMs(0)` after `kaiku::begin` re-inits Serial (with no host reading USB, println
+  stalled the loop and MQTT keep-alive timed out); UNO Q `requirements.txt` without OpenCV/numpy (App Lab's container
+  ships its own OpenCV 4.13 build, and asking for one failed the whole install, so no aiomqtt); camera index
+  `-1` = auto via `/dev/v4l/by-id` (the UNO Q renumbers video0-3 between boots); exposure lock falls back to OpenCV
+  when `v4l2-ctl` is missing (container). Atech flashing on this Mac needs `--no-stub` at 115200 (esptool lost the
+  flash chip otherwise).
+- Verified on hardware: UNO Q health ok (camera_ok, mcu_ok), knock taps, faces + distance, room light, buzzer
+  chimes on `cmd.sensors`; Atech health, pan reports, button, knob press + turns, display eyes on `cmd.head`;
+  Atech stays connected powered from the hub's charge-only port.
+- Contract changes: none.
+- Broken/blocked: knob steps feel short (tune `KNOB_COUNTS_PER_STEP` with bench/knob). Camera ring light is only
+  switchable by its own touch button (datasheet §5.3), not from software. Not yet run together: pan motor (needs
+  `make hub`), LED grids (port 11 dark earlier), speaker, KY-039 in the cradle.
+- Next: `make hub` and the motor/LED/speaker round; tune the knob; pulse retest in the printed cradle.
+
+## 2026-11-14 09:30 — Claude Code — firmware (A): pan motor round
+- Did: two clock bugs in `kaiku_link` fixed: `tick()` read `now` before `mqtt.loop()`, so stamps set while handling
+  messages (lastHubSeen, segStart, homeStart) were newer than `now` and the unsigned difference wrapped: the head
+  called the hub "silent" after every heartbeat and skipped every motor segment as "already done". `now` is now read
+  after `mqtt.loop()`. Softer motor start (ramp 400 ms, gesture speed 110, look 450 ms) after the speed-160 run dropped
+  the Wi-Fi on the hub's charge-only port.
+- Verified: after the fix the firmware runs pan / home / look / shake (dead-reckoned deg moves to +-40 and back), no
+  Wi-Fi drop-outs, hub watchdog stays ok.
+- Broken/blocked (Xavier): **no motor turns at all, not even a hum.** Tried 2 DC Motor modules, ports 13 and 9
+  (mic unplugged, test build), 2 cables (one taken from the working button), board on the Mac's USB, and Atech's own
+  `atech send motor_speed 255 / -255 / motor_brake` (our code out of the loop; board answers ok each time). Your bench
+  is the only time a motor ran: how was the board powered and which port/cable/firmware? Next check needs a meter:
+  Line B to GND on the motor port during `motor_speed 255` (expect ~3.3 V). The button's light is always on, so it
+  can't serve as a test lamp.
+- Next: find the motor power/signal fault; then pan on the hub port with the softer start.
+
+## 2026-11-14 10:30 — Claude Code — firmware (A): standalone head firmware active (D44)
+- Did: the Atech website agent's firmware (was `firmware/temp/`) is now `firmware/atech-head/standalone/`, `src/`
+  verbatim; `project.yaml` lists its modules so `atech build` fetches every driver (incl. the orientation sensor and
+  `i2c_software`), `build.sh` overlays `src/` and adds include shims. `make atech-standalone [FLASH=1]` (active) and
+  `make atech-mqtt [FLASH=1]` (MQTT firmware, kept intact for the next stage). Both build.
+- Verified on the board: flashed (`make atech-standalone FLASH=1`); boot reports all 7 modules ok (orientation
+  sensor answers on 13); full ritual by hand: knob press -> greet -> mood/energy/sleep dials -> breathing -> drum ->
+  done. **Only while a USB host keeps reading its serial output**: with nobody reading, the drivers' debug prints
+  (`[NeoPixel] Brightness set...` many times a second) stall the loop and knob presses are missed. Opening the port
+  resets the board. MQTT firmware still builds; `make check` passes.
+- Broken/blocked: standalone expects an LED grid on port 7 (the button sits there now) and the motor on 11 (only
+  reverse turns there); the orientation sensor on 13 is unconfirmed (asked Atech's agent).
+
+## 2026-11-14 11:30 — Claude Code — firmware (A): standalone head runs untethered
+- Did: `standalone/build.sh` mutes the Atech drivers' debug prints in the generated build (`VERBOSE=1` keeps them);
+  drumming's 20 s now starts at the first tap (60 s without any tap ends it).
+- Verified on the board from the external power supply, no laptop: the full ritual by knob (greet, three dials,
+  breathing, drum from the first tap, done). Over USB: `pan` runs and reports done (value commands are JSON lines).
+- Broken/blocked: none for the standalone head. The MQTT firmware stays the next stage (D44).
+
+
+## 2026-11-14 12:45 — Claude Code — firmware (A): kaiku_net for the standalone head + handover
+- Did: `standalone/src/kaiku_net.*` (Wi-Fi + MQTT from kaiku_link's network code): UNO Q knocks and faces in, chimes
+  (`cmd.sensors`) and `raw.head.pan` out, `cmd.head` mapped to the ritual's actions; 13 marked hooks in `main.cpp`;
+  `build.sh` copies the gitignored `secrets.h` and adds PubSubClient + ArduinoJson. `modules.toml` updated.
+  Handover for the team: `docs/robot-network-handover.md`.
+- Verified: builds (RAM 16 %, flash 25 %); `make check` passes. **Not yet flashed or tested on the board.**
+- Next: flash, then knock on the UNO Q while the head is idle (greeting + wake chime), knocks in DRUM.
+
+## 2026-11-14 13:00 — Claude Code — hardware (A): knob cap bore + measured motor
+- Did: `knob_cap` bore Ø9.3 × 16 deep, round (cap Ø22 × 18); DC motor measured 19.5 × 19.5 × 39 + 9 mm shaft, so
+  `pan_motor_mount` and `purr_sleeve` now hold it at Ø20.1 inside (23.3 square outside). Pinion unchanged (5.4 of its
+  6 mm on the shaft).
+- Verified: fit check clean; bore measured round Ø9.30 in the STL. Reprint plate (knob cap + both sleeves) slices to
+  ~23 min / 12 g on P1S and P2S.
+- Next: check the pinion's 3 mm D-hole against the real shaft.
+
+## 2026-11-14 12:30 — Claude Code — merged Edwin's standalone head firmware; history folded
+- Did: merged `atech-standalone-firmware` (D44: the Atech head runs the ritual itself; `kaiku_net` sends
+  `health/head`, `raw.head.ear`, `raw.head.pan` and hears `raw.head.tap`, `raw.hub.face`, `cmd.head`;
+  `docs/robot-network-handover.md`). At the lead's request the lead's own commits were folded into milestone
+  commits (tag targets and the points where Edwin's and Xavier's commits branch or merge are kept, so their
+  commits, authorship, dates and diffs are unchanged). Trees at every branch head and tag are identical to before.
+- Verified: `make check` 805 passed after the merge; tree hashes compared before and after the fold.
+- Broken/blocked: every clone must reset to the new history (see the entry above); the standalone head's ritual
+  results do not reach the cloud as `obs.*` yet (handover open item 3): hub follower mode is the next step.

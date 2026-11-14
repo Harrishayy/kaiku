@@ -69,7 +69,12 @@ def _evidence(d: MetricDrift, crit: Criteria) -> VerdictEvidence:
     days = d.worse_days if d.status == "drifting" else d.better_days
     direction = d.flag_direction or d.direction
     clock = m.unit in ("min after midnight", "min from midnight")  # a time of day is later/earlier, never higher
-    word = ("later" if direction == "up" else "earlier") if clock else ("higher" if direction == "up" else "lower")
+    if clock:
+        word = "later" if direction == "up" else "earlier"
+    elif m.unit == "ms":  # a reaction time is slower/faster
+        word = "slower" if direction == "up" else "faster"
+    else:
+        word = "higher" if direction == "up" else "lower"
     name = m.label.replace(" (later = up)", "") if clock else m.label
     # a provisional baseline (young record, criteria early_baseline_*) is always labelled as such
     early = d.baseline is not None and d.baseline.early

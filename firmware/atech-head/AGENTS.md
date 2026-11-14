@@ -4,6 +4,9 @@
 > build plan: `docs/plans/07-robot-electronics.md` · decisions D31 (hardware), D32 (software).
 
 ## Purpose
+**Active firmware right now: `standalone/` (D44)**, a USB-serial ritual without MQTT. Everything below describes the
+MQTT/contract firmware in this folder, which is the next stage and still builds (`make atech-mqtt`).
+
 The robot's face, ears and movement on the Atech 14-port board (ESP32-S3). The board sits in the body, and the head
 modules are cabled up the neck. It drives the Color Display eyes, the Knob ear dial, the lid Button, two chest LED
 grids, the pan motor (open loop, homed on the KY-035 hall edge) and the Speaker (purr tone and cues). The Mic is
@@ -37,6 +40,11 @@ kaiku_link/
   library.json          PlatformIO manifest (linked from project.yaml `libraries:`) + deps (PubSubClient, ArduinoJson 7)
   secrets.example.h     copy to secrets.h (gitignored): Wi-Fi, broker host + IP, user/pass, home id
 bench/<part>/           one-part tests: display, knob, button, leds, motor, speaker, mic + link (whole firmware, MQTT)
+standalone/             ACTIVE (D44): website-agent firmware in src/ (main.cpp, pins.h, transport.*; our edit: drum clock from the first tap);
+                        src/kaiku_net.*: Wi-Fi + MQTT (UNO Q knocks/faces in, chimes + pan out; hooks marked `// kaiku_net`;
+                        handover: docs/robot-network-handover.md)
+                        project.yaml only lists modules so `atech build` fetches drivers; build.sh overlays src/ +
+                        include shims for its modules/<group>/x.h paths. `make atech-standalone [FLASH=1]`
 bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over USB; record_wav.py saves a .wav
                         in bench/mic_record/recordings/ (gitignored; never commit or upload recordings)
 ```
@@ -64,6 +72,8 @@ ESP32 toolchain inside it (~4 GB), on **espressif32 6.9.0** (Arduino core 2.0.17
 firmware/atech-head/.venv/bin/activate` in every terminal (it keeps PlatformIO in the venv). `cp
 kaiku_link/secrets.example.h kaiku_link/secrets.h`, fill it in. `atech validate . && atech build . && atech upload .`
 (data cable). Without hardware: `make sim NODES=head`.
+Shortcuts from the repo root: `make atech-standalone FLASH=1` (active, D44) or `make atech-mqtt FLASH=1` (this firmware);
+both upload at 115200 with `--no-stub`, the only upload that verifies on the bench Mac.
 
 ## Run with sim
 `make broker && make hub` (+ `make sim NODES=sensors` for hall edges), flash, `make tail TOPIC='kaiku/v1/+/raw/head/#'`.
@@ -98,3 +108,13 @@ first "won't stop" run had the motor on port 13 while the code drove port 7). **
 doesn't declare floats and may spin**: unplug it when flashing other benches. Port 11 is GPIO43/44 (UART0), so an LED
 grid there may flicker during boot. The display is in canvas mode by default (nothing shows until `tft.display()`), so the firmware sets
 `tft.setDirectMode(true)`. Speaker calls return at once: `playNote` queues, `playTone`/`playRTTTL` interrupt.
+
+Bench 2026-11-14 (motor + power): **the motor needs a proper USB-C charger on port 8**; the hub's charge-only port and
+the Mac's USB run the logic but the motor never turns. On port 11 only reverse turns (forward = GPIO44, UART0 RX).
+Fixed in `kaiku_link`: `tick()` read `now` before `mqtt.loop()`, so stamps set while handling messages wrapped the
+unsigned differences (hub "silent" after each heartbeat, every motor segment skipped); with no USB host reading,
+`println` stalled the loop (`Serial.setTxTimeoutMs(0)`); softer motor start (ramp 400 ms, gesture speed 110).
+No LED grids in this build (ports 11/14 free).
+Standalone (D44), on hardware: runs untethered on its own USB-C power. `build.sh` mutes the Atech drivers' debug prints
+(with nobody reading USB they stalled the loop and knob presses were missed; `VERBOSE=1` keeps them). Opening the
+serial port resets the board. Commands with a value must be JSON lines (`{"action":"pan","value":"100"}`).

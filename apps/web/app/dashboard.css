@@ -147,7 +147,7 @@
 }
 .dash .d-switch select {
   font: var(--d-title);
-  max-width: 22ch;
+  max-width: 14ch;
 }
 .d-fact {
   display: flex;

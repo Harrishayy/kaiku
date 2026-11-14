@@ -73,7 +73,7 @@ export function ConsensusPanel({ data, onMetric }: { data: DashData; onMetric: (
                         <button type="button" className="d-link" onClick={() => onMetric(e.metric)}>
                           {labelOf.get(e.metric) ?? e.metric.replace(/_/g, ' ')}
                         </button>
-                        : {e.direction === 'up' ? 'higher' : 'lower'} than their usual on {e.days} recent {e.days === 1 ? 'day' : 'days'}
+                        : {/ (later|earlier|slower|faster|higher|lower) than usual/.exec(e.summary ?? '')?.[1] ?? (e.direction === 'up' ? 'higher' : 'lower')} than their usual on {e.days} recent {e.days === 1 ? 'day' : 'days'}
                       </li>
                     ))}
                   </ul>
