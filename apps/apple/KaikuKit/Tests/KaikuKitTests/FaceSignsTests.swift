@@ -860,7 +860,7 @@ private final class Line: ConversationTransport, @unchecked Sendable {
         let schema = repoRoot.appendingPathComponent("contracts/schemas/obs/face_signs.schema.json")
         guard FileManager.default.fileExists(atPath: schema.path) else { return }
         let s = try JSONSerialization.jsonObject(with: Data(contentsOf: schema)) as! [String: Any]
-        let d = (s["$defs"] as! [String: Any]).values.first as! [String: Any]
+        let d = (s["$defs"] as! [String: Any])["FaceSigns"] as! [String: Any]
         let properties = d["properties"] as! [String: Any], required = Set(d["required"] as? [String] ?? [])
         for body in [full, thin] {
             XCTAssertTrue(Set(body.keys).isSubset(of: Set(properties.keys)), "extra \(Set(body.keys).subtracting(properties.keys))")
@@ -870,7 +870,9 @@ private final class Line: ConversationTransport, @unchecked Sendable {
             XCTAssertTrue(Set([FaceSignRules.arkit.method, FaceSignRules.vision.method]).isSubset(of: Set(methods)))
         }
         if let tasks = (properties["task"] as? [String: Any])?["enum"] as? [String] {
-            XCTAssertEqual(Set(tasks), Set(PlayGame.allCases.map(\.rawValue) + [FaceSigns.checkIn]), "every task this app can send, and no other")
+            // photo_time is the robot's own task (its camera, device "robot"): in the contract, never sent by this app.
+            XCTAssertEqual(Set(tasks).subtracting(["photo_time"]), Set(PlayGame.allCases.map(\.rawValue) + [FaceSigns.checkIn]),
+                           "every task this app can send, and no other")
         }
         if let devices = (properties["device"] as? [String: Any])?["enum"] as? [String] {
             XCTAssertTrue(Set([PlayDevice.phone.rawValue, PlayDevice.mac.rawValue]).isSubset(of: Set(devices)))

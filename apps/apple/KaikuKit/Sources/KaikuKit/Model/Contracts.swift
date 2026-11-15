@@ -475,6 +475,7 @@ public enum ToolExecutor {
         // device" (the default of every `deviceTool`) instead of forwarding it to the cloud.
         "set_walk_goal", "suggest_activity",
     ]
+        "photo_time",  // the robot's own (its camera counts face signs); the apps answer "not on this device"
     public static func isDevice(_ name: String) -> Bool { deviceTools.contains(name) }
 }
 

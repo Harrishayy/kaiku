@@ -27,7 +27,7 @@ final class VoiceOriginTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/KaikuKit")
         let voice = try String(contentsOf: root.appendingPathComponent("Voice/VoiceLines.swift"), encoding: .utf8)
         XCTAssertFalse(voice.contains("origin: VoiceOrigin ="), "the origin has no default")
-        XCTAssertEqual(voice.components(separatedBy: "origin: VoiceOrigin)").count - 1, 3, "play, playReporting, say")
+        XCTAssertEqual(voice.components(separatedBy: "origin: VoiceOrigin)").count - 1, 4, "play, playReporting, say, and the rule itself (allows)")
         var calls = 0
         let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)!
         for case let f as URL in files where f.pathExtension == "swift" {

@@ -990,6 +990,7 @@
     "bot.feed.trace.other": "Kaiku did something new",
     "bot.feed.other": "A message from the {part}",
     "bot.tool.send_friend_ping": "Sent a light to your friend",
+    "bot.tool.photo_time": "Photo time: counted smiles and movement, kept no picture",
     "bot.tool.suggest_activity": "Suggested an activity",
     "bot.row.d": "What the robot at home hears and does, live",
     "bot.game.quiet": "Not playing"
@@ -1984,6 +1985,7 @@
     "bot.feed.trace.other": "Kaiku did something new",
     "bot.feed.other": "A message from the {part}",
     "bot.tool.send_friend_ping": "Sent a light to your friend",
+    "bot.tool.photo_time": "Photo time: counted smiles and movement, kept no picture",
     "bot.tool.suggest_activity": "Suggested an activity",
     "bot.row.d": "What the robot at home hears and does, live",
     "bot.game.quiet": "Not playing"

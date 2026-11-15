@@ -111,7 +111,7 @@ enum BotWords {
     static func toolName(_ name: String) -> String {
         let known = ["feel", "recall", "remember", "forget", "ask_mind", "record_dial", "end_session", "suggest_nudge",
                      "express", "start_activity", "agree_activity", "start_phq9", "set_walk_goal", "log_walk_moment",
-                     "look_at_this", "send_friend_ping", "suggest_activity"]
+                     "look_at_this", "send_friend_ping", "suggest_activity", "photo_time"]
         let plain = known.contains(name) ? T("bot.tool.\(name)") : T("bot.tool.other")
         return name.isEmpty ? plain : T("bot.tool.named", ["what": plain, "tool": name])
     }
