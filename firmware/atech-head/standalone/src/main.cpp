@@ -90,6 +90,16 @@ static unsigned long lastFaceWake = 0, ritualEndedAt = 0;
 // ARM_MS the next press of the ear starts THAT step instead of what a press does in the current one. The words
 // alone start nothing, and neither does a press alone.
 static const unsigned long ARM_MS = 20000;
+// kaiku: a turn of the head that waits for the speaker (see the `pan` command)
+static const unsigned long PAN_WAIT_MS = 8000;
+static int panWant = 0;
+static unsigned long panWantAt = 0;
+// kaiku: the ear ring. Orange at rest and blue while the microphone is open, until she asks for a colour of her own
+// (cmd.head {color}): then that colour, and while the microphone is open it breathes (dimmer and brighter once
+// about every 1.6 s), so "listening" still shows.
+static uint8_t ringR = 255, ringG = 140, ringB = 40;
+static bool ringChosen = false;
+static int ringShown = -1;            // the last level sent to the ring (0-100), -1 = send again
 static Mode armedMode = IDLE;        // IDLE = nothing armed
 static unsigned long armedAt = 0;
 static bool everFaceWake = false, everRitual = false;
@@ -366,7 +376,18 @@ void loop() {
       armedMode = !strcmp(cmd.value, "drum") ? DRUM : !strcmp(cmd.value, "breathe") ? BREATHE : IDLE;
       armedAt = millis();
     }
-    else if (!strcmp(a, "pan")) { panSpeed = constrain(atoi(cmd.value), -100, 100); panUntil = millis() + 600; }
+    else if (!strcmp(a, "pan")) {
+      // kaiku: the motor never runs with the speaker (POWER RULE), and a turn asked for while Kaiku is speaking used
+      // to run out unseen. It now waits for the speaker to go quiet (up to PAN_WAIT_MS), then turns for 600 ms.
+      panWant = constrain(atoi(cmd.value), -100, 100); panWantAt = millis();
+    }
+    else if (!strcmp(a, "ring")) {   // kaiku: the ear ring's colour, "#rrggbb" (cmd.head {color})
+      const char* h = cmd.value[0] == '#' ? cmd.value + 1 : cmd.value;
+      if (strlen(h) == 6) {
+        long v = strtol(h, nullptr, 16);
+        ringR = (v >> 16) & 255; ringG = (v >> 8) & 255; ringB = v & 255; ringChosen = true; ringShown = -1;
+      }
+    }
     else if (!strcmp(a, "purr")) purr(cmd.value[0] ? constrain(atoi(cmd.value), 100, 10000) : 1500);
     else if (!strcmp(a, "net")) { static char nb[320]; kaiku_net::report(nb, sizeof nb); emit("net", nb); }   // kaiku_net
     else if (!strcmp(a, "eyes")) { eyes = eyesFrom(cmd.value); dirty = true; }
@@ -503,9 +524,19 @@ void loop() {
     // kaiku: a sound in the room wakes nothing any more (it greeted people who were only talking nearby)
   }
 
-  if (kaiku_net::micOpen() != micShown) {   // kaiku_net: the ear ring turns blue while the microphone streams to the hub
-    micShown = !micShown;                   // (the only light on this head: there is no display)
-    if (micShown) rotary_encoder_knob.setRingColor(40, 160, 255); else rotary_encoder_knob.setRingColor(255, 140, 40);
+  if (panWant && millis() - panWantAt > PAN_WAIT_MS) panWant = 0;          // kaiku: the sound never stopped: let it go
+  if (panWant && !soundOn()) { panSpeed = panWant; panUntil = millis() + 600; panWant = 0; }
+
+  if (kaiku_net::micOpen() != micShown) { micShown = !micShown; ringShown = -1; }   // kaiku_net: listening shows on the ring
+  {                                         // (the only light on this head: there is no display)
+    int level = 100;
+    if (micShown && ringChosen) level = 45 + (int)(55 * (0.5f + 0.5f * sinf(millis() / 255.0f)));   // breathing
+    level -= level % 5;
+    if (level != ringShown) {
+      ringShown = level;
+      if (micShown && !ringChosen) rotary_encoder_knob.setRingColor(40, 160, 255);
+      else rotary_encoder_knob.setRingColor(ringR * level / 100, ringG * level / 100, ringB * level / 100);
+    }
   }
 
   if (ledTimer.ready(40)) { updateChest(); curForce *= 0.85f; }

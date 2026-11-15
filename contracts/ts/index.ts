@@ -51,6 +51,7 @@ export interface PayloadByType {
   'raw.sensors.hall': M.RawHall;
   'raw.hub.face': M.RawFace;
   'raw.hub.trace': M.HubTrace;
+  'raw.hub.transcript': M.HubTranscript;
   'cmd.head': M.HeadCmd;
   'cmd.sensors': M.SensorsCmd;
   'cmd.friendlink': M.FriendlinkCmd;

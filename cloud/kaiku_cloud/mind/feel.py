@@ -93,10 +93,12 @@ def prepare(store: Store, home_id: str, now: datetime) -> dict[str, Any]:
     best = service.best_response(data, service.nudge_arms(store, home_id)) if data else None
     from . import face_cue
 
+    events = store.events_for_home(home_id) if known else []
     prep = {"at": memory.iso(now), "help": best,
-            "facts": today_facts(store.events_for_home(home_id), now) if known else [],
-            # today's kinds of task with a clearly quieter face than their usual (an enum; D52, mind/face_cue.py)
-            "quiet": face_cue.quieter(service.active_criteria(store), data, now) if data else []}
+            "facts": today_facts(events, now) if known else [],
+            # today's kinds of task with a clearly quieter face than their usual, or in which a visible expression
+            # cue held (an enum; D52 and D60, mind/face_cue.py)
+            "quiet": face_cue.today(service.active_criteria(store), data, events, now) if data else []}
     store.kv_set(f"feel-prep:{home_id}", prep)
     return prep
 

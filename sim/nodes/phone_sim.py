@@ -159,6 +159,10 @@ class PhoneSim:
                     "mouth_open_share": round(min(1.0, max(0.0, g(0.03, 0.01))), 3),
                     "gaze_on_share": round(min(1.0, max(0.0, g(0.92 - 0.06 * quiet, 0.015))), 3)}
         blinks, head, spread = g(14.0 + 9.0 * quiet, 0.8), g(0.22 - 0.09 * quiet, 0.015), g(0.34 - 0.16 * quiet, 0.015)
+        if quiet >= 0.8 and cover * seconds >= 40:
+            # D60: on a clearly quiet day the app's detector would also have seen a lower expression hold once
+            # (20 s of settling, then at least 8 s held). No random draw: the other numbers keep their sequence.
+            payload["cues"] = {"lower": {"n": 1, "seconds": round(min(30.0, 0.2 * cover * seconds), 1)}}
         if cover * seconds >= 20:
             payload["blinks_per_min"] = round(max(0.0, blinks), 1)
         if cover * seconds >= 2:

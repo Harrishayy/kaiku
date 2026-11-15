@@ -74,6 +74,12 @@
     "brow_furrow_share": 0.08,
     "brow_raise_share": 0.05,
     "coverage": 0.94,
+    "cues": {
+      "lower": {
+        "n": 1,
+        "seconds": 14.0
+      }
+    },
     "device": "phone",
     "duration_s": 88.0,
     "expression_range": 0.34,
@@ -314,6 +320,10 @@
     "by": "live",
     "kind": "said",
     "text": "How are you today?"
+  },
+  "raw.hub.transcript": {
+    "text": "A bit tired today.",
+    "who": "person"
   },
   "raw.sensors.button": {
     "id": "top",

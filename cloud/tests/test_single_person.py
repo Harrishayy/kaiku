@@ -564,3 +564,20 @@ def test_any_face_record_at_all_leaves_every_verdict_alone(rows):
     assert story(loaded) == story(plain)
     crit = service.active_criteria(loaded)
     assert service.patient_data(loaded, "aino", crit, TODAY).first_day == FIRST  # the record still starts with her
+
+
+def test_another_persons_record_has_the_same_days_and_none_of_ainos_words():
+    """`--home harrish`: the sixteen days under his id, his own notebook, and nothing Aino said or named."""
+    end = date(2026, 11, 14)
+    rows = single_person.build(end, "harrish")
+    assert {r["home_id"] for r in rows} == {"harrish"} and all(r["sim"] for r in rows)
+    store = Store(":memory:")
+    single_person.populate(store, rows, end)
+    kept = [m["text"] for m in store.memories("harrish")]
+    assert set(kept) == {text for _c, text in single_person.OTHER_NOTES["harrish"]}
+    assert any("protein" in k for k in kept) and any("Chips" in k for k in kept)
+    assert not any(e.transcript for e in single_person.episodes(end, "harrish"))
+    told = json.dumps([store.actions("harrish"), kept])
+    assert not any(name in told for name in ("Aino", "Maija", "Leena", "Eetu"))
+    with pytest.raises(ValueError):
+        single_person.notes_for("someone-else")

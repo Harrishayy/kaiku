@@ -258,6 +258,7 @@ public final class Conversation {
         freshLine = false
         contextDrain?.cancel(); contextDrain = nil; heldContext = []; answerOwed = false; toolFrames = []; cancelledCalls = []
         contextTask?.cancel(); contextTask = nil; pendingContext = []
+        cueWatch?.cancel(); cueWatch = nil; cueWaiting = nil
         connectionGeneration += 1
         eventContinuation?.finish(); eventContinuation = nil
         eventTask?.cancel(); eventTask = nil
@@ -831,6 +832,48 @@ public final class Conversation {
         heldContext = []
         answerOwed = false                      // what the model says next answers this, not the person
         live?.sendContext(text)
+    }
+
+    // MARK: visible expression cue (D60)
+
+    @ObservationIgnored private var cueWaiting: (kind: ExpressionCueKind, since: Date)?
+    @ObservationIgnored private var cueWatch: Task<Void, Never>?
+    /// Cues handed to Kaiku in this conversation (the detector already limits how many it offers).
+    @ObservationIgnored private(set) var cuesHanded = 0
+
+    /// The device's camera has just seen a kind of expression hold for a while (`ExpressionCueDetector`). Kaiku
+    /// gets ONE fixed context sentence about it, and only in a moment when nobody is speaking and nothing is on
+    /// its way: it never interrupts. A cue that finds no quiet moment within `ExpressionCueText.staleAfter` is
+    /// dropped, because the moment has passed. Nothing is sent without the camera choice, in a paused app, to a
+    /// conversation the service did not allow it for, or outside a check-in.
+    public func expressionCue(_ kind: ExpressionCueKind, now: Date = Date()) {
+        guard !stopped, isLive, purpose == .check_in, session?.expression_cue?.speak == true,
+              session?.expression_cue?.enabled == true else { return }
+        cueWaiting = (kind, now)
+        if handCue(now: now) { return }
+        cueWatch?.cancel()
+        cueWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+                guard let self, !self.stopped, self.cueWaiting != nil else { return }
+                if self.handCue(now: Date()) || self.cueWaiting == nil { return }
+            }
+        }
+    }
+
+    /// True when the waiting cue was handed over. Internal for the tests.
+    @discardableResult
+    func handCue(now: Date) -> Bool {
+        guard let cue = cueWaiting else { return false }
+        guard now.timeIntervalSince(cue.since) <= ExpressionCueText.staleAfter else { cueWaiting = nil; return false }
+        guard !stopped, isLive, !busyForContext, phase == .listening,
+              let app, !app.isPaused, app.cameraOn, app.pairing == sessionPairing else { return false }
+        cueWaiting = nil
+        cuesHanded += 1
+        note("expression_cue", ["kind": cue.kind.rawValue])
+        answerOwed = false                      // what the model says next answers this, not the person
+        live?.sendContext(ExpressionCueText.text(cue.kind))
+        return true
     }
 
     // MARK: private — events

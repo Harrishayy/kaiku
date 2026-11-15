@@ -46,6 +46,20 @@ public struct CheckInChatView: View {
         // A check-in that was left is over. If its screen is still on a stack and comes back, it shows nothing
         // and goes at once (the tab shell also takes it off the stack when the tab is left).
         .opacity(chat.left ? 0 : 1)
+        #if DEBUG
+        .overlay(alignment: .top) {
+            // `-kaikuExpressionDebug YES`: what the cue detector is doing, for a bench run (never in a release build)
+            if CheckInChat.cueDebug {
+                Text(chat.debugCue ?? "Expression cue: none yet · camera \(String(describing: chat.camera.state))")
+                    .kText(.caption, weight: .semibold)
+                    .foregroundStyle(KaikuTokens.Colors.ink)
+                    .padding(.horizontal, KaikuTokens.Space.s3).padding(.vertical, KaikuTokens.Space.s1)
+                    .background(Capsule().fill(KaikuTokens.Colors.surface2))
+                    .accessibilityIdentifier("checkin.cue.debug")
+                    .allowsHitTesting(false)
+            }
+        }
+        #endif
         .task {
             guard !staticLayout, !chat.left else { return }
             chat.talk.screenAppeared()

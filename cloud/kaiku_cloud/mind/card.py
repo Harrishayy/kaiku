@@ -153,7 +153,7 @@ def build_card(store: Store, settings: Settings, home_id: str, *, intent: str = 
             card.tone = "gentle"
         from . import face_cue
 
-        card.quieter_in = face_cue.quieter(crit, data, now)  # type: ignore[assignment]
+        card.quieter_in = face_cue.today(crit, data, events, now)  # type: ignore[assignment]
         if card.quieter_in and card.tone == "steady":
             card.tone = "gentle"
         if purpose in ("check_in", "talk"):

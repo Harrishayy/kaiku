@@ -84,6 +84,8 @@ struct TaskCameraResult: Equatable, Sendable {
     var signs: FaceSignsSummary
     var geometry: TaskCameraSummary?
     var simulated: Bool
+    /// Visible expression cues that held in this task (D60), by kind; empty = none.
+    var cues: [String: FaceCueCount] = [:]
 }
 
 /// The running numbers of one task session. Samples arrive in order on the source's queue; the controller reads
@@ -94,22 +96,33 @@ private final class TaskCameraTally: @unchecked Sendable {
     private var signs: FaceSignsAccumulator
     private var features = TaskCameraFeatures()
     private var accepting: Int?
+    private var cueRules = ExpressionCueRules.standard
+    private var cues = ExpressionCueDetector()
 
     init(rules: FaceSignRules) { self.rules = rules; signs = FaceSignsAccumulator(rules: rules) }
 
     func accept(_ generation: Int?) { lock.lock(); accepting = generation; lock.unlock() }
-    func reset() { lock.lock(); accepting = nil; signs = FaceSignsAccumulator(rules: rules); features = TaskCameraFeatures(); lock.unlock() }
-    func add(_ sample: TaskCameraSample, generation: Int) {
+    func reset() {
+        lock.lock(); accepting = nil; signs = FaceSignsAccumulator(rules: rules); features = TaskCameraFeatures()
+        cues = ExpressionCueDetector(rules: cueRules); lock.unlock()
+    }
+    /// New thresholds for the visible expression cues; they hold from the next task session (`reset`).
+    func setCueRules(_ r: ExpressionCueRules) { lock.lock(); cueRules = r; lock.unlock() }
+    /// Returns a visible expression cue to hand to the open conversation, when one has just held long enough.
+    @discardableResult
+    func add(_ sample: TaskCameraSample, generation: Int) -> ExpressionCueKind? {
         lock.lock(); defer { lock.unlock() }
-        guard accepting == generation else { return }
+        guard accepting == generation else { return nil }
         signs.add(at: sample.t, sample.face)
         switch sample.geometry {
         case .none: break
         case .missing: features.add(nil)
         case .face(let frame): features.add(frame)
         }
+        return cues.add(at: sample.t, sample.face)
     }
     var result: (FaceSignsSummary, TaskCameraSummary) { lock.lock(); defer { lock.unlock() }; return (signs.summary, features.summary) }
+    var cueCounts: [String: FaceCueCount] { lock.lock(); defer { lock.unlock() }; return cues.counts }
 }
 
 /// The camera of one task screen (a game, the check-in). It runs only between `begin` and the task's end, only
@@ -127,6 +140,11 @@ private final class TaskCameraTally: @unchecked Sendable {
     /// True while something other than a task is using Kaiku's attention (a walk, a voice call that is not this
     /// task): the camera then stays off. Checked at every start and about once a second while sampling.
     @ObservationIgnored var blocked: () -> Bool = { false }
+    /// A visible expression cue has just held long enough (D60). Called on the main actor, at most a few times a
+    /// task; only the check-in chat listens, and hands it to its open conversation when both sides are quiet.
+    @ObservationIgnored var onCue: ((ExpressionCueKind) -> Void)?
+    /// The cue thresholds for the NEXT task session (`begin`): the service's, when it sent some.
+    @ObservationIgnored var cueRules = ExpressionCueRules.standard { didSet { tally.setCueRules(cueRules) } }
     @ObservationIgnored private let source: any TaskCameraSource
     @ObservationIgnored private let permission: () async -> Bool
     @ObservationIgnored private let tally: TaskCameraTally
@@ -199,10 +217,12 @@ private final class TaskCameraTally: @unchecked Sendable {
     /// The task ended: the camera closes and the session's numbers are handed over (nil when nothing was sampled).
     func finish() -> TaskCameraResult? {
         let (signs, geometry) = tally.result
+        let cues = tally.cueCounts
         close(.off)
         tally.reset()
         guard signs.samples > 0 else { return nil }
-        return TaskCameraResult(signs: signs, geometry: geometry.samples > 0 ? geometry : nil, simulated: source.simulated)
+        return TaskCameraResult(signs: signs, geometry: geometry.samples > 0 ? geometry : nil, simulated: source.simulated,
+                                cues: cues)
     }
 
     /// Back, dismissal, a withdrawn choice, "pause everything": the camera closes and nothing is kept.
@@ -222,7 +242,13 @@ private final class TaskCameraTally: @unchecked Sendable {
         guard !Task.isCancelled else { state = .off; return }
         guard granted, !blocked() else { state = .unavailable; return }
         tally.accept(current)
-        let ready = await source.start(sample: { [tally] sample in tally.add(sample, generation: current) },
+        let ready = await source.start(sample: { [tally, weak self] sample in
+                                           guard let kind = tally.add(sample, generation: current) else { return }
+                                           Task { @MainActor in
+                                               guard let self, self.generation == current, self.state == .capturing else { return }
+                                               self.onCue?(kind)
+                                           }
+                                       },
                                        failed: { [weak self] in Task { @MainActor in self?.lost(current) } })
         guard generation == current else {
             // Closed while the source was starting. A newer start may already be on its way: leave that one alone.

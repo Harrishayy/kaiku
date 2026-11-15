@@ -23,6 +23,7 @@ from kaiku_contracts.api import (
     CompanionToolCall,
     CompanionToolResult,
     EpisodeIn,
+    ExpressionCueRules,
     SessionClose,
     SessionCloseResult,
 )
@@ -104,9 +105,21 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
         max_session_seconds=max_seconds,
         walk=walk.guide(style) if style else None,
         idle_end_s=int(live.get("walk_idle_end_s" if walking else "idle_end_s", 0)) or None,
+        expression_cue=_expression_cue(req.surface, walking),
         chat_shape=ChatShape(purpose=card.purpose, depth=card.chat_depth or "brief", open_items=card.open_items)
         if card.purpose else None,
         context_refresh_seconds=int(live.get("context_refresh_seconds", 15)))
+
+
+def _expression_cue(surface: str, walking: bool) -> ExpressionCueRules | None:
+    """The device's thresholds for visible expression cues (D60, config `[expression_cue]`). Only where a camera
+    of the person's own choice can be on beside a conversation: the phone and the Mac, never a walk (voice only),
+    never the robot or the glasses (their cameras do not look for it)."""
+    cfg = load_config().get("expression_cue", {}) or {}
+    if surface not in ("iphone", "mac") or walking or not cfg.get("enabled", True):
+        return None
+    keep = {k: cfg[k] for k in ExpressionCueRules.model_fields if k in cfg}
+    return ExpressionCueRules(**keep)
 
 
 def _strings(v: Any) -> list[str]:

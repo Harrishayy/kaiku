@@ -787,3 +787,66 @@ flowchart LR
   head goes back to rest, and the episode is kept as ended early with everything answered so far (each answer was
   sent when it was given). Nothing is lost and nothing blocks the next thing she wants to do.
 
+## D61 — The robot asks about its camera once per conversation; photo time is the daily measure (2026-11-15, Harrish)
+- Every time a conversation opens on the robot, the robot itself asks once, in a fixed line, whether its camera may
+  be on while they talk, and waits 12 s. The voice only reports the answer (`camera_choice {on}`); it is told never
+  to ask about the camera itself. A flag in the hub makes a second question in the same conversation impossible.
+  No answer = off. The next conversation is asked again. She may change her mind by saying so.
+- "Camera on" means: while this conversation is open the sensors board counts face signs in windows of 30 s
+  (`obs.face_signs`, task check_in, device robot; numbers only, no picture), and photo time is possible. The
+  camera's part in noticing that someone is there (waking, distance, light) does not depend on it.
+- Photo time is the person's once-a-day few seconds in front of the camera to measure themselves. The hub keeps
+  the day it was last done; with the camera on and none done today Kaiku is told she may offer it once. A second one
+  the same day is kept too. Without a yes to the camera, photo time is refused with the reason.
+- Only on a head that runs its own ritual (the robot as built); the hub-driven ritual is unchanged.
+
+## D62 — Asking the robot for a light colour or a turn of the head, and keeping her in view (2026-11-15, Harrish)
+- `set_light {colour}`: the ear ring takes one of eight colours and keeps it. While the microphone is open the ring
+  breathes in that colour (before a colour is chosen it is orange at rest and blue while listening, as it was).
+- `turn_head {left | right}`: one short turn. The motor and the speaker never run together (power rule), and a
+  turn asked for while Kaiku spoke used to run out unseen: the head now waits up to 8 s for the speaker to go quiet,
+  then turns. Not during the rhythm game.
+- Keeping her in view: there was no face following on a head that runs its own ritual (the hub's head commands are
+  held back there). Now, when her face drifts past `[follow_track] edge` of the sensor board's picture, the hub
+  asks for one small turn toward her, at most every 2 s, never while the speaker has sound, never in the game. The
+  motor has no position feedback, so the hub checks the result: three turns in a row that do not bring her nearer the
+  middle and it stops for a minute and logs why (the camera may not be on the part that turns, or `sign` is wrong).
+- One ask is enough for these: they are small and change nothing in the record.
+
+## D63 — A transcript page on the device that is the robot's microphone (2026-11-15, Harrish)
+- While a phone or Mac is the robot's microphone (D56), its Kaiku bot page offers "Transcript": the conversation with
+  the robot as text, both sides, live. Kaiku's side comes from the robot's own trace (`raw.hub.trace` `said`). The
+  person's side is new: `raw.hub.transcript {text}`, the Live voice's own transcription of what she said, sent by the
+  hub ONLY while such a device is sending its microphone (the sound of those words is then already crossing the
+  home network from that device), never for a crisis phrase, never uplinked.
+- Nothing keeps it: the hub does not store it, `tools/record.py` drops it, `make tail` does not print it, the app
+  holds the last 200 turns in memory until it quits. `raw.hub.trace` still never carries her words, and the page's
+  feed still says only that she spoke. `[hub] transcript_to_phone = false` turns it off.
+- Also here: the camera question (D61) now always gets an answer she can hear and see before anything else is
+  asked: the robot says "Camera on. Only numbers, never a picture." or "Okay, the camera stays off.", the buzzer
+  sounds for a yes, and the ear ring is green while the camera counts.
+
+
+## D60 — Visible expression cues: a marker in the record and one gentle question (2026-11-15, Harrish; supersedes part of D52)
+- **Decision (the lead's, after the trade-off was put to them):** when a person's expression visibly changes for a
+  while, that is a marker in the product, and Kaiku may ask one slight question about it without interrupting.
+- **What is detected, on the device, in memory:** with the opt-in "Camera during activities" (its wording is now
+  version 4 and is asked again once), `ExpressionCueDetector` looks for a kind of expression that holds against the
+  person's own level earlier in the same task: `lower` (mouth corners down and inner brows up, not smiling), `tense`
+  (brows down with pressed lips or narrowed eyes, not smiling), `brighter` (sustained smiling). iPhone with a
+  TrueDepth camera only (ARKit blendshapes). Thresholds: `[expression_cue]` in `config/kaiku.toml`, sent with the
+  session; not calibrated against people.
+- **The question:** in an open check-in conversation a cue puts ONE fixed context sentence in front of Kaiku, only
+  when nobody is speaking; a cue that finds no quiet moment in 30 s is dropped. Kaiku decides whether to ask. It
+  never says it saw a face, never names a feeling, and nothing is spoken by rule.
+- **The marker:** `obs.face_signs.cues {lower|tense|brighter: {n, seconds}}`. Shown to the practitioner ("visible
+  sign: lower expression (camera, during check-in), 2 times, 40 s") and citable by Gemma as `obs:face_cues`, never
+  scored, no vote in the consensus. A lower or tense cue today also makes the next conversation on any surface
+  gentler through the existing `quieter_in` card line.
+- **Honest limits:** a movement of the face is not proof of a feeling (Barrett et al. 2019): the cue is a reason to
+  ask, never a conclusion, and it is named for what is seen. Inferring feelings from a face is an emotion-recognition
+  system under the EU AI Act (high-risk in general, prohibited at work and in school); the lead accepts that risk
+  for this product. Still true from D52: no picture leaves the device, no stored field names an emotion.
+- **Not done:** `lower` and `tense` on the Mac (flat landmarks cannot tell them; only `brighter` from the mouth
+  getting wider is coded there, uncalibrated), anything on the robot's own camera, Talk (no camera runs there),
+  nothing seen on a real face yet.

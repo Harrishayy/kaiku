@@ -97,6 +97,22 @@ class Settings:
     voice_audio: str = "auto"  # auto | head | local ([voice] audio): Kaiku's Live voice and the microphone
     tap_back: TapBackConfig = field(default_factory=TapBackConfig)  # [tap_back]: the drum step as a rhythm game
     photo_time_s: float = 8  # [photo_time] seconds: how long the robot's camera counts face signs
+    transcript_to_phone: bool = True  # [hub] transcript_to_phone: her words to the phone that is the microphone (D63)
+    camera_window_s: float = 30  # [photo_time] conversation_window_s: one window of counting while she said yes (D61)
+    expr_enabled: bool = True     # [robot_expression]: a visible change in her smile -> one gentle question (D60)
+    expr_lower_max: float = 0.03  # a window with at most this share of smiling ...
+    expr_earlier_min: float = 0.12  # ... after one in this conversation with at least this = lower
+    expr_brighter_min: float = 0.35
+    expr_min_coverage: float = 0.5
+    expr_every_s: float = 90.0
+    expr_max_n: int = 3
+    track_enabled: bool = True   # [follow_track]: small head turns that keep her face in the camera's picture (D62)
+    track_sign: int = 1          # 1 or -1: which way this robot's motor turns for a positive pan
+    track_edge: float = 0.45     # |x_norm| past which the head turns toward her
+    track_speed: float = 0.35    # motor speed of one 600 ms turn, 0-1
+    track_every_s: float = 2.0   # at most one turn this often
+    track_max_misses: int = 3    # turns in a row with her no nearer the middle before giving up for a while
+    track_give_up_s: float = 60.0
     # models (VERIFY in docs; never hard-code in code)
     gemini_live_model: str = ""
     lyria_model: str = ""
@@ -184,6 +200,22 @@ class Settings:
             voice_audio=(str(c.get("voice", {}).get("audio", "auto")).lower()
                          if str(c.get("voice", {}).get("audio", "auto")).lower() in ("auto", "head", "local") else "auto"),
             photo_time_s=min(30.0, max(2.0, _f(c, "photo_time", "seconds", 8))),
+            camera_window_s=min(30.0, max(5.0, _f(c, "photo_time", "conversation_window_s", 30))),
+            transcript_to_phone=bool(c.get("hub", {}).get("transcript_to_phone", True)),
+            expr_enabled=bool(c.get("robot_expression", {}).get("enabled", True)),
+            expr_lower_max=_f(c, "robot_expression", "lower_smile_max", 0.03),
+            expr_earlier_min=_f(c, "robot_expression", "earlier_smile_min", 0.12),
+            expr_brighter_min=_f(c, "robot_expression", "brighter_smile_min", 0.35),
+            expr_min_coverage=_f(c, "robot_expression", "min_coverage", 0.5),
+            expr_every_s=_f(c, "robot_expression", "every_s", 90.0),
+            expr_max_n=int(_f(c, "robot_expression", "max_per_conversation", 3)),
+            track_enabled=bool(c.get("follow_track", {}).get("enabled", True)),
+            track_sign=-1 if _f(c, "follow_track", "sign", 1) < 0 else 1,
+            track_edge=_f(c, "follow_track", "edge", 0.45),
+            track_speed=min(1.0, max(0.1, _f(c, "follow_track", "speed", 0.35))),
+            track_every_s=max(0.8, _f(c, "follow_track", "every_s", 2.0)),
+            track_max_misses=int(_f(c, "follow_track", "max_misses", 3)),
+            track_give_up_s=_f(c, "follow_track", "give_up_s", 60.0),
             tap_back=TapBackConfig.from_dict(c.get("tap_back", {}), bpm_min=_f(c, "music", "bpm_min", 60),
                                              bpm_max=_f(c, "music", "bpm_max", 200)),
             gemini_live_model=str(c.get("models", {}).get("gemini_live", "")),

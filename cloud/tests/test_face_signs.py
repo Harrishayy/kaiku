@@ -535,3 +535,90 @@ def test_the_persona_tells_kaiku_it_never_sees_a_face_and_what_to_say_when_asked
     answer = re.search(r'"(I can\'t see you\.[^"]+)"', limits).group(1)
     assert "numbers" in answer and "never pictures" in answer and "switch it off" in answer
     assert not wording.lint(answer, max_questions=None)  # the honest answer itself passes every wording rule
+
+
+# ------------------------------------------------------------------ visible expression cues (D60)
+def _cue_event(task="check_in", cues=None, when=None, device="phone", sim=False):
+    payload = {"task": task, "device": device, "method": "arkit_blendshapes", "duration_s": 120.0, "samples": 3600,
+               "coverage": 0.93, "smile_share": 0.02, "expression_range": 0.2}
+    if cues is not None:
+        payload["cues"] = cues
+    return {"v": 1, "id": f"cue-{task}-{len(str(cues))}", "ts": (when or NOW).isoformat().replace("+00:00", "Z"),
+            "home_id": "aino", "source": "phone", "type": "obs.face_signs", "payload": payload, "sim": sim}
+
+
+def test_the_contract_takes_cues_by_what_is_seen_and_never_a_feeling_or_an_empty_object():
+    from kaiku_contracts.payloads import FACE_CUE_KINDS, FaceSigns
+    from pydantic import ValidationError
+
+    base = _cue_event()["payload"]
+    ok = FaceSigns(**base, cues={"lower": {"n": 2, "seconds": 40.0}, "brighter": {"n": 1, "seconds": 9.5}})
+    assert ok.cues["lower"].n == 2 and FACE_CUE_KINDS == ("lower", "tense", "brighter")
+    assert "cues" not in FaceSigns(**base).model_dump(exclude_none=True)
+    for bad in ({"sad": {"n": 1, "seconds": 9}}, {"lower": {"n": 0, "seconds": 9}}, {}, {"lower": {"n": 1}},
+                {"lower": {"n": 1, "seconds": 9, "frame": "x"}}):
+        with pytest.raises(ValidationError):
+            FaceSigns(**base, cues=bad)
+    with pytest.raises(ValidationError):  # no usable face: no cue
+        FaceSigns(**{**base, "coverage": 0.0, "smile_share": None, "expression_range": None},
+                  cues={"lower": {"n": 1, "seconds": 9}})
+    names = " ".join(FaceSigns.model_json_schema()["properties"]).lower() + " ".join(FACE_CUE_KINDS)
+    for word in ("sad", "emotion", "mood", "happy", "depress"):
+        assert word not in names
+
+
+def test_a_lower_or_tense_cue_today_makes_that_kind_of_task_quieter_with_no_baseline_and_brighter_never_does():
+    held = {"lower": {"n": 1, "seconds": 14.0}}
+    assert face_cue.cued([_cue_event(cues=held)], NOW) == ["check_in"]
+    assert face_cue.cued([_cue_event(task="lantern", cues={"tense": {"n": 2, "seconds": 20.0}})], NOW) == ["games"]
+    both = [_cue_event(cues=held), _cue_event(task="lantern", cues=held)]
+    assert face_cue.cued(both, NOW) == ["games", "check_in"]                     # the card's order
+    assert face_cue.cued([_cue_event(cues={"brighter": {"n": 3, "seconds": 60.0}})], NOW) == []
+    assert face_cue.cued([_cue_event(cues={"lower": {"n": 1, "seconds": 3.0}})], NOW) == []      # under cue_min_seconds
+    assert face_cue.cued([_cue_event(cues=None)], NOW) == []
+    assert face_cue.cued([_cue_event(task="photo_time", cues=held, device="robot")], NOW) == []  # the robot's own task is not one
+    yesterday = NOW - timedelta(days=1)
+    assert face_cue.cued([_cue_event(cues=held, when=yesterday)], NOW) == []
+
+
+def test_the_card_the_manner_and_the_practitioner_words_for_a_cue_never_name_a_feeling():
+    from kaiku_cloud import account
+    from kaiku_cloud.clinician_chat import face_detail
+    from kaiku_cloud.mind import assemble
+
+    line = assemble.QUIET_LINE.format(where=assemble.QUIETER_IN["check_in"])
+    assert "never mention their face or a camera" in line
+    payload = _cue_event(cues={"lower": {"n": 2, "seconds": 40.2}, "tense": {"n": 1, "seconds": 9.0}})["payload"]
+    assert account.cue_phrases(payload) == ["visible sign: lower expression (camera, during check-in), 2 times, 40 s",
+                                           "visible sign: tense expression (camera, during check-in), 1 time, 9 s"]
+    detail = face_detail(payload)
+    assert "Visible sign: lower expression (camera, during check-in), 2 times, 40 s" in detail and "shown, not scored" in detail
+    record = account.cue_record([_cue_event(cues={"lower": {"n": 2, "seconds": 40.2}})], NOW.date())
+    assert record is not None and record.id == "obs:face_cues" and "Shown, not scored" in record.detail
+    assert "not proof of a feeling" in record.detail and record.source is None and record.metric is None
+    assert account.cue_record([_cue_event(cues=None)], NOW.date()) is None
+    from kaiku_cloud.insight import SHOWN_IDS
+
+    assert "obs:face_cues" in SHOWN_IDS                                          # beside the evidence, never a finding alone
+    for text in (detail, record.detail, record.label, " ".join(account.cue_phrases(payload))):
+        for word in ("sad", "emotion detected", "looked sad", "diagnos", "depress", "unhappy", "relapse"):
+            assert word not in text.lower(), word
+
+
+def test_cues_are_never_scored_no_criteria_metric_reads_them():
+    import tomllib
+    from pathlib import Path
+
+    crit = tomllib.loads((Path(__file__).resolve().parents[2] / "config" / "criteria.toml").read_text())
+    for metric in crit["metric"]:
+        assert "cue" not in str(metric.get("field", "")) and "cues" not in json.dumps(metric)
+
+
+def test_the_session_gives_the_phone_and_the_mac_the_thresholds_and_nobody_else():
+    from kaiku_cloud.mind.session import _expression_cue
+
+    rules = _expression_cue("iphone", False)
+    assert rules is not None and rules.enabled and rules.speak and rules.sustain_s == 4.5 and rules.max_per_conversation == 3 and rules.min_gap_s == 90
+    assert _expression_cue("mac", False) is not None
+    assert _expression_cue("iphone", True) is None                               # a walk is voice only
+    assert _expression_cue("robot", False) is None and _expression_cue("glasses", False) is None

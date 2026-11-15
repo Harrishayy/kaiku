@@ -1051,6 +1051,22 @@ class CompanionTool(ApiModel):
                                                      "declare it so and answer with the result's `scheduling`")
 
 
+class ExpressionCueRules(ApiModel):
+    """How a device decides that a visible expression cue holds (D60; config `[expression_cue]`). The device runs
+    the rule on numbers in memory; this is only its thresholds, so they can be tuned without a new app build."""
+
+    enabled: bool = True
+    speak: bool = Field(default=True, description="may a cue put ONE quiet context turn into the open conversation")
+    settle_s: float = Field(default=8, ge=5, le=600, description="face time before anything can hold: the person's "
+                            "own level in this task is taken from it")
+    sustain_s: float = Field(default=4.5, ge=2, le=120, description="how long it must hold without a break")
+    rise: float = Field(default=0.15, gt=0, le=1, description="how far above the person's own level in this task "
+                        "(0 to 1 strengths)")
+    min_gap_s: float = Field(default=90, ge=0, le=3600, description="at most one cue handed to the conversation "
+                             "in this long")
+    max_per_conversation: int = Field(default=3, ge=0, le=10)
+
+
 class CompanionSessionResponse(ApiModel):
     """POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
     when Live is unavailable: the device reports unavailability and keeps the microphone closed."""
@@ -1074,6 +1090,9 @@ class CompanionSessionResponse(ApiModel):
     walk: WalkGuide | None = Field(default=None, description="present when the purpose is walk")
     idle_end_s: int | None = Field(default=None, ge=1, description="the device ends the conversation by itself after "
                                    "this long with nobody speaking (an open microphone in a pocket); longer on a walk")
+    expression_cue: ExpressionCueRules | None = Field(
+        default=None, description="thresholds for visible expression cues on this device (D60); null = the device "
+                                  "does not look for them in this conversation")
 
 
 class CompanionToolCall(ApiModel):

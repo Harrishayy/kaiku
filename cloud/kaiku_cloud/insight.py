@@ -98,6 +98,9 @@ SUSTAINED = {"drifting": "change_from_usual", "improved": "better_than_usual", "
 TONE_OF_DRIFT = {"drifting": "worse", "improved": "better", "normal": "similar", "insufficient": "unknown"}
 TONE_OF_VERDICT = {"worse": "worse", "better": "better", "as_usual": "similar", "insufficient": "unknown"}
 CLOCK_UNITS = ("min after midnight", "min from midnight")
+# Records that are always beside the scored evidence, never a finding by themselves: the camera's counts (D52) and
+# its visible expression cues (D60).
+SHOWN_IDS = ("obs:face_signs", "obs:face_cues")
 OBS_LABEL = {
     "obs.self_report": "Mood, energy and sleep check-ins", "obs.presence": "Presence at the robot",
     "obs.hrv_session": "Pulse during breathing", "obs.drum_session": "Drum sessions",
@@ -641,7 +644,7 @@ def shortlist(refs: list[RecordCitation], tone: dict[str, str], limit: int, show
     # A measure on the course timeline is already described twice (course + week): its latest-point and
     # first-vs-latest-week records would only repeat it.
     keep = [r for r in refs if not (r.id.split(":", 1)[0] in ("metric", "pattern") and r.metric in in_course)]
-    extra = [r for r in keep if r.metric in (shown or ()) or r.id == "obs:face_signs"]
+    extra = [r for r in keep if r.metric in (shown or ()) or r.id in SHOWN_IDS]
     scored = [r for r in keep if r not in extra]
     return [*sorted(scored, key=rank)[:limit], *sorted(extra, key=rank)[:beside]]
 
@@ -810,7 +813,7 @@ def check_finding(item: Any, allowed: dict[str, RecordCitation], tone: dict[str,
         return "directive"  # a consider line is a question to explore with the person, never an instruction
     if not specific(meaning, [allowed[i] for i in ids]):
         return "generic"
-    beside = {i for i in ids if allowed[i].metric in (shown or ()) or i == "obs:face_signs"}
+    beside = {i for i in ids if allowed[i].metric in (shown or ()) or i in SHOWN_IDS}
     if beside and len(beside) == len(ids):
         return "unscored_only"  # a finding cannot rest on shown-only records (camera face signs) alone
     if len(meaning.split()) < 8 or (len(meaning.split()) < 12 and not _SEQUENCE.search(meaning)):
@@ -963,7 +966,7 @@ def review(store: Store, settings: Settings, patient_id: str, c: Consensus, refs
     back_now, away_now, _names = truth or (set(), set(), {})
     context = [{"id": r.id, "label": r.label, "detail": r.detail, "direction": tone.get(r.id, "unknown"),
                 "sustained": r.id in sustained,
-                **({"scored": False} if r.metric in shown or r.id == "obs:face_signs" else {}),
+                **({"scored": False} if r.metric in shown or r.id in SHOWN_IDS else {}),
                 **({"now": "back within usual" if r.metric in back_now else "still away from usual"}
                    if r.metric in back_now | away_now else {})} for r in sent]
     record = {"day_of_record": day_n, "baseline": "early, lower confidence" if early else "established"}
@@ -1184,6 +1187,9 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
                 + "; first day away, furthest day and return to range per measure, with care actions and PHQ-9 in "
                   "order.")[:300]))
     extra = [(r, "unknown") for r in account.generic_records(events, crit, data, end, OBS_LABEL)]
+    cue_rec = account.cue_record(events, end)
+    if cue_rec:
+        extra.append((cue_rec, "unknown"))
     if talk_record:
         extra.append((talk_record, talk_tone))
     min_stable = int(getattr(crit.state, "min_history_days_for_stable", 0) or 0)

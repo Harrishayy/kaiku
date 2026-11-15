@@ -43,11 +43,64 @@ ASK_TWICE_TOOL: dict = {
 }
 
 
+# The camera, asked once per conversation (D61). The ROBOT asks, in a fixed line, when a conversation opens; the
+# voice only reports the answer. It must never ask about the camera itself: that is how the question would come
+# back every turn.
+CAMERA_LINE = "Before we start: shall I have my camera on while we talk? Yes or no."
+CAMERA_ON_LINE = "Camera on. Only numbers, never a picture."
+CAMERA_OFF_LINE = "Okay, the camera stays off."
+CAMERA_RING, REST_RING = "#28dc5a", "#ff8c28"  # the ear ring: green while the camera counts, orange at rest
+CAMERA_WAIT_S = 12.0
+CAMERA_TOOL: dict = {
+    "name": "camera_choice",
+    "description": "The robot itself has just asked, once, whether its camera may be on for this conversation. Call "
+                   "this with their answer: on true for a clear yes, false for a no or anything unsure. It holds for "
+                   "this whole conversation. NEVER ask about the camera yourself, not at the start and not later: "
+                   "the robot asks once and only once. Call it again only if they bring it up themselves and ask "
+                   "for the camera to be turned on or off. With the camera on, the robot counts smiles and how much "
+                   "the face moves (numbers only, no picture), and photo time is possible. Returns {ok, camera}.",
+    "parameters": {"type": "object", "required": ["on"], "properties": {"on": {"type": "boolean"}}},
+}
+
+
+# A visible change in expression during a conversation with the camera on (D60, the robot's part): one private
+# context turn for the voice. A prompt to ask, never a conclusion.
+EXPRESSION_CUE: dict[str, str] = {
+    "lower": "For a little while their expression has looked lower than earlier in this conversation: they were "
+             "smiling before and are not now. If it fits the moment, ask one short, open question about how they "
+             "are doing right now. Do not say you saw their face or mention a camera; do not name a feeling for "
+             "them; do not repeat this later.",
+    "brighter": "For a little while they have been smiling. If it fits the moment, one warm, light remark or question "
+                "is welcome. Do not say you saw their face or mention a camera; do not repeat this later.",
+}
+
+# Things she can ask the robot's body for in words (D62). Small and harmless, so one ask is enough.
+LIGHT_COLOURS: dict[str, str] = {"white": "#ffffff", "orange": "#ff8c28", "yellow": "#ffd21e", "green": "#28dc5a",
+                                 "blue": "#28a0ff", "purple": "#a050ff", "pink": "#ff5aa0", "red": "#ff2814"}
+LIGHT_TOOL: dict = {
+    "name": "set_light",
+    "description": "Change the colour of the light ring on your ear because they asked for it (\"make your light "
+                   "white\"). It stays that colour until they ask for another. While you are listening the ring "
+                   "gently breathes in that colour. Returns {ok, colour}.",
+    "parameters": {"type": "object", "required": ["colour"], "properties": {
+        "colour": {"type": "string", "enum": list(LIGHT_COLOURS)}}},
+}
+TURN_TOOL: dict = {
+    "name": "turn_head",
+    "description": "Turn your head a little to their left or right because they asked (\"look this way\", \"turn "
+                   "left\"). Your motor and your speaker never run together, so the head turns just after you stop "
+                   "speaking: say a very short line or nothing. Left and right are as THEY see you. Returns {ok}.",
+    "parameters": {"type": "object", "required": ["direction"], "properties": {
+        "direction": {"type": "string", "enum": ["left", "right"]}}},
+}
+
+
 def with_ask_twice(tools: list[dict]) -> list[dict]:
-    """The follow-mode tool list plus the ask-twice `start_activity`, in the list's own shape."""
+    """The follow-mode tool list plus the hub's own tools there (the ask-twice `start_activity`, the camera
+    answer), in the list's own shape."""
     if any(isinstance(t, dict) and "function_declarations" in t for t in tools):
-        return [*tools, {"function_declarations": [ASK_TWICE_TOOL]}]
-    return [*tools, ASK_TWICE_TOOL]
+        return [*tools, {"function_declarations": [ASK_TWICE_TOOL, CAMERA_TOOL, LIGHT_TOOL, TURN_TOOL]}]
+    return [*tools, ASK_TWICE_TOOL, CAMERA_TOOL, LIGHT_TOOL, TURN_TOOL]
 
 
 def without(tools: list[dict], names: frozenset[str] | set[str]) -> list[dict]:

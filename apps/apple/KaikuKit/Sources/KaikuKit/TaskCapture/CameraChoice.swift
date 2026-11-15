@@ -9,9 +9,10 @@ import SwiftUI
     /// The wording of the choice now in the app (`sig.camera.d`). 1 said "face movement and expression geometry";
     /// 2 names what is derived: smiles, eyebrow and mouth movement, blinks, looking toward the screen, head and
     /// face movement; 3 adds who sees the numbers (she in History, her care team beside her record) and that they
-    /// decide nothing. A choice made under an older wording does not cover the newer text: it is asked again
+    /// decide nothing; 4 adds the visible expression cues (D60): an expression that stays lower, more tense or
+    /// brighter for a while, after which Kaiku may ask one gentle question. A choice made under an older wording does not cover the newer text: it is asked again
     /// once (`AppModel.cameraNeedsConfirm`), and until then the camera stays off.
-    nonisolated static let wording = 3
+    nonisolated static let wording = 4
 
     /// One summary this device sent: its envelope id, the game session it points at, and whether a stand-in made it.
     struct Sent: Codable, Equatable, Sendable {
@@ -66,6 +67,12 @@ extension FaceSigns {
                   head_movement: seen ? places(s.headMovement.map { max(0, $0) }, 100) : nil,
                   expression_range: seen ? share(s.expressionRange) : nil, ref: ref)
     }
+
+    /// With the visible expression cues that held in the task (D60). None, or no usable face: the field is absent.
+    init(_ result: TaskCameraResult, task: String, device: PlayDevice, ref: String?) {
+        self.init(result.signs, task: task, device: device, ref: ref)
+        if coverage > 0, !result.cues.isEmpty { cues = result.cues }
+    }
 }
 
 extension AppModel {
@@ -98,7 +105,7 @@ extension AppModel {
         guard cameraOn, pairing != nil, result.signs.samples >= 1 else { return }
         let id = UUID7.make()
         cameraChoice.note(id: id, ref: ref, sim: result.simulated)
-        await emit("obs.face_signs", FaceSigns(result.signs, task: task, device: KaikuPlatform.device, ref: ref),
+        await emit("obs.face_signs", FaceSigns(result, task: task, device: KaikuPlatform.device, ref: ref),
                    id: id, sim: result.simulated, quality: result.signs.coverage)
     }
 }

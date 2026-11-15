@@ -51,6 +51,14 @@ class HubState:
     def ritual_done_on(self, day: date) -> bool:
         return self.data.get("last_ritual_date") == day.isoformat()
 
+    def photo_time_done_on(self, day: date) -> bool:
+        """Photo time is a once-a-day measure of yourself: was today's done?"""
+        return self.data.get("last_photo_time_date") == day.isoformat()
+
+    def mark_photo_time(self, day: date) -> None:
+        self.data["last_photo_time_date"] = day.isoformat()
+        self.save()
+
     def mark_ritual_done(self, day: date) -> None:
         self.data["last_ritual_date"] = day.isoformat()
         self.save()

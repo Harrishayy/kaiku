@@ -84,6 +84,41 @@ def generic_records(events: list[dict[str, Any]], crit: Any, data: Any, end: dat
     return out
 
 
+CUE_WORDS = {"lower": "lower expression", "tense": "tense expression", "brighter": "brighter expression"}
+
+
+def cue_phrases(payload: dict[str, Any]) -> list[str]:
+    """One obs.face_signs payload's visible expression cues in the practitioner's words (D60): what was seen, where,
+    how often and for how long. Never a feeling."""
+    where = "during check-in" if payload.get("task") == "check_in" else f"during {payload.get('task', 'a task')}"
+    out = []
+    for kind, words in CUE_WORDS.items():
+        c = (payload.get("cues") or {}).get(kind)
+        if isinstance(c, dict) and c.get("n"):
+            n = int(c["n"])
+            out.append(f"visible sign: {words} (camera, {where}), {n} time{'s' if n != 1 else ''}, "
+                       f"{round(float(c.get('seconds') or 0)):g} s")
+    return out
+
+
+def cue_record(events: list[dict[str, Any]], end: date) -> RecordCitation | None:
+    """The last 7 days' visible expression cues as ONE citable record, shown and not scored (D60). None when no
+    capture carried one."""
+    rows = [e for e in events if e["type"] == "obs.face_signs" and (e["payload"].get("cues"))
+            and end - timedelta(days=6) <= local_date(e["ts"]) <= end]
+    if not rows:
+        return None
+    rows.sort(key=lambda e: e["ts"], reverse=True)
+    days = {local_date(e["ts"]) for e in rows}
+    lines = [f"{human_date(local_date(e['ts']))}: " + "; ".join(cue_phrases(e["payload"])) for e in rows[:4]]
+    detail = (f"On {len(days)} of the last 7 days. " + ". ".join(lines) + ". Shown, not scored: an expression that "
+              "held for a while against the person's own level in that task, seen by the device's camera with their "
+              "opt-in. A movement of the face is not proof of a feeling; it is a reason to ask, not a finding, and "
+              "it has no vote in the consensus.")
+    return RecordCitation(id="obs:face_cues", label="Visible expression signs during tasks", detail=detail[:900],
+                          source=None, observed_at=local_date(rows[0]["ts"]), simulated=all(e.get("sim") for e in rows))
+
+
 def _top(rows: list[dict[str, Any]], k: int = 2) -> str:
     return ", ".join(t for t, _ in Counter(t for r in rows for t in r["themes"]).most_common(k))
 

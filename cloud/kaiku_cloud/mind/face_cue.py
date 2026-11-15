@@ -61,9 +61,43 @@ def quieter(crit: Criteria, data: PatientData, now: datetime) -> list[str]:
     return out
 
 
+def cued(events: list[dict[str, Any]], now: datetime) -> list[str]:
+    """Today's kinds of task in which a visible expression cue of a kind in `cue_kinds` (lower, tense) held for
+    `cue_min_seconds` or more in total (D60, obs.face_signs `cues`). Needs no baseline of days: the device measured
+    it against the person's own level inside that task. Simulated captures count like any other record. Pure."""
+    if not cfg("enabled", True):
+        return []
+    kinds = set(cfg("cue_kinds", ["lower", "tense"]) or [])
+    need = float(cfg("cue_min_seconds", 4.5))
+    today = now.astimezone(TZ).date()
+    seconds = {k: 0.0 for k in KINDS}
+    for e in events:
+        if e.get("type") != "obs.face_signs":
+            continue
+        ts = e.get("ts")
+        when = ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if when.astimezone(TZ).date() != today:
+            continue
+        p = e.get("payload") or {}
+        kind = "check_in" if p.get("task") == "check_in" else "games" if p.get("task") != "photo_time" else None
+        if kind is None:
+            continue
+        for name, c in (p.get("cues") or {}).items():
+            if name in kinds and isinstance(c, dict):
+                seconds[kind] += float(c.get("seconds") or 0)
+    return [k for k in KINDS if seconds[k] >= need > 0]
+
+
+def today(crit: Criteria, data: PatientData, events: list[dict[str, Any]], now: datetime) -> list[str]:
+    """Both rules together, in the card's order: clearly below the usual of their own days (`quieter`), or a
+    visible expression cue held in that kind of task today (`cued`). One enum, one manner line."""
+    found = set(quieter(crit, data, now)) | set(cued(events, now))
+    return [k for k in KINDS if k in found]
+
+
 def quieter_in(store: Store, home_id: str, now: datetime | None = None) -> list[str]:
     now = now or datetime.now(UTC)
     if home_id not in store.home_ids():
         return []
     crit = service.active_criteria(store)
-    return quieter(crit, service.patient_data(store, home_id, crit), now)
+    return today(crit, service.patient_data(store, home_id, crit), store.events_for_home(home_id), now)

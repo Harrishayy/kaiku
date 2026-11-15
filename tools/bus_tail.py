@@ -81,6 +81,8 @@ async def tail(topic: str, show_raw: bool, as_json: bool) -> None:
                         continue
                     if not show_raw and "/raw/" in t:
                         continue
+                    if t.endswith("/raw/hub/transcript"):  # the person's words (D63): never printed
+                        continue
                     if as_json:
                         print(json.dumps({"topic": t, "msg": decode(m.payload)}), flush=True)
                     else:

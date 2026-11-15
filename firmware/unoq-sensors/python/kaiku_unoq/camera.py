@@ -200,6 +200,12 @@ class Camera:
         backoff = 1.0
         while not self._stop.is_set():
             self._dev = resolve_index(c.index)
+            if not self.enabled.is_set():
+                # Switched off (cmd.sensors {camera_enable: false}): the device is CLOSED, not just ignored, so the
+                # camera's own light is out and nothing can be read from it. `ok` then means "a camera is plugged in".
+                self.ok = self._dev is not None
+                time.sleep(0.3)
+                continue
             # No camera found: never hand OpenCV a missing device (it crashed the whole app on the board).
             cap = cv2.VideoCapture(self._dev) if self._dev is not None else None
             if cap is not None and cap.isOpened():
@@ -222,8 +228,7 @@ class Camera:
             try:
                 while not self._stop.is_set():
                     if not self.enabled.is_set():
-                        time.sleep(0.2)
-                        continue
+                        break  # released below: off means closed (its light goes out), see the top of the loop
                     now = time.monotonic()
                     if self._light_now.is_set() or now >= next_light:
                         self._light_now.clear()

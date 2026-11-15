@@ -81,6 +81,11 @@ final class ARKitFaceSource: NSObject, TaskCameraSource, ARSessionDelegate, @unc
               let browDownLeft = shape(.browDownLeft), let browDownRight = shape(.browDownRight),
               let blinkLeft = shape(.eyeBlinkLeft), let blinkRight = shape(.eyeBlinkRight),
               let jawOpen = shape(.jawOpen), let mouthClose = shape(.mouthClose) else { return nil }
+        // For the visible expression cues only (D60); a coefficient ARKit does not give leaves that cue unseen.
+        func both(_ l: ARFaceAnchor.BlendShapeLocation, _ r: ARFaceAnchor.BlendShapeLocation) -> Double? {
+            guard let a = shape(l), let b = shape(r) else { return nil }
+            return (a + b) / 2
+        }
         // The head as the device sees it: the camera's own movement in the room is taken out.
         let relative = simd_mul(simd_inverse(frame.camera.transform), face.transform)
         let turn = simd_quatf(relative)
@@ -91,7 +96,9 @@ final class ARKitFaceSource: NSObject, TaskCameraSource, ARSessionDelegate, @unc
             eyeClosed: min(blinkLeft, blinkRight),
             mouthOpen: max(0, jawOpen - mouthClose),
             gazeOn: gazeOn(face: face, relative: relative),
-            head: .rotation(x: Double(turn.imag.x), y: Double(turn.imag.y), z: Double(turn.imag.z), w: Double(turn.real)))
+            head: .rotation(x: Double(turn.imag.x), y: Double(turn.imag.y), z: Double(turn.imag.z), w: Double(turn.real)),
+            frown: both(.mouthFrownLeft, .mouthFrownRight), browInner: browInner,
+            press: both(.mouthPressLeft, .mouthPressRight), squint: both(.eyeSquintLeft, .eyeSquintRight))
     }
 
     /// Looking toward the screen: the line from between the eyes to the look-at point, against the line from

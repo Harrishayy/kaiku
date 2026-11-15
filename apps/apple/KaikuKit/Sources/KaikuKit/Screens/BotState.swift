@@ -92,6 +92,20 @@ public struct BotState: Equatable, Sendable {
     public var bpm: Double?
     public var panDeg: Double?
     public var moving: Bool?
+    /// The conversation with the robot, both sides in order, for the transcript page (D63). Memory only, the last
+    /// `transcriptMax` turns, gone when the app quits. The person's side arrives only while this device is the
+    /// robot's microphone.
+    public struct Turn: Equatable, Identifiable, Sendable {
+        public enum Who: Sendable { case kaiku, person }
+        public var id: Int
+        public var who: Who
+        public var text: String
+        public var at: Date
+    }
+    public var transcript: [Turn] = []
+    var transcriptN = 0
+    static let transcriptMax = 200
+
     /// The hub's last `mic: open` (it re-sends one every 2 s while it holds the head's microphone open).
     public var micHeldAt: Date?
     public var micClosedAt: Date?
@@ -271,6 +285,11 @@ public struct BotState: Equatable, Sendable {
             }
             line(BotWords.face(face), key: "face", window: 30)
 
+        case "raw.hub.transcript":
+            // What the person said, sent only while this device is the robot's microphone (D63). It goes to the
+            // transcript page and nowhere else: the feed says only that they spoke.
+            if let text = p["text"]?.string, !text.isEmpty { say(.person, text, now) }
+
         case "raw.hub.trace":
             var out: [(String, String?)] = []
             trace(p, now: now, line: { out.append(($0, $1)) })
@@ -354,6 +373,12 @@ public struct BotState: Equatable, Sendable {
         else if !said { line(BotWords.unknown("cmd.head", "hub"), nil) }
     }
 
+    private mutating func say(_ who: Turn.Who, _ text: String, _ now: Date) {
+        transcriptN += 1
+        transcript.append(Turn(id: transcriptN, who: who, text: String(text.prefix(500)), at: now))
+        if transcript.count > Self.transcriptMax { transcript.removeFirst(transcript.count - Self.transcriptMax) }
+    }
+
     private mutating func trace(_ p: JSONValue, now: Date, line: (String, String?) -> Void) {
         let kind = p["kind"]?.string ?? ""
         let detail = p["detail"]?.string
@@ -362,6 +387,7 @@ public struct BotState: Equatable, Sendable {
             let text = String((p["text"]?.string ?? "").prefix(300))
             guard !text.isEmpty else { line(T("bot.feed.said.empty"), nil); return }
             said.insert(Said(text: text, by: p["by"]?.string, at: now), at: 0)
+            say(.kaiku, text, now)
             if said.count > 6 { said.removeLast(said.count - 6) }
             line(T("bot.feed.said", ["text": text]), nil)
         case "heard":

@@ -32,7 +32,10 @@ fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech
 - 0.6.0, `cmd.head {activity: breathe | drum | none}` (D58, asking twice): for `ARM_MS` (20 s) the next press of the
   ear starts that step instead of what a press does in the current one; `none` or idle disarms. Flashed.
 - 0.7.0, `cmd.head {ritual: next | end}` (D59): `next` moves on from a dial step (she answered in words), `end` goes
-  to idle quietly (she asked to stop). Never while idle or greeting. **Built, NOT flashed** (the head was not on USB).
+  to idle quietly (she asked to stop). Never while idle or greeting. Flashed.
+- 0.8.0 (D62): `cmd.head {color: "#rrggbb"}` sets the ear ring's colour (kept; breathes while the microphone is open;
+  orange / blue as before until one is chosen). A `pan` waits up to `PAN_WAIT_MS` (8 s) for the speaker to go quiet,
+  then runs its 600 ms (before, a turn asked for during speech ran out with the motor off). Flashed 2026-11-15.
 
 ### One way through the check-in (standalone 0.5.0, 2026-11-15)
 The head used to run through steps by itself or on one press: a bouncing or double press advanced two or three

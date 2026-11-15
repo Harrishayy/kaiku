@@ -65,7 +65,9 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    Raw audio only to Gemini Live during an active, consented companion conversation. Robot camera, laptop webcam and the
    phone or Mac camera during activities are processed in memory, never stored or sent. The camera during activities
    (opt-in, off by default, D52) yields only counts of face movement per task (`obs.face_signs`); nothing anywhere
-   infers an emotion from a face, and those counts are shown and citable, not scored. One exception for pictures (D43): with the separate opt-in "Let Kaiku
+   stores an emotion label, and those counts are shown and citable, not scored. From those same numbers the device
+   may notice a visible expression cue (D60: lower, tense or brighter for a while against the person's own level in
+   that task); it is recorded as a count and may put one fixed, quiet context sentence in front of Kaiku in a check-in. One exception for pictures (D43): with the separate opt-in "Let Kaiku
    see through the glasses during walks" (off by default), about one glasses camera frame a second goes from the
    iPhone straight to that same Gemini Live conversation while it is open and unmuted; frames are never stored,
    logged or sent to the Kaiku cloud, and no observation is derived from them. Browser apps never hold the Gemini key.
@@ -166,6 +168,8 @@ RealTime through a whole ritual with simulated taps) · `make tap-back [BEAT=1]`
   else the glasses are a voice in the ear and never "see".
   Face signs (D52): say "face signs", "movements of the face", "shown, not scored"; never "emotion detected" or
   "looked sad", and Kaiku never says it saw the person's face.
+  Visible expression cues (D60): say "visible sign: lower / tense / brighter expression", "a reason to ask, not a
+  finding"; never "sad", never a feeling named for the person.
 
 ## Don'ts
 - Don't edit another module's folder; leave its owner a `Broken/blocked` line in `docs/progress.md`.

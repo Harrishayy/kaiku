@@ -46,6 +46,7 @@ RAW: dict[str, type[BaseModel]] = {
     "raw.sensors.hall": p.RawHall,
     "raw.hub.face": p.RawFace,
     "raw.hub.trace": p.HubTrace,
+    "raw.hub.transcript": p.HubTranscript,
 }
 
 CMD: dict[str, type[BaseModel]] = {
@@ -136,6 +137,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
                        "samples": 2640, "coverage": 0.94, "smile_share": 0.12, "smiles": 3, "brow_raise_share": 0.05,
                        "brow_furrow_share": 0.08, "mouth_open_share": 0.03, "blinks_per_min": 14.5,
                        "gaze_on_share": 0.91, "head_movement": 0.21, "expression_range": 0.34,
+                       "cues": {"lower": {"n": 1, "seconds": 14.0}},
                        "ref": "0199b2c4-7c1e-7a55-9a3e-2f1d6b7c8e90"},
     "obs.wearable_daily": {"date": "2026-11-14", "sleep_min": 432.0, "sleep_midpoint_min": 195.0, "sleep_regularity": 0.81,
                            "resting_hr_bpm": 61.0, "hrv_sdnn_ms": 46.0, "steps": 6400, "exercise_min": 22.0,
@@ -159,6 +161,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "raw.sensors.hall": {"at_home": True},
     "raw.hub.face": {"x_norm": -0.2, "y_norm": 0.1, "size": 0.3, "confidence": 0.93},
     "raw.hub.trace": {"kind": "said", "text": "How are you today?", "by": "live"},
+    "raw.hub.transcript": {"who": "person", "text": "A bit tired today."},
     "cmd.head": {"eyes": "wide", "pan_mode": "track"},
     "cmd.sensors": {"ppg": "start"},
     "cmd.friendlink": {"ping": {"pattern": "glow"}},

@@ -393,6 +393,64 @@
       "title": "ContextCard",
       "type": "object"
     },
+    "ExpressionCueRules": {
+      "additionalProperties": false,
+      "description": "How a device decides that a visible expression cue holds (D60; config `[expression_cue]`). The device runs\nthe rule on numbers in memory; this is only its thresholds, so they can be tuned without a new app build.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_per_conversation": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Max Per Conversation",
+          "type": "integer"
+        },
+        "min_gap_s": {
+          "default": 90,
+          "description": "at most one cue handed to the conversation in this long",
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Min Gap S",
+          "type": "number"
+        },
+        "rise": {
+          "default": 0.15,
+          "description": "how far above the person's own level in this task (0 to 1 strengths)",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Rise",
+          "type": "number"
+        },
+        "settle_s": {
+          "default": 8,
+          "description": "face time before anything can hold: the person's own level in this task is taken from it",
+          "maximum": 600,
+          "minimum": 5,
+          "title": "Settle S",
+          "type": "number"
+        },
+        "speak": {
+          "default": true,
+          "description": "may a cue put ONE quiet context turn into the open conversation",
+          "title": "Speak",
+          "type": "boolean"
+        },
+        "sustain_s": {
+          "default": 4.5,
+          "description": "how long it must hold without a break",
+          "maximum": 120,
+          "minimum": 2,
+          "title": "Sustain S",
+          "type": "number"
+        }
+      },
+      "title": "ExpressionCueRules",
+      "type": "object"
+    },
     "HeardTone": {
       "additionalProperties": false,
       "description": "How a conversation sounded to the model that was in it, reported through the `feel` tool. An observation\nby a model, never a measurement and never a state. `model_heard`: the native-audio voice model heard the\nperson speak. `model_read`: it went by their typed or transcribed words only.",
@@ -692,6 +750,18 @@
       "default": null,
       "description": "poll interval for consented source updates during an active conversation",
       "title": "Context Refresh Seconds"
+    },
+    "expression_cue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExpressionCueRules"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "thresholds for visible expression cues on this device (D60); null = the device does not look for them in this conversation"
     },
     "idle_end_s": {
       "anyOf": [

@@ -372,6 +372,17 @@ FACE_SIGNS: tuple[str, ...] = ("smile_share", "smiles", "brow_raise_share", "bro
                                "blinks_per_min", "gaze_on_share", "head_movement", "expression_range")
 
 
+FaceCueKind = Literal["lower", "tense", "brighter"]
+FACE_CUE_KINDS: tuple[str, ...] = ("lower", "tense", "brighter")
+
+
+class FaceCueCount(Strict):
+    """How often and for how long one kind of visible expression cue held in a task (D60)."""
+
+    n: int = Field(ge=1, le=1000, description="separate stretches in which it held for the configured time or longer")
+    seconds: float = Field(ge=0, le=86_400, description="seconds it held, over those stretches")
+
+
 class FaceSigns(Strict):
     """Face signs during one task (D52), with the person's opt-in "Camera during activities": movements of the face
     that the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in
@@ -406,6 +417,14 @@ class FaceSigns(Strict):
     head_movement: float | None = Field(default=None, ge=0, description="how much the head moved; the scale belongs to the method")
     expression_range: float | None = Field(default=None, ge=0, le=1,
                                            description="overall variability of expression over the session")
+    cues: dict[FaceCueKind, FaceCueCount] | None = Field(
+        default=None,
+        description="visible expression cues in this task (D60): a kind of expression that held for a while, against "
+                    "this person's own level earlier in the same task. lower = less smiling with the mouth corners "
+                    "down or the inner brows up; tense = brows drawn down with the lips pressed or the eyes "
+                    "narrowed; brighter = sustained smiling. Named for what is seen, never for what is felt: a "
+                    "movement of the face is not proof of a feeling. Absent = none held (or the method cannot tell). "
+                    "Shown and citable, not scored")
     ref: str | None = Field(default=None, min_length=1, max_length=64,
                             description="id of the obs.play_session (or other record) of the same task")
 
@@ -413,6 +432,10 @@ class FaceSigns(Strict):
     def _no_face_no_signs(self):
         if self.coverage == 0 and any(getattr(self, name) is not None for name in FACE_SIGNS):
             raise ValueError("a session with no usable face (coverage 0) carries no face sign")
+        if self.coverage == 0 and self.cues:
+            raise ValueError("a session with no usable face (coverage 0) carries no expression cue")
+        if self.cues is not None and not self.cues:
+            raise ValueError("cues is absent when none held, never an empty object")
         return self
 
 
@@ -560,6 +583,17 @@ class RawFace(Strict):
     y_norm: float = Field(ge=-1, le=1)
     size: float = Field(ge=0, le=1)
     confidence: float = Field(ge=0, le=1)
+
+
+class HubTranscript(Strict):
+    """`raw.hub.transcript`: what the person just said, as the Live voice's input transcription gives it, for the
+    transcript page of the phone or Mac that is standing in as the robot's microphone (D63). Sent ONLY while such
+    a device is sending its microphone (the sound of these words is then already crossing the home network from
+    that device), never after a crisis phrase, never uplinked, never stored by the hub, and no bus tool records or
+    prints it. `raw.hub.trace` still never carries her words."""
+
+    who: Literal["person"] = "person"
+    text: str = Field(min_length=1, max_length=500)
 
 
 class HubTrace(Strict):

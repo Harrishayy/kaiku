@@ -1503,3 +1503,79 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Also 15 Nov: walk demo memories for `aino` stored through `POST /v1/companion/tool` (`remember`); one persona
   line for a light invitation tied to a thing in view. `aino` has an open safety flag from a manual press at
   00:57 UTC during testing; it is cleared by the practitioner's acknowledge action, not by code.
+
+## 2026-11-15 02:05 UTC — Claude Code — hub + firmware/atech-head: camera asked once, daily photo time, light, turn, in view
+- Did: D61 and D62 (see decisions). Hub: `_ask_camera_once`, `camera_choice`, conversation windows of face signs,
+  photo time gated on the yes and marked per day, `set_light`, `turn_head`, `_follow_track`, `[follow_track]` config.
+  Firmware 0.7.0 (spoken answer / stop) and 0.8.0 (ring colour, a turn waits for the speaker) flashed.
+- Verified: `uv run pytest hub` passes with new tests (camera asked once and reset, light, turn, following and its
+  give-up). Head on the broker as 0.8.0, sensors `camera_ok`, hub `voice_prewarm` ready.
+- Broken/blocked: none of D57 to D62 beyond D57 has been tried by a person on the robot. Unknown on the hardware:
+  whether the camera is on the part of the robot that turns and which way a positive pan turns (`[follow_track]
+  sign`); the ring's breathing; whether 12 s is long enough to answer the camera question. `photo_time.py` is
+  another session's untracked file; this change calls it and does not edit it. `make check` not run.
+
+## 2026-11-15 02:15 UTC — Claude Code — hub + contracts + apps/apple + tools: transcript page, camera answer confirmed
+- Did: D63. Contract `raw.hub.transcript` (new raw type, additive). Hub publishes it only while a phone is the
+  microphone; never stores its own echo. `tools/busio.py` and `bus_tail.py` never keep or print it. App: Transcript
+  page from the Robot microphone card (`BotTranscriptView`, `BotState.transcript`). Camera question: spoken
+  confirmation, buzzer `ok`, green ring while it counts, then the step line.
+- Verified: `uv run pytest hub contracts tools` and the app's Bot tests pass. On the robot before this change: with
+  the phone as microphone (`mic_source: phone`) the camera question was asked and `camera_choice {on: true}` arrived
+  8 s after the session opened, so the phone microphone path works end to end; there was no confirmation, which is
+  what this change adds. The confirmation and the transcript page have not been seen on the robot or the phone yet.
+
+## 2026-11-15 02:15 UTC — Claude Code — apps/apple + cloud + contracts + sim: visible expression cues (D60)
+- Did: `ExpressionCueDetector` (pure) on the ARKit readings; `TaskCamera.onCue`; the check-in chat hands a cue to
+  its conversation, which sends ONE fixed sentence only when both sides are quiet (`Conversation.expressionCue`);
+  `obs.face_signs.cues`; `CompanionSessionResponse.expression_cue` from `[expression_cue]`; cloud: `face_cue.cued`
+  feeds `quieter_in`, `account.cue_record` (`obs:face_cues`, shown not scored), practitioner wording. Camera
+  consent wording 4. `-kaikuExpressionDebug YES` (DEBUG) shows the last cue on the check-in screen.
+- Verified: `swift test` 593 pass (14 skipped); `uv run pytest cloud contracts sim` pass; ruff clean.
+- Contract changes: `FaceSigns.cues` (optional), `ExpressionCueRules`, `CompanionSessionResponse.expression_cue`.
+- Broken/blocked: nothing was seen on a real face; thresholds are guesses; no throwaway-service proof of the card and
+  insight was run; root privacy/safety docs and module AGENTS.md beyond the root file are not updated; Mac gives
+  `brighter` only (uncalibrated), robot camera nothing. The cloud on port 8000 must restart to send the thresholds.
+
+## 2026-11-15 03:10 UTC — Claude Code — cloud + config: Gemma on our Modal GPU answers the review and a record question
+- Did: `[gemma].provider = "modal"` now works for the practitioner review and record questions. `llm/gemma_vllm.py`
+  passes the answer cap to the GPU (`[gemma_modal].max_output_tokens`, or the caller's), reserves a cold start only
+  when this process has no recent answer, and on a timeout leaves a cold call running (it is what starts the GPU).
+  `[gemma_modal]`: `max_model_len` 8192 → 16384 (the review's evidence did not fit), `scaledown_s` 60 → 300.
+  `clinician_chat._validated` keeps the first eight citations of a longer list instead of rejecting it (the GPU
+  returned fifteen). `kaiku-gemma` redeployed. The default provider stays `hosted`: the demo uses the API.
+- Verified: real calls from a local API on Aino's simulated record with `KAIKU_GEMMA_PROVIDER=modal`: cold start
+  235 s; warm review 10.5 s and 5.2 s, `by: gemma`, overview accepted; record question 2.2 s, `by: gemma`.
+  `uv run pytest cloud` passes; ruff clean on cloud. About $1.20 reserved in the local ledger.
+- Contract changes: none.
+- Broken/blocked: not run on the GPU: `ask_mind`, nightly graph, affect labels, the deployed API as caller (it needs
+  `KAIKU_GEMMA_PROVIDER=modal` in its runtime secret). The first call after five quiet minutes falls back while the
+  GPU starts. `make check` not run.
+- Next: for production, set the provider in the API's secret and run one review from the deployed dashboard.
+
+## 2026-11-15 03:35 UTC — Claude Code — cloud: the sixteen days under another person's record (`--home`)
+- Did: `jobs/single_person.py --home <id>` writes the same sixteen simulated days under another home id, for a team
+  member who then records on real devices (the video uses `harrish`). That record gets only its own notebook
+  (`OTHER_NOTES`: name, "Eating more protein this week", "Chips, the easy snack to grab"), a care note that names
+  nobody, and none of Aino's conversations. Every envelope stays `sim: true`.
+- Verified: new test in `cloud/tests/test_single_person.py`; seeded into the local API on :8000 with `--no-jobs`
+  (463 events, no model call), `POST /v1/admin/recompute`; `/v1/patients/harrish/consensus` reads `needs_call`,
+  `/v1/me/memories` holds the three entries.
+- Contract changes: none.
+- Broken/blocked: the docs, README and public demo still name Aino; only the video's record is Harrish. The nightly
+  mind and weekly jobs were not run for `harrish` (they call models), so his knowledge graph has no organised
+  routines yet. `make check` not run.
+- Next: after midnight re-seed with `--reset` so the days end yesterday; any dashboard shot of this record carries
+  "earlier days simulated".
+
+## 2026-11-15 02:35 UTC — Claude Code — hub + firmware/unoq-sensors: the camera is closed until she says yes; robot expression cue
+- Did: `camera.py`: `camera_enable: false` now CLOSES the device (its own light goes out) instead of ignoring frames;
+  `camera_ok` then means a camera is plugged in. Hub: the board's camera is off unless she said yes for this
+  conversation (said again on the board's heartbeat), on with the yes, off at the end. The board was running older
+  code than the repo: `python/` and `sketch/` deployed over ssh (the old app is kept on the board as
+  `~/kaiku-sensors.bak`), app started. Hub `_expression_cue` (D60, robot part): smiled earlier and now not at all =
+  one private note to Kaiku; `[robot_expression]`.
+- Verified: hub tests and the board's unit tests pass; the app on the board started ("started successfully").
+- Broken/blocked: not seen on the robot: the camera's light going on with a yes, the spoken confirmation, the green
+  ring, the expression note. With the camera closed outside a consented conversation there is no waking on a face,
+  no distance, no room light and no following then: only the ear wakes the robot. `make check` not run.

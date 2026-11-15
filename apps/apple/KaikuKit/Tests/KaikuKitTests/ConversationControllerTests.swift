@@ -57,6 +57,7 @@ private final class ConversationHTTP: URLProtocol {
     static let lock = NSLock()
     nonisolated(unsafe) static var offlineEpisodes = false
     nonisolated(unsafe) static var sessionLimit: Int?
+    nonisolated(unsafe) static var sessionExtra: String?
     nonisolated(unsafe) static var eventsJSON = #"{"events":[]}"#
     nonisolated(unsafe) static var holdMemories = false
     nonisolated(unsafe) static var heldMemory: (() -> Void)?
@@ -96,6 +97,9 @@ private final class ConversationHTTP: URLProtocol {
         if path.hasSuffix("session"), let limit = Self.sessionLimit {
             json.removeLast(); json += ",\"max_session_seconds\":\(limit)}"
         }
+        if path.hasSuffix("session"), let extra = Self.sessionExtra {
+            json.removeLast(); json += ",\(extra)}"
+        }
         if path.hasSuffix("memories"), Self.holdMemories {
             let response = json
             Self.lock.lock(); Self.heldMemory = { [self] in deliver(response) }; Self.lock.unlock()
@@ -129,7 +133,7 @@ private final class ConversationHTTP: URLProtocol {
         let audio = ControllerAudio(), live = ControllerTransport()
         let conversation = Conversation(surface: .iphone, intent: .talk, audio: audio,
             transport: { event in live.event = event; return live }, permission: { true }, localListener: false)
-        ConversationHTTP.lock.lock(); ConversationHTTP.requests = []; ConversationHTTP.offlineEpisodes = false; ConversationHTTP.sessionLimit = nil; ConversationHTTP.eventsJSON = #"{"events":[]}"#; ConversationHTTP.holdMemories = false; ConversationHTTP.heldMemory = nil; ConversationHTTP.lock.unlock()
+        ConversationHTTP.lock.lock(); ConversationHTTP.requests = []; ConversationHTTP.offlineEpisodes = false; ConversationHTTP.sessionLimit = nil; ConversationHTTP.sessionExtra = nil; ConversationHTTP.eventsJSON = #"{"events":[]}"#; ConversationHTTP.holdMemories = false; ConversationHTTP.heldMemory = nil; ConversationHTTP.lock.unlock()
         return (app, audio, live, conversation, dir)
     }
     private func settle() async { try? await Task.sleep(nanoseconds: 50_000_000) }
@@ -331,6 +335,53 @@ private final class ConversationHTTP: URLProtocol {
             return WearableDaily(date: AppModel.dayKey(morning), device: .apple_watch)
         }
         XCTAssertEqual(ConversationHTTP.requests.filter { $0.0 == "/v1/events" }.count, count)
+    }
+
+    /// D60: a visible expression cue reaches Kaiku as ONE fixed sentence, only in a quiet moment, only in a check-in
+    /// the service allowed it for, only with the camera choice on; a cue that finds no quiet moment is dropped.
+    func testAnExpressionCueIsHandedOverOnlyWhenBothSidesAreQuietAndOnlyAsTheFixedSentence() async throws {
+        let (app, audio, live, _, dir) = fixture(); defer { try? FileManager.default.removeItem(at: dir) }
+        app.consents[.camera] = true; app.cameraChoice.agree()
+        func checkIn() -> Conversation {
+            Conversation(surface: .iphone, intent: .checkin, audio: audio,
+                         transport: { event in live.event = event; return live }, permission: { true }, localListener: false,
+                         purpose: .check_in)
+        }
+        // The service did not send the thresholds: nothing is ever handed over.
+        var c = checkIn()
+        _ = await c.start(app: app); live.event?(.ready); await settle()
+        c.expressionCue(.lower); await settle()
+        XCTAssertTrue(live.contexts.filter { ExpressionCueText.all.contains($0) }.isEmpty)
+        c.stop(); await settle()
+
+        ConversationHTTP.sessionExtra = #""expression_cue":{"enabled":true,"speak":true}"#
+        live.contexts = []
+        c = checkIn()
+        _ = await c.start(app: app); live.event?(.ready); await settle()
+        let before = live.contexts.count
+        live.event?(.audio(Data([0, 0]))); live.event?(.kaikuText("One moment. ")); live.event?(.turnComplete); await settle()
+        c.expressionCue(.lower); await settle()
+        XCTAssertEqual(live.contexts.count, before, "Kaiku is speaking: it waits")
+        XCTAssertFalse(c.handCue(now: Date()))
+        audio.flush(); await settle()
+        XCTAssertTrue(c.handCue(now: Date()) || live.contexts.count == before + 1)
+        XCTAssertEqual(live.contexts.count, before + 1)
+        XCTAssertEqual(live.contexts.last, ExpressionCueText.text(.lower), "the fixed sentence and nothing else")
+        XCTAssertEqual(c.cuesHanded, 1)
+        XCTAssertFalse(c.handCue(now: Date()), "once")
+
+        // A cue that found no quiet moment in time is dropped, not sent late.
+        live.event?(.audio(Data([0, 0]))); live.event?(.kaikuText("And another thing. ")); live.event?(.turnComplete); await settle()
+        c.expressionCue(.tense, now: Date().addingTimeInterval(-ExpressionCueText.staleAfter - 1))
+        audio.flush(); await settle()
+        XCTAssertFalse(c.handCue(now: Date()))
+        XCTAssertEqual(live.contexts.count, before + 1)
+
+        // The camera choice was withdrawn: nothing more crosses.
+        app.consents[.camera] = false
+        c.expressionCue(.brighter); await settle()
+        XCTAssertEqual(live.contexts.count, before + 1)
+        c.stop()
     }
 
     func testNewSourceContextWaitsForQuietAndContainsNoPayload() async throws {

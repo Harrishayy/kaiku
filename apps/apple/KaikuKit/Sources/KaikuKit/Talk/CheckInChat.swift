@@ -111,6 +111,17 @@ final class CheckInChat {
     @ObservationIgnored private var seenShape = false
     @ObservationIgnored private var observing = false
     @ObservationIgnored private var kaikuLinesAtDials = 0
+    /// `-kaikuExpressionDebug YES` (DEBUG builds): the last visible expression cue the camera handed over, as one
+    /// small line on the check-in screen, so a bench run or a recording can show that it fired and which kind.
+    private(set) var debugCue: String?
+    @ObservationIgnored private var cueSeen = 0
+    static var cueDebug: Bool {
+        #if DEBUG
+        return UserDefaults.standard.bool(forKey: "kaikuExpressionDebug")
+        #else
+        return false
+        #endif
+    }
     /// The screen was left (another tab, back, the way on): this check-in is over and its screen goes with it.
     private(set) var left = false
     /// She turned the camera off for this check-in: "Keep talking" does not turn it back on.
@@ -177,6 +188,16 @@ final class CheckInChat {
     /// it off here. The system's own permission question comes with the first task that has the choice on.
     func beginCamera() async {
         guard let app, state.end == nil, !left, !cameraOffByHer, camera.state == .off else { return }
+        // Visible expression cues (D60): the service's thresholds when it sent some, and a cue goes to this
+        // check-in's own conversation, which hands it to Kaiku only when both sides are quiet.
+        camera.cueRules = talk.conversation.session?.expression_cue ?? .standard
+        camera.onCue = { [weak self] kind in
+            guard let self else { return }
+            self.talk.conversation.expressionCue(kind)
+            #if DEBUG
+            if Self.cueDebug { self.cueSeen += 1; self.debugCue = "Expression cue \(self.cueSeen): \(kind.rawValue)" }
+            #endif
+        }
         await camera.begin(allowed: app.cameraOn)
     }
 

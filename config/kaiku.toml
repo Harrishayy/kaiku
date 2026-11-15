@@ -262,6 +262,9 @@ queue_path = "logs/uplink_queue.sqlite"
 timeout_s = 10
 
 [hub]
+transcript_to_phone = true   # D63: while a phone or Mac is the robot's microphone, what the person said (Live's own
+                             # transcription) goes to it as raw.hub.transcript for its transcript page. Never stored,
+                             # never uplinked, never after a crisis phrase. false = her words never leave the hub
 # Local session store (hub/kaiku_hub/store.py): the raw NUMBERS behind each ritual (tap times, pulse samples,
 # distances, face box positions, dial turns) + the obs emitted from them. Stays at home, never uplinked, no
 # images or audio. Audit / export / replay: tools/session.py.
@@ -326,7 +329,33 @@ head_lead_ms = 80   # head: the hub sends one 20 ms frame every 20 ms, this far 
                     # the head keeps a short buffer and plays silence when it runs dry
 head_gain = 1.0     # head: the level as generated (was 0.8: too quiet on the robot, 2026-11-14)
 
+[robot_expression]
+# A visible change in her expression during a robot conversation with the camera on (hub `_expression_cue`, D60).
+# The robot's camera can count how much of a window she smiled, nothing finer. lower = she smiled earlier in this
+# conversation (a window with at least `earlier_smile_min`) and in this window at most `lower_smile_max`;
+# brighter = at least `brighter_smile_min`. Kaiku gets one private note and may ask one gentle question.
+enabled = true
+lower_smile_max = 0.03
+earlier_smile_min = 0.12
+brighter_smile_min = 0.35
+min_coverage = 0.5         # share of the window with one usable face
+every_s = 90               # at most one note this often
+max_per_conversation = 3
+
+[follow_track]
+# Keeping her in view on a head that runs its own ritual (hub `_follow_track`, D62): when her face drifts past `edge`
+# of the camera's picture the head turns a little toward her. Never while the speaker has sound, never in the rhythm
+# game. If `max_misses` turns in a row do not bring her nearer the middle it pauses for `give_up_s`.
+enabled = true
+sign = 1            # 1 or -1: flip if the head turns AWAY from her (which way this motor turns for a positive pan)
+edge = 0.45         # |x_norm| of the face (0 = middle, 1 = edge of the picture) past which it turns
+speed = 0.35        # motor speed of one 600 ms turn, 0-1
+every_s = 2.0
+max_misses = 3
+give_up_s = 60
+
 [photo_time]
+conversation_window_s = 10   # with her yes to the camera for this conversation (D61): one window of counting, repeated
 # "Photo time!" on the robot (hub/kaiku_hub/rituals/photo_time.py): the sensors board's camera counts face signs
 # (smiles, head movement) for this long and sends numbers only. No picture is taken or kept. Shown, not scored.
 seconds = 8
@@ -372,12 +401,16 @@ emergency_number = "112"
 provider = "hosted"   # "hosted" = Gemma through the Gemini API (verified) | "modal" = our vLLM app kaiku-gemma (deploy it first)
 
 [gemma_modal]
-timeout_s = 60        # result wait per call when provider = "modal"; a cold GPU start can exceed it -> deterministic fallback
+timeout_s = 60        # result wait per call when provider = "modal". A cold GPU start took 235 s (2026-11-15): the first call
+                      # after an idle spell falls back to the deterministic text and is left running so the GPU comes up;
+                      # calls inside scaledown_s after that are answered (the review took 10.5 s warm)
 adapter_repo = ""     # optional LoRA adapter (HF repo) served by gemma_app.py on top of the base weights; empty = base model. No Kaiku adapter has been trained.
 # Separate scale-to-zero Modal app `kaiku-gemma` (cloud/gemma_app.py). Costs nothing until called.
 gpu = "H100"          # 26B-A4B in bf16 needs ~52 GB; use "L40S" with google/gemma-4-12B-it to save credits
-scaledown_s = 60      # container stops 60 s after the last call (raise to keep it warm during the demo)
-max_model_len = 8192
+scaledown_s = 300     # container stops this long after the last call. Shorter than a practitioner's visit and the GPU
+                      # is gone again before the second question; each idle tail costs about $0.38 on an H100
+max_model_len = 16384  # prompt + answer. The practitioner review sends about 21 000 characters of evidence: 8192 refused it
+max_output_tokens = 1200  # answer cap per call unless the caller asks for more (same as [gemma_hosted])
 
 [budget]
 # HARD caps for all paid model calls (Gemini API / Vertex / Modal GPU), enforced by kaiku_contracts/budget.py.
@@ -429,9 +462,30 @@ z = 2.0                  # "clearly below": at least this many spreads below her
 min_baseline_days = 7    # only against an established usual: this many of her own days, never the provisional early baseline
 # kind of task -> the config/criteria.toml metrics read for it. The cue holds for a kind when at least one of its
 # metrics with a reading today is `z` or more below her usual and none is above it. Blink rate is not a cue.
+cue_kinds = ["lower", "tense"]   # visible expression cues (D60, obs.face_signs `cues`) that also make a kind of task
+                                 # "quieter" today, with no baseline needed: they are measured against the person's
+                                 # own level inside that task. `brighter` never makes Kaiku go gentler
+cue_min_seconds = 4.5            # a cue counts here only when it held at least this long in total in that task
 [face_cue.metrics]
 games = ["face_range", "face_smiles", "face_range_landmarks"]
 check_in = ["face_range_chat", "face_smiles_chat", "face_range_chat_landmarks"]
+
+[expression_cue]
+# Visible expression cues (D60). With her switch "Camera during activities" on, the phone or Mac looks, in memory,
+# for a kind of expression that HOLDS for a while against her own level earlier in the same task: lower (less
+# smiling with the mouth corners down or the inner brows up), tense (brows drawn down with pressed lips or narrowed
+# eyes), brighter (sustained smiling). It is named for what is seen, never for what is felt. In an open check-in
+# conversation a cue may put ONE quiet context turn in front of Kaiku ("if it fits, ask one short open question");
+# Kaiku never says it saw her face. The counts go into obs.face_signs `cues`: shown and citable, not scored.
+# These thresholds go to the device with the session (CompanionSessionResponse.expression_cue). Not calibrated
+# against people yet: change them here, no new app build.
+enabled = true
+speak = true                 # false = cues are only recorded, never handed to the conversation
+settle_s = 8                 # face time before anything can hold; her own level in this task comes from it
+sustain_s = 4.5              # it must hold this long without a break
+rise = 0.15                  # this far above her own level in this task (0 to 1 strengths)
+min_gap_s = 90               # at most one cue handed to the conversation in this long
+max_per_conversation = 3
 
 [care_passages]
 # Approved, non-clinical passages ask_mind may cite as [doc:<key>] for care questions. The care team owns these.

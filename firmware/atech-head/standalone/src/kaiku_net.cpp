@@ -17,7 +17,7 @@
 namespace kaiku_net {
 namespace {
 
-const char* FW_VERSION = "atech-head-standalone-0.7.0";   // 0.1.0 = without the sound streams and the drum hold
+const char* FW_VERSION = "atech-head-standalone-0.8.0";   // 0.1.0 = without the sound streams and the drum hold
 const uint16_t MQTT_PORT = 1883;
 const uint32_t BACKOFF_MIN_MS = 1000, BACKOFF_MAX_MS = 10000, HEALTH_EVERY_MS = 5000, PAN_EVERY_MS = 2000;
 
@@ -204,6 +204,7 @@ void onCmdHead(JsonObject c) {
   const char* rit = c["ritual"] | "";
   if (!strcmp(rit, "next")) push("said", "next");
   else if (!strcmp(rit, "end")) push("said", "end");
+  if (c["color"].is<const char*>()) push("ring", c["color"]);   // the ear ring's colour, as she asked for it
   if (c["pan"].is<JsonObject>()) {
     float t = c["pan"]["target_deg"] | 0.0f, s = c["pan"]["speed"] | 0.5f;
     snprintf(v, sizeof(v), "%d", (int)((t >= 0 ? 1 : -1) * constrain(s, 0.0f, 1.0f) * 100));

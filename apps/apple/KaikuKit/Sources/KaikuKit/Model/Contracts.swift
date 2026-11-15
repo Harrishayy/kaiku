@@ -199,6 +199,9 @@ public struct FaceSigns: Codable, Sendable, Equatable {
     public var expression_range: Double?
     /// The id of the `obs.play_session` envelope of the same task, when there is one.
     public var ref: String?
+    /// Visible expression cues that held in the task (D60), by kind (`lower`, `tense`, `brighter`): what was seen,
+    /// never what was felt. Absent when none held.
+    public var cues: [String: FaceCueCount]? = nil
 
     public static let checkIn = "check_in"
 }
@@ -378,6 +381,8 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var max_session_seconds: Int? = nil
     /// The quiet limit after which the device ends the call by itself (talk and check-in 180, a walk 900).
     public var idle_end_s: Int? = nil
+    /// The thresholds for visible expression cues in this conversation (D60); nil = the device does not hand any over.
+    public var expression_cue: ExpressionCueRules? = nil
     public var context_refresh_seconds: Int? = nil
     /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
     public var live_setup: JSONValue?
@@ -470,12 +475,12 @@ public struct SessionCloseResult: Codable, Sendable { public var ok: Bool; publi
 public enum ToolExecutor {
     public static let deviceTools: Set<String> = [
         "express", "log_walk_moment", "look_at_this", "record_dial", "send_friend_ping", "start_activity", "start_phq9",
+        "photo_time",  // the robot's own (its camera counts face signs); the apps answer "not on this device"
         // In the registry since 2026-11-14: the walk's spotting game (`WalkModel.walkTool`) and the activity card
         // in a conversation (`TalkModel.deviceTool`). A surface that has no use for one answers "not on this
         // device" (the default of every `deviceTool`) instead of forwarding it to the cloud.
         "set_walk_goal", "suggest_activity",
     ]
-        "photo_time",  // the robot's own (its camera counts face signs); the apps answer "not on this device"
     public static func isDevice(_ name: String) -> Bool { deviceTools.contains(name) }
 }
 

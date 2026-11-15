@@ -352,13 +352,29 @@ struct BotMore: View {
 struct BotRobotMicCard: View {
     let model: BotModel
     let now: Date
+    @State private var showTranscript = false
 
     var body: some View {
         KSection(T("bot.robotmic.sec"), subtitle: T("bot.robotmic.sec.d"), icon: "mic", tone: .sage) {
             KToggleRow(icon: model.micOn ? "mic.fill" : "mic", title: T("bot.robotmic.t"), detail: status,
                        isOn: Binding(get: { model.micOn }, set: { on in Task { await model.setMic(on) } }))
                 .accessibilityIdentifier("bot.robotmic")
+            if model.micOn || !model.state.transcript.isEmpty {
+                KDivider()
+                Button { showTranscript = true } label: {
+                    KRow(icon: "text.bubble", tint: KaikuTokens.Colors.sage, title: T("bot.transcript.open"),
+                         detail: T("bot.transcript.open.d", n: model.state.transcript.count), accessory: .chevron)
+                }
+                .buttonStyle(.plain)
+                .kPointer()
+                .accessibilityIdentifier("bot.transcript.open")
+            }
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showTranscript) { BotTranscriptView(model: model) }
+        #else
+        .sheet(isPresented: $showTranscript) { BotTranscriptView(model: model).frame(minWidth: 520, minHeight: 560) }
+        #endif
     }
 
     private var status: String {
@@ -367,6 +383,59 @@ struct BotRobotMicCard: View {
         if model.link != .listening { return T("bot.robotmic.nolink") }
         if let at = model.micSentAt, now.timeIntervalSince(at) < 2 { return T("bot.robotmic.sending") }
         return T(model.state.micHeld(now: now) ? "bot.robotmic.speaking" : "bot.robotmic.waiting")
+    }
+}
+
+/// The conversation with the robot as text, both sides, newest at the bottom (D63). Open it while this device is
+/// the robot's microphone: Kaiku's lines come from the robot's own trace, the person's from what the robot heard
+/// through this device. Nothing here is stored; it is gone when the app quits.
+struct BotTranscriptView: View {
+    let model: BotModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(T("bot.transcript.title")).kText(.title3, weight: .bold).foregroundStyle(KaikuTokens.Colors.ink)
+                    Text(T(model.micOn ? "bot.transcript.sub.on" : "bot.transcript.sub.off"))
+                        .kText(.caption).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                }
+                Spacer(minLength: KaikuTokens.Space.s3)
+                Button(T("bot.transcript.done")) { dismiss() }
+                    .buttonStyle(KButtonStyle(.secondary, fullWidth: false))
+                    .accessibilityIdentifier("bot.transcript.done")
+            }
+            .padding(KaikuTokens.Space.s4)
+            KDivider(plain: true)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: KaikuTokens.Space.s3) {
+                        if model.state.transcript.isEmpty {
+                            Text(T("bot.transcript.empty")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                        }
+                        ForEach(model.state.transcript) { turn in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(T(turn.who == .kaiku ? "bot.transcript.kaiku" : "bot.transcript.you") + " · " + BotTime.clock(turn.at))
+                                    .kText(.caption, weight: .semibold)
+                                    .foregroundStyle(turn.who == .kaiku ? KaikuTokens.Colors.clay : KaikuTokens.Colors.sage)
+                                Text(turn.text).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(turn.id)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                    .padding(KaikuTokens.Space.s4)
+                }
+                .onChange(of: model.state.transcript.last?.id) { _, id in
+                    if let id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
+                }
+                .onAppear { if let id = model.state.transcript.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
+            }
+        }
+        .background(KaikuTokens.Colors.surface)
     }
 }
 

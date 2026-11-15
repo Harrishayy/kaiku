@@ -46,7 +46,7 @@ Status words: **met** (code and evidence exist), **partial** (built, but a named
 |---|---|---|---|
 | Innovative, impactful use | met | Gemma 4 selects evidence for the practitioner review while code renders every number (`cloud/kaiku_cloud/clinician_chat.py`); proposes graph merges that code validates (`mind/nightly.py`, `mind/graph.py`); answers the companion's deeper questions with verified citations (`mind/router.py`). | Review and trace API are landing: verify. |
 | Strong technical execution | partial | Bounded retries, citation and banned-wording validation, deterministic fallback (`llm/explain.py`). Verified through the hosted API (`llm/gemma_hosted.py`, model `gemma-4-26b-a4b-it`), which the brief lists as an allowed access route. | Show the trace: evidence in → selection → validated → rendered. |
-| Open model on our own infrastructure | not met | `cloud/gemma_app.py` (vLLM, scale to zero) has never been deployed. Only the consensus explanation can use it (`llm/explain.py` `BACKENDS`); the review, mind and graph paths call `gemma_hosted` directly. | Optional. If wanted: deploy, run the one smoke call, and say exactly which path used it. |
+| Open model on our own infrastructure | partial | `cloud/gemma_app.py` (vLLM on an H100, scale to zero) is deployed and every Gemma call follows one switch (`[gemma].provider`, `llm/gemma.py`). On 15 Nov the practitioner review and a record question were answered by it and passed every check, on Aino's simulated record from a local API. The public demo stays on the hosted API; `ask_mind`, the nightly graph and the deployed API as caller have not run on the GPU. A cold start takes about four minutes, so the first call after a quiet spell shows the deterministic text. |
 | Fine-tuning | not required | The brief does not mention it. See §6. | — |
 
 ### Best Use of Modal (effective use 40%, technical ambition 25%, impact 20%, demo 15%)
@@ -101,7 +101,7 @@ standard Bluetooth (HFP), not a DAT capability; the Motion capability is beta, d
 4. **No validation beyond the team.** Atech weighs it 25%; Aalto's "would someone actually use it" needs it too.
 5. **Atech live loop on real hardware** has not run end to end, and the Discord post is a minimum requirement.
 6. **Glasses proof is registration only.** One filmed real walk (voice in the glasses, glasses removed, walk continues) covers four Meta requirements at once.
-7. **Gemma never ran on our own GPU**, and the showcased review path cannot use the Modal backend without a small routing change in `clinician_chat.py`.
+7. **Gemma on our own GPU is proven for two paths only** (the review and a record question, 15 Nov, local API). The public demo uses the hosted API; say "production runs it on our own GPU, the demo you are looking at uses Google's API".
 8. **The authored 16-day record and the consensus rule.** See §4, weak point 1: check what the timeline really shows for the dip days before narrating it.
 9. **Autonomic sensing.** The Aalto brief highlights HRV; robot pulse is disabled. Show Apple Health data only if real.
 10. **Track PDFs in a public repo** contain the venue Wi-Fi password, a credit redemption code and mentor e-mail addresses (`docs/tracks/guide.pdf`, `modal.pdf`, `atech.pdf`). Root `AGENTS.md` forbids exactly this. Remove or replace with links before FINAL.

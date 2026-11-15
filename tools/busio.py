@@ -35,6 +35,9 @@ def without_trace_text(topic: str, msg: Any) -> Any | None:
     """What a recording may keep of a message. `raw.hub.trace` carries what Kaiku said, for the apps' live "Kaiku
     bot" tab; nothing stores those words: its `text` is dropped and only the kind and the machine words stay. A
     message on that topic that cannot be read as one is not kept at all (None). Everything else: unchanged."""
+    if topic.split("/")[3:] == ["raw", "hub", "transcript"] or (isinstance(msg, dict)
+                                                                 and msg.get("type") == "raw.hub.transcript"):
+        return None  # the person's words (D63): no recording keeps them, not even that they were said
     on_trace_topic = topic.split("/")[3:] == ["raw", "hub", "trace"]
     if not isinstance(msg, dict):
         return None if on_trace_topic else msg

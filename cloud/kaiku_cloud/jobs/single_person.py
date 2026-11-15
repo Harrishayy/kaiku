@@ -103,6 +103,32 @@ NOTES = (
     ("plans", "The long lake loop with Leena on Saturday"),
 )
 
+# The same sixteen days of numbers under another home id (`--home`), for a team member who then records on real
+# devices: today's real takes land on a record that already has a usual to be compared with. Only what is true of
+# that person is written into the notebook; Aino's conversations, people and places are not copied over, and the
+# care note names nobody. Every seeded envelope stays `sim: true`.
+OTHER_NOTES: dict[str, tuple[tuple[str, str], ...]] = {
+    "harrish": (
+        ("name", "Harrish"),
+        ("plans", "Eating more protein this week"),   # the two things the glasses walk in the video turns on:
+        ("likes", "Chips, the easy snack to grab"),   # what he reaches for, and what he said he wants instead
+    ),
+}
+OTHER_CARE_NOTE = ("Rang after four short nights and very little time outside. Agreed: a morning walk, an evening "
+                   "call, keep the drum ritual. PHQ-9 repeated; review in a week.")
+
+
+def notes_for(home_id: str) -> tuple[tuple[str, str], ...]:
+    if home_id == HOME:
+        return NOTES
+    if home_id not in OTHER_NOTES:
+        raise ValueError(f"no notebook is written for {home_id!r}: add it to OTHER_NOTES (only what is true of them)")
+    return OTHER_NOTES[home_id]
+
+
+def care_note_for(home_id: str) -> str:
+    return CARE_NOTE if home_id == HOME else OTHER_CARE_NOTE
+
 
 def _hm(text: str) -> int:
     """'23:10' -> minutes after midnight; a bedtime before midnight is written as the evening before ('-23:10')."""
@@ -719,6 +745,8 @@ def episodes(end: date, home_id: str = HOME) -> list[EpisodeIn]:
             add(i, "evening", "iphone", "checkin", 20 * 60 + 34, 2, ["record_dial"])
         if d.walk and d.walk[1] >= 20 and i in (1, 4, 7, 13, 15):  # some walks with Kaiku in her ear
             add(i, "walk", "glasses", "walk", _hm(d.walk[0]), d.walk[1], ["start_activity", "log_walk_moment"])
+        if home_id != HOME:
+            continue  # what Aino said is hers: another person's record gets the sessions, never her words
         if d.talk:
             surface, at, lines = TALKS[d.talk]
             thread = THREADS.get(d.talk)
@@ -740,13 +768,13 @@ def populate(store: Store, rows: list[dict], end: date, now: datetime | None = N
     home = rows[0]["home_id"]
     now = now or datetime.combine(end + timedelta(days=1), time(6, 0), TZ)
     fresh, _dupes = store.insert_events(rows)
-    for category, text in NOTES:
+    for category, text in notes_for(home):
         memory.remember(store, home, category, text, now=now)
     for episode in episodes(end, home):
         record_episode(store, episode)
     week.set_sharing(store, home, CareSharing(share_with_care_team=True))
-    if fresh and not any(a["action"] == "acknowledge" and a["note"] == CARE_NOTE for a in store.actions(home)):
-        store.log_action(home, "acknowledge", CARE_NOTE, CARE_BY, care_ts(end))
+    if fresh and not any(a["action"] == "acknowledge" and a["note"] == care_note_for(home) for a in store.actions(home)):
+        store.log_action(home, "acknowledge", care_note_for(home), CARE_BY, care_ts(end))
     settings = Settings(db_path=":memory:", llm="template")
     mind_nightly.run(store, [home], now=now, gen=_no_model)
     row = service.recompute_home(store, settings, home, today=end + timedelta(days=1))
@@ -835,7 +863,7 @@ def seed(url: str, rows: list[dict], reset: bool = False, jobs: bool = True, cli
                 raise SeedError(f"the API rejected observations: {result['rejected'][:2]}. Is it running the same "
                                 "code as this checkout? Restart it.")
             accepted += result["accepted"]
-        for category, text in NOTES:
+        for category, text in notes_for(home):
             result = call("POST", "/v1/companion/tool", json={"home_id": home, "surface": "iphone", "name": "remember",
                                                               "args": {"category": category, "text": text}})
             if not result.get("ok"):
@@ -844,7 +872,7 @@ def seed(url: str, rows: list[dict], reset: bool = False, jobs: bool = True, cli
             call("POST", "/v1/companion/episode", json=episode.model_dump(mode="json"))
         call("PUT", "/v1/me/sharing", params={"home_id": home}, json={"share_with_care_team": True})
         if accepted:  # first time only: the care team's call, recorded the way the dashboard records it
-            call("POST", f"/v1/patients/{home}/actions", json={"action": "acknowledge", "note": CARE_NOTE,
+            call("POST", f"/v1/patients/{home}/actions", json={"action": "acknowledge", "note": care_note_for(home),
                                                              "by": CARE_BY, "ts": care_ts(end)})
         done = {"home_id": home, "accepted": accepted, "duplicates": len(rows) - accepted, "jobs": {}}
         if jobs:
@@ -865,12 +893,14 @@ def main() -> int:
     parser.add_argument("--url", help="local API to seed, e.g. http://127.0.0.1:8000")
     parser.add_argument("--reset", action="store_true", help="drop this person's simulated data on that API first")
     parser.add_argument("--no-jobs", action="store_true", help="skip the nightly-mind and weekly jobs")
+    parser.add_argument("--home", default=HOME, help="home id to write the record under (aino, or a name in OTHER_NOTES)")
     parser.add_argument("--end", type=date.fromisoformat, default=datetime.now(TZ).date() - timedelta(days=1))
     args = parser.parse_args()
     if not args.out and not args.url:
         parser.error("give --url (seed a local API) and/or --out (export)")
-    rows = build(args.end)
-    summary: dict[str, Any] = {"home_id": HOME, "days": N_DAYS, "events": len(rows), "last_day": str(args.end)}
+    notes_for(args.home)
+    rows = build(args.end, args.home)
+    summary: dict[str, Any] = {"home_id": args.home, "days": N_DAYS, "events": len(rows), "last_day": str(args.end)}
     if args.out:
         result = populate(Store(":memory:"), rows, args.end)
         args.out.mkdir(parents=True, exist_ok=True)

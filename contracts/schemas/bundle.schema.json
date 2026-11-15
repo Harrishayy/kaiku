@@ -940,6 +940,18 @@
           "default": null,
           "description": "poll interval for consented source updates during an active conversation"
         },
+        "expression_cue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpressionCueRules"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "thresholds for visible expression cues on this device (D60); null = the device does not look for them in this conversation"
+        },
         "idle_end_s": {
           "anyOf": [
             {
@@ -4075,6 +4087,81 @@
       "title": "Explanation",
       "type": "object"
     },
+    "ExpressionCueRules": {
+      "additionalProperties": false,
+      "description": "How a device decides that a visible expression cue holds (D60; config `[expression_cue]`). The device runs\nthe rule on numbers in memory; this is only its thresholds, so they can be tuned without a new app build.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "max_per_conversation": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_gap_s": {
+          "default": 90,
+          "description": "at most one cue handed to the conversation in this long",
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "number"
+        },
+        "rise": {
+          "default": 0.15,
+          "description": "how far above the person's own level in this task (0 to 1 strengths)",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "type": "number"
+        },
+        "settle_s": {
+          "default": 8,
+          "description": "face time before anything can hold: the person's own level in this task is taken from it",
+          "maximum": 600,
+          "minimum": 5,
+          "type": "number"
+        },
+        "speak": {
+          "default": true,
+          "description": "may a cue put ONE quiet context turn into the open conversation",
+          "type": "boolean"
+        },
+        "sustain_s": {
+          "default": 4.5,
+          "description": "how long it must hold without a break",
+          "maximum": 120,
+          "minimum": 2,
+          "type": "number"
+        }
+      },
+      "title": "ExpressionCueRules",
+      "type": "object"
+    },
+    "FaceCueCount": {
+      "additionalProperties": false,
+      "description": "How often and for how long one kind of visible expression cue held in a task (D60).",
+      "properties": {
+        "n": {
+          "description": "separate stretches in which it held for the configured time or longer",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "seconds it held, over those stretches",
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "n",
+        "seconds"
+      ],
+      "title": "FaceCueCount",
+      "type": "object"
+    },
     "FaceSigns": {
       "additionalProperties": false,
       "description": "Face signs during one task (D52), with the person's opt-in \"Camera during activities\": movements of the face\nthat the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in\nwhich the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these\nnumbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),\nnot emotions: nothing here says what the person felt, and no field may. Values are comparable only within one\n`method` (and best within one task): never pool the two methods into one usual. A sign the method cannot\nmeasure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement\nand expression range come from both methods on different scales. The apps also leave out blinks under 20 s of\nface time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when\ncoverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.\nCounts toward the \"laptop\" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not\nscored.",
@@ -4125,6 +4212,28 @@
           "maximum": 1,
           "minimum": 0,
           "type": "number"
+        },
+        "cues": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/FaceCueCount"
+              },
+              "propertyNames": {
+                "enum": [
+                  "lower",
+                  "tense",
+                  "brighter"
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "visible expression cues in this task (D60): a kind of expression that held for a while, against this person's own level earlier in the same task. lower = less smiling with the mouth corners down or the inner brows up; tense = brows drawn down with the lips pressed or the eyes narrowed; brighter = sustained smiling. Named for what is seen, never for what is felt: a movement of the face is not proof of a feeling. Absent = none held (or the method cannot tell). Shown and citable, not scored"
         },
         "device": {
           "enum": [
@@ -5868,6 +5977,27 @@
         "kind"
       ],
       "title": "HubTrace",
+      "type": "object"
+    },
+    "HubTranscript": {
+      "additionalProperties": false,
+      "description": "`raw.hub.transcript`: what the person just said, as the Live voice's input transcription gives it, for the\ntranscript page of the phone or Mac that is standing in as the robot's microphone (D63). Sent ONLY while such\na device is sending its microphone (the sound of these words is then already crossing the home network from\nthat device), never after a crisis phrase, never uplinked, never stored by the hub, and no bus tool records or\nprints it. `raw.hub.trace` still never carries her words.",
+      "properties": {
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "who": {
+          "const": "person",
+          "default": "person",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "HubTranscript",
       "type": "object"
     },
     "InsightChange": {

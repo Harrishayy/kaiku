@@ -156,6 +156,32 @@
       "title": "Envelope[PlaySession]",
       "type": "object"
     },
+    "FaceCueCount": {
+      "additionalProperties": false,
+      "description": "How often and for how long one kind of visible expression cue held in a task (D60).",
+      "properties": {
+        "n": {
+          "description": "separate stretches in which it held for the configured time or longer",
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "seconds it held, over those stretches",
+          "maximum": 86400,
+          "minimum": 0,
+          "title": "Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "n",
+        "seconds"
+      ],
+      "title": "FaceCueCount",
+      "type": "object"
+    },
     "FaceSigns": {
       "additionalProperties": false,
       "description": "Face signs during one task (D52), with the person's opt-in \"Camera during activities\": movements of the face\nthat the phone's or Mac's own camera could count while a game or the check-in chat ran. One per task session in\nwhich the camera sampled. Frames are looked at in memory on that device and never stored or sent; only these\nnumbers leave it. They are observable movements (smiles, brows, blinks, mouth, gaze, head, range of expression),\nnot emotions: nothing here says what the person felt, and no field may. Values are comparable only within one\n`method` (and best within one task): never pool the two methods into one usual. A sign the method cannot\nmeasure is None, never a zero: the landmark method sends no smile, brow or gaze sign, and blinks, head movement\nand expression range come from both methods on different scales. The apps also leave out blinks under 20 s of\nface time, head movement under 2 s and expression range under 10 face frames, and send nothing at all when\ncoverage rounds to 0. A record with `coverage` 0 is still valid here (provenance only) and carries no sign.\nCounts toward the \"laptop\" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not\nscored.",
@@ -210,6 +236,29 @@
           "minimum": 0,
           "title": "Coverage",
           "type": "number"
+        },
+        "cues": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/FaceCueCount"
+              },
+              "propertyNames": {
+                "enum": [
+                  "lower",
+                  "tense",
+                  "brighter"
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "visible expression cues in this task (D60): a kind of expression that held for a while, against this person's own level earlier in the same task. lower = less smiling with the mouth corners down or the inner brows up; tense = brows drawn down with the lips pressed or the eyes narrowed; brighter = sustained smiling. Named for what is seen, never for what is felt: a movement of the face is not proof of a feeling. Absent = none held (or the method cannot tell). Shown and citable, not scored",
+          "title": "Cues"
         },
         "device": {
           "enum": [

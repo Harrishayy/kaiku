@@ -227,6 +227,11 @@ def face_detail(p: dict) -> str:
         out += " Counted: " + ", ".join(signs) + "."
     elif not p["coverage"]:
         out += " No face was in view, so nothing was counted."
+    from .account import cue_phrases
+
+    cues = cue_phrases(p)
+    if cues:
+        out += " " + "; ".join(c[0].upper() + c[1:] for c in cues) + " (shown, not scored; a reason to ask, not a finding)."
     return out + (" Movements of the face counted on the device and read against the person's own usual; not an "
                   "emotion or wellbeing measure, and no vote in the consensus.")
 
@@ -278,13 +283,15 @@ def _validated(raw: str, refs: list[RecordCitation]) -> tuple[str, list[RecordCi
     if not isinstance(data, dict):
         raise ValueError("invalid_object")
     cites = data.get("cites")
-    if not isinstance(cites, list) or not cites or len(cites) > 8 or not all(isinstance(c, str) for c in cites):
+    if not isinstance(cites, list) or not cites or len(cites) > 40 or not all(isinstance(c, str) for c in cites):
         raise ValueError("invalid_citations")
     allowed = {r.id: r for r in refs}
+    # The list is ordered by relevance: a longer one (Gemma on the Modal GPU returned twelve, 2026-11-15) keeps its
+    # first eight. Every id it names must still exist, kept or not.
     ids = list(dict.fromkeys(c.strip("[]") for c in cites))
     if any(cid not in allowed for cid in ids):
         raise ValueError("unknown_citation")
-    selected = [allowed[cid] for cid in ids]
+    selected = [allowed[cid] for cid in ids[:8]]
     # Even if a provider includes unsolicited 'answer' text, it is discarded, never trusted or shown.
     return _render(selected), selected
 

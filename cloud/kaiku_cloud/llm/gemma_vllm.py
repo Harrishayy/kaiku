@@ -13,9 +13,19 @@ from . import ledger
 from .errors import LlmUnavailable
 
 APP_NAME = os.environ.get("KAIKU_GEMMA_APP", "kaiku-gemma")
+_last_answer: float | None = None  # monotonic time of this process's last answer from the GPU
 
 
-def generate(prompt: str, timeout_s: float = 60.0, *, task: str = "explain", home_id: str | None = None) -> str:
+def _warm(scaledown: float) -> bool:
+    """The container that answered this process is still inside its scaledown window."""
+    return _last_answer is not None and time.monotonic() - _last_answer < scaledown
+
+
+def generate(prompt: str, timeout_s: float = 60.0, *, task: str = "explain", home_id: str | None = None,
+             max_output_tokens: int | None = None) -> str:
+    """`max_output_tokens`: the caller's cap, else `[gemma_modal].max_output_tokens`. The prompt plus this cap must
+    fit `[gemma_modal].max_model_len`, or vLLM refuses the request and the caller falls back."""
+    global _last_answer
     from kaiku_contracts import budget
     from kaiku_contracts.config import get
 
@@ -23,7 +33,12 @@ def generate(prompt: str, timeout_s: float = 60.0, *, task: str = "explain", hom
         raise LlmUnavailable("gemma_modal requires a finite positive timeout")
     deadline = time.monotonic() + timeout_s
     gpu = "modal-" + str(get("gemma_modal", "gpu", "H100"))
-    est = budget.estimate(gpu, gpu_s=float(get("gemma_modal", "scaledown_s", 60)) + 240)  # cold start + idle tail
+    scaledown = float(get("gemma_modal", "scaledown_s", 60))
+    # Cold (measured 235 s to a first answer, 2026-11-15): the start plus one idle tail. Warm: the idle time since
+    # the last answer plus this call; the tail was reserved with the cold call.
+    warm = _warm(scaledown)
+    est = budget.estimate(gpu, gpu_s=(time.monotonic() - _last_answer + 30) if warm else (240 + scaledown))
+    cap = int(max_output_tokens or get("gemma_modal", "max_output_tokens", 1200))
     try:
         budget.guard("modal", gpu, est)
         budget.charge("modal", gpu, est, task="gemma", component="cloud")
@@ -31,14 +46,19 @@ def generate(prompt: str, timeout_s: float = 60.0, *, task: str = "explain", hom
 
         with ledger.timed(f"modal:{APP_NAME}", task, home_id=home_id):
             Gemma = modal.Cls.from_name(APP_NAME, "Gemma")
-            call = Gemma().generate.spawn(prompt)
+            call = Gemma().generate.spawn(prompt, max_tokens=cap)
             try:
-                return call.get(timeout=max(0.0, deadline - time.monotonic()))
+                text = call.get(timeout=max(0.0, deadline - time.monotonic()))
+                _last_answer = time.monotonic()
+                return text
             except TimeoutError:
-                # A result-wait timeout does not cancel GPU work. Request cancellation without terminating
-                # the shared container; retain the reservation because dispatched work can still be billed.
-                with suppress(Exception):
-                    call.cancel(terminate_containers=False)
+                # A result-wait timeout does not cancel GPU work; the reservation stays because it can still bill.
+                # Warm: ask for cancellation without terminating the shared container. Cold: leave the call alone.
+                # It is what starts the GPU (minutes, longer than any caller waits), so the caller falls back now
+                # and a call inside the scaledown window after the start is answered.
+                if warm:
+                    with suppress(Exception):
+                        call.cancel(terminate_containers=False)
                 raise
     except Exception as e:  # not deployed, cold-start failure, not on Modal…
         raise LlmUnavailable(f"gemma_modal failed: {type(e).__name__}") from e

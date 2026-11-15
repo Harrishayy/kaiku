@@ -55,6 +55,12 @@ struct FaceReading: Sendable, Equatable {
     /// differs from person to person, so they are never held against a threshold, but how much they vary
     /// within one task is a fact of that task).
     var shape: [Double] = []
+    /// Only for the visible expression cues (`ExpressionCue.swift`, D60), ARKit only: mouth corners pulled down,
+    /// inner brows raised, lips pressed together, eyes narrowed. They feed no face sign and no share.
+    var frown: Double?
+    var browInner: Double?
+    var press: Double?
+    var squint: Double?
 
     /// The reading with its strengths held to 0…1, or nil when any number in it is not a number: a reading
     /// with a broken value is not a usable face.
@@ -68,6 +74,8 @@ struct FaceReading: Sendable, Equatable {
         guard let a = unit(smile), let b = unit(browRaise), let c = unit(browFurrow), let d = unit(eyeClosed), let e = unit(mouthOpen)
         else { return nil }
         r.smile = a; r.browRaise = b; r.browFurrow = c; r.eyeClosed = d; r.mouthOpen = e
+        guard let f = unit(frown), let g = unit(browInner), let h = unit(press), let i = unit(squint) else { return nil }
+        r.frown = f; r.browInner = g; r.press = h; r.squint = i
         guard head?.isUsable ?? true, shape.allSatisfy(\.isFinite) else { return nil }
         r.shape = shape.map { min(1, max(0, $0)) }
         return r

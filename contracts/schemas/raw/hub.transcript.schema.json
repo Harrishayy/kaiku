@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "HubTranscript": {
+      "additionalProperties": false,
+      "description": "`raw.hub.transcript`: what the person just said, as the Live voice's input transcription gives it, for the\ntranscript page of the phone or Mac that is standing in as the robot's microphone (D63). Sent ONLY while such\na device is sending its microphone (the sound of these words is then already crossing the home network from\nthat device), never after a crisis phrase, never uplinked, never stored by the hub, and no bus tool records or\nprints it. `raw.hub.trace` still never carries her words.",
+      "properties": {
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "who": {
+          "const": "person",
+          "default": "person",
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "HubTranscript",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/HubTranscript"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<raw.hub.transcript>",
+  "type": "object"
+}

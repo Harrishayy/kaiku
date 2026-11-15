@@ -166,6 +166,11 @@
       "schema": "raw/hub.trace.schema.json",
       "topic": "kaiku/v1/<home_id>/raw/hub/trace"
     },
+    "raw.hub.transcript": {
+      "payload_model": "HubTranscript",
+      "schema": "raw/hub.transcript.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/hub/transcript"
+    },
     "raw.sensors.button": {
       "payload_model": "RawButton",
       "schema": "raw/sensors.button.schema.json",

@@ -213,7 +213,8 @@ async def test_her_own_press_opens_the_conversation_kaiku_says_each_step_and_the
     assert r.mic()[0] == "open"                                        # forced through to a head the hub never commands
     declared = {d["name"] for block in r.client.configs[-1]["tools"] for d in block["function_declarations"]}
     # no tool the hub cannot honour on this head; start_activity only as asking twice (D58)
-    assert declared == (set(DECLARED) - HEAD_RUNS_ITS_STEPS) | {"start_activity"}
+    assert declared == (set(DECLARED) - HEAD_RUNS_ITS_STEPS) | {"start_activity", "camera_choice", "set_light",
+                                                                 "turn_head"}
 
     await settle(lambda: r.said(follow.STEP_LINES["mood"]), timeout=3)  # said through the head, by the Live voice
     await settle(lambda: len(r.wire.frames) >= 4, timeout=3)
@@ -329,6 +330,96 @@ async def test_a_dial_question_is_answered_in_words_or_with_the_ear_and_stop_sav
     assert not hub.follower.active and not hub.conversation_consented
     kept = hub.episodes.queued[-1] if hasattr(hub.episodes, "queued") else None
     assert kept is None or kept.outcome == "ended_early"
+
+
+async def test_the_camera_is_asked_once_per_conversation_and_never_again(settings, monkeypatch):
+    """D61. When a conversation opens the ROBOT asks once, in a fixed line, whether its camera may be on. The voice
+    only reports the answer. Photo time needs a yes. The next conversation is asked again; the same one never is."""
+    from kaiku_hub import main as hub_main
+    monkeypatch.setattr(hub_main, "CAMERA_WAIT_S", 0.3)
+    r = Rig(settings)
+    hub = r.hub
+    hub.node_health["sensors"] = {"status": "ok", "details": {"camera_ok": True}}
+    said: list[str] = []
+    real_say = hub.say
+
+    async def say(text):
+        said.append(text)
+        await real_say(text)
+
+    hub.say = say
+    await r.greeted_and_pressed()
+    await settle(lambda: hub_main.CAMERA_LINE in said, timeout=3)
+    assert hub._camera is None
+    assert (await hub.on_tool("photo_time", {}))["ok"] is False        # no yes yet: the camera stays off
+    assert (await hub.on_tool("camera_choice", {"on": True})) ["camera"] == "on"
+    assert hub._camera is True and hub._camera_task is not None
+    await hub._ask_camera_once()                                       # a reconnect, a later step: never asked again
+    for v in (4, 6):
+        await r.press(v)
+    await asyncio.sleep(0.2)
+    assert said.count(hub_main.CAMERA_LINE) == 1
+    assert (await hub.on_tool("camera_choice", {"on": False}))["camera"] == "off"   # she may change her mind
+    assert hub._camera is False and hub._camera_task is None
+    await r.health("idle")                                             # the ritual ends: the answer ends with it
+    await asyncio.sleep(0.1)
+    assert hub._camera is None and not hub._camera_asked
+
+
+async def test_a_visible_change_in_her_smile_gives_kaiku_one_private_note_and_never_a_label(settings):
+    """D60 on the robot. With the camera on, a window with no smile after one with a smile is `lower`: one context
+    turn that tells Kaiku she may ask an open question and must not mention the face. A face that never smiled
+    says nothing; notes are rate-limited; nothing names a feeling."""
+    from kaiku_hub.live.tools import EXPRESSION_CUE
+    r = Rig(settings)
+    hub = r.hub
+    await r.greeted_and_pressed()
+    told: list[str] = []
+
+    async def send_context(text):
+        told.append(text)
+
+    hub._send_context = send_context
+    window = {"duration_s": 10.0, "samples": 60, "coverage": 0.9, "smile_share": 0.0, "smiles": 0, "head_movement": 0.1}
+    await hub._expression_cue(window)                                  # still and unsmiling, no earlier smile: nothing
+    assert told == []
+    await hub._expression_cue({**window, "smile_share": 0.2})          # a little smiling: remembered, not a cue
+    await hub._expression_cue({**window, "coverage": 0.2})             # hardly a face in view: nothing
+    assert told == []
+    await hub._expression_cue(window)                                  # she smiled before and now not at all
+    assert told == [EXPRESSION_CUE["lower"]] and "expression_lower" in hub._notes
+    await hub._expression_cue({**window, "smile_share": 0.6})          # too soon for another note
+    assert len(told) == 1
+    hub._expr_at = 0.0
+    await hub._expression_cue({**window, "smile_share": 0.6})
+    assert told[-1] == EXPRESSION_CUE["brighter"]
+    for text in EXPRESSION_CUE.values():
+        low = text.lower()
+        assert "do not say you saw their face" in low and not any(w in low for w in (" sad", "depress", "unhappy"))
+
+
+async def test_she_can_ask_for_a_light_colour_and_a_turn_and_the_head_keeps_her_in_view(settings):
+    r = Rig(settings)
+    hub = r.hub
+    await r.greeted_and_pressed()
+    assert (await hub.on_tool("set_light", {"colour": "white"})) == {"ok": True, "colour": "white"}
+    assert {"color": "#ffffff"} in r.heads()
+    assert (await hub.on_tool("set_light", {"colour": "mauve"}))["ok"] is False
+    assert (await hub.on_tool("turn_head", {"direction": "left"}))["ok"]
+    assert r.heads()[-1]["pan"]["target_deg"] < 0
+    n = len(r.heads())
+    hub._track_pause_until = 0.0                                       # (a turn she asked for pauses the following)
+    hub.settings.track_every_s = 0.0
+    await hub._follow_track(0.1)                                       # near the middle: nothing
+    assert len(r.heads()) == n
+    await hub._follow_track(0.8)                                       # at the right edge: one small turn toward her
+    assert len(r.heads()) == n + 1 and r.heads()[-1]["pan"]["target_deg"] > 0
+    for _ in range(4):                                                 # the turns do not help: it gives up for a while
+        await hub._follow_track(0.8)
+    assert hub._track_pause_until > 0 and len(r.heads()) <= n + 4
+    m = len(r.heads())
+    await hub._follow_track(0.9)
+    assert len(r.heads()) == m
 
 
 async def test_the_invitation_is_not_repeated_every_time_the_head_greets_a_face(settings):

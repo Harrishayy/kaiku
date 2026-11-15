@@ -452,6 +452,13 @@ KAIKU_HOME_ID=aino KAIKU_HUB_ROBOT_HOME_ID=demo-aino KAIKU_CLOUD_URL=http://loca
 - **Words or the ear, and stop (D59):** `record_dial` is honoured in follow mode for the question the head asks now
   (`_follow_spoken_dial`, `follower.spoken_dial`, then `cmd.head {ritual: next}`); `end_session` / `end_ritual` send
   `cmd.head {ritual: end}` so the head goes back to rest and `_follow_end` keeps the episode as ended early.
+- **The camera, once per conversation (D61):** `_ask_camera_once` (the fixed `tools.CAMERA_LINE`, after the Live
+  session opens in follow mode, only when `health/sensors` says `camera_ok`), `camera_choice` → `_camera_choice`,
+  `_camera_windows` (30 s windows of `cmd.sensors {face_signs_s}` while yes, `obs.face_signs` task check_in), reset
+  by `_camera_reset` at every ritual begin and end and on a crisis. `photo_time` needs the yes and marks the day
+  (`state.photo_time_done_on`).
+- **Her asks of the body (D62):** `set_light` → `cmd.head {color}`, `turn_head` → `cmd.head {pan}` (forced through
+  in follow mode); `_follow_track` turns the head toward a face at the edge of the picture (`[follow_track]`).
 - Fixed lines in the cached voice (the invitation, the step lines, Tap it back's lines, the goodbye) are fetched
   when the hub starts (`LinePlayer.prewarm`, log `voice_prewarm n/n lines ready`, up to a minute after a cloud
   restart or a render change) and kept in memory: a line the cloud has not rendered yet takes longer than the 3 s a

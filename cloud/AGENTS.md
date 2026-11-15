@@ -182,7 +182,9 @@ kaiku_cloud/
   jobs/
     single_person.py      Aino's sixteen authored days: export (`--out`) or seed a local demo API through the real
                           routes (`--url`, `--reset` = this person's simulated data only); idempotent; the day-12
-                          care call is logged with its own `ts`; the eight-profile cohort is separate
+                          care call is logged with its own `ts`; the eight-profile cohort is separate.
+                          `--home <id>`: the same days under another person's record (`OTHER_NOTES`: their own
+                          notebook only, none of Aino's conversations), so real takes have a usual to compare with
     synth.py              synthetic patients: DEMO_PATIENTS (8, pinned by tests) + evaluation cohort (13 scenarios
                           incl. glasses+laptop-only drift, watch drift, no watch), all with known ground truth;
                           plan-02 signals use a second RNG so plan-01 events/ids are unchanged
@@ -399,7 +401,13 @@ readable but cannot cause an unavailable activity to be selected.
 - **Explanations:** `KAIKU_LLM=auto` → hosted Gemma → Gemini fast → template. `gemma_modal` only when selected.
 - **Gemma on Modal:** separate scale-to-zero app `kaiku-gemma` (`cloud/gemma_app.py`): `make gemma-download` (CPU,
   weights → Volume), `make gemma-deploy` (no container starts), `make gemma-smoke` (one cold call). GPU/scale-down in
-  `config/kaiku.toml [gemma_modal]`.
+  `config/kaiku.toml [gemma_modal]`. Production runs Gemma here (`KAIKU_GEMMA_PROVIDER=modal` in the API's runtime
+  secret); the demo keeps `hosted`. Shown on 15 Nov 2026 with Aino's simulated record through the real routes: a
+  cold start took 235 s to the first answer; warm, the practitioner review was accepted by every check in 5 to 10 s
+  and a record question in 2 s. What follows from the cold start: the first Gemma call after `scaledown_s` of quiet
+  times out, falls back to the deterministic text and is left running so the GPU comes up; later calls are answered.
+  The review's evidence is about 21 000 characters, so `max_model_len` must stay well above 8192. Not yet run on the
+  GPU: `ask_mind`, the nightly graph organisation, the affect labels, an adapter, and the deployed API as the caller.
 - **Daily reflection:** `mind/reflect.py` — the flagship picks today's focus from fixed options (validated; rule
   fallback); runs in the nightly job and `POST /v1/admin/reflect`; sessions only read the cached plan (card `focus`).
 - **Live through the mind:** every surface opens Gemini Live with what `POST /v1/companion/session` returns

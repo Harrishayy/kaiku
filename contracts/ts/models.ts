@@ -378,6 +378,10 @@ export interface CompanionSessionResponse {
    */
   context_refresh_seconds?: number | null;
   /**
+   * thresholds for visible expression cues on this device (D60); null = the device does not look for them in this conversation
+   */
+  expression_cue?: ExpressionCueRules | null;
+  /**
    * the device ends the conversation by itself after this long with nobody speaking (an open microphone in a pocket); longer on a walk
    */
   idle_end_s?: number | null;
@@ -572,6 +576,37 @@ export interface HeardTone {
         "flat" | "tense" | "tearful" | "irritable" | "warm" | "playful" | "calm"
       ];
   valence?: ("low" | "neutral" | "bright") | null;
+}
+/**
+ * How a device decides that a visible expression cue holds (D60; config `[expression_cue]`). The device runs
+ * the rule on numbers in memory; this is only its thresholds, so they can be tuned without a new app build.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "ExpressionCueRules".
+ */
+export interface ExpressionCueRules {
+  enabled?: boolean;
+  max_per_conversation?: number;
+  /**
+   * at most one cue handed to the conversation in this long
+   */
+  min_gap_s?: number;
+  /**
+   * how far above the person's own level in this task (0 to 1 strengths)
+   */
+  rise?: number;
+  /**
+   * face time before anything can hold: the person's own level in this task is taken from it
+   */
+  settle_s?: number;
+  /**
+   * may a cue put ONE quiet context turn into the open conversation
+   */
+  speak?: boolean;
+  /**
+   * how long it must hold without a break
+   */
+  sustain_s?: number;
 }
 /**
  * Gemini Live ephemeral token: use `token` as the API key for ONE Live session (v1beta). Start within
@@ -1898,6 +1933,12 @@ export interface FaceSigns {
    * share of sampled frames with exactly one usable face
    */
   coverage: number;
+  /**
+   * visible expression cues in this task (D60): a kind of expression that held for a while, against this person's own level earlier in the same task. lower = less smiling with the mouth corners down or the inner brows up; tense = brows drawn down with the lips pressed or the eyes narrowed; brighter = sustained smiling. Named for what is seen, never for what is felt: a movement of the face is not proof of a feeling. Absent = none held (or the method cannot tell). Shown and citable, not scored
+   */
+  cues?: {
+    [k: string]: FaceCueCount;
+  } | null;
   device: "phone" | "mac" | "web" | "robot";
   /**
    * seconds the camera sampled
@@ -1943,6 +1984,22 @@ export interface FaceSigns {
    * the task it belongs to: a game (PlayGame), the check-in chat, or the robot's Photo time
    */
   task: "firefly" | "breathe" | "tell" | "pebbles" | "lantern" | "seeds" | "watering" | "check_in" | "photo_time";
+}
+/**
+ * How often and for how long one kind of visible expression cue held in a task (D60).
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "FaceCueCount".
+ */
+export interface FaceCueCount {
+  /**
+   * separate stretches in which it held for the configured time or longer
+   */
+  n: number;
+  /**
+   * seconds it held, over those stretches
+   */
+  seconds: number;
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -2875,6 +2932,20 @@ export interface HubTrace {
    * tool only: the name of the tool the voice called
    */
   tool?: string | null;
+}
+/**
+ * `raw.hub.transcript`: what the person just said, as the Live voice's input transcription gives it, for the
+ * transcript page of the phone or Mac that is standing in as the robot's microphone (D63). Sent ONLY while such
+ * a device is sending its microphone (the sound of these words is then already crossing the home network from
+ * that device), never after a crisis phrase, never uplinked, never stored by the hub, and no bus tool records or
+ * prints it. `raw.hub.trace` still never carries her words.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "HubTranscript".
+ */
+export interface HubTranscript {
+  text: string;
+  who?: "person";
 }
 /**
  * One thing that is different on a day, pointing at its node. Text and order are written by code.
