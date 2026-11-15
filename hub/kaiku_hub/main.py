@@ -100,7 +100,7 @@ class Hub:
         # The robot's own body for sound (plan 07 section 4): the head's speaker and microphone over the bus. The
         # one HeadSpeaker is shared by the music, its cues and Kaiku's voice, so their frames can never interleave.
         self.speaker = HeadSpeaker(self.bus.publish_audio, lead_ms=s.head_lead_ms, gain=s.head_gain)
-        self.head_audio = HeadAudio(self.speaker, self._head_audio_cmd)
+        self.head_audio = HeadAudio(self.speaker, self._head_audio_cmd, phone_tail_ms=s.phone_mic_tail_ms)
         self.voice = voice or make_voice(s.voice, model_id=s.gemini_live_model, language=s.language,
                                          read_stdin=read_stdin, voice_name=s.voice_name, audio=s.voice_audio,
                                          head=self.head_audio, head_alive=self._head_alive)
@@ -1255,6 +1255,7 @@ class Hub:
             "music": self.music.name,
             "music_out": self.settings.music_out,
             "voice_audio": getattr(self.voice, "audio_name", "none"),
+            "mic_source": self.head_audio.mic_source,  # "phone" while a phone beside the robot sends its microphone
             "cloud": bool(self.settings.cloud_url),
             "episodes_queue": self.episodes.size(),
             "store": "off" if self.settings.store_path is None else ("error" if self.store.error else "ok"),
@@ -1290,6 +1291,7 @@ class Hub:
         b.on("cmd/sensors", self.on_sensors_cmd)
         b.on("health/head", self.on_any_head, home_id="+")
         b.on_audio("mic", self.head_audio.on_mic_frame)  # PCM, only while a conversation holds the microphone open
+        b.on_audio("mic", self.head_audio.on_phone_frame, node="phone")  # a phone beside the robot as its ear (D56)
         await b.__aenter__()
         await self.voice.start(self.on_utterance, self.on_tool)
         await self.lora.start()

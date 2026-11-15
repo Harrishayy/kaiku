@@ -356,7 +356,8 @@ the received words unchanged; completion metadata never authorises transcript re
 - **Audio topics: NOT envelopes** (`topics.py`: `audio_topic`, `is_audio_topic`, `AUDIO_RATE_HZ` 16000,
   `AUDIO_FRAME_MS` 20, `AUDIO_FRAME_SAMPLES` 320, `AUDIO_FRAME_BYTES` 640, `AUDIO_STREAMS`):
   `kaiku/v1/<home>/audio/head/speaker` (hub → head: the music, the chimes, Kaiku's voice) and
-  `kaiku/v1/<home>/audio/head/mic` (head → hub). One MQTT message = one frame = 20 ms of signed 16-bit
+  `kaiku/v1/<home>/audio/head/mic` (head → hub), and `kaiku/v1/<home>/audio/phone/mic` (the app → hub: a phone or
+  Mac beside the robot standing in for the head's microphone, D56; same frames, same rule). One MQTT message = one frame = 20 ms of signed 16-bit
   little-endian mono at 16 kHz = 640 bytes, QoS 0, never retained, no JSON, no id, no timestamp. A zero-length
   message on the speaker topic = "drop what you have buffered, now". `audio` is not a message kind: no type maps to
   it, `validate()` rejects a frame, and nothing that handles messages may see one. `Bus.publish_audio(data, stream=)`

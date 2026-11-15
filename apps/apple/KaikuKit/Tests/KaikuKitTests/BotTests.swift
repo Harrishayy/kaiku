@@ -21,12 +21,44 @@ final class BotWireTests: XCTestCase {
         XCTAssertEqual(d, [0x82, 12, 0, 1, 0, 3, 0x61, 0x2F, 0x23, 0, 0, 1, 0x62, 0])
     }
 
-    func testTheClientCannotPublish() {
-        // Every packet the client can make, by its type nibble: never 3 (PUBLISH).
+    func testTheOnlyThingTheClientCanPublishIsAMicrophoneFrame() throws {
+        // Every other packet the client can make, by its type nibble: never 3 (PUBLISH).
         let all = [MQTTOut.connect(clientID: "x", keepAlive: 30, user: "u", password: "p"),
                    MQTTOut.subscribe(id: 1, filters: BotTopics.filters(home: "h")), MQTTOut.pingreq, MQTTOut.disconnect,
                    MQTTOut.puback(7), MQTTOut.pubrec(7), MQTTOut.pubcomp(7)]
         XCTAssertEqual(all.map { $0.first! >> 4 }, [1, 8, 12, 14, 4, 5, 7])
+        // The one PUBLISH (D56): a whole 640-byte frame, QoS 0, not retained, on the phone's microphone topic only.
+        let frame = Data((0..<640).map { UInt8($0 % 251) })
+        let topic = try XCTUnwrap(BotMicWire.topic(home: "h"))
+        XCTAssertEqual(topic, "kaiku/v1/h/audio/phone/mic")
+        let p = try XCTUnwrap(MQTTOut.micFrame(topic: topic, frame: frame))
+        XCTAssertEqual(p.first, 0x30)
+        var dec = MQTTDecoder()
+        XCTAssertEqual(try dec.feed(p), [.publish(topic: topic, payload: frame, qos: 0, id: nil)])
+        XCTAssertNil(MQTTOut.micFrame(topic: topic, frame: Data(count: 100)), "never a piece of a frame")
+        XCTAssertNil(MQTTOut.micFrame(topic: "kaiku/v1/h/cmd/head", frame: frame), "never a command, never an envelope topic")
+        XCTAssertNil(MQTTOut.micFrame(topic: "kaiku/v1/h/audio/head/mic", frame: frame), "never as the head")
+        XCTAssertNil(BotMicWire.topic(home: nil)); XCTAssertNil(BotMicWire.topic(home: "+"))
+    }
+
+    func testMicrophonePcmBecomesWholeFramesInOrder() {
+        var f = BotMicFramer()
+        let pcm = Data((0..<1500).map { UInt8($0 % 256) })
+        XCTAssertTrue(f.feed(pcm.prefix(600)).isEmpty)
+        let out = f.feed(pcm.dropFirst(600))
+        XCTAssertEqual(out.count, 2)
+        XCTAssertEqual(out[0] + out[1], pcm.prefix(1280))
+    }
+
+    func testThePhonesMicrophoneIsSentOnlyWhileTheHubHoldsTheRobotsOpen() {
+        var s = BotState()
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertFalse(s.micHeld(now: t0))
+        s.take(BotEnvelope(type: "cmd.head", source: "hub", payload: .object(["mic": .string("open")])), now: t0)
+        XCTAssertTrue(s.micHeld(now: t0.addingTimeInterval(3)))
+        XCTAssertFalse(s.micHeld(now: t0.addingTimeInterval(6)), "the hub stopped saying so")
+        s.take(BotEnvelope(type: "cmd.head", source: "hub", payload: .object(["mic": .string("close")])), now: t0.addingTimeInterval(1))
+        XCTAssertFalse(s.micHeld(now: t0.addingTimeInterval(2)))
     }
 
     func testRemainingLengthAtEveryBoundary() throws {

@@ -16,7 +16,8 @@ Edwin's (seen working on the robot: Wi-Fi, health, pans both ways, taps, a face 
 put back on top of it** (version `atech-head-standalone-0.4.0`; his alone is `0.1.0`): the hub's songs, cues and
 Kaiku's voice on the head's own speaker, the head's microphone to the hub while a conversation holds it open, and
 the hub leading the drum step ("tap it back"). See "Audio streams" and "Standalone on top of the robot firmware"
-below. **That merge compiles and has never run on the board.** No computer's speaker or microphone is in the path.
+below. **On the board 2026-11-15: speaker works (operator report); microphone streams but returns zeros
+(measured below).** No computer's speaker or microphone is in the path.
 
 **Help screen:** only the MQTT firmware has one (compiled, never seen on a display). The standalone head has no
 display: on `cmd.head {show: "help"}` it shows nothing and says so in its health. See "Help screen" below.
@@ -90,6 +91,8 @@ standalone/             ACTIVE (D44): website-agent firmware in src/ (main.cpp, 
                         src/kaiku_net.*: Wi-Fi + MQTT (UNO Q faces in, taps + chimes + pan out; the hub's drum hold,
                         sway, PCM in, microphone out; `show` without a display; serial `net`; hooks in main.cpp
                         marked `// kaiku_net`; handover: docs/robot-network-handover.md)
+                        patch_microphone.py adds numeric raw-slot peaks to the fetched microphone driver;
+                        a changed upstream source shape fails the build for review
                         project.yaml only lists modules so `atech build` fetches drivers; build.sh overlays src/ +
                         head_audio.* + include shims for its modules/<group>/x.h paths (helpline.h and
                         help_screen.h are not part of this build). `make atech-standalone [FLASH=1]`
@@ -111,6 +114,21 @@ bench/mic_record/       bench tool (no bench.toml): records 3 s, sends it over U
   (docs/robot-network-handover.md → "The robot on its own").
 
 ## Audio streams (speaker + microphone over MQTT)
+**Microphone troubleshooting (2026-11-15):** with the speaker quiet, a real Live diagnostic received 3145
+valid microphone frames (62.9 s), all samples exactly zero, with the hold open and no speaker frames.
+This establishes transport and capture callbacks, not working microphone input. Standalone USB JSON command
+`{"action":"mic_channel","value":"left"}` or `"right"` changes the driver's L/R select pin without
+opening the microphone or changing the decoder's selected stereo slot. It emits `mic_channel` with the
+selected value; invalid values are rejected. The default remains the driver's left/LOW selection after reboot.
+Use this to distinguish a channel mismatch from missing input; an all-zero result is not a gain problem.
+USB JSON `{"action":"mic_probe"}` reports capture blocks and lifetime absolute peaks of both raw 32-bit
+I2S slots, before channel extraction or conversion. `{"action":"mic_pins"}` polls clock/data edges for
+5 ms (sampled counts, not a frequency meter); it enables input readback only, preserving I2S output routing.
+Both commands report numbers only, never audio. On the physical head, both L/R selections returned zero
+raw peaks; the corrected pin probe saw 160 WS edges/5 ms and toggling BCLK, but no SD edges (SD LOW).
+Thus the data is absent before the hub/Gemini path; cable, module power/type and the microphone itself still
+need an independent physical test. The channel selection is restored to left after diagnostics.
+
 Wire format, fixed with the hub (`kaiku_contracts/topics.py`, `hub/kaiku_hub/live/head_audio.py`): binary, QoS 0, not
 retained, never an envelope; signed 16-bit little-endian mono 16 000 Hz; one message = 20 ms = 320 samples = 640
 bytes. `kaiku/v1/<home>/audio/head/speaker` (hub → head; a zero-length message = drop what is buffered) and
@@ -128,7 +146,7 @@ every block.
 **How PCM lives with them.** Nothing takes the I2S port away: the speaker stream calls the driver's own
 `writeSamples` from a task of its own (`kaiku_pcm`, core 0, priority 3), never from the main loop. While PCM is
 buffered or sounding, the firmware starts no tone of its own (same port: the two would interleave). The volume
-ceiling stays the driver's (0.4: `speaker.setVolume(0.4f)` in the standalone, `SPEAKER_PCM_VOLUME` in `config.h`);
+ceiling stays the driver's (standalone: `SPEAKER_VOLUME` 0.7 in `standalone/src/main.cpp`; MQTT firmware: `SPEAKER_PCM_VOLUME` 0.4 in `config.h`);
 `SPK_GAIN` in `head_audio.h` is the PCM gain before it (above 1 clips at that ceiling). The hub also scales
 (`config/kaiku.toml [music] head_gain`).
 
@@ -192,6 +210,7 @@ Rules (MQTT firmware; the standalone's are above):
   the microphone is open.
 
 ## Invariants
+- **Power rule (strict):** the speaker amplifier and the motor share one supply, so they never run together. While any sound is on the speaker (the hub's voice, songs, cues, a tone of the head's own) the motor is off (`stop()`, both lines low), whatever asked for it: pan, purr and the hub's sway all wait for the speaker to be quiet. The speaker plays at `SPEAKER_VOLUME` (0.7; 1.0 clips the amp); only while the motor is still turning when a sound starts (one loop pass) is it at `SPEAKER_VOLUME_WITH_MOTOR` (0.2). Every motor command goes through `driveMotor()` and the volume is set only in `powerRule()` (`standalone/src/main.cpp`). Flashed 2026-11-14; not measured on the supply. Cost: no sway on the beat while a song plays.
 - **Never move without a live hub**: motion commands are ignored while `health/hub` is silent or `down`. After
   `HUB_SILENCE_STOP_MS` (15 s = 3 hub heartbeats) the motor brakes and the speaker stops. The first homing waits for
   the first live hub. Eyes and LEDs may change without a hub (no motion).

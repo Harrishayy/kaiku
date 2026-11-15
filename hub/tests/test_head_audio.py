@@ -272,6 +272,35 @@ async def test_the_microphone_is_held_open_by_commands_and_frames_reach_only_an_
     assert len(blocks) == 2 and head.mic_frames == 11                   # closed: nothing reaches anyone (11 = the 10 + the odd one)
 
 
+async def test_a_phone_beside_the_robot_is_its_microphone_and_is_not_heard_while_the_speaker_plays():
+    async def command(**cmd):
+        pass
+
+    speaker = HeadSpeaker(Wire().publish)
+    head = HeadAudio(speaker, command, renew_s=0.05, phone_tail_ms=60, phone_fresh_s=0.1)
+    blocks: list[bytes] = []
+    voice, zeros = np.full(320, 7, dtype="<i2").tobytes(), bytes(640)
+    head.on_phone_frame(voice)                                          # nobody is listening: dropped unread
+    assert head.phone_frames == 0 and head.mic_source == "phone"
+    await asyncio.sleep(0.12)
+    assert head.mic_source == "head"                                    # the phone went quiet: the head's own again
+    with head.RawInputStream(samplerate=16000, channels=1, dtype="int16", blocksize=320,
+                             callback=lambda data, n, t, status: blocks.append(bytes(data))):
+        head.on_mic_frame(zeros)                                        # no phone yet: the head's microphone counts
+        head.on_phone_frame(voice)
+        head.on_mic_frame(zeros)                                        # a phone is the ear: the head's is not mixed in
+        head.on_phone_frame(b"\x01" * 100)                              # not a frame: ignored
+        assert blocks == [zeros, voice] and head.mic_source == "phone"
+        speaker._play_until = time.monotonic() + 0.05                   # the head's speaker has sound of ours
+        head.on_phone_frame(voice)
+        await asyncio.sleep(0.07)
+        head.on_phone_frame(voice)                                      # over, but inside the tail: still Kaiku's echo
+        assert len(blocks) == 2 and head.phone_muted == 2
+        await asyncio.sleep(0.06)
+        head.on_phone_frame(voice)
+        assert len(blocks) == 3 and head.phone_frames == 2
+
+
 def test_auto_picks_the_head_when_one_is_alive_as_the_conversation_opens():
     class Device:
         def __init__(self, name):

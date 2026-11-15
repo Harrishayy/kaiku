@@ -2,8 +2,10 @@ import Foundation
 @preconcurrency import Network
 
 // The "Kaiku bot" tab listens to the home robot's own message bus (the MQTT broker on the home network) while the
-// tab is on screen. This file is the listening side and nothing else: a small MQTT 3.1.1 client that connects,
-// subscribes to four topic filters and reads. It has no way to publish: there is no PUBLISH encoder here at all.
+// tab is on screen: a small MQTT 3.1.1 client that connects, subscribes to four topic filters and reads. It
+// publishes exactly one thing, and only with the person's "Robot microphone" switch on (D56): this device's
+// microphone as 20 ms PCM frames on `kaiku/v1/<home>/audio/phone/mic` (`BotMicWire`), while the hub holds the
+// robot's microphone open. It never publishes an envelope: no command, no observation.
 //
 // What it may hear: `kaiku/v1/<home>/raw/#`, `/cmd/#`, `/obs/#`, `/health/#` (contracts/AGENTS.md → topics).
 // What it never asks for: `kaiku/v1/<home>/audio/#` (the robot's microphone and speaker as binary frames, 50 a
@@ -98,8 +100,43 @@ public struct BotAddress: Equatable, Sendable, Codable {
 
 // MARK: the wire (pure)
 
-/// The packets this client sends. No PUBLISH: the tab never puts anything on the robot's bus.
+/// The 20 ms frames of this device's microphone, when it stands in for the robot's (D56). The same wire format as
+/// the head's own microphone (contracts `topics.py`): signed 16-bit little-endian mono at 16 kHz, 640 bytes a frame.
+public enum BotMicWire {
+    public static let frameBytes = 640
+
+    /// `kaiku/v1/<home>/audio/phone/mic`; nil without a real home id (never a wildcard).
+    public static func topic(home: String?) -> String? {
+        guard let home, BotTopics.valid(home) else { return nil }
+        return "kaiku/v1/\(home)/audio/phone/mic"
+    }
+}
+
+/// PCM in any pieces → whole 640-byte frames; the remainder waits for the next piece.
+public struct BotMicFramer: Sendable {
+    private var carry = Data()
+    public init() {}
+    public mutating func feed(_ pcm: Data) -> [Data] {
+        carry.append(pcm)
+        var out: [Data] = []
+        while carry.count >= BotMicWire.frameBytes {
+            out.append(Data(carry.prefix(BotMicWire.frameBytes)))
+            carry = Data(carry.dropFirst(BotMicWire.frameBytes))
+        }
+        return out
+    }
+    public mutating func reset() { carry.removeAll() }
+}
+
+/// The packets this client sends. The only PUBLISH is `micFrame`: one microphone frame, never an envelope.
 public enum MQTTOut {
+    /// PUBLISH at QoS 0, not retained, of one microphone frame on a `BotMicWire.topic`. Nothing else can be published.
+    public static func micFrame(topic: String, frame: Data) -> Data? {
+        guard frame.count == BotMicWire.frameBytes, topic.hasSuffix("/audio/phone/mic") else { return nil }
+        return packet(0x30, string(topic) + frame)
+    }
+
+
     public static func connect(clientID: String, keepAlive: UInt16, user: String? = nil, password: String? = nil) -> Data {
         var body = Data()
         body.append(string("MQTT"))
@@ -409,6 +446,15 @@ public final class BotBusClient {
 
     private func send(_ data: Data) {
         connection?.send(content: data, completion: .contentProcessed { _ in })
+    }
+
+    /// One frame of this device's microphone for the robot (D56). False = not sent: not connected, or no home.
+    @discardableResult
+    public func sendMicFrame(_ frame: Data, home: String?) -> Bool {
+        guard state == .listening, let topic = BotMicWire.topic(home: home),
+              let packet = MQTTOut.micFrame(topic: topic, frame: frame) else { return false }
+        send(packet)
+        return true
     }
 
     private func close(sayGoodbye: Bool) {

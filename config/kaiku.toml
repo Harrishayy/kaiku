@@ -31,6 +31,9 @@ audio = "auto"      # auto | head | local. Where Kaiku's Live voice on the robot
                     # head's own speaker and microphone, as PCM over the bus (no sound device on the hub machine);
                     # local = the hub machine's sound card; auto = the head when a real head (not a sim twin) is alive
                     # on the bus as the conversation opens, else the sound card if there is one. Env: KAIKU_VOICE_AUDIO
+phone_mic_tail_ms = 400  # a phone beside the robot as its microphone (audio/phone/mic, D56; the app's "Robot microphone"
+                    # switch on Kaiku bot): what the phone hears while the head's speaker has sound of ours, and this
+                    # long after, is dropped by the hub (the head's buffer + the room), so Kaiku never hears herself
 
 [live]
 # Gemini Live session setup the cloud locks into the apps' ephemeral token (cloud/kaiku_cloud/mind/live_token.py).
@@ -320,7 +323,7 @@ out = "head"        # head | speaker | file. Where the drum music and its cues a
                     # names it and wins over this setting). Env: KAIKU_MUSIC_OUT
 head_lead_ms = 80   # head: the hub sends one 20 ms frame every 20 ms, this far ahead of real time (120 at most):
                     # the head keeps a short buffer and plays silence when it runs dry
-head_gain = 0.8     # head: headroom for its small speaker (1.0 = the level as generated)
+head_gain = 1.0     # head: the level as generated (was 0.8: too quiet on the robot, 2026-11-14)
 
 [tap_back]
 # "Tap it back" (D51): the robot's drum step as a rhythm game. Kaiku plays a short song at a tempo, the song goes

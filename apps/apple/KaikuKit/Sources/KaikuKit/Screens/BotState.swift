@@ -150,6 +150,12 @@ public struct BotState: Equatable, Sendable {
 
     /// The microphone is open while the hub keeps holding it (an `open` in the last 10 s, the head's own limit) and
     /// has not closed it since, or while the head's latest heartbeat says it is open.
+    /// The hub itself is holding the robot's microphone open right now (it says so every 2 s): the only time this
+    /// device's microphone is sent to it (D56).
+    public func micHeld(now: Date) -> Bool {
+        micHeldAt.map { at in now.timeIntervalSince(at) < 5 && (micClosedAt.map { $0 < at } ?? true) } ?? false
+    }
+
     public func micOpen(now: Date) -> Bool? {
         let held: Bool? = micHeldAt.map { at in now.timeIntervalSince(at) < 10 && (micClosedAt.map { $0 < at } ?? true) }
         let reported: Bool? = micReportedAt.flatMap { now.timeIntervalSince($0) < 15 ? micReported : nil }

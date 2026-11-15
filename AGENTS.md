@@ -72,7 +72,10 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    On the robot the head and the hub are one body in two boxes (D51): only while a consented conversation is open,
    the head's microphone audio crosses the home network to the hub as unstored PCM frames (`audio/head/mic`) on its
    way to that same Gemini Live conversation, and generated music and Kaiku's voice cross the other way
-   (`audio/head/speaker`); these frames are never stored, logged, recorded by a bus tool or uplinked.
+   (`audio/head/speaker`); these frames are never stored, logged, recorded by a bus tool or uplinked. A phone or Mac
+   beside the robot can stand in for the head's microphone (D56): with the app's "Robot microphone" switch on (off by
+   default) and only while the hub holds the robot's microphone open, the same kind of frames go from the app to the
+   hub (`audio/phone/mic`), under the same rules.
 6. **The consensus rule and the crisis path are deterministic.** No LLM decides a person's state or handles a
    crisis. Gemma explains the verdict and organises permitted companion knowledge (D35); Gemini Live uses
    the prepared context for conversation and calls the shared mind only when needed. See `docs/safety.md`.

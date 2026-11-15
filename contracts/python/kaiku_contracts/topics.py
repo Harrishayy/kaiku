@@ -19,6 +19,7 @@ RETAIN: dict[str, bool] = {"raw": False, "obs": False, "cmd": False, "health": T
 # an envelope, never an observation. Nothing may store, log, record, tail or uplink it (root rules 5 and 9).
 #   kaiku/v1/<home>/audio/head/speaker   hub -> head: what the head's speaker plays (music, chimes, Kaiku's voice)
 #   kaiku/v1/<home>/audio/head/mic       head -> hub: the head's microphone, only while `cmd.head {mic: open}` holds
+#   kaiku/v1/<home>/audio/phone/mic      app -> hub: a phone or Mac beside the robot standing in for it (D56), same rule
 # One message = AUDIO_FRAME_MS of signed 16-bit little-endian mono at AUDIO_RATE_HZ. A zero-length message on the
 # speaker topic means "drop what you have buffered, now". QoS 0, not retained.
 AUDIO = "audio"

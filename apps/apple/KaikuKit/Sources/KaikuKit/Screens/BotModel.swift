@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import Security
+#if os(iOS)
+import UIKit
+#endif
 
 /// The "Kaiku bot" tab's state: where the robot's broker is, whether the tab is listening, and what it heard.
 /// It listens only while the tab is on screen and the app is in front (`setVisible`, `setInFront`); leaving the tab,
@@ -23,6 +26,16 @@ public final class BotModel {
     public private(set) var replaying = false
     public var user: String = ""
     public private(set) var hasPassword = false
+    /// "Robot microphone" (D56): this device's microphone stands in for the robot's. Off until the person turns it
+    /// on, never remembered across launches. While on, the connection stays up when the page is left.
+    public private(set) var micOn = false
+    /// The microphone could not start (no permission, no input).
+    public private(set) var micFailed = false
+    /// Frames sent to the robot since the switch went on, and when the last one left.
+    public private(set) var micSent = 0
+    public private(set) var micSentAt: Date?
+    @ObservationIgnored private var capture: AudioCapture?
+    @ObservationIgnored private var robotHome: String?
 
     @ObservationIgnored private var visible = false
     @ObservationIgnored private var inFront = true
@@ -76,7 +89,7 @@ public final class BotModel {
             if !replaying { replay(path) }
             return
         }
-        let should = visible && inFront && address != nil
+        let should = ((visible && inFront) || micOn) && address != nil
         if should, client == nil { connect() }
         if !should, client != nil { disconnect() }
     }
@@ -102,8 +115,58 @@ public final class BotModel {
 
     func heard(_ topic: String, _ data: Data, now: Date = Date()) {
         guard BotTopics.allowed(topic, home: home), let env = BotEnvelope.decode(data) else { return }
+        if env.type == "cmd.head" { robotHome = topic.split(separator: "/").dropFirst(2).first.map(String.init) }
         heardSinceConnect += 1
         state.take(env, now: now)
+    }
+
+    // MARK: this device as the robot's microphone (D56)
+
+    /// Turn "Robot microphone" on or off. On: ask for the microphone if needed, start capturing (memory only) and
+    /// keep the connection. Frames leave only while the hub holds the robot's microphone open (`sendMic`).
+    public func setMic(_ on: Bool) async {
+        guard on != micOn else { return }
+        if !on { stopMic(); return }
+        micFailed = false
+        var allowed = AudioCapture.permission == .granted
+        if !allowed { allowed = await AudioCapture.request() }
+        guard allowed, !micOn else { micFailed = !allowed; return }
+        let c = AudioCapture()
+        let framer = BotMicFramerBox()
+        c.onPCM = { [weak self] pcm in
+            let frames = framer.feed(pcm)
+            guard !frames.isEmpty else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.sendMic(frames) } }   // in order, off the audio thread
+        }
+        do { try c.start() } catch { micFailed = true; return }
+        capture = c
+        micOn = true
+        micSent = 0; micSentAt = nil
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = true   // the phone lies beside the robot: its screen stays on
+        #endif
+        evaluate()
+    }
+
+    private func stopMic() {
+        _ = capture?.stop()
+        capture = nil
+        micOn = false
+        TalkAudio.deactivate()
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
+        evaluate()
+    }
+
+    /// Frames go out only while the hub is holding the robot's microphone open for a conversation; at any other
+    /// time what this device hears is dropped here and never leaves it.
+    func sendMic(_ frames: [Data], now: Date = Date()) {
+        guard micOn, let client, state.micHeld(now: now) else { return }
+        for f in frames where client.sendMicFrame(f, home: home ?? robotHome) {
+            micSent += 1
+            micSentAt = now
+        }
     }
 
     // MARK: what the person sets
@@ -235,5 +298,15 @@ enum BotSecret {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: account]
         SecItemDelete(q as CFDictionary)
+    }
+}
+
+/// The framer behind a lock: fed on the audio thread, one capture at a time.
+final class BotMicFramerBox: @unchecked Sendable {
+    private var framer = BotMicFramer()
+    private let lock = NSLock()
+    func feed(_ pcm: Data) -> [Data] {
+        lock.lock(); defer { lock.unlock() }
+        return framer.feed(pcm)
     }
 }

@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 source ../.venv/bin/activate
 rm -f build/src/*.cpp build/src/*.h            # our sources from the last build: atech would compile them without their libraries
 atech build . > /dev/null                      # generates build/ with build/lib/atech_* drivers + platformio.ini
+python3 patch_microphone.py                   # numeric peaks of both raw I2S slots, before 16-bit conversion
 if [ -z "${VERBOSE:-}" ]; then
   # Mute the Atech drivers' debug prints (e.g. "[NeoPixel] Brightness set" many times a second): on a charger with
   # no USB host reading, they stalled the loop and knob presses were missed (bench 2026-11-14). Only the generated

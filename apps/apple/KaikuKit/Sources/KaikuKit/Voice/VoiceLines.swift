@@ -26,9 +26,20 @@ public final class VoiceLines {
 
     public init() {}
 
-    static var dir: URL {
+    /// The folder name carries the render generation: bump it when recordings made before a fix must never be
+    /// played again (v2, 2026-11-15: older renders had the style prompt spoken in front of the line). Older folders
+    /// are deleted the first time this one is used.
+    static let generation = "KaikuVoice-v2"
+    static let retired = ["KaikuVoice"]
+    private static let cleaned: Void = {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let d = base.appendingPathComponent("KaikuVoice", isDirectory: true)
+        for name in retired { try? FileManager.default.removeItem(at: base.appendingPathComponent(name, isDirectory: true)) }
+    }()
+
+    static var dir: URL {
+        _ = cleaned
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let d = base.appendingPathComponent(generation, isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }

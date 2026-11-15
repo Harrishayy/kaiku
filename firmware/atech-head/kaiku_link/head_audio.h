@@ -33,11 +33,13 @@ constexpr int FRAME_SAMPLES = 320;                    // 20 ms
 constexpr int FRAME_BYTES = FRAME_SAMPLES * 2;        // 640
 
 // ---- speaker numbers (tune here)
-constexpr int SPK_RING_SAMPLES = 8000;                // 0.5 s; the hub runs about 80 ms ahead, never above 120 ms
-constexpr uint32_t SPK_PREBUFFER_MS = 120;            // a sound starts once this much is buffered, or this long after
+constexpr int SPK_RING_SAMPLES = 16000;               // 1 s (was 0.5 s); the hub runs about 80 ms ahead, never above 120 ms
+constexpr uint32_t SPK_PREBUFFER_MS = 300;            // a sound starts once this much is buffered, or this long after
                                                       // its first frame: the cushion against Wi-Fi and loop jitter
-constexpr float SPK_GAIN = 1.0f;                      // PCM gain BEFORE the driver's volume (0.4 in both firmwares);
-                                                      // above 1 clips at that ceiling instead of getting louder than it
+                                                      // (was 120: stuttered on a phone hotspot, pings 8-78 ms, 2026-11-14)
+constexpr float SPK_GAIN = 2.5f;                      // PCM gain BEFORE the driver's volume. Above 1 the peaks are rounded
+                                                      // off (soft limiter, tanh), never clipped: speech gets louder, peaks
+                                                      // stay at full scale. Was 1.0: voice too quiet on the robot, 2026-11-14
 constexpr int SPK_DMA_BLOCK = 256;                    // the Atech Speaker driver's I2S buffer: 8 x 256 frames
 constexpr int SPK_DMA_BLOCKS = 8;                     // (atech 1.0.0a12 speaker.cpp); one cycle = 128 ms
 constexpr uint32_t SPK_DRY_MS = 24;                   // ring empty and this little left in the I2S buffer = ran dry

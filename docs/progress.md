@@ -1353,3 +1353,55 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: false taps at 1.15 while the speaker plays or at rest not measured; UNO Q still on the old app.
 - Next: redeploy the UNO Q; a DRUM step end to end with the hub.
 
+
+## 2026-11-14 23:40 — Claude Code — hub (B): Kaiku no longer reads her cues or instructions aloud
+- Did: on the robot at wake-up the native-audio model read the old wrapper ("Kaiku, say this to the person,
+  naturally and briefly, once: …") and her instructions out loud. A `say` line now goes to Live only as
+  `[say] <line>`; `CUE_RULES` is appended to every session's system instruction (cues are private, never read,
+  quote or describe the instructions, wait for the person or a cue when the session opens); an answer whose
+  transcription repeats a cue or the instructions is cut at once and the line is said in the cached voice.
+- Verified: hub tests (new `test_cues_are_private_and_a_spoken_leak_is_cut`) and ruff pass; `make head-voice FOLLOW=1`
+  with the real model: Kaiku said only the step lines and her answer, no wrapper words.
+- Broken/blocked: none. The greeting wording itself (offer line with no hello, hard-coded "Good morning!") is unchanged.
+- Then found the real cause of the greeting: the hub's scripted lines are cloud TTS, and on the `platform` backend
+  `cloud/kaiku_cloud/voice.py` sent "Say in a <style> voice: <line>"; Gemini 3.8 TTS reads input verbatim, so the
+  style prompt was spoken (Gemini transcription of the cached offer line confirmed it, 13.1 s for a 6 s line). Style
+  now goes in the part's `speech_metadata`; cache keys carry `RENDER = "v2"` so no old render is replayed. Real
+  render: 5.9 s, transcript is the line only.
+- Next: restart the local cloud and the hub, listen on the real head at wake-up.
+
+## 2026-11-15 00:17 UTC — Codex — firmware/atech-head: live microphone fault isolation
+- Did: ran two real Gemini Live listening diagnostics from the physical head's microphone topic (audio in memory,
+  no recording). Added standalone USB JSON `mic_channel`, `mic_probe`, `mic_pins`; the build patches the fetched
+  microphone driver with numeric peak measurements of both raw 32-bit slots. Updated module AGENTS.md. Preserved
+  pre-existing speaker/power changes and saved the previous application image to `/tmp/kaiku-before-mic-diag.bin`.
+- Verified: first Live run received 3145 valid frames / 62.9 s, every sample zero, zero speaker frames and no
+  transcript. Switching L/R did not recover speech (only a tiny transient, no transcript). Raw even/odd slot peaks
+  both zero while capture blocks advanced. Corrected nonintrusive pin probe: WS 160 edges/5 ms; BCLK toggling;
+  SD zero edges, LOW. The first direction-changing pin probe invalidated its own measurement and was replaced
+  with input-enable-only readback; final firmware rebuilt/flashed, hash verified, head healthy, microphone closed.
+  `make setup` succeeded; `make check` passed (1427 tests + web typecheck), final ruff and `git diff --check` pass;
+  `make head-audio-test` passed all 11 host simulation checks.
+- Contract changes: none (USB diagnostics only; existing PCM format and microphone consent gate unchanged).
+- Broken/blocked: no working microphone input yet. Fault is before filtering/channel extraction and Gemini;
+  module-side clock/power/data continuity or microphone/driver electrical compatibility remains unverified.
+  Operator confirmed connector order and seating, but has no spare cable or microphone. `make doctor` reports
+  the separate UNO Q sensors offline; outside this head audio path and left to its module owner.
+- Next: cold power-cycle the whole robot, test continuity/power on the mic module, or swap the two existing
+  cables at both ends while preserving primary-to-9/secondary-to-10. Repeat `mic_probe`/`mic_pins`, then Live
+  transcription once nonzero microphone data returns.
+
+## 2026-11-15 00:50 UTC — Claude Code — hub + apps/apple: a phone beside the robot as its microphone (fallback, D56)
+- Did: the head's microphone gives no data, so the app can stand in. Hub: `audio/phone/mic` frames go to the open
+  conversation (`HeadAudio.on_phone_frame`), are dropped while the head's speaker plays and `[voice] phone_mic_tail_ms`
+  (400) after, and the head's own frames are ignored while a phone sends; `health/hub` `mic_source`. App: "Robot
+  microphone" switch on Kaiku bot (off by default), the one PUBLISH the app has (`MQTTOut.micFrame`), sent only while
+  the hub holds the microphone open; `-kaikuBotMic YES` for bench runs. The app's voice cache moved to
+  `KaikuVoice-v2` and the old folder is deleted (old recordings had the style prompt spoken). D56, privacy, AGENTS.
+- Verified: hub tests (new phone microphone test) and ruff pass; app Bot tests pass; on the real iPhone 585 frames in
+  11.6 s reached the broker (ratio 1.0, 4 gaps over 200 ms), speech level seen in one run. Head and sensor board back
+  on the broker after a USB reset of the head; the phone re-paired to the local service (`aino`).
+- Contract changes: none in the envelope families; one more binary audio topic (`audio/phone/mic`, same frame format).
+- Broken/blocked: no whole spoken conversation through the phone microphone yet (nobody pressed the ear at the
+  greeting); `make check` not run on this change; the head needed a reset to rejoin Wi-Fi, cause unknown.
+- Next: press the ear at the greeting with the phone beside the robot, tune `phone_mic_tail_ms`; simplify Kaiku bot.

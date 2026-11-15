@@ -100,9 +100,14 @@ def _spec(key: str, lang: str) -> tuple[str, str]:
     return entry.get(lang) or entry["en"], entry.get("style") or str(get("voice", "style", "warm, gentle"))
 
 
+# Part of every cache key: bumped when the way a line is rendered changes, so an old render is never replayed
+# (v2: the platform path no longer speaks its style prompt).
+RENDER = "v2"
+
+
 def cache_path(key: str, lang: str) -> Path:
     text, style = _spec(key, lang)
-    h = hashlib.sha256("|".join([tts_model(), voice_name(), lang, text, style]).encode()).hexdigest()[:12]
+    h = hashlib.sha256("|".join([tts_model(), voice_name(), lang, text, style, RENDER]).encode()).hexdigest()[:12]
     return cache_dir() / lang / f"{key}.{h}.wav"
 
 
@@ -138,9 +143,12 @@ def _platform_tts(client: Any, model: str, text: str, style: str, language: str)
     """Gemini platform (ADC): generate_content with AUDIO output → 24 kHz 16-bit PCM → WAV."""
     from google.genai import types
 
+    # Gemini 3.8 TTS reads `text` as a verbatim transcript: a "Say in a ... voice:" prefix is spoken aloud (heard on
+    # the robot, 2026-11-14). The style goes in the part's speech_metadata, as the TTS migration guide says.
+    part = types.Part(text=text, speech_metadata=types.SpeechMetadata(style=style) if style else None)
     resp = client.models.generate_content(
         model=model,
-        contents=f"Say in a {style} voice: {text}" if style else text,
+        contents=[types.Content(role="user", parts=[part])],
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
@@ -219,7 +227,7 @@ SAY_MAX = 400
 
 def say_path(text: str, lang: str) -> Path:
     style = str(get("voice", "style", "warm, gentle"))
-    h = hashlib.sha256("|".join([tts_model(), voice_name(), lang, text, style]).encode()).hexdigest()[:16]
+    h = hashlib.sha256("|".join([tts_model(), voice_name(), lang, text, style, RENDER]).encode()).hexdigest()[:16]
     return cache_dir() / "say" / lang / f"{h}.wav"
 
 

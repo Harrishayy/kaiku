@@ -46,10 +46,13 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
 - iPhone: Apple Health (read-only, HealthKit), Meta glasses via the DAT SDK (MWDAT 1.0.1, SPM; Motion = dev/beta
   channel), local notifications (no APNs), ActivityKit (no push), App Intents.
 - All shapes: `contracts/schemas/` (mirrored in `KaikuKit/Model/Contracts.swift`).
-- **The home robot's MQTT broker, read-only, only while Kaiku bot is on screen** (see "Kaiku bot"): subscribes to
+- **The home robot's MQTT broker, only while Kaiku bot is on screen** (see "Kaiku bot"; read-only except the
+  "Robot microphone" switch, D56, which also keeps the connection while it is on): subscribes to
   `kaiku/v1/<home>/raw/#`, `cmd/#`, `obs/#`, `health/#` (QoS 0) and reads `health`, `raw.head.*`, `raw.sensors.*`,
   `raw.hub.face`, `raw.hub.trace`, `cmd.head`, `cmd.sensors`, `cmd.hub`, `cmd.friendlink` and every `obs.*` the robot
-  sends on. Never `audio/#`, never `kaiku/v1/#`, never publishes.
+  sends on. Never subscribes to `audio/#` or `kaiku/v1/#`. Publishes one thing only, with "Robot microphone" on and
+  while the hub holds the robot's microphone open: this device's microphone as 640-byte PCM frames on
+  `kaiku/v1/<home>/audio/phone/mic` (never an envelope, never a command).
 
 ## Emits (topics/endpoints)
 `POST /v1/events` (source `phone` on iPhone, `laptop` on Mac), always through the offline queue:
@@ -424,7 +427,7 @@ Walk (DEBUG): `-kaiku.walkStyle quiet|playful|chatty`, `-kaikuWalkTyped YES` (th
 microphone and no sound), `-kaikuWalkSay "10:first line|25:second line"` (typed lines, seconds after the one
 before), `-kaikuWalkEndAfter 180`, `-kaikuWalkFound 2` (presses "Found one"). See "Walking together".
 Kaiku bot: `-kaikuTab bot` (iPhone: You → Kaiku bot), `-kaikuBotAddress host[:port]`, `-kaiku.bot.home <id>`; DEBUG
-`-kaikuBotReplay <file.jsonl>`, `-kaikuBotScroll <section>`. See "Kaiku bot".
+`-kaikuBotReplay <file.jsonl>`, `-kaikuBotScroll <section>`, `-kaikuBotMic YES` (Robot microphone on at launch). See "Kaiku bot".
 History: `-kaikuTab history`, `-kaikuRoute days` (Your days); DEBUG: `-kaikuHistoryMeasure drum_tempo` opens that
 measure's page once History has loaded, `-kaikuHistoryRange day|week|month` picks its range. See "History".
 Camera during activities (DEBUG): `-kaikuFaceSource scripted` (the stand-in source: no camera is opened, what it
@@ -1637,7 +1640,17 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   reconnect with backoff 1 · 2 · 4 · 8 · 15 s (× 4 after a refused name/password), DISCONNECT on stop. A QoS 1/2
   delivery is acknowledged; a packet larger than 1 MB or malformed drops the connection. `BotTopics.allowed` drops
   anything that is not one of those four kinds for that home before it is decoded.
-- **What it never does:** publish (there is no PUBLISH encoder), subscribe to `audio/#` (the head's microphone and
+- **Robot microphone (D56, 2026-11-15):** the first card under the connection line, one switch, "Use this device as
+  the robot's microphone", off by default and off again at every launch (`BotModel.micOn`, never stored). On:
+  microphone permission is asked if needed, `AudioCapture` runs (memory only), its 16 kHz PCM is cut into 640-byte
+  frames (`BotMicFramer`) and each frame is published QoS 0 on `kaiku/v1/<home>/audio/phone/mic` (`BotMicWire`,
+  `MQTTOut.micFrame`: the only PUBLISH there is, it refuses any other topic or size) **only while the hub holds the
+  robot's microphone open** (`BotState.micHeld`: a `cmd.head {mic: open}` in the last 5 s and no close since);
+  otherwise the frames are dropped in the app. The home in the topic is the paired home, else the home the last
+  `cmd.head` came on. While on, the connection stays up when the page is left or the app goes to the background
+  (iPhone: background audio, and the screen is kept awake). The hub mutes it while the robot's speaker plays
+  (hub `AGENTS.md`), so the status line reads waiting / Kaiku is speaking / listening through this device.
+- **What it never does:** publish anything but those microphone frames (no envelope, no command), subscribe to `audio/#` (the head's microphone and
   speaker frames) or `kaiku/v1/#`, store or send on anything it heard (memory only: the last 300 feed lines, 40
   records, until the app quits), show the person's words (`heard` carries none; a typed `cmd.hub say` is "not
   shown"), show `feel`'s manner cue (only the tool's name), show a safety flag's details ("Safety flag" in the

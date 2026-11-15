@@ -26,6 +26,7 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `kaiku/v1/<home>/raw/sensors/button` (`id: "top"`), `raw/head/button` (`id: "head"`) | short press idle → start ritual; hold ≥ 2 s → crisis (manual); button build (`[robot] dial_input = "button"`): short presses during a ritual → one dial answer per run (`perception/presses.py`, `press_window_s`), fed as the ear event below |
 | `kaiku/v1/<home>/raw/hub/face` (source ≠ `hub`) | attention ladder (one message per face per frame; UNO Q YOLO or sim) + greet step looks at the face |
 | `kaiku/v1/<home>/audio/head/mic` (**binary, not an envelope**) | the head's microphone: 640-byte frames (16 kHz mono 16-bit, 20 ms), only while the hub holds it open for a consented Live conversation; passed to Gemini Live and nowhere else. Frames that come while no conversation holds it open are dropped unread |
+| `kaiku/v1/<home>/audio/phone/mic` (**binary, not an envelope**) | a phone or Mac beside the robot standing in for the head's microphone (D56; the app's "Robot microphone" switch): the same 640-byte frames, sent by the app only while the hub holds the microphone open. `HeadAudio.on_phone_frame`: dropped unread with no conversation open; dropped while the head's speaker has sound of ours and `[voice] phone_mic_tail_ms` (400) after, so Kaiku never hears herself; while phone frames arrive (the last 2 s) the head's own frames are ignored. `health/hub` `details.mic_source`: `phone` or `head`. |
 | `kaiku/v1/<home>/cmd/hub` | `start_ritual`, `say` (text utterance, safety-gated), `suggest_nudge`, `set_ritual_time`, `clinician_message`, `phq9_due` |
 | `kaiku/v1/<home>/cmd/friendlink` | `ping` → LoRa gateway |
 | `kaiku/v1/<home>/obs/#` (non-hub sources) | `obs/phq9` with `item9_positive` → crisis; relays other local obs (e.g. friendlink sim) to the cloud |
@@ -133,6 +134,10 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   anything else; every `obs.phq9` passing through `emit()`/`on_obs()` is checked for item 9. `safety/` imports
   no LLM/network code (a test enforces it). The crisis message is displayed verbatim from `config/safety_phrases.toml`; it is never sent to generative TTS.
   OS synthetic speech is removed. A deterministic pre-recorded crisis audio asset is still needed for audible crisis guidance.
+- **Cues are never spoken** (`live/gemini_live.py`): a line for Live to say goes out only as `[say] <line>`, a
+  senses event as `(context from Kaiku's senses, …) <event>`, and every session's system instruction gets `CUE_RULES`
+  (cues are private; never read, quote or describe the instructions). An answer whose transcription repeats a cue or
+  the instructions (`LEAK`) is cut at once and the `say` line is said in the cached voice instead (`gemini_cue_leak`).
 - **Every emitted message validates** (`make()` in `emit()`); `test_hub.py` greps all `emit("obs.*")` calls
   against the contracts registry.
 - **Never block the event loop**; network calls have timeouts; a dead broker/cloud/voice never crashes the hub.
@@ -460,6 +465,7 @@ e.g. `TOPIC='kaiku/v1/demo-aino/raw/head/ear'`):
 | Motor | the head's greeting purr; in the game the sway | `raw/head/pan {moving: true}` then `false`; in the game `cmd/head {drum: hold, pan_mode: sway, bpm}` from `hub` and the head swaying on the beat |
 | Speaker (head) | the hub's first spoken line or a song | `cmd/head {mic: …}` aside, sound is not a message: `make tail` prints one line a second `audio (not shown) demo-aino/audio/head/speaker N frames`; `health/head` `audio.rx` rising, `audio.dry` and `audio.drop` near zero. `make head-audio ARGS='check --host localhost --home demo-aino'` judges the stream |
 | Microphone (head) | press the ear at the greeting, then talk | `cmd/head {mic: open}` every 2 s from `hub`; `audio (not shown) demo-aino/audio/head/mic N frames` only then; `health/head` `audio.mic_open: true`, `mic_tx` rising; `raw/hub/trace {kind: heard}` when you stop, then `{kind: said, by: live, text}` with Kaiku's answer. In the game: `{mic: close}` and no mic frames |
+| Microphone (phone, D56) | Kaiku bot → "Robot microphone" on, phone beside the robot, press the ear at the greeting, then talk | `audio (not shown) demo-aino/audio/phone/mic N frames` only while `cmd/head {mic: open}` repeats; `health/hub` `mic_source: "phone"`; the app's line says "The robot is listening through this device" |
 | The game | the head's drum step with the voice and music on | `raw/hub/trace {kind: music, detail: song, bpm}`, `{kind: game, detail: level:1 …}`, `your_turn`, your `raw/head/tap`s, `band:…`; at the end `obs/tap_back` from `hub` and `cmd/head {drum: end}` |
 | Data on the pages | after the ritual | `health/hub` `uplink_queue: 0`; `http://localhost:8000` → the practitioner dashboard shows `aino`'s new check-in, and History in the apps shows the game |
 

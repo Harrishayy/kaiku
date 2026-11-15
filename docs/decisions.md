@@ -740,4 +740,19 @@ flowchart LR
 - Open: the MQTT firmware (`kaiku_link`) has no orientation sensor code yet; the display was also removed from the head
   on the same day and only the standalone firmware reflects that.
 
+## D56 — A phone beside the robot can be its microphone (2026-11-15, Harrish)
+- The head's microphone gives no data (SD line low, 2026-11-15 fault isolation in `docs/progress.md`) and there is no
+  spare part. The iPhone or Mac app, lying beside the robot, stands in for it: the "Robot microphone" switch on
+  Kaiku bot (off by default, never remembered across launches).
+- Wire: `kaiku/v1/<home>/audio/phone/mic`, the same frames as the head's own (16 kHz mono 16-bit, 640 bytes, 20 ms,
+  QoS 0, not an envelope). It is the only thing the app ever publishes to the home broker; it still sends no
+  command and no observation there.
+- The app sends frames only while the hub holds the robot's microphone open (a `cmd.head {mic: open}` in the last
+  5 s), so only inside a conversation the person started at the robot. The hub drops phone frames unread when no
+  conversation is open, and drops what the phone heard while the head's speaker plays and `[voice] phone_mic_tail_ms`
+  after, so Kaiku does not hear herself (a phone cannot know when the head speaks). While phone frames arrive the
+  head's own microphone frames are ignored: two microphones are never mixed. `health/hub` says `mic_source`.
+- Everything else is unchanged: sound out is the head's speaker, frames are never stored, logged or uplinked, and
+  the audio goes to the same Gemini Live conversation and nowhere else.
+- **Why:** the robot must hold a spoken conversation at the demo with the parts that work.
 

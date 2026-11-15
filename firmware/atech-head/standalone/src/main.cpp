@@ -18,10 +18,13 @@
 #include "i2c_software.h"
 #include "kaiku_net.h"   // kaiku_net: Wi-Fi + MQTT to the UNO Q and hub (contracts)
 #include "driver/gpio.h"   // kaiku: motor pin check
+#include "hal/gpio_ll.h"   // input readback without replacing the I2S output route
 
 RotaryEncoder rotary_encoder_knob(PIN_ROTARY_ENCODER_KNOB_A, PIN_ROTARY_ENCODER_KNOB_B, PIN_ROTARY_ENCODER_KNOB_C, PIN_ROTARY_ENCODER_KNOB_D);
 Speaker speaker(PIN_SPEAKER_B, PIN_SPEAKER_A, PIN_SPEAKER_D);
 Microphone microphone(PIN_MICROPHONE_A, PIN_MICROPHONE_B, PIN_MICROPHONE_C, PIN_MICROPHONE_D);
+// Supplied by patch_microphone.py when build.sh fetches the driver. Numeric magnitudes only.
+extern void kaiku_microphone_stats(uint32_t* blocks, uint32_t* even, uint32_t* odd);
 DCMotor dc_motor(PIN_DC_MOTOR_B, PIN_DC_MOTOR_A);
 SoftwareI2C icm40608_imu_i2c(PIN_ICM40608_IMU_SDA, PIN_ICM40608_IMU_SCL);
 ICM40608 icm40608_imu(&icm40608_imu_i2c);
@@ -159,15 +162,34 @@ static void confirmDial() {
 }
 
 // ---------------- outputs ----------------
+// kaiku: POWER RULE (strict). The speaker amplifier and the motor share one supply; both together pull more than
+// it gives. So they never run together: while any sound is on the speaker (the hub's voice, songs, cues, or a tone
+// of the head's own) the motor is OFF, whatever asked for it (pan, purr, sway); it may move again once the speaker
+// is quiet. That lets the speaker play at SPEAKER_VOLUME; if the motor is still turning when a sound starts, the
+// speaker is at SPEAKER_VOLUME_WITH_MOTOR until the motor stops on the next pass (one loop pass, a few ms). Every motor command goes through
+// driveMotor() and the volume is set in one place (powerRule), so no path can skip it.
+static const float SPEAKER_VOLUME = 0.7f;                // the motor at rest (was 0.4, then 0.6: voice too quiet on the robot, 2026-11-14; 1.0 clips the amp)
+static const float SPEAKER_VOLUME_WITH_MOTOR = 0.2f;     // the motor turning (only until it stops for the sound)
+static bool soundOn() { return kaiku_net::speakerBusy() || speaker.isPlaying(); }
+static void driveMotor(int16_t v) {
+  if (soundOn()) { dc_motor.stop(); return; }            // never motor + speaker together: both lines low, no current (was: held to 128 of 255)
+  dc_motor.setSpeed(v);
+}
+static void powerRule() {
+  static bool low = false;
+  bool want = dc_motor.getSpeed() != 0;
+  if (want != low) { low = want; speaker.setVolume(low ? SPEAKER_VOLUME_WITH_MOTOR : SPEAKER_VOLUME); }
+}
+
 static void applyMotor() {
   unsigned long now = millis();
   if (now < panUntil && panSpeed != 0) {
-    dc_motor.setSpeed((int16_t)(panSpeed * 255 / 100));
+    driveMotor((int16_t)(panSpeed * 255 / 100));
   } else if (now < purrUntil) {
     // purr: short alternating nudges that buzz rather than turn
-    dc_motor.setSpeed(((now / 40) % 2) ? 110 : -110);
+    driveMotor(((now / 40) % 2) ? 110 : -110);
   } else if (int s = kaiku_net::sway()) {   // kaiku_net: the hub's sway on the beat while it holds the drum step
-    dc_motor.setSpeed((int16_t)(s * 255 / 100));
+    driveMotor((int16_t)(s * 255 / 100));
   } else {
     if (panUntil && now >= panUntil) { panUntil = 0; panSpeed = 0; emit("pan", "{\"done\":true}"); }
     dc_motor.brake();
@@ -257,7 +279,7 @@ void setup() {
   icm40608_imu.setMountRotation(270);
   neopixel_grid.begin();
 
-  speaker.setVolume(0.4f);
+  speaker.setVolume(SPEAKER_VOLUME);
   icm40608_imu.setShakeThreshold(shakeG);
   rotary_encoder_knob.setAcceleration(false);
   rotary_encoder_knob.setRingColor(255, 140, 40);
@@ -265,7 +287,7 @@ void setup() {
   lastKnobPos = rotary_encoder_knob.getPosition();
   setMode(IDLE);
   kaiku_net::begin({   // kaiku_net: Wi-Fi + MQTT, and the speaker / microphone as PCM streams for the hub
-      [](const int16_t* s, int n) { speaker.writeSamples(s, n); },   // at the driver's volume (0.4, set above)
+      [](const int16_t* s, int n) { speaker.writeSamples(s, n); },   // at the driver's volume (SPEAKER_VOLUME, set above)
       []() { return speaker.isPlaying(); },
       [](void (*cb)(const int16_t*, int, void*), void* ctx) { microphone.onAudio(cb, ctx); }});
 
@@ -307,10 +329,42 @@ void loop() {
     else if (!strcmp(a, "eyes")) { eyes = eyesFrom(cmd.value); dirty = true; }
     else if (!strcmp(a, "chirp")) chirp();
     else if (!strcmp(a, "threshold")) soundThreshold = (int16_t)constrain(atoi(cmd.value), 100, 32000);
+    else if (!strcmp(a, "mic_pins")) {
+      // Enable pad readback without changing the I2S peripheral's output matrix.
+      gpio_ll_input_enable(&GPIO, (gpio_num_t)PIN_MICROPHONE_B);
+      gpio_ll_input_enable(&GPIO, (gpio_num_t)PIN_MICROPHONE_C);
+      int ws = digitalRead(PIN_MICROPHONE_B), clk = digitalRead(PIN_MICROPHONE_C), data = digitalRead(PIN_MICROPHONE_D);
+      unsigned wsEdges = 0, clkEdges = 0, dataEdges = 0;
+      unsigned long until = micros() + 5000;
+      while ((int32_t)(micros() - until) < 0) {
+        int w = digitalRead(PIN_MICROPHONE_B), c = digitalRead(PIN_MICROPHONE_C), d = digitalRead(PIN_MICROPHONE_D);
+        wsEdges += w != ws; clkEdges += c != clk; dataEdges += d != data;
+        ws = w; clk = c; data = d;
+      }
+      char b[160];
+      snprintf(b, sizeof b, "{\"window_ms\":5,\"ws_edges\":%u,\"clock_edges\":%u,\"data_edges\":%u,\"data_level\":%d}",
+               wsEdges, clkEdges, dataEdges, data);
+      emit("mic_pins", b);
+    }
+    else if (!strcmp(a, "mic_probe")) {
+      uint32_t blocks, even, odd;
+      kaiku_microphone_stats(&blocks, &even, &odd);
+      char b[160];
+      snprintf(b, sizeof b, "{\"blocks\":%lu,\"even_raw_peak\":%lu,\"odd_raw_peak\":%lu,\"lr_level\":%d}",
+               (unsigned long)blocks, (unsigned long)even, (unsigned long)odd, digitalRead(PIN_MICROPHONE_A));
+      emit("mic_probe", b);
+    }
+    else if (!strcmp(a, "mic_channel")) {
+      if (!strcmp(cmd.value, "left") || !strcmp(cmd.value, "right")) {
+        bool right = !strcmp(cmd.value, "right");
+        microphone.setChannel(right);
+        emit("mic_channel", right ? "{\"select\":\"right\",\"lr_high\":true}" : "{\"select\":\"left\",\"lr_high\":false}");
+      } else emit("mic_channel", "{\"error\":\"use mic_channel left|right\"}");
+    }
     else if (!strcmp(a, "tap_sensitivity")) { shakeG = constrain(atof(cmd.value), 1.05f, 3.0f); icm40608_imu.setShakeThreshold(shakeG); }
     else if (!strcmp(a, "knob_reverse")) knobSign = -knobSign;
     else if (!strcmp(a, "help"))
-      emit("help", "{\"commands\":[\"greet\",\"ritual\",\"next\",\"breathe [cycles]\",\"drum [seconds]\",\"idle\",\"pan -100..100\",\"purr [ms]\",\"eyes calm|happy|wide|sad|sleepy\",\"chirp\",\"threshold 100-32000\",\"tap_sensitivity 0.5-3.0\",\"knob_reverse\"]}");
+      emit("help", "{\"commands\":[\"greet\",\"ritual\",\"next\",\"breathe [cycles]\",\"drum [seconds]\",\"idle\",\"pan -100..100\",\"purr [ms]\",\"eyes calm|happy|wide|sad|sleepy\",\"chirp\",\"threshold 100-32000\",\"mic_channel left|right\",\"mic_probe\",\"mic_pins\",\"tap_sensitivity 0.5-3.0\",\"knob_reverse\"]}");
   }
 
   // ---- inputs every pass, latched ----
@@ -326,6 +380,7 @@ void loop() {
   }
 
   applyMotor();
+  powerRule();   // kaiku: speaker and motor never both at full
   kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: raw.head.pan
   if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera (never while calm)
 

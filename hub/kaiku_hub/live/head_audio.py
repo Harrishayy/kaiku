@@ -374,17 +374,48 @@ class HeadAudio:
 
     name = "head"
 
-    def __init__(self, speaker: HeadSpeaker, command: Callable[..., Awaitable[None]], *, renew_s: float = 2.0):
+    def __init__(self, speaker: HeadSpeaker, command: Callable[..., Awaitable[None]], *, renew_s: float = 2.0,
+                 phone_tail_ms: float = 400, phone_fresh_s: float = 2.0):
         self.speaker, self.command, self.renew_s = speaker, command, renew_s
         self.mic: HeadMic | None = None
         self.mic_frames = 0
+        # A phone beside the robot standing in for the head's microphone (audio/phone/mic, D56)
+        self.phone_tail_s, self.phone_fresh_s = phone_tail_ms / 1000, phone_fresh_s
+        self.phone_frames = self.phone_muted = 0
+        self._phone_at = 0.0  # when the phone's last frame came (hub clock); 0 = never
+
+    @property
+    def phone_listening(self) -> bool:
+        """A phone is sending its microphone right now: it is the robot's ear, and the head's own frames are not."""
+        return bool(self._phone_at) and time.monotonic() - self._phone_at < self.phone_fresh_s
+
+    @property
+    def mic_source(self) -> str:
+        return "phone" if self.phone_listening else "head"
 
     def on_mic_frame(self, data: bytes) -> None:
         """Bus handler for audio/head/mic. Frames that arrive while no conversation holds the microphone open are
-        dropped here, unread."""
-        if self.mic is not None:
+        dropped here, unread; so are the head's while a phone is the ear (two microphones are never mixed)."""
+        if self.mic is not None and not self.phone_listening:
             self.mic_frames += 1
             self.mic.feed(data)
+
+    def on_phone_frame(self, data: bytes) -> None:
+        """Bus handler for audio/phone/mic: the same frames from a phone beside the robot. Dropped unread while no
+        conversation holds the microphone open. The head keeps its own microphone shut while its speaker plays; a
+        phone cannot know, so that is done here: nothing it heard while the head's speaker has sound of ours, or
+        `phone_tail_ms` after (the head's buffer and the room), is passed on. Kaiku never hears herself."""
+        if len(data) != AUDIO_FRAME_BYTES:
+            return
+        now = time.monotonic()
+        self._phone_at = now
+        if self.mic is None:
+            return
+        if now < self.speaker._play_until + self.phone_tail_s:
+            self.phone_muted += 1
+            return
+        self.phone_frames += 1
+        self.mic.feed(data)
 
     def RawOutputStream(self, **kw: Any) -> HeadStream:  # noqa: N802
         return self.speaker.RawOutputStream(**kw)

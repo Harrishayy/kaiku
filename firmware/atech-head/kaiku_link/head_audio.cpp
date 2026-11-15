@@ -3,6 +3,7 @@
 // created here (ring -> Speaker::writeSamples) and the Atech capture task (micCapture). Each ring has one writer and
 // one reader and a spinlock around the few lines that move its indices.
 #include "head_audio.h"
+#include <math.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -53,11 +54,10 @@ void spkTask(void*) {
     if (playing) {
       if (have > 0) {
         int n = spkPop(buf, FRAME_SAMPLES);
-        if (gain != 256) {
-          for (int i = 0; i < n; i++) {
-            int32_t v = ((int32_t)buf[i] * gain) >> 8;
-            buf[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
-          }
+        if (gain > 256) {           // louder: soft limiter, x * SPK_GAIN for quiet samples, peaks rounded to full scale
+          for (int i = 0; i < n; i++) buf[i] = (int16_t)(32767.0f * tanhf(buf[i] * (SPK_GAIN / 32768.0f)));
+        } else if (gain != 256) {   // quieter: plain scaling
+          for (int i = 0; i < n; i++) buf[i] = (int16_t)(((int32_t)buf[i] * gain) >> 8);
         }
         io.write(buf, n);
         now = millis();

@@ -93,6 +93,7 @@ class Settings:
     music_out: str = "head"  # head | speaker | file ([music] out): where the drum music and its cues are heard
     head_lead_ms: float = 80  # how far ahead of real time the hub sends audio to the head's speaker
     head_gain: float = 0.8  # headroom for the head's small speaker
+    phone_mic_tail_ms: float = 400  # a phone as the robot's microphone: not heard this long after the speaker ends
     voice_audio: str = "auto"  # auto | head | local ([voice] audio): Kaiku's Live voice and the microphone
     tap_back: TapBackConfig = field(default_factory=TapBackConfig)  # [tap_back]: the drum step as a rhythm game
     # models (VERIFY in docs; never hard-code in code)
@@ -178,6 +179,7 @@ class Settings:
                        if str(c.get("music", {}).get("out", "head")).lower() in ("head", "speaker", "file") else "head"),
             head_lead_ms=_f(c, "music", "head_lead_ms", 80),
             head_gain=_f(c, "music", "head_gain", 0.8),
+            phone_mic_tail_ms=_f(c, "voice", "phone_mic_tail_ms", 400),
             voice_audio=(str(c.get("voice", {}).get("audio", "auto")).lower()
                          if str(c.get("voice", {}).get("audio", "auto")).lower() in ("auto", "head", "local") else "auto"),
             tap_back=TapBackConfig.from_dict(c.get("tap_back", {}), bpm_min=_f(c, "music", "bpm_min", 60),

@@ -595,3 +595,43 @@ async def test_platform_backend_forwards_feel_as_a_blocking_call(rig):
     (only,) = session.responses[0]["function_responses"]
     assert only.scheduling is None and only.response == {"ok": True, "stance": "steady"}
     await voice.close_session()
+
+
+async def test_cues_are_private_and_a_spoken_leak_is_cut(rig):
+    """Seen on the robot at wake-up: the model read its cue wrapper and instructions aloud. Every session is told
+    cues are private, a line goes out only as `[say] <line>`, and an answer that repeats a cue or the instructions
+    is cut at once; the line it should have said is said in the cached voice instead."""
+    from kaiku_hub.live.gemini_live import CUE_RULES, leaked
+
+    hub, voice, client, audio, _ = rig
+    connects, sent, said = [], [], []
+    real = client.connect
+    client.connect = lambda **kw: connects.append(kw) or real(**kw)
+
+    async def fallback(text):
+        said.append(text)
+
+    voice.fallback_say = fallback
+    await voice.start(hub.on_utterance, hub.on_tool)
+    assert await voice.open_session("persona", [])
+    assert connects[0]["config"]["system_instruction"] == "persona" + CUE_RULES
+    session = client.connections[0].session
+
+    async def record(**kw):
+        sent.append(kw["turns"]["parts"][0]["text"])
+        await session.incoming.put(pcm())
+
+    session.send_client_content = record
+    await voice.say("How are you today?")
+    assert sent == ["[say] How are you today?"]
+    await session.incoming.put(NS(server_content=NS(output_transcription=NS(text="Say this to the person, natur"))))
+    await settle(lambda: said == ["How are you today?"])
+    assert voice._skip_turn and not voice._pcm
+    await session.incoming.put(pcm())                       # the rest of that answer is not played
+    await asyncio.sleep(0.02)
+    assert not voice._pcm
+    await session.incoming.put(NS(server_content=NS(turn_complete=True)))
+    await settle(lambda: not voice._skip_turn)
+    await voice.close_session()
+    assert leaked("You are Kaiku, a small, warm companion") and leaked("[say] hello")
+    assert not leaked("Good morning! I'm Kaiku. How did you sleep?")

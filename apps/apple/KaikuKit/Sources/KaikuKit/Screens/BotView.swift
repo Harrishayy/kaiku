@@ -4,7 +4,7 @@ import AppKit
 #endif
 
 // The "Kaiku bot" tab: what the robot at home hears and does, live, from its own message bus on the home network
-// (`BotModel`, `BotBusClient`). Read-only: the app never sends anything to the robot from here. Listening starts
+// (`BotModel`, `BotBusClient`). Read-only, except the "Robot microphone" switch (D56). Listening starts
 // when the tab is on screen and the app is in front, and stops when either ends. Nothing heard is stored.
 
 public struct BotView: View {
@@ -26,10 +26,12 @@ public struct BotView: View {
                     // Nothing heard yet: where it listens, the parts, the address field (the empty state).
                     BotConnectionCard(model: model, now: tick.date, part: .all)
                     if model.link == .listening { BotQuietCard() }
+                    BotRobotMicCard(model: model, now: tick.date)
                 } else {
                     // Heard: one line on the connection on top, what the robot does next, the parts and the address
                     // at the end.
                     BotConnectionCard(model: model, now: tick.date, part: .status)
+                    BotRobotMicCard(model: model, now: tick.date).id("robotmic")
                     KAdaptiveColumns(minWidth: 640, spacing: KaikuTokens.Space.s5, leadingFraction: 0.5, stack: KaikuTokens.Space.s5) {
                         BotNowCard(state: model.state, now: tick.date).id("now")
                         BotSensesCard(state: model.state, now: tick.date).id("senses")
@@ -54,6 +56,10 @@ public struct BotView: View {
             model.configure(serviceURL: app.pairing?.baseURL, home: app.pairing?.homeID)
             model.setInFront(Self.inFront(phase))
             model.setVisible(true)
+            #if DEBUG
+            // `-kaikuBotMic YES`: a bench run starts with "Robot microphone" on (the permission must already be given)
+            if UserDefaults.standard.bool(forKey: "kaikuBotMic") { Task { await model.setMic(true) } }
+            #endif
         }
         .onDisappear { model.setVisible(false) }
         .onChange(of: app.pairingRevision) { _, _ in model.configure(serviceURL: app.pairing?.baseURL, home: app.pairing?.homeID) }
@@ -302,6 +308,30 @@ struct BotQuietCard: View {
         KCard(tone: .sky) {
             Text(T("bot.quiet")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
         }
+    }
+}
+
+// MARK: this device as the robot's microphone (D56)
+
+/// The one switch on this page that sends something: this iPhone or Mac, put beside the robot, is its microphone.
+struct BotRobotMicCard: View {
+    let model: BotModel
+    let now: Date
+
+    var body: some View {
+        KSection(T("bot.robotmic.sec"), subtitle: T("bot.robotmic.sec.d"), icon: "mic", tone: .sage) {
+            KToggleRow(icon: model.micOn ? "mic.fill" : "mic", title: T("bot.robotmic.t"), detail: status,
+                       isOn: Binding(get: { model.micOn }, set: { on in Task { await model.setMic(on) } }))
+                .accessibilityIdentifier("bot.robotmic")
+        }
+    }
+
+    private var status: String {
+        if model.micFailed { return T("bot.robotmic.failed") }
+        guard model.micOn else { return T("bot.robotmic.off") }
+        if model.link != .listening { return T("bot.robotmic.nolink") }
+        if let at = model.micSentAt, now.timeIntervalSince(at) < 2 { return T("bot.robotmic.sending") }
+        return T(model.state.micHeld(now: now) ? "bot.robotmic.speaking" : "bot.robotmic.waiting")
     }
 }
 
