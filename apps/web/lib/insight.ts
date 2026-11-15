@@ -36,6 +36,20 @@ export type Tone = 'better' | 'worse' | 'similar' | 'unknown';
 type Src = MetricSeries['source'];
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/*
+ * The browser fallback's own constants. They are used only when `GET /v1/patients/{id}/insight` is unavailable and
+ * the shapes are derived here (the result is labelled `by: 'template'`); no endpoint serves them. They word a
+ * comparison and a certainty label and never decide a state. The cloud's own review uses its config instead.
+ */
+/** this week counts as "similar" to the week before within half of the usual band's half-width ... */
+const FALLBACK_TOLERANCE_BAND_SHARE = 0.5;
+/** ... or, with no band yet, within 5 % of the usual value */
+const FALLBACK_TOLERANCE_OF_USUAL = 0.05;
+/** "what helps": fewer tries than this reads "early" ... */
+const FALLBACK_HELP_EARLY_TRIES = 5;
+/** ... and fewer than this reads "building"; from here on "consistent" */
+const FALLBACK_HELP_BUILDING_TRIES = 12;
 const isClock = (unit: string | undefined) => Boolean(unit && unit.includes('midnight'));
 
 /** Value with its unit in reading form: clock times, durations, percentages, "4 of 5". */
@@ -209,7 +223,7 @@ export function compareSeries(s: MetricSeries, end: string, sustained: MetricCom
   const half = last && isNum(last.band_low) && isNum(last.band_high) ? (last.band_high - last.band_low) / 2 : null;
   const thisWeek = median(thisVals);
   const previous = median(prevVals);
-  const tolerance = half !== null ? half / 2 : Math.abs(usual ?? previous ?? 0) * 0.05;
+  const tolerance = half !== null ? half * FALLBACK_TOLERANCE_BAND_SHARE : Math.abs(usual ?? previous ?? 0) * FALLBACK_TOLERANCE_OF_USUAL;
   const vsUsual: Tone =
     isNum(thisWeek) && last && isNum(last.band_low) && isNum(last.band_high)
       ? thisWeek >= last.band_low && thisWeek <= last.band_high
@@ -313,7 +327,7 @@ export function deriveRoutine(week: WeekSummary | null, graph: KnowledgeGraph | 
     .filter((e) => e.rel === 'helped' && byId.has(e.dst))
     .map((e) => {
       const label = byId.get(e.dst)!.label;
-      const certainty = e.evidence < 5 ? ('early' as const) : e.evidence < 12 ? ('building' as const) : ('consistent' as const);
+      const certainty = e.evidence < FALLBACK_HELP_EARLY_TRIES ? ('early' as const) : e.evidence < FALLBACK_HELP_BUILDING_TRIES ? ('building' as const) : ('consistent' as const);
       return {
         activity: label,
         label: label.replace(/^\w/, (ch) => ch.toUpperCase()),

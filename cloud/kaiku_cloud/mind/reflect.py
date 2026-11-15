@@ -14,6 +14,8 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from kaiku_contracts.config import get
+
 from ..llm import gemini, ledger
 from ..llm.errors import LlmUnavailable
 from ..settings import TZ
@@ -97,13 +99,14 @@ def plan(store: Store, home_id: str, card: dict[str, Any], *, now: datetime | No
         facts["this_week"] = _week_summary(store, home_id, now)
         prompt = "Options:\n" + json.dumps(OPTIONS, indent=1) + "\nFacts:\n" + json.dumps(facts, default=str, indent=1)
         try:
-            raw = json.loads(gemini.generate(prompt, tier="flagship", system=SYSTEM, schema=SCHEMA, timeout_s=40,
+            raw = json.loads(gemini.generate(prompt, tier="flagship", system=SYSTEM, schema=SCHEMA,
+                                             timeout_s=float(get("cloud", "reflect_timeout_s", 40)),
                                              task="reflect", home_id=home_id, route="argon"))
             out = {**validate(raw, card), "by": gemini.model_for("flagship")}
         except (LlmUnavailable, ValueError, json.JSONDecodeError) as e:
             ledger.record("rule", "reflect", ok=True, fallback=True, route="fallback", home_id=home_id)
             if log:
-                log.warning("reflect_fallback", f"{type(e).__name__}: {e}")
+                log.warning("reflect_fallback", type(e.__cause__ or e).__name__)  # the type only
     store.kv_set(key, out)
     return out
 

@@ -19,8 +19,18 @@ The script, the shot table, the per-service wording and the judges' questions li
   state by itself in either direction beyond what three-of-five days allow: say so.
 - Say "signal groups", "change from her usual", "worth a check-in", "needs a call". Say "simulated record" when
   the dashboard is on screen. Say which robot parts ran on the real board today and which on the twin.
-- Do not claim: a deployed URL before it exists, robot pulse or HRV, music from drumming, a glasses camera or
-  display app, Finnish speech, a friend lamp, Gemma on our own GPU (it runs through the hosted API today).
+- What is true on 15 Nov, and how far it goes (README, "Is it any good?"):
+  - The dashboard is deployed on Modal; every record on it is simulated.
+  - Tap it back (a short song from Lyria at a set tempo, tapped back) played once through the head's speaker on
+    the board. Her drumming does not make or change the music.
+  - The glasses' opt-in seeing ran on one real walk: 30 frames reached that walk's Gemini Live conversation and
+    Kaiku heard the wearer. Kaiku's replies have not yet been heard in the glasses.
+  - Gemma answered a review and a record question from our own GPU on Modal once; the default path is the hosted
+    API.
+  - On the robot a press of the ear opens a talk; that newest flow has not been tried by a person on the robot,
+    and a phone or Mac stands in for the head's microphone.
+- Do not claim: robot pulse or HRV, the robot's records on the dashboard, a friend lamp, a glasses display app,
+  Finnish speech, eyes, a chest light or a button on the robot, Gemma on our own GPU as the default.
 
 ## If something fails
 

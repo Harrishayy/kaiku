@@ -1,6 +1,8 @@
 """Hosted Gemma via the Gemini API REST endpoint (AI Studio). Keeps the Gemma story alive if GPU serving fails.
 
-Model id from config [models].gemma_hosted — VERIFY it in the Gemini docs before use. Needs GEMINI_API_KEY.
+Model id: config [models].gemma_hosted (checked in the Gemini docs 2026-11-14; model names change, so re-check
+before a deploy). Endpoint: config [endpoints].gemini_generate_content. Needs GEMINI_API_KEY (or ADC through
+llm/gemini.py).
 """
 
 from __future__ import annotations
@@ -13,7 +15,12 @@ from kaiku_contracts.config import get
 from . import ledger
 from .errors import LlmUnavailable
 
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+def _endpoint(model: str) -> str:
+    url = str(get("endpoints", "gemini_generate_content", "") or "")
+    if "{model}" not in url:
+        raise LlmUnavailable("config/kaiku.toml [endpoints].gemini_generate_content is not set")
+    return url.format(model=model)
 
 
 def generate(prompt: str, timeout_s: float | None = None, *, task: str = "explain",
@@ -45,7 +52,7 @@ def _call(model: str, key: str, prompt: str, timeout_s: float, max_output_tokens
     generation = {"temperature": 0.2,
                   "maxOutputTokens": int(max_output_tokens or get("gemma_hosted", "max_output_tokens", 1200)),
                   "thinkingConfig": {"thinkingLevel": str(get("gemma_hosted", "thinking_level", "minimal"))}}
-    r = httpx.post(ENDPOINT.format(model=model), headers={"x-goog-api-key": key}, timeout=timeout_s,
+    r = httpx.post(_endpoint(model), headers={"x-goog-api-key": key}, timeout=timeout_s,
                    json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
                          "generationConfig": generation})
     r.raise_for_status()
@@ -94,7 +101,7 @@ def _look_rest(model: str, key: str, prompt: str, images: list[bytes], timeout_s
     parts.append({"text": prompt})
     generation = {"temperature": 0.1, "maxOutputTokens": cap,
                   "thinkingConfig": {"thinkingLevel": str(get("gemma_hosted", "thinking_level", "minimal"))}}
-    r = httpx.post(ENDPOINT.format(model=model), headers={"x-goog-api-key": key}, timeout=timeout_s,
+    r = httpx.post(_endpoint(model), headers={"x-goog-api-key": key}, timeout=timeout_s,
                    json={"contents": [{"role": "user", "parts": parts}], "generationConfig": generation})
     del parts
     if r.status_code != 200:

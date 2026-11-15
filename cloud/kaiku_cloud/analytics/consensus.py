@@ -21,13 +21,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 
 from kaiku_contracts.api import Consensus, SourceVerdict
+from kaiku_contracts.config import get
 from kaiku_contracts.criteria import Criteria, StateSpec
 
 from ..settings import TZ
 from .data import PatientData
 from .verdict import VerdictResult, all_verdicts
 
-REPLAY_DAYS = 45
+REPLAY_DAYS = int(get("cloud", "replay_days", 45))  # config/kaiku.toml [cloud]; read once per process
 CORRELATED_NOTE = "correlated_only"
 
 
@@ -74,6 +75,8 @@ def correlated_only(results: list[VerdictResult], st: StateSpec) -> list[str]:
 def raw_state(results: list[VerdictResult], safety_open: bool, st: StateSpec) -> tuple[str, str]:
     sufficient = [r for r in results if r.model.verdict != "insufficient"]
     n_worse = worse_count(sufficient, st)
+    # Agreement is a label about comparing sources, not the state rule: with fewer than two there is nothing to
+    # compare. It is deliberately not `[state].min_sufficient_for_stable` (that decides watch vs stable below).
     if len(sufficient) < 2:
         agreement = "low_coverage"
     elif n_worse and any(r.model.verdict in ("as_usual", "better") for r in sufficient):

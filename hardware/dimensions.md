@@ -28,7 +28,7 @@ port), it is given in the Notes column.
 | Color Display | `st7735_tft` | ST7735S | ~42 × 21 (photo est. against the mic, 2026-11-14) | ~10 | MEASURE | 160×80 TFT (0.96"). The visible screen (dark area) is ~28.8 × 13.7 and centred on the module front within ±0.3 mm; the CAD window is 28 × 13. Its connector pins run along one long edge, and the cable plugs need ~12 mm of room there (the CAD puts that edge at the top). |
 | Big Screen | `st7789_tft` | ST7789 | MEASURE | MEASURE | MEASURE | 320×240 TFT. Measure the active area for the bezel cut-out. |
 | LED Grid | `neopixel_grid` | WS2812B ×9 | ~22 × 22 (est.†) | 16 ASSUMED | MEASURE | Each LED is a 5050 package (5.0 × 5.0). A diffuser goes over the 3×3 grid. |
-| Orientation Sensor | `icm40608_imu` | LSM6DSOX | 22 × 22 ASSUMED | 16 ASSUMED | MEASURE | Mount it rigidly to the head for tap detection. |
+| Orientation Sensor | `icm40608_imu` | ICM-40608 (from the Atech driver's name, `icm40608`; no datasheet in the repo) | 22 × 22 ASSUMED | 16 ASSUMED | MEASURE | Mount it rigidly to the head for tap detection. |
 | Temp & Humidity | `aht20_sensor` | AHT20 | MEASURE | MEASURE | MEASURE | The shell needs a vent next to it. |
 | Air Quality | `scd40_air_quality` | SCD40 | MEASURE | MEASURE | MEASURE | Sensor body is 10.1 × 10.1 × 6.5. Needs airflow. |
 | Distance Sensor | `vl53l5cx_distance` | VL53L5CX | MEASURE | MEASURE | MEASURE | Sensor body is 6.4 × 3.0 × 1.5. FoV is 63° diagonal. The cover window must not clip the cone. |
@@ -56,4 +56,4 @@ widths wide, and the motor is about 2 modules long.
 
 | Part | Outline W × D | Height | Mounting | Notes |
 |---|---|---|---|---|
-| Pan DC motor | MEASURE | MEASURE | MEASURE | From the venue's parts, per `bom.md`. |
+| Pan DC motor | see the Atech "DC Motor" row above | — | — | The pan motor is the Atech DC Motor V2.3 module from the Atech kit (`bom.md`; `dc_motor` on port 14 in `firmware/atech-head/standalone/project.yaml`), not a separate part. |

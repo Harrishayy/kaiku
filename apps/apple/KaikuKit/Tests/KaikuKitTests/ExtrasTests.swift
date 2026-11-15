@@ -102,7 +102,9 @@ final class NudgeSchedulerTests: XCTestCase {
         XCTAssertTrue(NudgeScheduler.plan(i).isEmpty)
         var j = input(at(11, 0))
         j.phq9Due = true
-        XCTAssertEqual(NudgeScheduler.plan(j).filter { $0.kind == .phq9 }.count, 1)
+        // The questionnaire is not offered in the apps: its notification is never planned.
+        XCTAssertFalse(NudgeScheduler.phq9Offered)
+        XCTAssertEqual(NudgeScheduler.plan(j).filter { $0.kind == .phq9 }.count, 0)
         j.delivered = ["kaiku.phq9"]
         XCTAssertEqual(NudgeScheduler.plan(j).filter { $0.kind == .phq9 }.count, 0)
     }
@@ -128,7 +130,7 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://play/firefly")!), .route(.firefly))
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://checkin")!), .route(.weather))
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://walk")!), .route(.walk))
-        XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://phq9")!), .phq9)
+        XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://phq9")!), .phq9)   // parses, opens nothing (see DeepLink)
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://you/memories")!), .route(.memories))
         XCTAssertEqual(DeepLink.parse(URL(string: "kaiku://you/firefly")!), .tab(.you))   // only You's own screens
         XCTAssertNil(DeepLink.parse(URL(string: "kaiku://pair?home=demo-aino")!))   // pairing is not a deep link

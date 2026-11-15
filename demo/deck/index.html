@@ -315,7 +315,7 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
           </ul>
         </div>
       </div>
-      <p class="small"><b>Where it stands:</b> registration and connection confirmed on real Gen 2 glasses (Developer Mode). Voice and seeing are proven with Meta’s Mock Device Kit and a real Gemini Live call on an injected picture; not yet on the real glasses. <b>Pilot path:</b> one signal group in a clinic pilot, on an invite-only release channel.</p>
+      <p class="small"><b>Where it stands:</b> registration and connection confirmed on real Gen 2 glasses (Developer Mode). On them (15 Nov): the self-test of speaker, microphone and camera frame passed, and a walk sent 30 frames to Gemini Live and heard the wearer. Kaiku’s replies are not yet heard in the glasses. <b>Pilot path:</b> one signal group in a clinic pilot, on an invite-only release channel.</p>
     </div>
   </div>
   <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">05</div></div>
@@ -323,7 +323,7 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
 
 <!-- 6 -->
 <section class="slide">
-  <div class="eyebrow">The robot · morning ritual</div>
+  <div class="eyebrow">The robot · a talk, and a check-in when she asks</div>
   <h1>An app waits. The robot speaks first.</h1>
   <div class="body">
     <div class="col" style="width:360px">
@@ -336,18 +336,18 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
     <div class="col grow">
       <div style="display:flex; gap:16px">
         <div class="card grow"><span class="chip c-sky plain">1 · Dial</span><p style="margin-top:10px">Three turns of an ear: mood, energy, last night’s sleep.</p></div>
-        <div class="card grow"><span class="chip c-honey plain">2 · Breath</span><p style="margin-top:10px">One guided breath while the chest glows.</p></div>
+        <div class="card grow"><span class="chip c-honey plain">2 · Breath</span><p style="margin-top:10px">One guided breath, paced by Kaiku’s words.</p></div>
         <div class="card grow"><span class="chip c-clay plain">3 · Drum</span><p style="margin-top:10px">A short rhythm tapped on its head. No typing anywhere.</p></div>
       </div>
       <div class="card">
         <ul class="clean">
           <li><b>Raw numbers stay at home.</b> Every session’s raw readings are stored locally; only derived numbers go to the record.</li>
-          <li><b>Pulse is measured or missing.</b> A reading counts only after the finger-cradle quality check passes. Otherwise it is absent, never estimated.</li>
-          <li><b>Gemini supplies the voice;</b> it can move the ritual only through a small set of checked commands.</li>
-          <li>The drum is inspired by research on improvisational music therapy. The chest light is not light therapy.</li>
+          <li><b>Pulse is measured or missing.</b> The finger sensor was removed; a camera reading counts only if it passes a quality check, and none has. It is absent, never estimated.</li>
+          <li><b>Gemini supplies the voice.</b> A press of the ear opens a talk; the check-in starts when she asks, through a small set of checked commands.</li>
+          <li>The drum is inspired by research on improvisational music therapy. The ear’s ring light is not light therapy.</li>
         </ul>
       </div>
-      <p class="small"><b>Where it stands:</b> one Atech 14-port board carries eight modules (screen eyes, encoder ear, button, two LED grids, neck motor, speaker, microphone). The full firmware compiles; microphone and one LED grid have run on the board. The whole ritual runs on software twins that speak the same messages; not yet end to end on the physical robot.</p>
+      <p class="small"><b>Where it stands:</b> one Atech 14-port board carries five modules (ear dial, orientation sensor for taps, neck motor, speaker, microphone); no screen, chest light or button. On the board: the ritual by knob with no laptop, taps, the motor over MQTT, and a Gemini Live conversation through its speaker with a phone as the microphone. Not yet: its records on the dashboard, its own microphone, the talk-first flow tried by a person.</p>
     </div>
   </div>
   <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">06</div></div>
@@ -421,18 +421,19 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
           <li>Public deployment on Modal, with the Gemma-written review</li>
           <li>Signed app installed on a real iPhone</li>
           <li>Real Gemma and Gemini Live calls (injected speech and picture)</li>
-          <li>Glasses registration on real Gen 2; microphone and LED grid on the Atech board</li>
+          <li>Real Gen 2 glasses: self-test, a walk with 30 frames</li>
+          <li>Atech board: knob ritual, taps, motor, a Live talk</li>
         </ul></div>
       <div style="background:var(--honey-soft)"><h4 style="color:var(--honey)">Simulated</h4>
         <ul class="clean honey">
           <li>Every person’s record, including Aino’s</li>
           <li>The calibration courses</li>
-          <li>The robot’s parts, as software twins that speak the same messages</li>
+          <li>The robot’s newest flow, on software twins that speak the same messages</li>
         </ul></div>
       <div style="background:var(--clay-soft)"><h4 style="color:var(--clay)">Pending physical tests</h4>
         <ul class="clean">
-          <li>A walk on the real glasses</li>
-          <li>The ritual end to end on the physical robot</li>
+          <li>Kaiku’s replies heard in the real glasses</li>
+          <li>The robot’s records on the dashboard; its own microphone</li>
           <li>Real microphones and Apple Health</li>
           <li>Testers beyond the project lead</li>
         </ul></div>
@@ -452,8 +453,8 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
       <tr><td>Gemini API</td><td>Gemini Live is Kaiku’s one voice on phone, Mac, glasses and robot, with tool calls that move a ritual and a walk. Short-lived tokens, TTS, embeddings.</td><td>Real Live call with injected speech and a picture; the Talk tab in the app</td></tr>
       <tr><td>Gemma</td><td>Gemma 4 chooses evidence and words the review; code validates each finding and renders every number.</td><td>Dashboard → Kaiku’s review → Agent trace (10 steps)</td></tr>
       <tr><td>Modal</td><td>API, dashboard and database served from one deployed app; scheduled analytics; a parallel simulation of synthetic people; a scale-to-zero GPU class for Gemma.</td><td>The demo URL on slide 1 · one cold Gemma call on a Modal H100 (default stays the hosted API)</td></tr>
-      <tr><td>Meta<small>AI glasses</small></td><td>Audio-first walk companion through the Device Access Toolkit; opt-in seeing; the walk survives the glasses coming off.</td><td>Registration on real Gen 2 · You → Glasses check self-test · real walk pending</td></tr>
-      <tr><td>Atech<small>Real World</small></td><td>The robot’s head on one 14-port board with eight modules, linked to the hub over MQTT.</td><td>firmware/atech-head compiles; microphone and LED grid on the board · live loop pending</td></tr>
+      <tr><td>Meta<small>AI glasses</small></td><td>Audio-first walk companion through the Device Access Toolkit; opt-in seeing; the walk survives the glasses coming off.</td><td>On real Gen 2: registration, the Glasses check self-test, a walk that sent 30 frames to Gemini Live</td></tr>
+      <tr><td>Atech<small>Real World</small></td><td>The robot’s head on one 14-port board with five modules (ear dial, orientation sensor, neck motor, speaker, microphone), on MQTT with the hub.</td><td>On the board: the ritual by knob, taps, motor over MQTT, a Gemini Live talk through its speaker with a phone as microphone</td></tr>
     </table>
   </div>
   <div class="foot"><div class="brand"><img src="assets/mascot.svg" alt="">Kaiku · research prototype</div><div class="n">10</div></div>
@@ -467,7 +468,7 @@ table.tracks{ width:100%; border-collapse:separate; border-spacing:0; background
     <div class="grid2">
       <div class="card"><h3><span class="dot" style="background:var(--crisis)"></span>A crisis path without AI</h3>
         <ul class="clean">
-          <li>A fixed phrase list, PHQ-9 item 9, or a long press on the robot’s button.</li>
+          <li>A fixed phrase list or PHQ-9 item 9. On the robot the conversation, microphone and speaker close at once.</li>
           <li>Shows a pre-written message with the MIELI Crisis Helpline 09 2525 0111 and 112; sets “Safety” on the dashboard.</li>
           <li><b>It contacts nobody yet,</b> and it will miss indirect language. Kaiku is not a crisis service.</li>
         </ul></div>

@@ -21,7 +21,7 @@ final class VisionLookTests: XCTestCase {
         let sent = try JSONDecoder().decode(VisionLookRules.self, from: Data(#"{"frames":2,"settle_s":4,"min_interval_s":9,"max_edge_px":200,"jpeg_quality":0.5}"#.utf8))
         XCTAssertEqual(sent.frames, 2); XCTAssertEqual(sent.settle_s, 4); XCTAssertEqual(sent.max_edge_px, 200)
         let wild = try JSONDecoder().decode(VisionLookRules.self, from: Data(#"{"frames":500,"min_interval_s":0,"max_edge_px":9000,"jpeg_quality":1}"#.utf8))
-        XCTAssertEqual(wild.frames, 8); XCTAssertEqual(wild.min_interval_s, 1); XCTAssertEqual(wild.max_edge_px, 768)
+        XCTAssertEqual(wild.frames, 3); XCTAssertEqual(wild.min_interval_s, 1); XCTAssertEqual(wild.max_edge_px, 768)
         XCTAssertEqual(wild.jpeg_quality, 0.9)
         XCTAssertEqual(try JSONDecoder().decode(VisionLookRules.self, from: Data("{}".utf8)), .standard)
     }

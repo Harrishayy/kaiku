@@ -10,7 +10,7 @@ ROLE ?= all
 
 .PHONY: help
 help: ## list targets
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------- setup
 .PHONY: bootstrap setup env
@@ -94,7 +94,7 @@ drum-music: ## REAL Lyria RealTime (cents): a whole ritual with simulated taps; 
 .PHONY: tap-back head-voice
 tap-back: ## Tap it back through the head twin's speaker, no sound device: REAL Lyria (cents), or make tap-back BEAT=1 (the hub's own beat, no model, no cost) [ARGS="--broker-port N"]
 	$(RUN) python tools/drum_music_check.py --tap-back $(if $(BEAT),--beat,) $(ARGS)
-head-voice: ## REAL Gemini Live (cents): one spoken exchange through the head twin's microphone and speaker, no sound device [ARGS="--question q.wav"]; FOLLOW=1 = a head that runs its own ritual: her press, the question, then Tap it back in the same ritual
+head-voice: ## REAL Gemini Live (cents): one spoken exchange through the head twin's microphone and speaker, no sound device [ARGS="--question q.wav"]; FOLLOW=1 = a head that runs its own steps (D66): her press opens a talk, the question is answered, she asks for the check-in, then Tap it back in it
 	$(RUN) python tools/head_voice_check.py $(if $(FOLLOW),--follow,) $(ARGS)
 test: ## all Python tests (+ web typecheck if installed)
 	$(RUN) pytest
@@ -107,7 +107,7 @@ doctor: ## environment + live system health report
 	$(RUN) python tools/doctor.py
 bench-list: ## list the electronics bench tests (one per part; tools/bench.py)
 	$(RUN) python tools/bench.py --list
-robot-bench: ## the REAL robot's body, one checked step at a time over the broker (no model, no microphone): make robot-bench [ARGS="parts ring turn buzzer camera face-signs | arm | --with-sound turn-waits-for-speaker | --synthetic-face follow | --json"]; see demo/robot-test-plan.md
+robot-bench: ## the REAL robot's body, one checked step at a time over the broker (no model, no microphone): make robot-bench [ARGS="parts turn buzzer camera face-signs | arm | --with-sound turn-waits-for-speaker | --synthetic-face follow | --json"]; see demo/robot-test-plan.md
 	$(RUN) python tools/robot_bench.py $(ARGS)
 bench: ## test ONE part alone: make bench PART=firmware/unoq-sensors/bench/buzzer [FROM=serial:/dev/tty.x | - | mqtt | file.log]
 	$(RUN) $(if $(findstring serial:,$(FROM)),--with pyserial,) python tools/bench.py $(PART) $(if $(FROM),--from '$(FROM)',)
@@ -127,16 +127,18 @@ atech-setup: ## Atech SDK venv + pinned ESP32 toolchain, all inside firmware/ate
 	PLATFORMIO_CORE_DIR=$(CURDIR)/$(ATECH_VENV)/platformio $(ATECH_VENV)/bin/pio pkg install -g -p "platformio/espressif32@6.9.0"
 	@echo "done: source $(ATECH_VENV)/bin/activate, then atech build . in a bench/<part> folder (first build compiles the core)"
 .PHONY: atech-standalone atech-mqtt
+# macOS as written: the port default is a /dev/cu.usbmodem* name (override: ATECH_PORT=/dev/ttyACM0) and the FLASH=1
+# steps use BSD `sed -i ''`, which GNU sed on Linux rejects (firmware/atech-head/AGENTS.md, "Run standalone").
 ATECH_PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*))
-atech-standalone: ## ACTIVE head firmware (USB-serial ritual, D44): build; FLASH=1 also uploads over USB data
+atech-standalone: ## ACTIVE head firmware (what the robot runs, D44/D66): build; FLASH=1 also uploads over USB data (macOS; ATECH_PORT=<port> to override)
 	firmware/atech-head/standalone/build.sh $(if $(FLASH),upload $(ATECH_PORT))
-atech-mqtt: ## MQTT/contract head firmware (next stage, D44): build; FLASH=1 also uploads over USB data
+atech-mqtt: ## earlier hub-driven head firmware (assumes a display, no orientation-sensor taps; NOT what the robot runs, D44/D55): build; FLASH=1 also uploads over USB data (macOS)
 	@set -e; . $(ATECH_VENV)/bin/activate; cd firmware/atech-head; atech build . > /dev/null; \
 	if [ -n "$(FLASH)" ]; then sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini; \
 	  python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text(); p.write_text(s if "--no-stub" in s else s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'; \
 	  pio run -d build -t upload --upload-port $(ATECH_PORT); else echo "built firmware/atech-head (FLASH=1 to upload)"; fi
 .PHONY: atech-bench head-audio
-atech-bench: ## build ONE Atech bench part: make atech-bench PART=firmware/atech-head/bench/speaker_pcm [FLASH=1 uploads like the firmwares]
+atech-bench: ## build ONE Atech bench part: make atech-bench PART=firmware/atech-head/bench/speaker_pcm [FLASH=1 uploads like the firmwares, macOS]
 	@set -e; . $(ATECH_VENV)/bin/activate; cd $(PART); atech build . > /dev/null; \
 	if [ -n "$(FLASH)" ]; then sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini; \
 	  python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text(); p.write_text(s if "--no-stub" in s else s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'; \

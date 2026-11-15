@@ -17,9 +17,6 @@ export function Chip({ tone = 'neutral', children, title }: { tone?: ChipTone; c
   );
 }
 
-export const toneChip: Record<Tone, ChipTone> = { better: 'ok', worse: 'warn', similar: 'neutral', unknown: 'ins' };
-
-
 /** Shape cue + words for a comparison: filled = as usual or better, ring = change from usual, dashed = not enough data. */
 export function ToneMark({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (

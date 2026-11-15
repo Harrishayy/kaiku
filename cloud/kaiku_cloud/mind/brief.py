@@ -15,6 +15,7 @@ from typing import Any
 
 from kaiku_contracts import wording
 from kaiku_contracts.api import BriefSection, ClinicianBrief, Consensus
+from kaiku_contracts.config import get
 from kaiku_contracts.sources import SOURCE_LABELS
 
 from ..llm import gemini, ledger
@@ -93,7 +94,8 @@ def generate(store: Store, home_id: str, c: Consensus, *, now: datetime | None =
     sections, by, model = template(c, labels), "template", None
     if use_model and gemini.available() and router.argon_left(store, home_id, now):
         try:
-            raw = gen(json.dumps(facts(c), indent=1), tier="flagship", system=SYSTEM, schema=SCHEMA, timeout_s=60,
+            raw = gen(json.dumps(facts(c), indent=1), tier="flagship", system=SYSTEM, schema=SCHEMA,
+                      timeout_s=float(get("cloud", "brief_timeout_s", 60)),
                       task="weekly_brief", home_id=home_id, route="argon")
             sections, by, model = validate(raw, allowed), "model", gemini.model_for("flagship")
         except (LlmUnavailable, ValueError, json.JSONDecodeError, AttributeError):

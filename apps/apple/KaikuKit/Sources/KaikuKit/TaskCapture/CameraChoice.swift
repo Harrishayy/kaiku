@@ -24,14 +24,18 @@ import SwiftUI
 
     private(set) var agreedWording: Int { didSet { defaults.set(agreedWording, forKey: Self.wordingKey) } }
     private(set) var sent: [Sent] { didSet { defaults.set(try? JSONEncoder().encode(sent), forKey: Self.sentKey) } }
+    /// The local day on which this device last sent pictures for the one look (D65), for the day's receipt. A day
+    /// and nothing else: no picture, no note, no count.
+    private(set) var lookDay: String? { didSet { defaults.set(lookDay, forKey: Self.lookKey) } }
     @ObservationIgnored private let defaults: UserDefaults
-    nonisolated static let wordingKey = "kaiku.camera.wording", sentKey = "kaiku.camera.sent"
+    nonisolated static let wordingKey = "kaiku.camera.wording", sentKey = "kaiku.camera.sent", lookKey = "kaiku.camera.look"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
         agreedWording = defaults.integer(forKey: Self.wordingKey)
         let saved = defaults.data(forKey: Self.sentKey).flatMap { try? JSONDecoder().decode([Sent].self, from: $0) } ?? []
         sent = saved.filter { $0.day == AppModel.dayKey(Date()) }   // a receipt is for today
+        lookDay = defaults.string(forKey: Self.lookKey)
     }
 
     /// The person turned the choice on (or kept it on) with the whole current wording in front of them.
@@ -44,8 +48,16 @@ import SwiftUI
         sent = sent.filter { $0.day == day && $0.id != id } + [Sent(id: id, ref: ref, sim: sim, day: day)]
     }
 
+    /// Pictures of a check-in went out for the one look today (D65).
+    func noteLook(now: Date = Date()) { lookDay = AppModel.dayKey(now) }
+
+    func lookedToday(_ now: Date = Date()) -> Bool { lookDay == AppModel.dayKey(now) }
+
     /// Another home or service: what was sent belongs to the previous one.
-    func clearSent() { if !sent.isEmpty { sent = [] } }
+    func clearSent() {
+        if !sent.isEmpty { sent = [] }
+        if lookDay != nil { lookDay = nil }
+    }
 }
 
 extension FaceSigns {

@@ -46,9 +46,12 @@ final class MacCompanion {
         tick()
         DailyInvitation.schedule(app: app)
         HomeUpdates.shared.start(app: app)   // the home stream: what is agreed or done elsewhere shows here at once
+        #if DEBUG
+        // `-kaikuSimulateLate YES`: a debug build only, because it posts a `sim: true` observation.
         if UserDefaults.standard.bool(forKey: "kaikuSimulateLate") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.simulateLateEvening() }
         }
+        #endif
     }
 
     /// Seconds since the last keyboard/mouse/trackpad input (the system idle counter; no event content).

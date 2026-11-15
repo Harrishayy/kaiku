@@ -374,7 +374,8 @@ function HeaderFacts({
   );
 }
 
-/** Credentials stay in this browser tab, never in links or source files. */
+/** The care-team token stays in this browser tab (sessionStorage), never in links or source files. (The admin
+ *  token of the team pages is different: localStorage, and `/tune/?admin=` takes it once from the address.) */
 function CareAccess() {
   const [value, setValue] = useState('');
   const [status, setStatus] = useState('');

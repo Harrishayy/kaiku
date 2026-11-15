@@ -52,7 +52,8 @@ except Exception:  # pragma: no cover
     sd = None
 
 IN_RATE, OUT_RATE, CHUNK = 16000, 24000, 1600
-BUDGET_LINE = "Our voice connection is unavailable. Your check-in can continue on screen."
+# The robot has no screen (D54): what can go on without the voice is in the app on the phone.
+BUDGET_LINE = "Our voice connection is unavailable. Your check-in can continue in the app on your phone."
 # A line asked for while Kaiku still speaks waits for those words: to the Live server a new request is an
 # interruption, which cuts the reply being played. Seen with the real model: a line sent right at the end of the
 # one before lost that one's last syllables, and a line sent just after another never came out at all.

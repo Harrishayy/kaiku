@@ -13,6 +13,7 @@ from typing import Any
 
 from kaiku_contracts.api import Explanation
 from kaiku_contracts.config import get
+from kaiku_contracts.jlog import get_logger
 
 from ..settings import Settings
 from . import gemini, gemma, gemma_hosted, gemma_vllm, ledger
@@ -25,7 +26,17 @@ PROMPT = (Path(__file__).parent / "prompts" / "explain.md").read_text()
 # "gemma" = the provider selected in config [gemma].provider (llm/gemma.py); the two explicit keys force one.
 BACKENDS = {"gemma": gemma.generate, "gemma_hosted": gemma_hosted.generate, "gemma_modal": gemma_vllm.generate,
             "gemini": gemini.generate_fast}
+# Which [models] key names the model behind a backend (shown in `Explanation.model` and the ledger). A backend
+# registered only in BACKENDS is named by its own key.
 MODEL_KEY = {"gemma_hosted": "gemma_hosted", "gemma_modal": "gemma_hf_repo", "gemini": "gemini_fast"}
+_log = get_logger("cloud.explain")
+
+
+def _model_of(backend: str) -> str:
+    if backend == "gemma":
+        return gemma.model_name() or backend
+    key = MODEL_KEY.get(backend)
+    return (str(get("models", key, "")) if key else "") or backend
 # KAIKU_LLM=auto: Gemma first (open model), then Gemini fast, then the deterministic template. gemma_modal is not in
 # the auto chain on purpose — a cold GPU start takes minutes; select it explicitly when it's warm for a demo.
 CHAINS = {"auto": ("gemma", "gemini")}
@@ -62,13 +73,16 @@ def _from_llm(raw: str, ctx: dict[str, Any], backend: str) -> Explanation:
     sources.sort(key=lambda v: order.index(v["source"]))
     ex = template_explanation({**ctx, "sources": sources})
     ex.by = "gemma"
-    ex.model = (gemma.model_name() if backend == "gemma" else str(get("models", MODEL_KEY[backend], ""))) or None
+    ex.model = _model_of(backend)
     ex.generated_at = datetime.now(UTC)
+    if contains_banned(ex.model_dump_json()):  # the same wording check as the template path; fails -> template
+        raise ValueError("banned wording")
     return ex
 
 
 def make_explanation(ctx: dict[str, Any], settings: Settings | None = None, log: Any = None) -> Explanation:
     choice = (settings or Settings()).llm
+    log = log or _log
     prompt = PROMPT + json.dumps(ctx, default=str, indent=1)
     for backend in CHAINS.get(choice, (choice,)):
         gen = BACKENDS.get(backend)
@@ -80,20 +94,25 @@ def make_explanation(ctx: dict[str, Any], settings: Settings | None = None, log:
                 ledger.record(result.model or backend, "explain.route", ok=True, route=backend,
                               home_id=ctx.get("home_id"))
                 return result
-            except LlmUnavailable as e:
-                if log:
-                    log.warning("llm_unavailable", str(e))
+            except LlmUnavailable as e:  # the type only: a provider's message can carry the request
+                log.warning("llm_unavailable", f"{backend}: {type(e.__cause__ or e).__name__}")
                 break
             except Exception as e:  # invalid JSON / schema / banned words → retry once, then next backend
-                ledger.record(str(get("models", MODEL_KEY.get(backend, ""), backend)), "explain.validation", ok=False,
+                ledger.record(_model_of(backend), "explain.validation", ok=False,
                               route=type(e).__name__, home_id=ctx.get("home_id"))
                 prompt += ("\nYour previous response failed validation. Return one complete JSON object only, "
                            "with only source_order and focus_metrics, selecting provided IDs only. Do not include prose, "
                            "reasoning, new facts or markdown.")
-                if log:
-                    log.warning("llm_invalid_explanation", f"{backend} attempt {attempt}: {type(e).__name__}")
+                log.warning("llm_invalid_explanation", f"{backend} attempt {attempt}: {type(e).__name__}")
     ex = template_explanation(ctx)
     if choice != "template":  # an LLM was selected but none answered: count the fallback
         ledger.record("template", "explain", ok=True, fallback=True, route="fallback", home_id=ctx.get("home_id"))
-    assert contains_banned(ex.model_dump_json()) is None
+    bad = contains_banned(ex.model_dump_json())
+    if bad:
+        # The fixed sentences are tested; the variable parts are the evidence summaries (criteria) and the name.
+        # Leave the evidence summaries out and say so in the log rather than fail the request.
+        log.error("explanation_banned_wording", "template", home=ctx.get("home_id"))
+        ex = template_explanation({**ctx, "sources": [{**v, "evidence": []} for v in ctx["sources"]]})
+        if contains_banned(ex.model_dump_json()):
+            log.error("explanation_banned_wording", "template without evidence", home=ctx.get("home_id"))
     return ex

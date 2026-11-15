@@ -39,7 +39,7 @@ const KEY_ADMIN = 'kaiku.admin';
 
 /**
  * Admin token for /tune/ (`?admin=<KAIKU_ADMIN_TOKEN>` once, or pasted on the page). Stored in localStorage,
- * stripped from the URL, sent as Bearer only to /v1/admin/*. `undefined` until mounted; `null` = none.
+ * stripped from the URL, sent as Bearer only to this service (admin and debug routes; record routes when no care-team token is set). `undefined` until mounted; `null` = none.
  */
 export function useAdminToken(): { token: string | null | undefined; set: (t: string | null) => void } {
   const [token, setToken] = useState<string | null | undefined>(undefined);

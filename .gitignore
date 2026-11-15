@@ -41,6 +41,11 @@ hardware/cad/out/
 # demo screen recordings (apps/apple/scripts/record_app_demo.sh)
 demo/recordings/
 
+# video scenes and voice takes for the submission video (large; kept locally, not published)
+demo/refined-scenes/
+demo/refined-scenes.zip
+demo/demo_site_recording.jpeg
+
 # challenge briefs (contain venue credentials and credit codes; keep local only)
 docs/tracks/*.pdf
 # LaTeX build files (hardware/assembly_guide: keep .tex, figures/ and the PDF)

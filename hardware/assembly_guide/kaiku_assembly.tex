@@ -27,7 +27,8 @@
 
 \title{Kaiku desk robot --- assembly guide (MVP)}
 \author{Junction 2026 · hardware (owner A)}
-\date{14 November 2026 · design: \file{hardware/cad/} (D30, D31, D39)}
+\date{14 November 2026, text revised 15 November for the robot as built · design: \file{hardware/cad/} (D30, D31,
+D39, D54, D55)}
 
 \begin{document}
 \maketitle
@@ -41,13 +42,23 @@ wins: pins and cables in \file{hardware/wiring.md}, sizes in \file{hardware/dime
 
 \begin{figure}[h]\centering
 \includegraphics[width=0.62\linewidth]{figures/asm_0_exploded.jpg}
-\caption{Exploded view: head, turntable, pan base with the pan motor, lid with the finger cradle, cardboard body.}
+\caption{Exploded view of the design: head, turntable, pan base with the pan motor, lid with the finger cradle,
+cardboard body.}
 \end{figure}
 
 \section{Before you start}
 
-\paragraph{This build (D39).} One motor (pan). No hall sensor and no magnet: the head's \textbf{position at power-on is
-``front''}, so always face it forward before plugging in. No light sensor: the camera measures room light. The
+\begin{warn}
+\textbf{The robot as built (D39, D54, D55).} The figures were rendered from the design before these parts were
+taken off, so they still draw them. \textbf{Not fitted:} the Color Display (eyes), the lid Button, the two chest LED
+grids, the KY-031 knock sensor, the KY-039 pulse sensor and its KY-053 converter, the KY-035 hall sensor and the
+KY-054 light sensor. The shell keeps a place for each; leave it empty. \textbf{Fitted:} on the Atech board the
+Speaker, the Knob (the ear dial; its press is the only button), a neopixel light, the Microphone, the Orientation
+Sensor (it feels the taps) and the pan motor; on the UNO Q the USB camera and the Modulino Buzzer.
+\end{warn}
+
+\paragraph{This build.} One motor (pan). No hall sensor and no magnet: there is no homing, so always \textbf{face the
+head forward before plugging in}. No light sensor: the camera measures room light. The
 \file{purr_sleeve}, \file{purr_weight} and \file{window_pane} prints are not needed.
 
 \paragraph{Printed parts.}
@@ -65,10 +76,10 @@ Part (\file{.stl}) & Plate & Used in\\
 \end{tabularx}
 \end{center}
 
-\paragraph{Bought-in parts.} Atech board with its USB-C module, Color Display, Knob, Button, Speaker, Microphone,
-2 LED grids, 1 DC motor; Arduino UNO Q, USB camera (TPX00246), Modulino Buzzer, powered USB-C PD hub and the Arduino
-power supply; KY-031, KY-039, KY-053; Atech cables and about 15 male--female jumpers, 30\,cm for the ones that go up
-the neck.
+\paragraph{Bought-in parts.} Atech board with its USB-C module and its own USB-C charger, Knob, Speaker, Microphone,
+Orientation Sensor, a neopixel light, 1 DC motor; Arduino UNO Q, USB camera (TPX00246), Modulino Buzzer with its
+Qwiic cable, powered USB-C PD hub and the Arduino power supply; Atech cables, long enough for the ones that go up
+the neck. No KY parts and no jumpers are needed.
 
 \paragraph{Tools and consumables.} Hot-glue gun, superglue, double-sided foam tape, craft knife, steel ruler, flush
 cutters, small pliers, 240-grit sandpaper, calipers; corrugated cardboard (about 500 $\times$ 300\,mm, 3--4\,mm
@@ -88,8 +99,6 @@ keep it. The \file{pan_motor_mount} must be an \textbf{open tube at both ends}.
 small D-shaped hole is the old version: reprint \file{knob_cap.stl}.
 \item The camera rests on its folded clip; check the clip folds flat under the body (about 64 $\times$ 37 $\times$
 22\,mm).
-\item The Color Display's screen should sit in the middle of the module's face (it did on the bench, within
-$\pm$0.3\,mm).
 \end{itemize}
 
 \section{Neck}
@@ -141,13 +150,13 @@ all round (it carries the motor's torque).
 
 \section{Head}
 
-\step{asm_6_display}{Step 6 -- Color Display (the eyes)}{
+\step{asm_6_display}{Step 6 -- the display frame (left empty in this build)}{
 \begin{enumerate}[leftmargin=1.2em]
-\item Put the display into the frame behind the small window, \textbf{screen forward and connector edge up}: the
-frame is open at the top for the cable plugs.
-\item Check from the front that the screen fills the window, then tape the module's edges (never over the screen).
+\item The figure shows a Color Display in the frame behind the small window. \textbf{It is not fitted}: the display
+was removed on 14 November, and the robot has no eyes.
+\item Leave the frame and the 28 $\times$ 13\,mm window empty, or cover the window from inside with tape.
 \end{enumerate}
-\textbf{Check:} screen centred in the 28 $\times$ 13\,mm window; the plug edge has $\approx$12\,mm free above.}
+\textbf{Check:} nothing to check. (With a display: screen forward, connector edge up, taped at its edges.)}
 
 \step{asm_7_camera}{Step 7 -- camera}{
 \begin{enumerate}[leftmargin=1.2em]
@@ -171,19 +180,21 @@ frame is open at the top for the cable plugs.
 \item Put the Microphone module against the right inner wall, the face with its sound hole against the small holes.
 \item Glue the \file{ear_right} grille on the outside, holes lined up.
 \end{enumerate}
-\textbf{Check:} nothing covers the holes from inside. (The mic is fitted but unused in v1.)}
+\textbf{Check:} nothing covers the holes from inside. (On the robot this microphone has returned only silence so
+far; a phone or Mac beside the robot stands in for it, D56.)}
 
-\step{asm_10_knock_antenna}{Step 10 -- knock sensor and antenna}{
+\step{asm_10_knock_antenna}{Step 10 -- orientation sensor and antenna}{
 \begin{enumerate}[leftmargin=1.2em]
-\item Stick the KY-031 flat under the head top, behind the display, on foam tape (taps reach the spring through it).
-\item Connect three 30\,cm jumpers to S, + and $-$.
+\item The figure shows a KY-031 knock sensor under the head top. \textbf{It is not fitted} (D55). In its place, fix
+the Atech \textbf{Orientation Sensor} module rigidly inside the head with foam tape or glue: it feels the taps.
+\item Plug its Atech cable in (port 13 on the board).
 \item Push a 3\,mm skewer about 50\,mm long into the antenna socket on top (glue) and fit the \file{antenna_ball}.
 \end{enumerate}
-\textbf{Check:} a firm tap on the head top clicks the sensor.}
+\textbf{Check:} the module does not rattle when you tap the head top.}
 
 \step{asm_11_back_lid}{Step 11 -- cables, then the back lid}{
 \begin{enumerate}[leftmargin=1.2em]
-\item Plug in every head cable: display $\times$2, knob $\times$2, mic $\times$2, the three KY-031 jumpers, and the
+\item Plug in every head cable: knob $\times$2, mic $\times$2, orientation sensor $\times$1, and the
 camera USB. Route them all down through the floor slot.
 \item Fit the \file{head_back}: its lip goes inside the opening, and its two ribs push the camera forward against
 the lip. Tape it if it's loose.
@@ -195,7 +206,7 @@ the lip. Tape it if it's loose.
 \item Glue the \file{face_bezel} on the front, centred on the ring and the window.
 \item Glue the two cheeks below and beside the ring.
 \end{enumerate}
-\textbf{Check:} the bezel doesn't cover the ring light or the screen.}
+\textbf{Check:} the bezel doesn't cover the camera's ring light.}
 
 \step{asm_13_head_on_neck}{Step 13 -- head onto the turntable}{
 \begin{enumerate}[leftmargin=1.2em]
@@ -218,12 +229,13 @@ from outside; 1:1 templates: \file{uv run --script hardware/cad/cardboard.py --t
 Panel & Size (mm) & Cut-outs\\
 \midrule
 Bottom & 104 $\times$ 136 & none\\
-Front & 104 $\times$ 92 & chest window 52 $\times$ 30 at (52, 43); tracing paper behind it\\
+Front & 104 $\times$ 92 & chest window 52 $\times$ 30 at (52, 43), tracing paper behind it (nothing lights it in
+this build: no LED grids)\\
 Back & 104 $\times$ 92 & cable slot 72 $\times$ 20 at (62, 11); Atech USB-C 18 $\times$ 14 at (84, 55)\\
 Left & 128 $\times$ 92 & none (the Atech board is taped inside)\\
 Right & 128 $\times$ 92 & speaker grille: 7 $\times$ 5 holes \O3, 6\,mm apart, the first at (60, 8)\\
-Lid & 104 $\times$ 136 & pan hole 29 $\times$ 76 at (52, 79); button 23.4 square at (20, 114); pulse \O9 at
-(52, 20); lift hole \O16 at (84, 120)\\
+Lid & 104 $\times$ 136 & pan hole 29 $\times$ 76 at (52, 79); lift hole \O16 at (84, 120). Not needed in this
+build: button 23.4 square at (20, 114), pulse \O9 at (52, 20)\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -236,23 +248,24 @@ the lid, 4\,mm in from its edges, keep it in place but removable.
 (lined up with the back hole).
 \item \textbf{UNO Q} flat on the floor at the rear, USB-C facing the cable slot.
 \item \textbf{Speaker} against the right wall behind the grille; \textbf{Modulino Buzzer} on the same wall above it.
-\item \textbf{KY-053} on the floor in front of the UNO Q; \textbf{LED grids} behind the chest window, lit face
-forward.
+\item The figure shows a KY-053 on the floor and LED grids behind the chest window. \textbf{Neither is fitted}
+(D54).
 \item Wire everything as in \file{hardware/wiring.md} (summary in \cref{sec:wiring}).
 \end{enumerate}
 \textbf{Check:} nothing touches the motor's swing area under the lid.}
 
-\step{asm_15_lid_parts}{Step 15 -- lid: pulse sensor and button}{
+\step{asm_15_lid_parts}{Step 15 -- lid: nothing to fit in this build}{
 \begin{enumerate}[leftmargin=1.2em]
-\item Tape the KY-039 under the \O9 hole, LED and sensor facing up.
-\item Glue the \file{finger_cradle} on top, its hole over the \O9 hole, groove front-to-back.
-\item Drop the Button module into its square hole.
+\item The figure shows a KY-039 pulse sensor under a finger cradle and a Button module. \textbf{Neither is fitted}
+(D54): the robot measures no pulse at the finger, and the ear's press is its only button.
+\item The \file{finger_cradle} is cosmetic now; glue it on or leave it off. Skip the \O9 hole and the square hole
+if the lid is not cut yet.
 \end{enumerate}
-\textbf{Check:} a fingertip in the groove covers the sensor and blocks room light.}
+\textbf{Check:} nothing to check.}
 
 \begin{figure}[h]\centering
 \includegraphics[width=0.55\linewidth]{figures/asm_16_complete.jpg}
-\caption{The finished MVP.}
+\caption{The finished MVP, as designed. The robot as built has no display, button, LED grids or KY sensors.}
 \end{figure}
 
 \section{Wiring summary}
@@ -266,26 +279,26 @@ From & To & Note\\
 \midrule
 Arduino supply & powered hub, PD input & the hub's fixed cable goes to the UNO Q\\
 USB camera & a \emph{data} USB-A port on the hub & one port on our hub only charges\\
-KY-031 S / + / $-$ & UNO Q D2 / 3.3V / GND & three 30\,cm jumpers up the neck\\
-KY-053 SDA / SCL / VDD / GND & UNO Q SDA / SCL (by AREF) / 3.3V / GND & not A4/A5\\
-KY-039 S / + / $-$ & KY-053 A0 / 3.3V / GND & \\
 Modulino Buzzer & UNO Q Qwiic & \texttt{Wire1}, address 0x1E\\
-Speaker / Display / Knob & Atech ports 1--2 / 3--4 / 5--6 & \\
-Button / Mic & Atech ports 7 / 9--10 & \\
-LED grids left / right & Atech ports 11 / 14 & port 11 stayed dark on the bench\\
-Pan motor & Atech port 13 & \\
-Atech power & Atech port 8 (USB-C module) & a data cable for flashing\\
+Speaker / Knob & Atech ports 1--2 / 5--6 & \\
+Neopixel light / Mic & Atech ports 7 / 9--10 & \\
+Orientation sensor & Atech port 13 & in the head; the only tap source\\
+Pan motor & Atech port 14 & not 11: that port's line never drove the motor\\
+Atech power & Atech port 8 (USB-C module) & its own charger; a data cable for flashing\\
+Ports 3--4 and 11 & free & no display, no LED grids\\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 \section{Before first power-on}
 \begin{enumerate}[leftmargin=1.2em]
-\item \textbf{Face the head forward.} That position becomes 0\textdegree; the firmware limits the head to
-$\pm$80\textdegree{} from it.
+\item \textbf{Face the head forward.} There is no homing: the head has no position sensor and the firmware turns it
+in short timed nudges.
 \item Turn the head by hand through its range once more: no cable pulls.
-\item Check every KY ``+'' goes to 3.3\,V, and that no bare jumper end touches anything.
-\item Power the hub, then wait for the UNO Q's start-up animation to finish before plugging in the Atech board.
+\item Check that nothing but the Qwiic buzzer is wired to the UNO Q's headers (3.3\,V only), and that no bare
+cable end touches anything.
+\item Power the hub, wait for the UNO Q's start-up animation to finish, then plug the Atech board into its own
+charger (on the hub's supply the motor never turned).
 \item Run the bench tests part by part (\file{make bench-list}; \file{firmware/*/AGENTS.md}), starting with the pan
 motor: it must turn the head both ways smoothly.
 \end{enumerate}

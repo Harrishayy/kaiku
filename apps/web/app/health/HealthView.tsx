@@ -74,7 +74,7 @@ export function HealthView() {
             const ageS = (now - Date.parse(rep.reported_at)) / 1000;
             const stale = !(ageS < STALE_S);
             return (
-              <div key={homeId} style={{ marginBottom: 18 }}>
+              <div key={homeId} style={{ marginBottom: 'var(--k-space-4)' }}>
                 <h3>
                   <code>{homeId}</code>{' '}
                   <span className="muted small">

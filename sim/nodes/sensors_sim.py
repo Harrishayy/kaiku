@@ -11,7 +11,12 @@ Pulse fixtures (`ppg_fixture`, all explicit bench modes, never default demo data
   noisy   no pulse, just noise                            flicker  the D39 artefact: a metronomic ~117 bpm ripple
   camera  the backup: ~15 Hz at a wobbling measured rate, one batch a second, quality 0.6
   auto    flat KY-039 for `[unoq] ppg_fallback_s`, then the camera (the firmware's auto fallback)
-Health details mirror the firmware: camera_ok, mcu_ok, mcu_fw, ppg (active source), at_home."""
+Health details mirror the firmware: camera_ok, mcu_ok, mcu_fw, ppg (active source), at_home.
+
+The camera switch (`cmd.sensors {camera_enable}`) is the firmware's (kaiku_unoq/camera.py): on when the node starts;
+switched off, the device is closed, so there is no face box, no distance, no camera light sample, no camera pulse
+and no face-signs window until it is switched on again (`camera_ok` stays true: a camera is plugged in). A
+face-signs window asked for while it is off starts when it comes back on, as on the board."""
 
 from __future__ import annotations
 
@@ -48,7 +53,8 @@ class SensorsSim:
         self._hr_rest = hr_bpm
         self._breathe_t0: float | None = None
         self.ppg_on = False
-        self.camera = False
+        self.camera = True  # cmd.sensors {camera_enable}; the firmware starts with its camera on (camera.py)
+        self._signs_wanted: float | None = None  # a face-signs window asked for while the camera was off
         self.faces = faces
         self.light, self.hall = light, hall
         self.ppg_mode: str | None = ("clean" if ppg_fixture is True else ppg_fixture) or None
@@ -93,7 +99,7 @@ class SensorsSim:
 
     def face_boxes(self, cm: float, now: float) -> list[dict]:
         """RawFace payloads for what the camera would see at this distance (empty when nobody is close)."""
-        if not self.faces or self.face_hidden or not self.camera_ok or cm >= FACE_CM:
+        if not self.faces or self.face_hidden or not self.camera_ok or not self.camera or cm >= FACE_CM:
             return []
         closeness = max(0.0, min(1.0, (FACE_CM - cm) / (FACE_CM - NEAR_CM)))
         size = min(0.6, self.k_cm / max(cm, 1.0))  # pinhole: the firmware inverts this for raw.sensors.distance
@@ -119,8 +125,11 @@ class SensorsSim:
             self.ppg_active = ("camera" if self.ppg_mode == "camera" else "ky039") if self.ppg_on else None
         if cmd.camera_enable is not None:
             self.camera = cmd.camera_enable
-        if cmd.face_signs_s is not None and self.camera:
-            asyncio.get_running_loop().create_task(self._photo_time(cmd.face_signs_s))
+        if cmd.face_signs_s is not None and self._signs_wanted is None:
+            self._signs_wanted = cmd.face_signs_s  # counted from the camera's next frame: none while it is closed
+        if self._signs_wanted is not None and self.camera:
+            seconds, self._signs_wanted = self._signs_wanted, None
+            asyncio.get_running_loop().create_task(self._photo_time(seconds))
         self.bus.log.info("cmd_sensors", str(cmd.model_dump(exclude_none=True)))
 
     async def _photo_time(self, seconds: float) -> None:
@@ -167,7 +176,8 @@ class SensorsSim:
                 await self.bus.publish("raw.hub.face", box)
             if not self.faces:  # legacy distance-sensor fixture
                 await self.bus.publish("raw.sensors.distance", {"cm": round(cm, 1)})
-            elif self.camera_ok:  # the build: distance from the biggest face box, far_cm when no face is seen
+            elif self.camera_ok and self.camera:  # the build: distance from the biggest face box, far_cm when no
+                # face is seen; nothing at all while the camera is switched off (the device is closed)
                 size = max((b["size"] for b in boxes), default=0.0)
                 est = min(self.far_cm, self.k_cm / size) if size > 0 else self.far_cm
                 await self.bus.publish("raw.sensors.distance", {"cm": round(est, 1)})
@@ -232,7 +242,7 @@ class SensorsSim:
         if self.hall:
             await self.bus.publish("raw.sensors.hall", {"at_home": True})
         while True:
-            if self.light:
+            if self.light and self.camera:  # the light sample is the camera's mean luminance
                 now = datetime.now()
                 lux = daylight_lux(now.hour + now.minute / 60)
                 raw = max(0, min(255, int(round(lux / self.lux_per_unit))))  # camera: mean luminance 0-255

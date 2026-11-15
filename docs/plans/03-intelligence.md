@@ -1,6 +1,6 @@
-# Plan 03 — The intelligence layer: one mind, many bodies · 🟡 CURRENT (with 02)
+# Plan 03 — The intelligence layer: one mind, many bodies · ⏹ SUPERSEDED BY 08 (what was built is in `docs/progress.md`)
 
-> ⚠️ **Scope guard:** build order and cuts in [`04-mind-depth.md`](04-mind-depth.md#️-scope-guard-team-decision-2026-11-14--overrides-plans-0204-where-they-conflict) override this plan where they conflict.
+> ⚠️ **Scope guard:** build order and cuts in [`04-mind-depth.md`](04-mind-depth.md) override this plan where they conflict.
 
 > Builds on [`01-foundation.md`](01-foundation.md) (✅) and [`02-companion-apps.md`](02-companion-apps.md) (surfaces,
 > character, data points). This plan answers: **how does Kaiku think, talk and decide — on every surface, from every

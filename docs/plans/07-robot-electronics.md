@@ -1,4 +1,4 @@
-# Plan 07 — Robot electronics: Atech board + UNO Q, on the printed robot · 🟡 CURRENT (hardware track)
+# Plan 07 — Robot electronics: Atech board + UNO Q, on the printed robot · ⏹ SUPERSEDED BY 08 (the robot as built: D39, D54, D55 in `docs/decisions.md`)
 
 > Source: [`../kaiku_robot_electronics_specs.md`](../kaiku_robot_electronics_specs.md) (Xavier, reconciled with the
 > printed CAD by Edwin). Decisions: **D31** (hardware, Edwin) and **D32** (software mapping) in

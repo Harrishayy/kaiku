@@ -22,7 +22,7 @@ The chip list comes from `atech_llms.txt` (https://atech.dev/llms.txt).
 | Temp & Humidity | AHT20_datasheet.pdf | cdn-learn.adafruit.com |
 | Air Quality | SCD40_datasheet.pdf | sensirion.com |
 | Distance Sensor | VL53L5CX_datasheet.pdf | cdn.sparkfun.com mirror (ST DS13754) |
-| Knob | EC11_rotary-encoder_datasheet.pdf | tech.alpsalpine.com (EC11E catalog) |
+| Knob | EC11_rotary-encoder_datasheet.pdf | tech.alpsalpine.com (EC11E catalogue) |
 | Speaker | MAX98357A_datasheet.pdf | datasheets.maximintegrated.com |
 | Microphone | ICS-43434_datasheet.pdf | cdn.sparkfun.com mirror (TDK DS-000069 v1.2) |
 | DC Motor | DRV8833_datasheet.pdf | ti.com |

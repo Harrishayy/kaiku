@@ -40,7 +40,6 @@ from kaiku_contracts.jlog import get_logger
 
 from ..llm import ledger
 
-URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
 _MINT_LOCK = threading.Lock()
 START_MIN = 1
 log = get_logger("cloud.live_token")
@@ -142,13 +141,15 @@ def settle(store: Any, session_id: str | None, *, via: str, elapsed_s: float | N
 
 def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str | None = None,
          now: datetime | None = None, transport: httpx.BaseTransport | None = None,
-         timeout_s: float = 8.0, home_id: str | None = None, minutes: float | None = None,
+         timeout_s: float | None = None, home_id: str | None = None, minutes: float | None = None,
          session_id: str | None = None) -> LiveToken | None:
     """`minutes`: how long this token (and its budget reservation) covers; default `[live].session_max_minutes`.
     `session_id` names the conversation on the reservation, which is what lets it be settled afterwards."""
     key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
-    if not key:
+    url = str(get("endpoints", "gemini_auth_tokens", "") or "")
+    if not key or not url:  # no key, or no endpoint configured: no token, the app keeps the microphone closed
         return None
+    timeout_s = float(timeout_s if timeout_s is not None else get("cloud", "live_token_timeout_s", 8))
     now = now or datetime.now(UTC)
     minutes = float(minutes if minutes is not None else get("live", "session_max_minutes", 5))
     expires, start_by = now + timedelta(minutes=minutes), now + timedelta(minutes=START_MIN)
@@ -163,7 +164,7 @@ def mint(model: str, *, live_setup: dict[str, Any] | None = None, api_key: str |
             budget.charge("gemini", model, estimate, task=budget.LIVE_RESERVATION, component="cloud",
                           units=budget.reservation_units(minutes, session_id))
             with httpx.Client(timeout=timeout_s, transport=transport) as c:
-                r = c.post(URL, json=body, headers={"x-goog-api-key": key})
+                r = c.post(url, json=body, headers={"x-goog-api-key": key})
                 r.raise_for_status()
                 token = r.json().get("name")
             if not token:

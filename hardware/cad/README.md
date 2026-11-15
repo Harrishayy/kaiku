@@ -1,6 +1,8 @@
 # CAD
 
-Kaiku's body, built around the hardware we actually have. Everything is generated from one parametric script.
+Kaiku's body. Everything is generated from one parametric script. The shell was drawn on 14 November for the
+layout of that morning; several parts it has a place for were then not fitted (D39, D54, D55). The list below says
+which. What is plugged in: `hardware/wiring.md`.
 Dimensions come from `hardware/dimensions.md`. Assembly and the cardboard build are in `hardware/assembly.md`.
 
 ## Provenance (D8)
@@ -9,6 +11,7 @@ Dimensions come from `hardware/dimensions.md`. Assembly and the cardboard build 
 |---|---|---|---|
 | `kaiku_cad.py` (every printed part) | Gemini 4 Argon, with Edwin | 2026-11-14, during the event | New geometry around the measured hardware. Nothing reused from the pre-event renders. |
 | `render.py`, `slice.py`, `cardboard.py`, `overview.py` | Claude Code, with Edwin | 2026-11-14, during the event | Tooling: renders, Bambu Studio slicing, cardboard template, local overview page. |
+| `assembly_guide.py` | Claude Code, with Edwin | 2026-11-14, during the event | Blender script: the step figures of `../assembly_guide/kaiku_assembly.pdf`, from the same model. The figures still draw the parts that were not fitted. |
 
 The pre-event concept renders mentioned in `docs/plans/01-foundation.md` §8 were not used.
 
@@ -16,11 +19,13 @@ The pre-event concept renders mentioned in `docs/plans/01-foundation.md` §8 wer
 
 - **Head (112 × 60 × 134 mm, arched top).** The Arduino USB Camera's ring light is the big round "speaker
   grille" in the middle of the face. The camera stands on its own folded clip on the head floor, and its front
-  rim rests on a 65 mm lip. The Color Display sits above it in a "tuning window" and shows the eyes.
+  rim rests on a 65 mm lip. Above it the shell has a "tuning window" and a frame for the Color Display; the display is not fitted
+  (removed 2026-11-14), so the robot has no eyes.
   - **Left ear:** the Knob (tuning dial).
-  - **Right ear:** a microphone grille. The Microphone module sits behind it; this is optional.
-  - **Inside:** the KY-031 knock sensor is glued under the top for taps (the drum). A wire antenna with a ball on top goes in the
-    top socket.
+  - **Right ear:** a microphone grille. The Microphone module sits behind it.
+  - **Inside:** the Atech Orientation Sensor is fixed to the shell and feels the taps (the drum). The spot under
+    the top was drawn for a KY-031 knock sensor; the KY-031 is not fitted (D55). A wire antenna with a ball on top
+    goes in the top socket.
 - **Neck.** The pan base, glued on the body top, carries a fixed hollow axle. All the head cables go through it.
   - The turntable has a 40-tooth ring gear (module 1.25). It turns on the axle and the head glues onto its disc.
   - The pan motor hangs under the pan base in a sleeve and drives a 12-tooth pinion: 3.33 : 1 reduction.
@@ -30,18 +35,21 @@ The pre-event concept renders mentioned in `docs/plans/01-foundation.md` §8 wer
   - the Atech board, standing on the left wall;
   - the UNO Q on four standoffs (UNO hole pattern), with its USB-C at the rear;
   - the Speaker against the right-wall grille;
-  - two LED grids behind the chest louvres (breathing glow);
+  - the shell has chest louvres and a place behind them for two LED grids; the LED grids are not fitted (D54), so
+    there is no chest light;
   - the Modulino Buzzer on the right wall;
-  - an optional purr motor mount on the floor (needs a free Atech port).
-- **On the lid:** the pan base, a square opening for the Button module (or its cable), and the KY-039 pulse
-  sensor under a finger cradle. A finger hole lets you lift the lid out.
-- **One motor** (pan). All 12 Atech ports are used, so the purr mount is optional (D31). There is no tilt, because a
+  - an optional purr motor mount on the floor (not used).
+- **On the lid:** the pan base and a finger hole to lift the lid out. The lid also has a square opening for the
+  Button module and a finger cradle over a place for the KY-039 pulse sensor; the Button and the KY-039 are not
+  fitted (D54), and the ear's press is the only button.
+- **One motor** (pan), on Atech port 14, with no homing. Ports 3–4 and 11 are free. There is no tilt, because a
   200 g head that sits in front of the motor would make it slip back under load.
 - **No ultrasonic sensor** (vision only).
 
 Fit check: `kaiku_cad.py` intersects every printed part with every bought-in envelope. It currently reports
-**no clashes**. Envelopes marked ASSUMED in `dimensions.md` (button, LED height) are guesses:
-measure them before printing the part that holds them.
+**no clashes**. The check still includes the envelopes of the parts that are not fitted. Envelopes marked ASSUMED
+in `dimensions.md` (button, LED height, orientation sensor) are guesses: measure them before printing the part that
+holds them.
 
 ## Print plan (Bambu Studio's own estimates, 2026-11-14)
 

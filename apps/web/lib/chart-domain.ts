@@ -9,4 +9,3 @@ export function chartDomain(values:readonly number[],unit:string|undefined) {
   const padding=(hi-lo)*.08;
   return {lo:lo-padding,hi:hi+padding,padding};
 }
-export const clipToDomain=(value:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,value));

@@ -78,6 +78,14 @@ elif modal.is_local():
     print("[kaiku] apps/web/out not found — deploying API only (run `make web-build` first for the dashboard)")
 
 
+def _eval_size() -> tuple[int, int]:
+    """Patients and shards of the fanned-out simulation: config/kaiku.toml [cloud]."""
+    from kaiku_contracts.config import get
+
+    return int(get("cloud", "eval_modal_patients", 72)), int(get("cloud", "eval_modal_shards", 8))
+
+
+# Schedules, cron strings and the timeouts in Modal decorators below stay literals: Modal reads them at deploy time.
 @app.function(image=image, timeout=600)
 def simulate_shard(args: tuple[int, int]) -> list[dict]:
     """One shard of the consensus simulation (fan-out target for .map)."""
@@ -96,7 +104,9 @@ def web():
     from kaiku_cloud.jobs.simulate import run_eval
 
     def eval_runner(criteria):
-        return run_eval(n_patients=72, shards=8, mapper=lambda xs: simulate_shard.map(xs), criteria=criteria)
+        patients, shards = _eval_size()
+        return run_eval(n_patients=patients, shards=shards, mapper=lambda xs: simulate_shard.map(xs),
+                        criteria=criteria)
 
     return create_app(eval_runner=eval_runner, after_write=volume.commit)
 
@@ -160,4 +170,5 @@ def main():
     """`modal run app.py` — run the simulation with a Modal fan-out and print the result."""
     from kaiku_cloud.jobs.simulate import run_eval
 
-    print(run_eval(n_patients=72, shards=8, mapper=lambda xs: simulate_shard.map(xs)))
+    patients, shards = _eval_size()
+    print(run_eval(n_patients=patients, shards=shards, mapper=lambda xs: simulate_shard.map(xs)))

@@ -838,6 +838,7 @@ flowchart LR
   watch: a head that starts again within 30 s of a turn steps the level down and says so.
 - Not decided here: the hub's own level. Once a level is known to work, `[follow_track] speed` and
   `[attention] pan_speed` in `config/kaiku.toml` are the places to set it.
+- Status 2026-11-15: not in the repository at submission.
 
 ## D60 — Visible expression cues: a marker in the record and one gentle question (2026-11-15, Harrish; supersedes part of D52)
 - **Decision (the lead's, after the trade-off was put to them):** when a person's expression visibly changes for a

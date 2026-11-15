@@ -1,7 +1,11 @@
 # Video shot list (hard cap 2:00)
 
+> **Superseded (15 Nov).** This page follows the earlier 1:55 cut on Aino's record and the robot design with eyes
+> and a chest light. The video now follows the 1:58 script in `docs/demo-narrative.md`; the robot as built has no
+> display and no chest light, and a press of the ear opens a talk (D54, D66). Kept for the recording recipes.
+
 The shot table, timings, narration and per-shot fallbacks are in
-[`docs/demo-narrative.md`](../docs/demo-narrative.md) ("The video (1:55)"). Do not copy it here: one source.
+[`docs/demo-narrative.md`](../docs/demo-narrative.md) ("The video (1:58)"). Do not copy it here: one source.
 This page says which recording covers each shot and what still has to be filmed by hand.
 
 Recording checklist:
@@ -67,12 +71,11 @@ What was said in the three conversation takes is in `draft-cut-narration.md` (th
    in `.env`, `make demo`, the microphone allowed for Kaiku; one paid Live call, which settles to the minutes
    used when it is ended. Screen recording with Microphone on. Today → the first stop → say the day is hard →
    let Kaiku answer → one more sentence → lock the phone → say one more thing → "End" on the Lock Screen's bar.
-   Step by step, with what to expect: `video_making.md` G2.
 3. **Glasses walk.** Follow `docs/glasses-test.md` exactly (the ten steps first, then "Walking together"). Two
    cameras: the iPhone screen recording (Microphone on; it records what the phone hears, not the glasses' speakers)
    and a second phone filming her putting the glasses on and the phone going into a pocket. For the cut: Playful
    chosen where the walk starts, a favourite named on one walk and recognised on the next, a spotting game counted
-   aloud and on the card, the glasses off and on once, End walk after at least a minute. `video_making.md` G3.
+   aloud and on the card, the glasses off and on once, End walk after at least a minute.
    If the audio route was not accepted on the device, film Glasses check showing "connected" and say "voice over
    Bluetooth" (the narrative's fallback).
 4. **Robot ritual.** `make broker`, `make hub`, the real board on the desk (`firmware/atech-head/AGENTS.md` for
@@ -82,7 +85,7 @@ What was said in the three conversation takes is in `draft-cut-narration.md` (th
 5. **Quick talk on the Mac.** The built app is `apps/apple/build/QuickTalk/Kaiku.app`. QuickTime Player → New
    Screen Recording → Record Entire Screen (the bar is at the left edge, the island at the notch). A document in
    front, two taps of Control, "I'm not feeling too well", the captions of both, the chevron, the notch showing the
-   call, Esc. Step by step: `video_making.md` G1. QuickTime does not record Kaiku's voice: the captions carry it.
+   call, Esc. QuickTime does not record Kaiku's voice: the captions carry it.
    The menu bar popover (category minutes, breaks, the pause switch) is no longer a shot of the 1:55 video.
 
 ## README GIFs, Kaiku's voice, the draft cut
@@ -102,8 +105,6 @@ What was said in the three conversation takes is in `draft-cut-narration.md` (th
   `shot-01-cold-open.mp4`, `shot-03-voice.mp4`, `shot-05-glasses.mp4`, `shot-06-robot.mp4`, `shot-07-mac.mp4`,
   `shot-10-care-action.mp4`, `shot-11-end.mp4` replace their cards and stand-ins. Narration by time code, what
   each stand-in is and what the sound is: `draft-cut-narration.md`.
-- The step-by-step guide for filming the remaining shots is the git-ignored `video_making.md` at the repo root
-  (section G for everything added on 14 Nov evening).
 
 ## Known problems (2026-11-14 evening, iPhone 17 Pro simulator, build of commit 0dd2e25)
 

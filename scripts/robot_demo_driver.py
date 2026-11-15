@@ -1,6 +1,12 @@
 """Scripted sim person for `scripts/record_robot_demo.sh` (dev harness; imports the sim twins).
 
-Story: a person walks up to the robot -> the hub greets and offers the ritual -> the head twin answers the three dial
+LEGACY: this drives the DRIVE-MODE head twin (`HeadSim`, the hub runs every step) with a button dial and
+`raw.head.button`. It is not the robot's flow: the robot as built has no button, its head runs its own steps
+(standalone firmware 0.9.0), a press of the ear opens a talk and the check-in starts only when asked (D66), and taps
+come from the head's orientation sensor (D55). The recording it makes shows the hub's drive-mode ritual on twins,
+nothing more.
+
+Story (drive mode, twins only): a person walks up to the robot -> the hub greets and offers the ritual -> the head twin answers the three dial
 questions with button presses, drums (warming up), the sensors twin breathes slowly -> suggestion -> goodbye -> the
 person leaves. Then the other sources land in the cloud: a glasses walk, a laptop session + Mac hour, a phone morning.
 
@@ -43,7 +49,7 @@ async def amain(a: argparse.Namespace) -> None:
     mark = Markers(Path(a.markers))
     stop = asyncio.Event()
     done = asyncio.Event()
-    head = HeadSim(auto=True, tempo_bpm=a.tempo, mood=3, dial="button", seed=7)
+    head = HeadSim(auto=True, tempo_bpm=a.tempo, mood=3, dial="button", seed=7)  # legacy drive-mode twin, see the top
     sensors = SensorsSim(arrive_after_s=None, dwell_s=10_000, seed=7)
     glasses, laptop, phone = GlassesSim(seed=7), LaptopSim(seed=7), PhoneSim(seed=7)
     labels = {("greet", "started"): ("greeting", "Greeting"), ("dial", "started"): ("dial", "Dial: 3 questions"),
@@ -52,7 +58,7 @@ async def amain(a: argparse.Namespace) -> None:
 
     async def accept_invitation() -> None:
         await asyncio.sleep(0.4)
-        mark("consent", "Person presses the button to accept")
+        mark("consent", "Person presses the button to accept")  # legacy: the robot as built has no button
         await watch.publish("raw.head.button", {"id": "head", "pressed": True}, source="head")
         await asyncio.sleep(0.1)
         await watch.publish("raw.head.button", {"id": "head", "pressed": False}, source="head")

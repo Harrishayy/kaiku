@@ -1112,6 +1112,42 @@ private final class Line: ConversationTransport, @unchecked Sendable {
         XCTAssertEqual(T("saw.camera.n", n: 3), "Activities with the camera on: 3. Face movement as numbers, no pictures.")
     }
 
+    func testTheReceiptSaysSoWhenPicturesWentToKaikusModel() {
+        // D65: with "Let Kaiku's model look" on, the day's receipt may not say "no pictures".
+        let signs = [event("obs.face_signs", payload: ["task": .string("check_in")])]
+        func note(_ events: [AnyEnvelope], looked: Bool) -> String {
+            DayEvidence.build(events: events, talks: 0, transcriptsKept: false, camera: [], looked: looked)
+                .items.first { $0.kind == .camera }?.note ?? ""
+        }
+        XCTAssertEqual(note(signs, looked: false), T("evidence.camera.note"))
+        XCTAssertEqual(note(signs, looked: true), T("evidence.camera.note.look"), "this device sent pictures today")
+        XCTAssertEqual(note(signs + [event("obs.vision_note", source: "cloud")], looked: false), T("evidence.camera.note.look"),
+                       "the service holds what the model noted, from whichever device")
+        for key in ["evidence.camera.note.look", "saw.camera.n.look", "task.camera.active.look.a11y"] {
+            XCTAssertTrue(L10n.shared.has(key, .en) && L10n.shared.has(key, .fi), key)
+            XCTAssertFalse(T(key).lowercased().contains("no pictures"), key)
+            XCTAssertTrue(T(key).contains("Pictures are not saved; only what it notes is kept."), key)
+        }
+        XCTAssertTrue(L10n.shared.has("task.camera.active.look", .en) && L10n.shared.has("task.camera.active.look", .fi))
+        // The device's own mark: a day, kept across launches, gone with the home.
+        let defaults = UserDefaults(suiteName: "kaiku-look-\(UUID().uuidString)")!
+        let choice = CameraChoice(defaults: defaults)
+        XCTAssertFalse(choice.lookedToday())
+        choice.noteLook()
+        XCTAssertTrue(choice.lookedToday())
+        XCTAssertFalse(choice.lookedToday(Date().addingTimeInterval(2 * 86_400)), "a receipt is for today")
+        XCTAssertTrue(CameraChoice(defaults: defaults).lookedToday())
+        choice.clearSent()
+        XCTAssertFalse(choice.lookedToday())
+        XCTAssertFalse(CameraChoice(defaults: defaults).lookedToday())
+    }
+
+    func testTheHelpNumbersComeFromCopyWithAFallback() {
+        XCTAssertEqual(CallButtons.tel("help.mieli.tel", fallback: "1"), "tel:0925250111")
+        XCTAssertEqual(CallButtons.tel("help.112.tel", fallback: "1"), "tel:112")
+        XCTAssertEqual(CallButtons.tel("help.no.such.key", fallback: "112"), "tel:112")
+    }
+
     func testTheReceiptCountsEachTaskOnceFromWhateverTheServiceHolds() {
         let play = "0193a3c0-0000-7000-8000-00000000000a", signs = "0193a3c0-0000-7000-8000-00000000000b"
         let local = [CameraChoice.Sent(id: signs, ref: play, sim: false, day: AppModel.dayKey(Date()))]

@@ -35,6 +35,11 @@ def image_model() -> str:
     return str(get("mind", "image_model", "") or "")
 
 
+def _timeout(given: float | None, key: str, default: float) -> float:
+    """A caller's own timeout, else config/kaiku.toml [cloud].<key>."""
+    return float(given if given is not None else get("cloud", key, default))
+
+
 def available() -> bool:
     from kaiku_contracts import genai_client
 
@@ -59,9 +64,11 @@ def _ready(model: str, what: str) -> str:
 
 
 def generate(prompt: str, *, tier: Tier = "fast", system: str | None = None, schema: dict[str, Any] | None = None,
-             timeout_s: float = 30.0, task: str = "text", home_id: str | None = None,
+             timeout_s: float | None = None, task: str = "text", home_id: str | None = None,
              route: str | None = None, model: str | None = None) -> str:
-    """Text (or JSON when `schema` is given) from a Gemini model. Raises LlmUnavailable on any failure."""
+    """Text (or JSON when `schema` is given) from a Gemini model. Raises LlmUnavailable on any failure.
+    `timeout_s`: the caller's, else `[cloud].gemini_text_timeout_s`."""
+    timeout_s = _timeout(timeout_s, "gemini_text_timeout_s", 30)
     model = model or model_for(tier)
     key = _ready(model, tier)
     kw: dict[str, Any] = {"model": model, "input": prompt, "store": False}
@@ -84,15 +91,16 @@ def generate(prompt: str, *, tier: Tier = "fast", system: str | None = None, sch
         raise LlmUnavailable(f"gemini {tier} ({model}) failed: {type(e).__name__}: {e}") from e
 
 
-def generate_fast(prompt: str, timeout_s: float = 30.0) -> str:
+def generate_fast(prompt: str, timeout_s: float | None = None) -> str:
     """Adapter with the explain-backend signature."""
     return generate(prompt, tier="fast", timeout_s=timeout_s, task="explain")
 
 
 def embed(text: str, *, query: bool, task: str = "embed", home_id: str | None = None,
-          timeout_s: float = 20.0) -> list[float]:
+          timeout_s: float | None = None) -> list[float]:
     """One Gemini Embedding 2 vector. Asymmetric retrieval format from the docs: queries are prefixed
     `task: question answering | query: …`, documents `title: none | text: …`. Auto-normalised at any dimension."""
+    timeout_s = _timeout(timeout_s, "gemini_embed_timeout_s", 20)
     model = embedding_model()
     key = _ready(model, "embedding")
     content = f"task: question answering | query: {text}" if query else f"title: none | text: {text}"
@@ -115,8 +123,9 @@ def embed(text: str, *, query: bool, task: str = "embed", home_id: str | None = 
 
 
 def image(prompt: str, *, task: str = "image", home_id: str | None = None, aspect_ratio: str = "4:3",
-          timeout_s: float = 60.0) -> tuple[bytes, str]:
+          timeout_s: float | None = None) -> tuple[bytes, str]:
     """(image bytes, mime type) from the image model via the Interactions API (`output_image`, base64)."""
+    timeout_s = _timeout(timeout_s, "gemini_image_timeout_s", 60)
     model = image_model()
     key = _ready(model, "image")
     est = budget.estimate(model, images=1)

@@ -328,7 +328,7 @@ public final class WalkModel {
         tellSeeing(true)
         if GlassesStatus.shared.framesSent == 1 || GlassesStatus.shared.framesSent % 30 == 0 {
             GlassesLog.shared.log("frames_sent", ["n": GlassesStatus.shared.framesSent, "bytes": f.jpeg.count,
-                                                  "w": f.width, "h": f.height, "brightness": f.luminance])
+                                                  "w": f.width, "h": f.height])
         }
     }
 

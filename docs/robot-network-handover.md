@@ -10,7 +10,7 @@ Decisions: D44 (standalone head firmware), D54 (parts removed, own charger, hots
 | | State | Verified on hardware |
 |---|---|---|
 | Broker | mosquitto on Edwin's Mac, `172.20.10.11:1883`, anonymous (`make broker`) | yes |
-| Network | iPhone hotspot "Xavier’s iPhone" (curly ’), "Maximize Compatibility" on (2.4 GHz) | yes |
+| Network | the team's iPhone hotspot (its name has a curly ’), "Maximize Compatibility" on (2.4 GHz) | yes |
 | UNO Q | `172.20.10.12`, app `kaiku-sensors` = default app (starts at boot); health, faces, distance, light | yes |
 | Atech | `172.20.10.13`, standalone ritual + `kaiku_net`; health, pan, `cmd.head` eyes; UNO Q face woke it | yes |
 | Taps (head orientation sensor → `raw.head.tap`, D55), head → UNO Q chimes | built in `kaiku_net` | taps and chime commands reach the broker; the buzzer sound **not yet confirmed** |
@@ -33,7 +33,7 @@ or heard**. "Tonight on the laptop" below is the order to find out, and how to g
 Verified on the board (broker and hub on a laptop):
 
 ```
-                 iPhone hotspot "Xavier’s iPhone" (2.4 GHz)
+                 the team's iPhone hotspot (2.4 GHz)
    ┌────────────────────────────────┐
    │ Mac 172.20.10.11               │
    │ mosquitto :1883 (make broker)  │◄────────── MQTT ───────────┐

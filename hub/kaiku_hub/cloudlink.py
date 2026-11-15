@@ -20,12 +20,17 @@ log = get_logger("hub")
 
 class CloudLink:
     def __init__(self, *, url: str | None, home_id: str, token: str | None = None, timeout_s: float = 5.0,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None, session_attempts: int = 3,
+                 session_backoff_s: float = 0.5, session_timeout_s: float = 4.0):
         self.url = url.rstrip("/") if url else None
         self.home_id = home_id
         self.token = token
         self.timeout_s = timeout_s
         self.transport = transport
+        # the Live bootstrap ([hub] session_attempts / session_backoff_s / session_timeout_s)
+        self.session_attempts = max(1, int(session_attempts))
+        self.session_backoff_s = max(0.0, float(session_backoff_s))
+        self.session_timeout_s = float(session_timeout_s)
         self.last_error: str | None = None
 
     def _client(self, timeout: float | None = None) -> httpx.AsyncClient:
@@ -46,26 +51,36 @@ class CloudLink:
             log.warning("nudge_fallback", self.last_error)
             return None
 
-    async def companion_session(self, intent: str = "ritual", timeout_s: float = 4.0) -> dict[str, Any] | None:
+    async def companion_session(self, intent: str = "ritual", timeout_s: float | None = None) -> dict[str, Any] | None:
         """POST /v1/companion/session {surface: robot, home_id, intent} -> {system_instruction, tools, model, voice,
-        ...}. None when offline or unauthorized: microphone remains closed."""
+        ...}. None when offline or unauthorized: microphone remains closed. A timeout, a network error or a 5xx is
+        tried again (`session_attempts` in all, `session_backoff_s` doubling between them); a 4xx or a malformed
+        answer is final: asking again would not change it."""
         if not self.url:
             return None
-        try:
-            async with self._client(timeout_s) as c:
-                r = await c.post("/v1/companion/session",
-                                 json={"surface": "robot", "home_id": self.home_id, "intent": intent})
-            if r.status_code != 200:
-                log.info("companion_session_fallback", f"HTTP {r.status_code}")
-                return None
-            data = r.json()
-        except Exception as e:
-            log.info("companion_session_fallback", f"{type(e).__name__}")
-            return None
-        if not isinstance(data, dict) or not isinstance(data.get("system_instruction"), str):
-            log.warning("companion_session_fallback", "response without system_instruction")
-            return None
-        return data
+        timeout = self.session_timeout_s if timeout_s is None else timeout_s
+        for attempt in range(1, self.session_attempts + 1):
+            again = attempt < self.session_attempts
+            try:
+                async with self._client(timeout) as c:
+                    r = await c.post("/v1/companion/session",
+                                     json={"surface": "robot", "home_id": self.home_id, "intent": intent})
+                if r.status_code != 200:
+                    log.info("companion_session_fallback", f"HTTP {r.status_code}", attempt=attempt)
+                    if r.status_code < 500 or not again:
+                        return None
+                else:
+                    data = r.json()
+                    if not isinstance(data, dict) or not isinstance(data.get("system_instruction"), str):
+                        log.warning("companion_session_fallback", "response without system_instruction")
+                        return None
+                    return data
+            except Exception as e:
+                log.info("companion_session_fallback", f"{type(e).__name__}", attempt=attempt)
+                if not again:
+                    return None
+            await asyncio.sleep(self.session_backoff_s * 2 ** (attempt - 1))
+        return None
 
     async def companion_tool(self, name: str, args: dict[str, Any], session_id: str | None = None,
                              timeout_s: float = 4.0) -> dict[str, Any] | None:

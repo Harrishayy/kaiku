@@ -181,7 +181,8 @@ def synthesize(text: str, style: str, lang: str) -> bytes:
 
     est = budget.estimate(model, in_tokens=len(text) // 3 + 50, out_tokens=600)
     err: Exception | None = None
-    for attempt in range(2):
+    attempts = 2
+    for attempt in range(attempts):
         try:
             budget.charge("gemini", model, est, task="tts", component="cloud")
         except budget.BudgetExceeded as e:
@@ -203,7 +204,8 @@ def synthesize(text: str, style: str, lang: str) -> bytes:
             raise
         except Exception as e:  # network, quota, shape: retry once, then fail soft
             err = e
-            time.sleep(0.5 * (attempt + 1))
+            if attempt + 1 < attempts:  # nothing follows the last attempt: fail now, not a second later
+                time.sleep(0.5 * (attempt + 1))
     raise VoiceUnavailable(f"TTS failed: {type(err).__name__}")
 
 

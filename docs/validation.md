@@ -11,6 +11,9 @@ Record sessions with Aalto mentors / testers here. No names without consent — 
 
 ## Calibration: how well does Kaiku tell "not feeling well" from "ok"? (2026-11-14, `consensus-v1+ef17c3f3`)
 
+> Measured 14 Nov on `ef17c3f3`; the rule file has changed since (the current rule is `consensus-v1+db93b715`) and
+> the numbers have not been measured again.
+
 **Short answer.** On people: unknown. Nobody has used Kaiku while unwell, so there is no measured sensitivity or
 specificity, and we claim none. What we can measure is how the rule behaves on labelled synthetic courses under
 stated assumptions. There it rarely raises a false flag, finds a clear change in most cases within days, misses

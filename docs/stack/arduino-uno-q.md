@@ -65,7 +65,10 @@ runs its own ritual the hub keeps the camera closed unless she said yes **in thi
 once, in a fixed line, and waits; no answer means off; a yes sounds the buzzer's `ok`. The hub repeats the
 current choice when it sees the board's heartbeat (at most every 20 seconds), so a restarted board is told again.
 
-The cost is real and accepted: with the camera closed there is no face wake, distance, light or head following.
+The cost is real and accepted: with the camera closed there is no face wake, distance, light or head following,
+so a press of the ear wakes the robot. A face woke the head board to board on 14 Nov, before this rule. On
+15 Nov her spoken yes arrived at the hub as a tool call; the camera opening on that yes has not been seen on the
+robot, and no person has tried this behaviour on it yet.
 
 ## The buzzer
 
@@ -84,13 +87,16 @@ MQTT, so the two boards make one robot's sounds.
 
 ## What the numbers are used for
 
+All of these need the camera open, which since D61 means after her yes in that conversation.
+
 - **Waking the robot.** The Atech head listens for face messages directly, so the robot turns its attention to
   someone with no hub in between, at most once in ten minutes.
 - **Turning toward her.** The hub nudges the neck when her face nears the edge of the picture.
 - **First hello.** The hub's presence tracker confirms someone within about 80 cm for a second and emits
   `obs.presence`; the first arrival of a new day feeds the `getup` measure in
   [`config/criteria.toml`](../../config/criteria.toml), compared with her own usual.
-- **Room light.** An hourly mean feeds the `light` measure at half weight.
+- **Room light.** The board publishes it; the hub's light path is switched off in this build
+  (`[perception] light_enabled = false` in `config/kaiku.toml`), so it does not reach the record.
 
 ## Messages and failing softly
 

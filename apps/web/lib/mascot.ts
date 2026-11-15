@@ -91,17 +91,6 @@ export function paint(ref: string, s: Shape, uid: string): string {
   return `var(--k-${ref})`;
 }
 
-/**
- * GET /v1/me mascot.mood → state via mascot.spec.json ambient_mood. `crisis` (safety) → null: no mascot,
- * the crisis screen replaces everything. `happy` is the "stable + did something together" mood.
- */
-export function ambientState(spec: Pick<MascotSpec, 'ambient_mood'>, mood: string | null | undefined): MascotState | null {
-  if (mood === 'crisis' || mood === 'safety') return null;
-  if (mood === 'happy') return (spec.ambient_mood.stable_after_interaction as MascotState) ?? 'happy';
-  if (mood === 'cozy') return (spec.ambient_mood.watch as MascotState) ?? 'cozy';
-  return (spec.ambient_mood.stable as MascotState) ?? 'idle';
-}
-
 export interface GlowStop {
   hour: number;
   color: string;

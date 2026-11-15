@@ -1,46 +1,40 @@
 # apps/glasses-webapp — AGENTS.md
 
-> Read the root `AGENTS.md` first. Owner D · kind app · Phase 5 · source 2 of 3 ("glasses") in the consensus.
+> Read the root `AGENTS.md` first. Owner D · kind app · **not built; not part of the entry.**
 
 ## Purpose
-Meta Ray-Ban Display web app: audio-first walk companion (start/stop, timer, steps, outdoor minutes via the paired
-phone's location), ritual reminder card, breathing guide, WebMCP tools (`start_walk`, `end_walk`, `log_mood`).
-Web Apps have **no camera or mic** — never claim the glasses "see" anything (daylight needs the optional DAT app).
+A placeholder for a web app on Meta Ray-Ban Display glasses. This folder holds this page only: no code was
+written and nothing here runs. The glasses integration that exists is in the iPhone app
+([`apps/apple/AGENTS.md`](../apple/AGENTS.md)): registration through Meta's Device Access Toolkit, Kaiku's voice
+over Bluetooth on a walk, and the opt-in "Let Kaiku see" (D43). What has run on real glasses is in
+[`docs/stack/meta-glasses.md`](../../docs/stack/meta-glasses.md).
 
 ## Consumes (topics/endpoints)
-`GET /v1/nudge?home_id=` (today's suggestion).
+None.
 
 ## Emits (topics/endpoints)
-`POST /v1/events` (source `glasses`, Bearer pairing token): `obs.outing {minutes, steps?, method: location|steps}`
-and `obs.intervention_response {activity: "walk"}`. No MQTT.
-
-## Map
-Not scaffolded yet. Stack (D13): Next.js static export, using the Meta Web App plugin skills (`ai-glasses-webapp-*`)
-for device APIs, UI Toolkit (`@wearables-ui-toolkit/mrbd`), WebMCP and performance. Types from `contracts/ts` via
-the `@contracts` alias, as in `apps/web`.
+None (`modules.toml` lists no message for this module).
 
 ## Invariants
-- 600×600, D-pad focus navigation, **< 300 KB first load and < 15 requests**, 30 Hz, HTTPS only.
-- Pairing link `?home=&t=` → localStorage (try/catch) → `Authorization: Bearer`. No Gemini or admin key, ever.
-- Trust UX (Meta judging): explain permissions before asking, offline queue in local storage, a "what is shared"
-  screen, battery-aware, clear device/connectivity/error state.
+- Nothing in the submission, the video or the docs may present this folder as a working app.
+- If it is ever built, root rule 5 holds as for every surface: only `obs.*` is uplinked, a web app on the
+  glasses has no camera or microphone and never "sees", and no observation is derived from a glasses picture (D43).
 
 ## Run standalone
-Scaffold here (`pnpm create next-app@15 . --ts --app --no-tailwind`, or copy `apps/web`'s config), `pnpm dev`, open
-in the MRBD Simulator Chrome extension (https://chromewebstore.google.com/detail/jpjlmmodokemlepklkdbimceggpbjcll).
-On glasses: the Simulator's "View on Glasses QR", or Meta AI app → Devices → Display Glasses → App connections → Web apps.
+Nothing to run.
 
 ## Run with sim
-`make cloud-local && make seed`, then `NEXT_PUBLIC_KAIKU_API=http://localhost:8000 pnpm dev`.
+Nothing to run. The glasses walk is simulated by the iPhone app's mock glasses and by the sim's glasses twin
+([`sim/AGENTS.md`](../../sim/AGENTS.md)).
 
 ## Config & env
-`NEXT_PUBLIC_KAIKU_API`; pairing link `?home=<id>&t=<token>`.
+None.
 
 ## Health signal
-A walk updates the glasses source card on the dashboard.
+None.
 
 ## Tests
-Runs in the Simulator and on real Display glasses; check first-load size in the `next build` output.
+None.
 
 ## Known issues
-Not started. Agent setup: the `wearables` MCP is in `.mcp.json`; install the `meta-wearables-webapp` plugin (handoff §9.2).
+Not built. Remove the folder and its `modules.toml` entry (`make agents && make test`) if it stays unused.

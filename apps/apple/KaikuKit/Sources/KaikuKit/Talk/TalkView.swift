@@ -310,8 +310,8 @@ final class TalkModel {
             guard allowsQuestionnaire else {
                 return .object(["ok": .bool(false), "error": .string("not in a passing chat; leave the questionnaire for another time and do not read its questions out")])
             }
-            guard app.isPaired else { return .object(["ok": .bool(false)]) }
-            app.phq9Requested = true
+            // Not offered in the apps: there is no questionnaire screen or page to open, so the model is told no.
+            return .object(["ok": .bool(false), "error": .string("the questionnaire is not available on this device; leave it for another time and do not read its questions out")])
         case "suggest_activity":
             // A card in the conversation: the person opens it or puts it aside. Nothing starts by itself.
             guard let card = ActivityCard(kind: args["kind"]?.string ?? "", line: args["line"]?.string), !aside.contains(card.kind) else {

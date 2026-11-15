@@ -16,7 +16,8 @@ START_LINE = "Photo time!"
 DONE_LINE = "All done. No picture was kept, only a few numbers."
 NO_FACE_LINE = "All done. Nothing was kept."
 NO_CAMERA_LINE = "My camera is not answering right now. We can try later."
-WAIT_EXTRA_S = 6.0  # the board answers once, right after its window; this much later it is not coming
+WAIT_EXTRA_S = 6.0  # default of `[photo_time] wait_extra_s`: the board answers once, right after its window
+QUALITY = 0.6       # default of `[photo_time] quality`: the envelope quality of a window with a face in it
 SIGNS = ("smile_share", "smiles", "head_movement")  # what the robot's cascades can count
 
 
@@ -47,8 +48,10 @@ def tool_result(raw: dict | None) -> dict:
 class PhotoTime:
     """One window at a time. `on_raw` is fed every raw.sensors.face_signs payload."""
 
-    def __init__(self, seconds: float):
+    def __init__(self, seconds: float, *, quality: float = QUALITY, wait_extra_s: float | None = None):
         self.seconds = seconds
+        self.quality = quality            # a constant from config, not a measure of this window (coverage is)
+        self.wait_extra_s = wait_extra_s  # None = the module's default
         self._waiting: asyncio.Future[dict] | None = None
 
     @property
@@ -67,11 +70,12 @@ class PhotoTime:
             await robot.say(START_LINE)
             await robot.sensors(chime="start_drum", face_signs_s=self.seconds)
             try:
-                raw = await asyncio.wait_for(self._waiting, self.seconds + WAIT_EXTRA_S)
+                extra = WAIT_EXTRA_S if self.wait_extra_s is None else self.wait_extra_s
+                raw = await asyncio.wait_for(self._waiting, self.seconds + extra)
             except TimeoutError:
                 raw = None
             if raw is not None:
-                await robot.emit("obs.face_signs", observation(raw), 0.6 if raw["coverage"] > 0 else None)
+                await robot.emit("obs.face_signs", observation(raw), self.quality if raw["coverage"] > 0 else None)
                 await robot.sensors(chime="ok")
             await robot.say(NO_CAMERA_LINE if raw is None else DONE_LINE if raw["coverage"] > 0 else NO_FACE_LINE)
             return tool_result(raw)

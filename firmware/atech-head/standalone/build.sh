@@ -45,6 +45,7 @@ for m in shared/atech_helpers input/rotary_encoder audio/speaker audio/microphon
 done
 if [ "${1:-}" = upload ]; then
   # 115200 + --no-stub: the only upload that verifies on this Mac (bench 2026-11-14)
+  # macOS only as written: BSD `sed -i ''` (GNU sed on Linux takes `sed -i`), and the port is a /dev/cu.usbmodem* name
   sed -i '' 's/^upload_speed = .*/upload_speed = 115200/' build/platformio.ini
   python3 -c 'import pathlib; p = pathlib.Path("build/platformio.ini"); s = p.read_text()
 if "--no-stub" not in s: p.write_text(s.replace("upload_flags =\n", "upload_flags =\n    --no-stub\n", 1))'

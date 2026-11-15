@@ -1,13 +1,14 @@
 # Kaiku app information architecture
 
-What the iPhone, Mac and web `/me` builders implement. Each screen lists its components, states and copy keys.
+What the iPhone and Mac builders implement (there is no person-facing web page; the website is the practitioner
+dashboard only, described in [`apps/web/AGENTS.md`](../apps/web/AGENTS.md)). Each screen lists its components, states and copy keys.
 Copy keys live in [`copy.json`](copy.json) (en + fi; never inline strings, never dev notes on screen). Look and motion come from
 [`tokens.json`](tokens.json), [`mascot.spec.json`](mascot.spec.json), [`motion.md`](motion.md). Layout rules are in
 [`layout.md`](layout.md). The published look book shows every screen below. Its link is in `docs/progress.md`.
 
 ## Rules for every screen
 - **"I'm not OK" is on every screen** (`common.notok`). It's in the header on iPhone, at the bottom of the sidebar on
-  Mac and on `/me`, and it opens **Crisis**. Onboarding is the only exception, and Help is one tap away there.
+  Mac, and it opens **Crisis**. Onboarding is the only exception, and Help is one tap away there.
 - **One primary action per screen**, plus a way out (`common.nottoday`, `common.back` or `game.enough`).
 - **No dev text on screen**: no obs types, file names, config paths, "bandit", "spec" or version numbers. They go in
   code comments and this file.
@@ -17,10 +18,10 @@ Copy keys live in [`copy.json`](copy.json) (en + fi; never inline strings, never
   interaction sets a transient state.
 
 ## Navigation
-| | iPhone | Mac | Web `/me` |
-|---|---|---|---|
-| Tabs | Bottom tab bar: Today · Play · Talk · History · You (`tab.*`) | Sidebar, same five, same order | Single page: Today block, garden, receipt, pairing |
-| Extra | Dynamic Island, Lock Screen Live Activity, widgets | Menu bar popover, notch island | — |
+| | iPhone | Mac |
+|---|---|---|
+| Tabs | Bottom tab bar: Today · Play · Talk · History · You (`tab.*`) | Sidebar, same five, same order |
+| Extra | Dynamic Island, Lock Screen Live Activity, widgets | Menu bar popover, notch island |
 
 ## Onboarding (first launch; no tab bar)
 | Screen | Components | States | Copy keys |
@@ -78,7 +79,7 @@ Reached from History (its first block) and from Today's garden card; no longer a
 |---|---|---|---|
 | You | grouped list rows; "Pause everything" switch; Help row | pause on → every signal paused | `you.*` |
 | What Kaiku remembers | list of memories with Delete; Forget everything | item deleted (toast) · empty state (cozy) | `mem.*`, `toast.deleted` |
-| What Kaiku saw today | receipt (mono): one line + pause switch per signal; "never kept" + "shared as" footers | per-line on / paused (`saw.paused`) | `saw.*` |
+| What Kaiku saw today (`you.saw`; its first section is "Today, so far", `evidence.title` in the Apple table) | receipt (mono): one line + pause switch per signal; "never kept" + "shared as" footers | per-line on / paused (`saw.paused`) | `saw.*` (the counted lines `saw.<signal>.n` / `.none` are in the Apple table) |
 | Voice and language | segmented: English · Suomi · Svenska; pace segmented; sample button | selected | `voice.*` |
 | Quiet hours | two time boxes, weekend switch, sleepy Kaiku | — | `quiet.*` |
 | Devices | device rows: robot, glasses, watch, Mac | connected · connecting · not set up (Set up button) · needs attention | `dev.*` |
@@ -89,7 +90,8 @@ Reached from History (its first block) and from Today's garden card; no longer a
 - **Dynamic Island compact**: leading = walking Kaiku, trailing = minutes. **Expanded**: Kaiku, `game.lighthunt.t`,
   `lh.find`, dots, minutes, buttons `lh.found` / `lh.end`.
 - **Lock Screen Live Activity**: Kaiku, `lh.walking` (1 line, truncates), `lh.progress`, minutes.
-- **Glasses card** (Meta Ray-Ban Display web app): walking Kaiku, `lh.find`, dots.
+- No card in the glasses: the Display web app was not built (`apps/glasses-webapp/AGENTS.md`); on a walk the
+  glasses are a voice in the ear.
 
 ## Mac extras
 - **Window**: sidebar (5 tabs + not-OK), pane = the iPhone screen at window width.
@@ -99,12 +101,8 @@ Reached from History (its first block) and from Today's garden card; no longer a
   (`mac.nudge`, `mac.nudge.yes`, `common.nottoday`, auto-hide 12 s); breathing slim state (`br.in`/`br.out`, n/6).
   Respects quiet hours, at most one peek per night.
 
-## Web `/me`
-Mascot + `me.hi` + `me.together`, primary Weather check, not-OK; "this week" sentences (`me.walks`,
-`me.checkins`, `me.games`); garden; pairing QR (`me.pair*`); links to receipt and memories.
-
-## Clinician `/clinician` (English only, not in copy.json)
-Header (pseudonym, day after TMS, last data, last PHQ-9) → consensus chip + one sentence + rule version → four
-source cards (robot, glasses, apps, wearable: verdict chip + up to 3 metrics with sparkline and usual band) →
-evidence table (metric, source, today, usual median + range, z, direction) → AI summary card labelled
-"written by AI, not a decision". Kaiku appears only as a 30 px icon.
+## Web
+There is no person-facing web page (no `/me`, no pairing page) and no `/clinician` route. The website is the
+practitioner dashboard at `/`, in English only; its panels, routes and rules are in
+[`apps/web/AGENTS.md`](../apps/web/AGENTS.md), and it takes its state and verdict words from `copy.json`
+(`state.*`, `verdict.*`). The `me.*` keys in `copy.json` are left over from the removed page and are not rendered.

@@ -1,14 +1,18 @@
-# Whole UNO Q node (sketch + python app) over the broker, one part at a time. Run after every single-part bench passed.
+# Whole UNO Q node (sketch + python app) over the broker, the fitted parts only: the USB camera and the Modulino
+# Buzzer. Run after every single-part bench passed.
+# Rewritten 2026-11-15 for the robot as built (no KY-039 / KY-053 pulse, no KY-035 hall, no KY-054 light: D39, D54);
+# not run on the board in this form. The earlier form asked for a finger in the cradle, a hall edge and KY-054 light.
 part = "unoq-link"
 board = "mqtt"
 program = ""
-flash = "App Lab: run the full app (make unoq-app first); hub laptop: make broker. No hub needed for this bench."
-steps = ["Rest a finger in the lid cradle (the bench sends ppg start)",
-         "Turn the head by hand past the front once (hall)", "Listen for the 'ok' chime"]
-duration_s = 20
+flash = "App Lab: run the full app (make unoq-app first); hub laptop: make broker. No hub needed for this bench (a running hub closes the camera again unless a conversation said yes, D61)."
+steps = ["Sit in front of the camera, face in view, for the whole run (the bench opens the camera: its light comes on)",
+         "Listen for the 'ok' chime",
+         "Afterwards: the bench leaves the camera OPEN. A running hub closes it again (D61); without one, run make robot-bench ARGS=camera, which leaves it off"]
+duration_s = 30
 topic = "kaiku/v1/+/#"
-send = [{type = "cmd.sensors", payload = {chime = "ok"}},
-        {type = "cmd.sensors", payload = {ppg = "start"}, wait_s = 0.2}]
+send = [{type = "cmd.sensors", payload = {camera_enable = true}, wait_s = 2.5},
+        {type = "cmd.sensors", payload = {chime = "ok"}}]
 
 [[check]]
 name = "health/sensors ok with the sketch answering"
@@ -16,21 +20,17 @@ event = "health"
 source = "sensors"
 min_count = 1
 [[check]]
-name = "pulse batches arrive"
-event = "raw.sensors.ppg"
-min_count = 4
-[[check]]
-name = "hall edge arrives"
-event = "raw.sensors.hall"
+name = "a face is seen"
+event = "raw.hub.face"
 min_count = 1
 [[check]]
-name = "KY-054 light arrives"
-event = "raw.sensors.light"
-min_count = 1
-[[check]]
-name = "camera numbers arrive"
+name = "distance numbers arrive"
 event = "raw.sensors.distance"
 min_count = 1
 [[check]]
+name = "room light from the camera arrives"
+event = "raw.sensors.light"
+min_count = 1
+[[check]]
 name = "outputs"
-ask = "Did you hear the 'ok' chime?"
+ask = "Did you hear the 'ok' chime, and did the camera's light come on?"

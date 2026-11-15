@@ -7,8 +7,8 @@ Sketch provides (we call):  buzz_pattern(name) · ppg_start() · ppg_stop() · l
                             status_set(name) · ping() -> fw version
 Sketch notifies (we provide): on_ppg(t0_ms, fs_hz, "csv samples") · on_hall(at_home, t_ms) ·
                               mcu_ready()
-VERIFY on the board: argument types the router accepts (ints/strings are safe) and whether `provide` callbacks
-run on a router thread (we assume yes and hop onto the asyncio loop).
+On the board (docs/progress.md, 2026-11-14): string arguments (`buzz_pattern`) and `ping` work, and the app
+reported `mcu_ok`. Which thread `provide` callbacks run on was not looked at: we hop onto the asyncio loop either way.
 """
 
 from __future__ import annotations

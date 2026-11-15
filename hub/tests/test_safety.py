@@ -65,6 +65,20 @@ def test_script_is_verbatim_and_has_helplines():
         assert "09 2525 0111" in s.text(lang) and "112" in s.text(lang)
 
 
+def test_built_in_fallback_script_and_defaults_name_the_configured_helpline():
+    """The fallback script is in code so the crisis path never depends on a file. It must still say the same
+    helpline as config/kaiku.toml [safety], and so must the settings' built-in defaults."""
+    from kaiku_contracts.config import load_config
+    from kaiku_hub.settings import Settings
+
+    load_config.cache_clear()
+    safety = load_config()["safety"]
+    for key in ("helpline_name", "helpline_number", "emergency_number"):
+        assert str(safety[key]) in CrisisScript.FALLBACK
+        assert getattr(Settings(), key) == str(safety[key])
+    assert CrisisScript({}).text("en") == CrisisScript.FALLBACK
+
+
 def test_normalise():
     assert normalise("  I’M — NOT   OK!! ") == "i'm not ok"
 

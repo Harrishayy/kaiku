@@ -1,4 +1,4 @@
-# Plan 06 — Gemini-first mind: escalation, graph memory, live context, real daily use · 🟡 CURRENT
+# Plan 06 — Gemini-first mind: escalation, graph memory, live context, real daily use · ✅ DONE (§1–§4 built 2026-11-14; see `docs/progress.md`)
 
 > Builds on plans 03/04. The 04 Scope guard cut too much for the **Gemini API track**: the flagship is barely used
 > day to day, nothing escalates when unsure, there's no graph, and Live doesn't see live sensor context. This plan

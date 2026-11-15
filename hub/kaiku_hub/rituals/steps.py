@@ -116,7 +116,7 @@ class Greet(Step):
         await _chime(ctx, "wake")
         await ctx.head(eyes="wide", pan_mode="track")
         g = GREETINGS.get(ctx.settings.greeting_language, GREETINGS["en"])
-        await ctx.say(f"{g} It's good to see you.")
+        await ctx.say(f"{g} It's good to have you here.")
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
         if event.kind == "face":
@@ -240,7 +240,7 @@ def closing_line(delta: dict[str, float]) -> str:
 
 
 class Breathe(Step):
-    """30 s PPG -> HRV pre; paced breathing with chest glow; 30 s PPG -> HRV post.
+    """30 s PPG -> HRV pre; paced breathing (`chest: breathe` for a head that has a light); 30 s PPG -> HRV post.
     Emits obs.hrv_session and obs.intervention_response{activity: breathe}."""
 
     name = "breathe"
@@ -255,7 +255,9 @@ class Breathe(Step):
         self.buf = PpgBuffer()
         await ctx.head(chest="breathe", bpm=self.bpm, eyes="soft")
         await ctx.sensors(ppg="start")
-        await ctx.say("Rest your finger on my chest and breathe with my light. In as it brightens, out as it fades.")
+        # Drive mode only (a head the hub drives). No finger sensor and no chest light on the robot (D54), so the line
+        # asks for neither: the breath is paced by the words.
+        await ctx.say("Let's breathe slowly together. In through your nose, and a long, slow breath out.")
 
     async def handle(self, event: Event, ctx: RitualContext) -> Status | None:
         if event.kind == "ppg":

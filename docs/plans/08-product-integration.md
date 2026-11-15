@@ -1,4 +1,4 @@
-# Plan 08 Product integration and acceptance
+# Plan 08 Product integration and acceptance · 🟡 CURRENT
 
 Current working checklist, requested 14 November 2026. This plan supersedes earlier demo priorities where they
 conflict. Module instructions and configuration remain the ground truth for implementation.

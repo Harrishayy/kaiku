@@ -51,6 +51,7 @@ class PatientData:
     nudge_outcomes: list[dict[str, Any]] = field(default_factory=list)
     rituals: list[datetime] = field(default_factory=list)
     outing_days: set[date] = field(default_factory=set)
+    safety_local: set[datetime] = field(default_factory=set)  # flags whose payload says `handled_locally`
 
 
 def build(home_id: str, events: list[dict[str, Any]], crit: Criteria, actions: list[dict[str, Any]] | None = None,
@@ -98,6 +99,8 @@ def build(home_id: str, events: list[dict[str, Any]], crit: Criteria, actions: l
             d.phq9.append(Phq9Point(ts, day, int(p["total"]), bool(p["item9_positive"]), p.get("mode", "laptop")))
         elif t == "obs.safety_flag":
             d.safety_flags.append(ts)
+            if p.get("handled_locally") is True:
+                d.safety_local.add(ts)
         elif t == "obs.intervention_response":
             d.interventions.append({**p, "_ts": ts})
         elif t == "obs.nudge_outcome":

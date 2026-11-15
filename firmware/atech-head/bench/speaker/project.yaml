@@ -1,5 +1,5 @@
 # Bench: Atech speaker alone on ports 1-2 (MAX98357A). Plays a tone ladder and an RTTTL tune at low volume.
-# VERIFY method names with `atech info speaker` (camelCase: setVolume / playTone / playRTTTL).
+# Method names as built (this bench built on 2026-11-14 (docs/progress.md); its run on the board is not recorded there). After an SDK change check them with `atech info speaker` (camelCase: setVolume / playTone / playRTTTL).
 name: bench-speaker
 board: 14port
 modules:

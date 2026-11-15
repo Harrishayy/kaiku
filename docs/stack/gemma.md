@@ -81,7 +81,7 @@ where a model was involved and where it was overruled.
 | 14 Nov | Hosted: `ask_mind` | 2.2 s (2.3 s median over 5 later runs) |
 | 14 Nov | Hosted: record question | 6.2 s, 13 citations |
 | 14 Nov | Hosted: nightly graph | 1.9 s, one merge accepted |
-| 14 Nov | Hosted: practitioner review | 18.1 s over 8 runs |
+| 14 Nov | Hosted: practitioner review | 18.1 s median over 8 reviews (9.6 to 23.4 s), as measured for `explainers/intelligence-flow.html`; not logged in `progress.md` |
 | 15 Nov | Own GPU: practitioner review | 10.5 s and 5.2 s warm, accepted by every check |
 | 15 Nov | Own GPU: record question | 2.2 s |
 | 15 Nov | Hosted: picture look on three drawn faces | 4.1 s; the database held one note and no picture bytes |

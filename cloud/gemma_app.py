@@ -19,12 +19,29 @@ from pathlib import Path
 import modal
 
 ROOT = Path(__file__).resolve().parents[1]
-_CFG = tomllib.loads((ROOT / "config" / "kaiku.toml").read_text()) if modal.is_local() else {}
+_LOCAL = modal.is_local()
+_CFG = tomllib.loads((ROOT / "config" / "kaiku.toml").read_text()) if _LOCAL else {}
 _G = _CFG.get("gemma_modal", {})
-REPO = os.environ.get("KAIKU_GEMMA_REPO") or _CFG.get("models", {}).get("gemma_hf_repo", "google/gemma-4-26B-A4B-it")
-GPU = os.environ.get("KAIKU_GEMMA_GPU") or _G.get("gpu", "H100")
-SCALEDOWN_S = int(os.environ.get("KAIKU_GEMMA_SCALEDOWN_S") or _G.get("scaledown_s", 60))
-MAX_LEN = int(_G.get("max_model_len", 8192))
+
+
+def _cfg(section: str, key: str, in_container: str | int) -> str | int:
+    """config/kaiku.toml is the only source of these values. It is read on the machine that runs `modal deploy`
+    / `modal run` (the image does not carry config/), where a missing key stops the deploy with a clear message.
+    Inside the container this module is imported again without the file: what the model needs travels in the
+    image env (GEMMA_REPO, GEMMA_MAX_LEN, GEMMA_ADAPTER), and the decorator arguments below were fixed at deploy
+    time, so `in_container` is only a placeholder there. It is kept equal to the config value on purpose."""
+    if not _LOCAL:
+        return in_container
+    value = _CFG.get(section, {}).get(key)
+    if value in (None, ""):
+        raise SystemExit(f"config/kaiku.toml [{section}].{key} is missing: set it before deploying kaiku-gemma")
+    return value
+
+
+REPO = os.environ.get("KAIKU_GEMMA_REPO") or str(_cfg("models", "gemma_hf_repo", "google/gemma-4-26B-A4B-it"))
+GPU = os.environ.get("KAIKU_GEMMA_GPU") or str(_cfg("gemma_modal", "gpu", "H100"))
+SCALEDOWN_S = int(os.environ.get("KAIKU_GEMMA_SCALEDOWN_S") or _cfg("gemma_modal", "scaledown_s", 300))
+MAX_LEN = int(_cfg("gemma_modal", "max_model_len", 16384))
 # Optional LoRA adapter (HF repo) applied on top of the base weights. Empty = base model. Not yet run on a GPU.
 ADAPTER = os.environ.get("KAIKU_GEMMA_ADAPTER") or _G.get("adapter_repo", "")
 HF_SECRET = os.environ.get("KAIKU_HF_SECRET", "huggingface")

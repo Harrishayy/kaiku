@@ -1,5 +1,7 @@
 # ============================================================================================================
-# VOICE LINES — every line Kaiku says, on every surface (robot, iPhone, Mac, web, glasses). Ground truth (D27).
+# VOICE LINES — the keyed lines Kaiku says (robot, iPhone, Mac, web, glasses). Ground truth (D27).
+# Not yet here: the robot hub's own lines (the invitation, step lines, Tap it back, the camera question, Photo time)
+# are constants in hub/kaiku_hub; config/AGENTS.md -> "The robot hub" lists them and says why.
 # ============================================================================================================
 # Clients use KEYS, never their own wording:  GET /v1/voice?lang=en  (all lines as text, for captions)
 #                                              GET /v1/voice/<key>?lang=en  (audio/wav, cloud TTS, cached)

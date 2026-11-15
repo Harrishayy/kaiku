@@ -9,34 +9,40 @@ How to put Kaiku together, either on the **cardboard body (MVP)** or the **print
 ## What you need besides the printed parts
 
 - Hot-glue gun, plus superglue for the PLA-to-PLA joints.
-- One 6 × 3 mm disc magnet (pan homing).
+- Not needed for this build: a 6 × 3 mm disc magnet (pan homing with a KY-035; neither is fitted, D39).
 - One 3 mm bamboo skewer or stiff wire, about 50 mm long (the antenna).
 - Double-sided foam tape.
 - Optional: two M3 × 8 screws (head to turntable).
 - MVP: one corrugated cardboard sheet, about 3–4 mm thick, at least 500 × 300 mm. Also a craft knife, a steel
   ruler and some tracing paper (behind the chest window).
 
-## Atech ports: there are only 12
+## Atech ports: the robot as built
 
 The board has 12 module ports (1–7, 9–11, 13–14); two-port modules need a neighbouring pair on the same side.
-The layout from `docs/kaiku_robot_electronics_specs.md` uses all 12:
+What is plugged in is what the running firmware declares
+(`firmware/atech-head/standalone/project.yaml`; pin ground truth: `hardware/wiring.md`):
 
-| Module | Ports | Where |
+| Module | Ports | Where (the CAD's place for it) |
 |---|---|---|
 | Speaker | 1–2 | body, right-wall grille |
-| Color Display (eyes) | 3–4 | head, tuning window |
-| Knob (dial ear) | 5–6 | head, left ear |
-| Button ("I'm not OK" / push to talk) | 7 | lid, square opening |
+| Knob (dial ear, with its ring light; its press is the robot's only button) | 5–6 | head, left ear |
+| Neopixel light | 7 | — |
 | Microphone | 9–10 | head, right ear |
-| LED Grid left / right (breathing glow) | 11 / 14 | body, behind the chest louvres (port 11 stayed dark on the bench: `hardware/wiring.md`) |
-| DC Motor (pan) | 13 | under the pan base |
+| Orientation sensor (taps) | 13 | head, fixed rigidly to the shell |
+| DC Motor (pan) | 14 | under the pan base |
 
-So there is **one motor** (pan) and no Atech IMU: taps come from the KY-031 on the UNO Q. The purr mount in the CAD
-stays as an option: it needs a free port (drop one LED grid, or the Speaker). Power comes through the Atech USB-C
-module (port 8). The UNO Q and the camera run off a powered USB-C PD hub that sits behind the robot.
+Ports 3–4 and 11 are free. Port 11 cannot take the motor: its line (GPIO44, the serial receiver) never drove it.
 
-The UNO Q side (D39: no KY-035 hall, no KY-054 light; D54: no KY-053, so no KY-039): no KY-031 knock (D55: taps come from the Atech orientation sensor); the
-Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D54). Pin ground truth: `hardware/wiring.md`.
+**Not fitted, although the shell and the earlier layout have a place for them:** the Color Display (eyes, ports
+3–4; removed 2026-11-14), the lid Button (port 7 in the earlier layout), the two chest LED grids (D54), the KY-031
+knock switch (D55), the KY-039 pulse sensor and its KY-053 converter (D54), the KY-035 hall sensor and the KY-054
+light sensor (D39). The earlier layout, with all 12 ports used, is in `docs/kaiku_robot_electronics_specs.md`; it
+is not what was built.
+
+So there is **one motor** (pan), with no homing: the head has no position sensor. Taps come from the Atech
+orientation sensor in the head (D55). The purr mount in the CAD stays as an option. Power comes through the
+Atech USB-C module (port 8) from its own charger (D54). The UNO Q and the camera run off a powered USB-C PD hub
+that sits behind the robot; the UNO Q carries the camera and the Modulino Buzzer on Qwiic, and nothing else.
 
 ## 1. Neck (printed plate 2 + plate 3), about 15 min
 
@@ -45,19 +51,18 @@ Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D54). 
    of the sleeve. The connector end hangs down.
 3. Glue the sleeve's top edge to the underside of **pan_base**, centred under the small hole (the pinion pokes
    through it). The motor's end face then touches the flange.
-4. Glue the **magnet** into the pocket under the **turntable** gear.
-5. *Only if you have a KY-035 and a 6×3 mm magnet (not in this build, D39):* glue the magnet in the gear pocket and
-   tape the **KY-035 hall sensor** under the pan base flange, 18 mm in front of the axle centre. That
-   is the spot the magnet passes over at "home" (head facing front).
-6. Drop the turntable over the axle. Its gear should mesh with the pinion, and it should turn freely; a drop of
+4. *Only if you have a KY-035 and a 6×3 mm magnet (not in this build, D39):* glue the magnet into the pocket under
+   the **turntable** gear and tape the **KY-035 hall sensor** under the pan base flange, 18 mm in front of the axle
+   centre. That is the spot the magnet passes over at "home" (head facing front). Without them the pocket stays
+   empty.
+5. Drop the turntable over the axle. Its gear should mesh with the pinion, and it should turn freely; a drop of
    grease helps. Spin the motor by hand to check the mesh.
 
 ## 2. Head (printed plate 1 + 3 + 4), about 25 min
 
 1. Glue the **face bezel** onto the front, then the two **cheeks** below and beside the ring. These are optional.
-2. Put the **Color Display** into the frame behind the small window, screen forward, **connector edge up** (the
-   frame is open at the top for the plugs). Tape it in place. Check that the screen lines up with the window
-   *before* gluing.
+2. (No Color Display in this build: it was removed on 2026-11-14. The shell keeps its frame and small window;
+   leave them empty. With a display: screen forward, **connector edge up**, taped in the frame.)
 3. **Camera:** fold its clip flat under the body and stand it on the head floor, ring forward, so the front rim
    rests on the round lip. Run its USB cable down through the floor slot.
 4. Put the square **Knob** module flat against the left inner wall, with its knob through the ear hole. Glue the
@@ -65,10 +70,11 @@ Modulino Buzzer on Qwiic. The Atech gets its own USB-C charger on port 8 (D54). 
    glue if it's loose). Optional: drill the ear hole out to Ø26 to show the module's light ring.
 5. *Optional:* glue the **Microphone** module against the right inner wall behind the hole pattern, then glue the
    **right ear** grille on the outside.
-6. (No KY-031 knock sensor in this build, D55: taps are felt by the Atech orientation sensor.)
+6. Fix the Atech **Orientation Sensor** module rigidly inside the head (foam tape or glue against the shell): it
+   feels the taps on the head. (No KY-031 knock sensor in this build, D55.)
 7. Push the skewer into the antenna socket on top and glue on the **antenna ball**.
-8. Plug every head cable in now (display ×2, knob ×2, mic ×2, no KY-031 wires in this build), and route them all
-   down through the floor
+8. Plug every head cable in now (knob ×2, mic ×2, orientation sensor ×1; no display and no KY-031 wires in this
+   build), and route them all down through the floor
    slot. Fit the **back lid**: its two ribs push the camera forward against the lip.
 9. Feed the cable bundle through the turntable disc and down the hollow axle. Glue the head floor onto the
    turntable disc, with the floor slot over the disc slot, facing front. Use the two M3 screws if you have them.
@@ -103,7 +109,7 @@ panels directly from this table (4 mm board; the generator recomputes for other 
      stays put.
    - Glue the neck's **pan base** on top, with the motor sleeve through the pan hole.
    - Glue the **finger cradle** over the Ø9 hole (cosmetic now: no KY-039 in this build, D54).
-   - Drop the **button** module into its square hole.
+   - (No Button module in this build: the square hole stays empty. The ear's press is the only button.)
 4. Pass all the cables to the board and the UNO Q, put the lid on, and plug the power and USB cables in through
    the back.
 
@@ -115,8 +121,9 @@ ledge and lifts out using its finger hole.
 
 ## Before you power on
 
-- Turn the head by hand through its whole range (about ±100°). The cable bundle in the axle must not pull.
+- Turn the head by hand through its whole range (about ±100°; nothing in the firmware limits it). The cable bundle in the axle must not pull.
   Leave a loop inside the body.
-- Home the head: **face it forward before powering on**; that position is 0° (no hall sensor, D39). The firmware works out the pan
-  angle from timed moves between homings (there is no IMU; `docs/kaiku_robot_electronics_specs.md`).
+- **Face the head forward before powering on.** There is no homing and no position sensor (no hall sensor, D39):
+  the running firmware turns the head in short timed nudges at full speed and does not know its angle (D66). The
+  orientation sensor in the head is used for taps only.
 - Update `hardware/wiring.md` with the actual port numbers as you plug things in.

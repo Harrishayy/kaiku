@@ -65,7 +65,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you turn on Camera during activities: smiles, blinks and face movement become numbers on this iPhone. No pictures are saved or sent."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you turn on Camera during activities: smiles, blinks and face movement become numbers on this iPhone. No pictures are saved."
         INFOPLIST_KEY_LSApplicationQueriesSchemes: tel
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this phone only, to keep you safe. Nothing is saved."
         INFOPLIST_KEY_NSHealthShareUsageDescription: "Only if you turn on Watch: sleep with its stages and time awake, resting and walking heart rate, heart rate variability, steps, distance, exercise minutes and time in daylight, as daily totals for your care team."
@@ -153,7 +153,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Kaiku
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.healthcare-fitness
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Only while you talk with Kaiku. Your voice is never saved."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you turn on Camera during activities: blinks and face movement become numbers on this Mac. No pictures are saved or sent."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Only when you turn on Camera during activities: blinks and face movement become numbers on this Mac. No pictures are saved."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Kaiku listens on this Mac only, to keep you safe. Nothing is saved."
         ENABLE_HARDENED_RUNTIME: NO
     info:

@@ -15,7 +15,7 @@ gemini_fast = "gemini-3.8-flash"           # bulk text: explanations fallback, s
 tts = "gemini-3.8-flash-tts"              # GA 2026-09-22, Interactions API; used by the cloud /v1/voice
 tts_lite = "gemini-3.8-flash-lite-tts"    # cheaper on-demand alternative
 gemma_hosted = "gemma-4-26b-a4b-it"       # larger: gemma-4-31b-it
-# VERIFY Hugging Face repo id (org prefix) + licence acceptance (D5: smallest instruct variant first)
+# Hugging Face repo id; the weights are gated, so the account behind the Modal secret must have accepted the licence
 gemma_hf_repo = "google/gemma-4-26B-A4B-it"  # checked on HF 2026-11-14; smaller: google/gemma-4-12B-it (fits L40S)
 
 [voice]
@@ -219,6 +219,7 @@ voice_timeout_s = 3      # GET /v1/voice/{key}; slower -> local fallback
 # No KY-054 (room light from the camera) and no KY-035/magnet (home = head position at power-on): D39.
 dial_input = "ear"       # ear (Atech Knob: turn 1-5, press to confirm) | button (1-5 presses, if the knob is out)
 press_window_s = 4.0     # button mode only: presses closer than this make one answer
+long_press_s = 2.0       # a button held this long = the manual safety trigger (no button on the robot as built, D54)
 drum_input = "imu"       # imu (the head's orientation sensor: force in g; this build, D55) | knock (KY-031: timing only) — what the sims send
 drum_sway = false        # no head sway while drumming: taps are ignored while the pan motor moves (it shakes the sensor)
 # Head-firmware numbers (motor pulses, homing, hub-silence stop, debounce): firmware/atech-head/kaiku_link/config.h
@@ -230,13 +231,13 @@ frame_w = 640
 frame_h = 480
 fps = 15
 face_hz = 5              # face boxes on raw/hub/face (attention ladder, presence)
-face_detector = "haar"   # haar (OpenCV bundled) | yunet (needs the model file, VERIFY path on the board)
+face_detector = "haar"   # haar (OpenCV bundled; the only one implemented: the firmware has no yunet path or model file)
 distance_k_cm = 9.0      # distance_cm ~= k / face_width_ratio (60 deg hfov, ~15 cm face); tune on the real head
 far_cm = 300             # published when no face is seen
 light_source = "camera"  # camera (exposure locked, ring light off) | ky054 (lid window; not fitted in this build)
 light_every_s = 10       # room light sample period
 ky054_lux_per_count = 0.25  # lux_est = KY-054 14-bit reading * this (uncalibrated; baselines are per person)
-exposure_absolute = 156  # camera light backup: fixed v4l2 exposure; VERIFY range with `v4l2-ctl -l`
+exposure_absolute = 156  # camera light backup: fixed v4l2 exposure. The range differs per camera (`v4l2-ctl -l`); not checked on this one
 lux_per_unit = 2.0       # camera light backup: lux_est = mean Y * this
 ppg_source = "camera"    # camera (this build: no KY-053, so the KY-039 has no ADC, D54) | auto (KY-039 first) | ky039
 ppg_fallback_s = 4       # auto: switch to the camera after this long without a clean KY-039 batch
@@ -287,6 +288,26 @@ follow_offer_every_s = 300  # follow mode: Kaiku's spoken invitation at the head
 trace = true                # raw.hub.trace on the home broker, for the apps' "Kaiku bot" tab: Kaiku's own lines, the
                             # names of the tools the voice called, game cues, music and session open/close. Never
                             # the person's words; never stored or uplinked (raw.* stays at home). false = nothing
+# The Live bootstrap (POST /v1/companion/session) when she presses to talk: a timeout, a network error or a 5xx is
+# tried again. After the last failure, in follow mode, the talk counts as not opened and her next press tries again.
+session_attempts = 3        # tries in all
+session_backoff_s = 0.5     # wait before the second try; doubles for each further one
+session_timeout_s = 4       # one try may take this long
+cloud_timeout_s = 5         # commands, acknowledgements and health reports to the cloud
+nudge_timeout_s = 3         # GET /v1/nudge; slower -> the local choice
+command_poll_s = 3          # how often pending cloud commands are fetched
+health_report_s = 10        # how often every node's health goes to the cloud (PUT /v1/health/{home})
+crisis_dedupe_s = 60        # at most one obs.safety_flag per trigger kind in this long (the script is shown every time)
+help_screen_s = 600         # a head with a screen takes its help screen down by itself after this (firmware HELP_SHOW_MS:
+                            # change both); inside it the hub may send `show: help` once more to a head that missed it
+think_timeout_s = 8         # a cloud tool (recall, remember, ...) slower than this: "Let me think about that later."
+                            # and the conversation goes on (ask_mind has its own: [live] mind_timeout_s)
+attention_hz = 5            # the attention ladder's tick, and in follow mode the follower's and the talk's idle check
+ask_twice_s = 20            # asking twice (D58): after she asks for an activity in words, the press of the ear that
+                            # starts it must come within this (the voice's tool description names the same number;
+                            # the head firmware arms itself for 20 s too: change both)
+camera_wait_s = 12          # the camera question (D61): the robot waits this long for a yes or no; no answer = off
+open_estimate_min = 5       # Gemini Live / Lyria open only if the spend cap leaves room for this many minutes (live/meter.py)
 
 [ritual]
 enabled_nudges = ["breathe", "drum", "daylight_walk"] # No Friendlink or iCBT task is implemented in this build.
@@ -321,7 +342,7 @@ quality_min = 0.5
 # Consensus / metric criteria (how each data input is used) live in config/criteria.toml.
 
 [music]
-bpm_min = 60     # VERIFY Lyria RealTime allowed BPM range
+bpm_min = 60     # the range the hub clamps tempos to; Lyria RealTime's own allowed range has not been checked against its docs
 bpm_max = 200
 out = "head"        # head | speaker | file. Where the drum music and its cues are heard. head = the robot head's own
                     # speaker, as PCM frames over the bus (kaiku/v1/<home>/audio/head/speaker): the hub needs no
@@ -353,6 +374,10 @@ sign = 1            # 1 or -1: flip if the head turns AWAY from her (which way t
 edge = 0.45         # |x_norm| of the face (0 = middle, 1 = edge of the picture) past which it turns
 speed = 1.0         # motor speed of one nudge, 0-1. On the real robot the head did not move at 0.6 or below (2026-11-15)
 turn_s = 2.0        # how long a turn she asked for ("turn your head left") lasts, seconds (0.6 to 6)
+turn_deg = 40       # ... made of pulses of this size (40 = the head's longest, 600 ms) ...
+turn_pulse_s = 0.45 # ... one sent this often, each before the last has run out
+turn_pause_s = 20   # after a turn she asked for, the following below leaves the head where she put it this long
+better_min = 0.08   # a nudge "worked" when her face is at least this much nearer the middle (x_norm) at the next look
 nudge_deg = 10      # how long one nudge is: not an angle (no position sensor), a bigger number is a longer pulse (15 ms each)
 every_s = 2.0
 max_misses = 3
@@ -363,6 +388,9 @@ conversation_window_s = 10   # with her yes to the camera for this conversation 
 # "Photo time!" on the robot (hub/kaiku_hub/rituals/photo_time.py): the sensors board's camera counts face signs
 # (smiles, head movement) for this long and sends numbers only. No picture is taken or kept. Shown, not scored.
 seconds = 8
+wait_extra_s = 6             # the board answers once, right after its window; this much later it is not coming
+quality = 0.6                # envelope quality of the robot's obs.face_signs when a face was in view: a fixed value for
+                             # this method (Haar cascades), not a measure of the window (its `coverage` is)
 
 [tap_back]
 # "Tap it back" (D51): the robot's drum step as a rhythm game. Kaiku plays a short song at a tempo, the song goes
@@ -399,6 +427,27 @@ helpline_name = "MIELI Crisis Helpline"
 helpline_number = "09 2525 0111"
 emergency_number = "112"
 
+[endpoints]
+# Google REST endpoints the cloud calls directly with httpx (everything else goes through the google-genai SDK).
+gemini_generate_content = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"  # hosted Gemma (cloud/kaiku_cloud/llm/gemma_hosted.py); {model} is filled in by code
+gemini_auth_tokens = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"  # Live ephemeral tokens (cloud/kaiku_cloud/mind/live_token.py)
+
+[cloud]
+# Timings and sizes of the cloud service that are not consensus criteria (those live in config/criteria.toml).
+replay_days = 45              # the consensus rule is replayed day by day over at most this many days (hysteresis)
+eval_patients = 18            # simulated patients for GET /v1/eval and a criteria preview when run inside the API process
+eval_shards = 2               # ... split into this many shards for GET /v1/eval
+eval_preview_shards = 1       # ... and for POST /v1/admin/criteria/preview?eval=1
+eval_modal_patients = 72      # the nightly simulation fanned out on Modal (cloud/app.py)
+eval_modal_shards = 8
+stream_poll_s = 1.0           # WS /v1/stream/{home_id}: how often pending commands are looked up
+reflect_timeout_s = 40        # the daily reflection's one flagship call (mind/reflect.py); the rule answers otherwise
+brief_timeout_s = 60          # the weekly clinician brief's one flagship call (mind/brief.py); the template answers otherwise
+live_token_timeout_s = 8      # minting one Live ephemeral token (mind/live_token.py); no token on a timeout
+gemini_text_timeout_s = 30    # llm/gemini.py defaults when a caller names no timeout of its own
+gemini_embed_timeout_s = 20
+gemini_image_timeout_s = 60
+
 [gemma]
 # One switch for every Gemma call in the cloud (cloud/kaiku_cloud/llm/gemma.py): practitioner review, record
 # questions, the companion's shared mind, nightly graph organisation, and the `KAIKU_LLM=auto` explanation chain.
@@ -415,6 +464,8 @@ scaledown_s = 300     # container stops this long after the last call. Shorter t
                       # is gone again before the second question; each idle tail costs about $0.38 on an H100
 max_model_len = 16384  # prompt + answer. The practitioner review sends about 21 000 characters of evidence: 8192 refused it
 max_output_tokens = 1200  # answer cap per call unless the caller asks for more (same as [gemma_hosted])
+cold_start_s = 240    # GPU seconds reserved in the budget for a cold call (measured 235 s), on top of one scaledown_s tail
+warm_margin_s = 30    # GPU seconds reserved for a warm call, on top of the idle time since the last answer
 
 [budget]
 # HARD caps for all paid model calls (Gemini API / Vertex / Modal GPU), enforced by kaiku_contracts/budget.py.
@@ -430,7 +481,7 @@ argon_per_home_day = 20                    # flagship calls per home per local d
 images_per_home_day = 3                    # walk postcards per home per local day
 
 [budget.prices]
-# Conservative USD estimates (rounded UP on purpose so the ledger over-counts). VERIFY against current pricing pages.
+# Conservative USD estimates (rounded UP on purpose so the ledger over-counts). Not reconciled with the providers' pricing pages.
 "gemini-4-argon" = { in_per_m = 6.0, out_per_m = 30.0 }
 "gemini-3.8-flash-tts" = { in_per_m = 1.0, out_per_m = 25.0 }
 "gemini-3.8-flash-lite-tts" = { in_per_m = 0.5, out_per_m = 12.0 }

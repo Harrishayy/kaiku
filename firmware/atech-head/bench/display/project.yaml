@@ -1,5 +1,5 @@
 # Bench: Atech Color Display alone on ports 3-4 (st7735_tft, 160x80). Colour bars, then the two eyes.
-# VERIFY method names with `atech info st7735_tft` (fillScreen / fillRect assumed, camelCase).
+# Method names as built (this bench built on 2026-11-14 (docs/progress.md); the display was later removed from the robot). After an SDK change check them with `atech info st7735_tft` (fillScreen / fillRect assumed, camelCase).
 name: bench-display
 board: 14port
 modules:

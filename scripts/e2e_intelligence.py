@@ -36,7 +36,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 WS = ("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService."
       "BidiGenerateContentConstrained?access_token=")
-HOME = "demo-aino"
+HOME = os.environ.get("KAIKU_HOME_ID") or "demo-aino"
 fails: list[str] = []
 
 

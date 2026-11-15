@@ -1,5 +1,5 @@
 # Bench: Atech DC motor alone on port 13 (pan, 12:40 gear). Low speed, short pulses, ramped. Hold the head; nothing else is driven.
-# VERIFY method names with `atech info dc_motor` (camelCase: setSpeed(-255..255) / brake).
+# Method names as built (this bench built on 2026-11-14 (docs/progress.md); `stop()` is used, not `brake()`, which kept the real motor spinning). After an SDK change check them with `atech info dc_motor` (camelCase: setSpeed(-255..255) / brake).
 name: bench-motor
 board: 14port
 modules:

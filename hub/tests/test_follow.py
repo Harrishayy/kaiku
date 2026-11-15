@@ -44,7 +44,7 @@ class Head:
         return got
 
     def press(self, value=5, checkin=True):
-        """A press of the ear. At the greeting it opens a talk (D64); `checkin` = she then asks for the check-in in
+        """A press of the ear. At the greeting it opens a talk (D66); `checkin` = she then asks for the check-in in
         words and the head goes to its first question (what `cmd.head {ritual: start}` makes it do)."""
         was = self.f.step
         self.out += (got := self.f.on_ear(value, True, TS, self.now))
@@ -247,7 +247,7 @@ class Rig:
         await self.hub.on_sensors_cmd(parse_topic(f"kaiku/v1/{self.home}/cmd/sensors"), env)
 
     async def press(self, value=5, checkin=True):
-        """A press of the ear. At the greeting it opens a talk (D64); `checkin` = she then asks for the check-in and
+        """A press of the ear. At the greeting it opens a talk (D66); `checkin` = she then asks for the check-in and
         the head goes to its first question, as the firmware does on `cmd.head {ritual: start}`."""
         was = self.hub.follower.step
         await self.raw("raw.head.ear", {"value": value, "delta": 0, "pressed": True})

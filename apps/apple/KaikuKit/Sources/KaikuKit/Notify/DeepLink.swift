@@ -5,7 +5,9 @@ import Foundation
 public enum DeepLink: Equatable, Sendable {
     case tab(KaikuTab)
     case route(KaikuRoute)
-    /// PHQ-9 lives on the web (`/phq9/`); the app opens it in the browser.
+    /// The two-weekly questionnaire (PHQ-9). Not offered in the apps: the service has no page for the person
+    /// (the website is the practitioner dashboard only), so this link parses (an old notification may carry it)
+    /// and opens nothing. The robot's hub can ask the questions aloud.
     case phq9
 
     public static func parse(_ url: URL) -> DeepLink? {
@@ -54,20 +56,8 @@ extension AppModel {
         switch link {
         case .tab(let t): selectedTab = t
         case .route(let r): deepLink = r
-        case .phq9: phq9Requested = true
+        case .phq9: return false   // not offered in the apps: nothing to open
         }
         return true
-    }
-
-    /// The web PHQ-9 page for this home (opened in the browser).
-    public var phq9URL: URL? {
-        guard let p = pairing, var c = URLComponents(url: p.baseURL, resolvingAgainstBaseURL: false) else { return nil }
-        c.path = "/phq9/"
-        c.queryItems = [URLQueryItem(name: "home", value: p.homeID)]
-        if let token = p.token {
-            var fragment = URLComponents(); fragment.queryItems = [URLQueryItem(name: "t", value: token)]
-            c.percentEncodedFragment = fragment.percentEncodedQuery
-        }
-        return c.url
     }
 }

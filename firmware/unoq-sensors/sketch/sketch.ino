@@ -1,5 +1,7 @@
-// Kaiku UNO Q MCU sketch: KY-039 heartbeat (via KY-053 ADS1115), KY-054 light, KY-035 hall
-// (pan homing), Modulino Buzzer chimes, LED-matrix status. Talks only to the Linux app (../python) through the Bridge.
+// Kaiku UNO Q MCU sketch. FITTED on the robot as built: the Modulino Buzzer (chimes) and the on-board LED matrix
+// (status). The code paths for the KY-039 heartbeat (via KY-053 ADS1115), the KY-054 light and the KY-035 hall (pan
+// homing) are still here but UNUSED: none of those parts is fitted (D39, D54), `HAS_HALL` is 0 and the app asks for
+// camera light and camera pulse. Talks only to the Linux app (../python) through the Bridge.
 // Interface: ../AGENTS.md and ../python/kaiku_unoq/bridge.py.
 //
 // Provides (Linux calls): buzz_pattern(name) · ppg_start() · ppg_stop() · light_read() -> int ·
@@ -7,8 +9,10 @@
 // Notifies (Linux provides): on_ppg(t0_ms, fs_hz, "csv") · on_hall(at_home 0|1, t_ms) · mcu_ready()
 // Chime names = contracts Chime: wake ok start_drum end_drum alert (alert = device fault only, never mood/safety).
 //
-// VERIFY on the board (App Lab, Arduino core on Zephyr): Bridge.provide with String / int args and int/String
-// returns; Modulino.begin(Wire1) for Qwiic; Wire = header SDA/SCL; analogReadResolution(14).
+// On the board (docs/progress.md, 2026-11-14): this sketch compiles and runs under App Lab (Arduino core on Zephyr),
+// the app reported `mcu_ok` and the buzzer chimed on `cmd.sensors`, so Bridge.provide with a String argument, ping's
+// return and Modulino.begin(Wire1) for Qwiic work. Not exercised since the KY parts were removed: Wire = header
+// SDA/SCL (ADS1115) and analogReadResolution(14).
 
 #include <Arduino_RouterBridge.h>
 #include <Arduino_LED_Matrix.h>

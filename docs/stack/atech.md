@@ -113,15 +113,17 @@ mouth and ears.
 A press of the ear at the greeting opens a conversation, not the check-in. The check-in starts when she asks or
 agrees, and can be paused and resumed (`cmd.head {ritual: start | pause | resume}`). An activity is asked twice
 (D58): the voice's tool call only arms the head for 20 seconds, and her own press starts it. A model never
-starts something on her body by itself.
+starts something on her body by itself. Both rules (D58, D66) are tested in code and on the twin; no person has
+tried them on the robot yet.
 
 ## On the network
 
 - **Messages.** The head builds the project's standard envelope in C++ (UUIDv7 id, UTC time from NTP) and
   publishes `raw.head.ear`, `raw.head.tap`, `raw.head.pan` and a retained `health/head` every five seconds with
   its step, firmware, signal strength and audio counters. It listens for `cmd.head`.
-- **Board to board.** The head subscribes to the [UNO Q](arduino-uno-q.md)'s face messages, so a face wakes it
-  with no hub in between, and it asks the UNO Q's buzzer for its chimes.
+- **Board to board.** The head subscribes to the [UNO Q](arduino-uno-q.md)'s face messages, so a face can wake it
+  with no hub in between (seen on 14 Nov; since D61 the camera stays closed until she says yes, so the ear
+  wakes the robot), and it asks the UNO Q's buzzer for its chimes.
 - **Fail soft.** No Wi-Fi or no broker: the ritual runs exactly the same by knob. Reconnect with backoff from 1
   to 10 seconds; a last-will message marks the head as down; the microphone and the drum hold lapse by
   themselves if the hub goes quiet.

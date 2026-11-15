@@ -20,21 +20,24 @@ each thing happened and the transcript of both sides. Exit code 0 when the sessi
 question went in through the microphone topic, Kaiku's spoken answer came out on the speaker topic after it, the
 microphone was closed at the end, and no sound device was loaded.
 
-`--follow`: the head is the twin of the STANDALONE firmware and runs the ritual itself; the hub follows it. She wakes
-the head and presses its ear at the greeting (her own start: the consent the conversation needs), the hub opens the
-real Live session and the head's microphone, Kaiku says each step's line through the head, her spoken question is
-answered, she turns and presses through the dials and skips the breathing, and in the head's drum step the hub
-plays Tap it back with its own beat (no music model) while the microphone is closed; the ritual ends, Kaiku says
-goodbye, the microphone and the session close. Exit code 0 when all of that happened, in that order, in ONE ritual.
-One paid Live session of two to four started minutes.
+`--follow`: the head is the twin of the STANDALONE firmware (0.9.0, D66) and runs its steps itself; the hub follows
+it. She wakes the head and presses its ear at the greeting (her own start: the consent the conversation needs). That
+press opens a TALK, not the check-in: the hub opens the real Live session and the head's microphone, and her spoken
+question is answered while the head rests in `talk`. Then she asks for the check-in. There is one question WAV, so
+that second ask is not spoken: the check makes the voice's own tool call (`checkin {action: start}`) on the hub, which
+sends `cmd.head {ritual: start}` exactly as it does when Live reports her words. The head goes to its first
+question, she turns and presses through the three dials and skips the breathing, and in the head's drum step the
+hub plays Tap it back with its own beat (no music model) while the microphone is closed; the check-in ends, Kaiku
+says goodbye, the microphone and the session close. Exit code 0 when all of that happened, in that order, in ONE
+wake. One paid Live session of two to four started minutes.
 
 `--follow --robot`: the configuration the real robot runs with, on twins. The person's record is `aino` and the
-boards publish on `demo-aino` (`KAIKU_HOME_ID` / `KAIKU_HUB_ROBOT_HOME_ID`); Live voice AND the REAL Lyria songs go
+boards publish on `demo-aino` (the defaults; `KAIKU_HOME_ID` / `KAIKU_HUB_ROBOT_HOME_ID` in the shell override them); Live voice AND the REAL Lyria songs go
 through the head (`[voice] audio = head`, `[music] out = head`, `[tap_back] mode = auto`); her taps come only from
 the head's own orientation sensor (`raw.head.tap {src: imu}`, no knock switch); she presses through the dials
 without waiting for each line, to keep the paid sessions short (Live is capped at 118 s here). At the end it reads
-the throwaway cloud's database and prints what was uplinked: every observation must have landed under `aino` and
-none under `demo-aino`. `--beat` swaps Lyria for the hub's own beat (no music model). Two paid sessions: Live (two
+the throwaway cloud's database and prints what was uplinked: every observation must have landed under the record's
+id and none under the boards' id. `--beat` swaps Lyria for the hub's own beat (no music model). Two paid sessions: Live (two
 started minutes) and Lyria (two started minutes).
 """
 
@@ -74,7 +77,13 @@ def question_wav(path: Path, text: str) -> bool:
     return path.exists()
 
 
-RECORD_HOME, ROBOT_HOME = "aino", "demo-aino"  # the person's record / the home id the robot's boards publish on
+# The person's record / the home id the robot's boards publish on: KAIKU_HOME_ID / KAIKU_HUB_ROBOT_HOME_ID from the
+# shell (read before `run` sets its own), else aino / demo-aino. `--robot` checks that the two stay apart, so the
+# defaults are used when the shell gives the same id for both.
+RECORD_HOME = os.environ.get("KAIKU_HOME_ID") or "aino"
+ROBOT_HOME = os.environ.get("KAIKU_HUB_ROBOT_HOME_ID") or "demo-aino"
+if RECORD_HOME == ROBOT_HOME:
+    RECORD_HOME, ROBOT_HOME = "aino", "demo-aino"
 
 
 async def run(out: Path, question: Path | None, text: str, wait_s: float, follow: bool = False,
@@ -302,7 +311,8 @@ async def run(out: Path, question: Path | None, text: str, wait_s: float, follow
 
 async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: Path, question: Path, wait_s: float,
                      refused: list[int], gemini_live, robot: bool = False, cloud_db: Path | None = None) -> int:
-    """The same exchange on a head that runs its own ritual, and the game after it in the same ritual."""
+    """The same exchange on a head that runs its own steps (D66): her press opens a talk, the question is answered
+    there, the check-in starts only when she asks for it, and the game is played in that check-in."""
     import sqlite3
 
     from kaiku_contracts.bus import Bus
@@ -320,6 +330,7 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
     mic = {"n": 0, "first": None, "last": None, "bytes_ok": True, "while_closed": 0}
     spk = {"n": 0, "drops": 0, "times": []}
     cmds: list[tuple[float, str]] = []      # every cmd.head mic open/close, with its time
+    ritual_cmds: list[tuple[float, str]] = []   # every cmd.head {ritual: ...} the hub sent, with its time
     marks: dict[str, float] = {}            # the first time each thing happened
     traces: list[dict] = []
 
@@ -358,6 +369,9 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
             if not cmds or cmds[-1][1] != c.mic:
                 note(f"cmd.head mic: {c.mic}")
             cmds.append((now(), c.mic))
+        if c.ritual:
+            ritual_cmds.append((now(), c.ritual))
+            note(f"cmd.head ritual: {c.ritual}")
         if c.drum == "hold" and "hold" not in marks:
             mark("hold")
             note("the hub holds the head's drum step (Tap it back)")
@@ -422,13 +436,14 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
             await asyncio.sleep(1.0)
         opened_before_press = [c for c in cmds if c[1] == "open"]
         session_before_press = voice.in_session
-        await head.press_ear()                      # greet -> mood: she starts the ritual herself
+        await head.press_ear()                      # greet -> talk (D66): her press opens a talk, not the check-in
         mark("press")
-        note("she presses the ear at the greeting: her own start", step=head.mode)
+        step_after_press = head.mode
+        note("she presses the ear at the greeting: a talk opens, no check-in step", step=head.mode)
         await until(lambda: voice.in_session and any(c[1] == "open" for c in cmds), 15)
         if voice.in_session:
             mark("live")
-        # ---- her question, in the mood step, and Kaiku's answer through the head
+        # ---- her question, while the head rests in `talk`, and Kaiku's answer through the head
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
             await asyncio.sleep(0.1)
@@ -448,6 +463,19 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
                 note("Kaiku has finished")
                 break
         transcript = [dict(t) for t in voice.transcript]
+        # ---- she asks for the check-in. Not spoken a second time (one question WAV): the voice's own tool call is
+        # made on the hub, which sends `cmd.head {ritual: start}` as it does when Live reports her words (D66).
+        step_before_ask, starts_before_ask = head.mode, [c for c in ritual_cmds if c[1] == "start"]
+        t = now()
+        asked_checkin = await hub.on_tool("checkin", {"action": "start"})
+        mark("checkin_asked")
+        note("she asks for the check-in (the voice's `checkin {start}` tool call)", result=asked_checkin.get("checkin"),
+             ok=bool(asked_checkin.get("ok")))
+        await until(lambda: head.mode == "mood", 10)
+        note("the head is at its first question", head_step=head.mode)
+        step_after_ask = head.mode
+        if not robot:
+            await quiet(t)                          # the mood question's line, heard to its end
         # ---- she answers the three dials on the ear; Kaiku says each step's line
         for turn in (2, -1, 1):
             t = now()
@@ -502,9 +530,13 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
         "nothing was listened to before her press": not opened_before_press and not session_before_press,
         "Live opened on her press, on the head's audio": "live" in marks and "press" in marks and marks["live"] >= marks["press"],
         "the microphone opened with it": bool(opens) and "press" in marks and opens[0] >= marks["press"],
+        "her press opened a talk, not the check-in": step_after_press == "talk" and step_before_ask == "talk"
+        and not starts_before_ask,
         "her question went in through the microphone topic": asked_end is not None and mic["n"] > 0 and bool(person),
         "Kaiku answered through the head's speaker": answered_at is not None,
-        "the game was played afterwards, in the same ritual": game is not None and game.levels_played >= 1
+        "the check-in started when she asked for it": bool(asked_checkin.get("ok")) and step_after_ask == "mood"
+        and any(c[1] == "start" and c[0] >= marks.get("checkin_asked", 1e9) - 0.5 for c in ritual_cmds),
+        "the game was played afterwards, in the same wake": game is not None and game.levels_played >= 1
         and answered_at is not None and marks.get("game_recorded", 0) > answered_at
         and rituals.count(("greet", "started")) == 1 and ("close", "completed") in rituals,
         # closed as the game began, not opened again before her last turn, and the head sent nothing while closed
@@ -541,7 +573,7 @@ async def follow_run(out: Path, hub, s, note, log: list[dict], t0: float, wav: P
         "timeline": log, "transcript": transcript, "said_by_live": said, "mic_cmds": cmds, "marks": marks,
         "mic": mic, "speaker": {k: v for k, v in spk.items() if k != "times"}, "head": stats, "hub": sent,
         "game": game.model_dump(mode="json") if game is not None else None, "ritual": rituals,
-        "taps_by_source": tap_srcs, "landed_in_cloud": landed,
+        "taps_by_source": tap_srcs, "landed_in_cloud": landed, "ritual_cmds": ritual_cmds,
         "traces": [p for p in traces if p["kind"] != "said"], "checks": checks}, indent=1))
     print(f"files: {question} · {wav} · {out / 'run.json'}")
     return 0 if all(checks.values()) else 1
@@ -559,8 +591,9 @@ def main() -> None:
                          "landed in the throwaway cloud")
     ap.add_argument("--beat", action="store_true", help="with --robot: the hub's own beat instead of Lyria (no music model)")
     ap.add_argument("--follow", action="store_true",
-                    help="the head runs its own ritual (standalone firmware twin): her press opens the conversation, "
-                         "the question is answered, then Tap it back in the same ritual with the microphone closed")
+                    help="the head runs its own steps (standalone firmware twin, D66): her press opens a talk, the "
+                         "question is answered there, the check-in starts when she asks, then Tap it back in it with "
+                         "the microphone closed")
     ap.add_argument("--out", default="", help="folder for the WAVs and run.json (default logs/head-voice/<time>)")
     a = ap.parse_args()
     out = Path(a.out) if a.out else ROOT / "logs" / "head-voice" / time.strftime("%Y%m%d-%H%M%S")

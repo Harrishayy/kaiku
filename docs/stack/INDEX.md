@@ -12,7 +12,7 @@ other five.
 | [Modal](modal.md) | The whole cloud: one warm container for API, dashboard and database; three schedules; a `.map()` simulation; Gemma on an H100 that scales to zero |
 | [Meta AI glasses](meta-glasses.md) | A walk companion in the ear through the Device Access Toolkit and Bluetooth, with opt-in seeing and a walk that survives the glasses coming off |
 | [Atech](atech.md) | The robot's head on one 14-port board: ear dial, taps from the orientation sensor, neck motor, and a live voice as audio frames over MQTT |
-| [Arduino UNO Q](arduino-uno-q.md) | The robot's eyes: a camera read on the board itself, only numbers leave it, and the camera opens only after a spoken yes |
+| [Arduino UNO Q](arduino-uno-q.md) | The robot's eyes: a camera read on the board itself, only numbers leave it. A face woke the head board to board (14 Nov). Since D61 the camera stays closed until she says yes, so the ear wakes the robot. |
 
 These pages are views. The ground truth stays where the root [`AGENTS.md`](../../AGENTS.md) says it is: the
 module docs, the config files and [`decisions.md`](../decisions.md). Where an older page of this repo
@@ -37,9 +37,10 @@ The problem has a shape, and each technology covers one side of it.
 
 It is morning. This is the path of one moment, and each step is real code.
 
-1. **UNO Q.** The camera on the board finds a face and publishes where it is: a few numbers, no picture
-   (`raw.hub.face`).
-2. **Atech.** The head hears that message on the home broker and wakes. She presses its ear.
+1. **Atech.** She presses the robot's ear and it wakes. (A face woke the head board to board on 14 Nov. Since
+   D61 the camera stays closed until she says yes, so the ear wakes the robot.)
+2. **UNO Q.** Kaiku asks once whether its camera may be on. After her yes the board finds her face and publishes
+   where it is: a few numbers, no picture (`raw.hub.face`).
 3. **Gemini Live.** The hub opens a conversation; Kaiku's voice travels to the head's speaker as 20 ms audio
    frames. She says she slept badly and misses her sister.
 4. **Modal.** The voice calls its `feel` tool. The call lands on the one Modal container, where the crisis gate
@@ -54,7 +55,18 @@ It is morning. This is the path of one moment, and each step is real code.
    signal groups are worse, the dashboard says "needs a call", and Gemma's review tells the practitioner what
    changed, citing the records, with a trace of every step.
 
-Each step has run with real hardware or real model calls; the stack pages give the dates and the numbers.
+What has run, and where (the stack pages give the dates and the numbers):
+
+- **On the real boards:** an ear press opening a Gemini Live conversation through the head's speaker with a phone
+  as its microphone, and her spoken yes to the camera arriving as a tool call (15 Nov); the dial answers by knob;
+  the UNO Q's face numbers on the broker and a face waking the head (14 Nov, an earlier firmware, before D61).
+- **On real glasses:** registration, the self-test and a walk that sent 30 frames and heard the wearer (15 Nov).
+  Kaiku's replies have not yet been heard in the glasses.
+- **With real model calls on a simulated record:** steps 4, 5 and 8 (`feel`, `ask_mind`, the review), from a test
+  client or the software twin.
+- **Not yet seen on the robot:** the camera opening on her yes (the tool call arrived; the camera's part was
+  written the same day), agreeing to the check-in in words (D66) and asking twice for an activity (D58). Both
+  rules are tested in code and on the twin; no person has tried them on the robot.
 
 ## What made the integration possible
 
@@ -63,8 +75,10 @@ Each step has run with real hardware or real model calls; the stack pages give t
 - **A twin for every device.** Each hardware node has a software twin that speaks the same messages
   ([`sim/`](../../sim/AGENTS.md)), so the cloud, the voice and the dashboard were built before the hardware was
   ready and can be run by anyone without it.
-- **One tool registry.** The same list of voice tools serves all four bodies
-  ([`companion_tools.py`](../../contracts/python/kaiku_contracts/companion_tools.py)).
+- **One tool registry.** The same list of 18 voice tools serves all four bodies
+  ([`companion_tools.py`](../../contracts/python/kaiku_contracts/companion_tools.py)); the hub adds three
+  robot-only tools (`camera_choice`, `turn_head`, `checkin`,
+  [`hub/kaiku_hub/live/tools.py`](../../hub/kaiku_hub/live/tools.py)).
 - **One rule file.** [`config/criteria.toml`](../../config/criteria.toml) is the whole consensus, versioned by
   its hash.
 
@@ -77,4 +91,4 @@ Each step has run with real hardware or real model calls; the stack pages give t
 | Modal | Public deployment checked from outside; H100 cold and warm calls measured |
 | Meta glasses | Registration, self-test (speaker, microphone, camera frame) and a 30-frame walk on real glasses |
 | Atech | Ritual by knob with no laptop; taps, motor, MQTT, a Live conversation through the head's speaker |
-| Arduino UNO Q | Camera numbers and chimes on the broker; waking the Atech head |
+| Arduino UNO Q | Camera numbers and chimes on the broker; a face waking the Atech head (14 Nov, before D61) |

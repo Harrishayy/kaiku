@@ -2,8 +2,10 @@
 
 | Item | Qty | Source | Used for |
 |---|---|---|---|
-| Atech board + USB-C module, Color Display, Knob, Button, Speaker, Microphone (no LED grids, D54) + its own USB-C charger | 1 each | Atech kit | eyes, ear dial, lid button, cues (+ future voice), speech (STRETCH), chest glow; all 12 ports used (`assembly.md`) |
-| Atech DC Motor V2.3 | 1 of 4 (+1 optional purr, needs a free port) | Atech kit | pan |
+| Atech board + USB-C module, Knob (with ring light), Speaker, Microphone, Neopixel light + its own USB-C charger | 1 each | Atech kit | ear dial (its press is the only button), Kaiku's voice and the drum song, the conversation (the fitted microphone has returned only zeros; a phone or Mac stands in, D56); ports in `assembly.md` |
+| Atech Orientation Sensor (`icm40608`) | 1 | Atech kit | taps on the head, the only tap source (D55) |
+| Atech DC Motor V2.3 | 1 of 4 (+1 optional purr) | Atech kit | pan (open loop, no homing) |
+| ~~Atech Color Display, Button, LED grids~~ | — | Atech kit | **not fitted**: display removed 2026-11-14, no lid button, no LED grids (D54); no eyes and no chest light |
 | Arduino UNO Q 2 GB | 1 | venue | sensor node + camera app (hub stays on the laptop, D32) |
 | Modulino Buzzer ABX00108 + Qwiic cable | 1 | venue | chimes, on the UNO Q Qwiic |
 | ~~Joy-IT KY-031 knock sensor~~ | — | KY kit | **not fitted (D55)**: taps / drum come from the Atech orientation sensor |
@@ -11,8 +13,8 @@
 | Arduino USB Camera TPX00246 | 1 | venue | presence, face tracking, backup pulse / light (local only) |
 | Powered USB-C hub with PD input | 1 | team | UNO Q power + USB host for the camera, behind the robot |
 | Arduino power supply TPX00242 | 1 | venue | power (VERIFY 5 V / 3 A PD) |
-| 6 × 3 mm magnet, 3 mm skewer, foam tape, hot glue, Dupont jumpers | — | team | pan homing, antenna, mounting, KY wiring |
+| 3 mm skewer, foam tape, hot glue | — | team | antenna, mounting (a 6 × 3 mm magnet for pan homing and Dupont jumpers for KY parts are not needed: neither is fitted, D39, D54, D55) |
 | Corrugated cardboard ≥ 500 × 300 mm | 1 | team | MVP body (`assembly.md` §3a) |
 | LilyGo ESP32 LoRa | 2 | venue | friend link (separate module) |
-| Laptop USB mic + speaker | 1 | team | Gemini Live voice in v1 (D1, D32) |
+| iPhone or Mac running the Kaiku app | 1 | team | stands in for the head's microphone during a conversation (D56); Kaiku's voice comes out of the head's own speaker (D51) |
 | PLA (Bambu P1S / P2S) | ~165 g MVP, ~320 g full | venue | plates in `cad/README.md` |

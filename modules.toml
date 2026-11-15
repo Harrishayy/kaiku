@@ -29,12 +29,12 @@ kind = "node"
 summary = "Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink"
 removable = false
 consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
-            "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "raw.sensors.face_signs", "cmd.hub",
-            "cmd.sensors", "obs.friend_link", "health"]
+            "raw.sensors.light", "raw.sensors.button", "raw.hub.face", "raw.sensors.face_signs", "cmd.hub",
+            "cmd.sensors", "cmd.friendlink", "obs.friend_link", "obs.phq9", "health"]
 emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.tap_back", "obs.speech_features",
          "obs.light_level", "obs.engagement", "obs.ritual", "obs.intervention_response", "obs.nudge_offered",
          "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors",
-         "cmd.friendlink", "raw.hub.face", "raw.hub.trace", "obs.face_signs", "health"]
+         "cmd.friendlink", "raw.hub.face", "raw.hub.trace", "raw.hub.transcript", "obs.face_signs", "health"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}", "GET /v1/voice/{line_key}",
         "POST /v1/voice/say", "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode",
         "POST /v1/commands/{command_id}/ack"]
@@ -86,35 +86,36 @@ name = "glasses-webapp"
 path = "apps/glasses-webapp"
 owner = "D"
 kind = "app"
-summary = "Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools"
+summary = "Not built: instructions only for a glasses display web app; not part of the entry (the glasses walk is in the iPhone app)"
 removable = true
-emits = ["obs.outing", "obs.intervention_response"]
-http = ["POST /v1/events", "GET /v1/nudge"]
+emits = []
+http = []
 
 [[module]]
 name = "glasses-dat-android"
 path = "apps/glasses-dat-android"
 owner = "D"
 kind = "app"
-summary = "Optional DAT camera app: daylight minutes on walks"
+summary = "Not built: instructions only for an optional Android glasses app; not part of the entry"
 removable = true
-emits = ["obs.outing"]
-http = ["POST /v1/events"]
+emits = []
+http = []
 
 [[module]]
 name = "apple"
 path = "apps/apple"
 owner = "A"
 kind = "app"
-summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live; it can turn the robot's camera), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
+summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
 removable = true
 emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
-         "obs.wearable_daily", "obs.nudge_outcome", "obs.face_signs", "cmd.head"]
-# Kaiku bot: on the home broker while the page is on screen it reads raw/#, cmd/#, obs/#, health/# (never audio/#);
-# the one envelope it sends is cmd.head with a pan and nothing else ("Turn the camera", D64).
+         "obs.wearable_daily", "obs.nudge_outcome", "obs.face_signs"]
+# Kaiku bot: on the home broker while the page is on screen it reads raw/#, cmd/#, obs/#, health/# (never audio/#).
+# It sends no envelope: its one PUBLISH is the phone-as-microphone audio frames (D56). "Turn the camera" (D64) is not
+# in this build.
 consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
             "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "raw.hub.trace",
-            "cmd.head", "cmd.sensors", "cmd.hub", "cmd.friendlink", "health",
+            "raw.hub.transcript", "cmd.head", "cmd.sensors", "cmd.hub", "cmd.friendlink", "health",
             "obs.ritual", "obs.self_report", "obs.drum_session", "obs.tap_back", "obs.hrv_session", "obs.presence",
             "obs.engagement", "obs.intervention_response", "obs.speech_features", "obs.light_level",
             "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag"]
@@ -130,7 +131,7 @@ name = "atech-head"
 path = "firmware/atech-head"
 owner = "A"
 kind = "firmware"
-summary = "Atech board: display eyes, knob ear dial, lid button, pan motor (power-on home, optional hall), speaker, taps from the orientation sensor (standalone); standalone ritual or MQTT firmware (D44); MQTT on the LAN"
+summary = "Atech board: knob ear dial, pan motor, speaker, microphone, taps from the orientation sensor (standalone, the robot as built); display eyes, lid button and hall homing only in the MQTT firmware, not fitted; standalone ritual or MQTT firmware (D44); MQTT on the LAN"
 removable = true
 consumes = ["cmd.head", "raw.sensors.hall", "raw.hub.face", "health"]
 emits = ["raw.head.tap", "raw.head.ear", "raw.head.button", "raw.head.pan", "cmd.sensors", "health"]
@@ -140,7 +141,7 @@ name = "unoq-sensors"
 path = "firmware/unoq-sensors"
 owner = "A"
 kind = "firmware"
-summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D54, D55)"
+summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D39, D54, D55)"
 removable = true
 consumes = ["cmd.sensors"]
 emits = ["raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",

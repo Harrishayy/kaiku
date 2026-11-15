@@ -9,7 +9,8 @@ Gemini Developer API only: on the platform (Google Cloud) backend the SDK refuse
 supported in Vertex AI", so this edge picks GEMINI_API_KEY itself, like the Live voice adapter.
 Where the sound goes is `[music] out` (`player.py`): the robot head's own speaker (default; no sound device on the
 hub), a sound card, or a file.
-VERIFY still: the allowed BPM range (config [music] bpm_min/bpm_max), and the whole drum step on the real head.
+Not checked: the model's own allowed BPM range (the hub clamps to config [music] bpm_min/bpm_max). What was and was
+not heard on the real head is in hub/AGENTS.md (Known issues) and docs/progress.md.
 Send the FULL generation config on each update, not a partial one (handoff §9.3).
 """
 

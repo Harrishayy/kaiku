@@ -1,6 +1,6 @@
-# Plan 02 — Kaiku the companion: one character on every surface · 🟡 CURRENT
+# Plan 02 — Kaiku the companion: one character on every surface · ⏹ SUPERSEDED BY 08 (what was built is in `docs/progress.md`)
 
-> ⚠️ **Scope guard:** build order and cuts in [`04-mind-depth.md`](04-mind-depth.md#️-scope-guard-team-decision-2026-11-14--overrides-plans-0204-where-they-conflict) override this plan where they conflict.
+> ⚠️ **Scope guard:** build order and cuts in [`04-mind-depth.md`](04-mind-depth.md) override this plan where they conflict.
 
 > Builds on [`01-foundation.md`](01-foundation.md) (✅ done). Read the root `AGENTS.md` first; this plan adds
 > surfaces, data points and a character, it does **not** change the consensus principle, the safety path or

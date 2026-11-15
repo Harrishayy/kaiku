@@ -22,7 +22,7 @@
 #define BUTTON_DEBOUNCE_MS 20        // the long press (>= 2 s = "I'm not OK") is decided by the hub
 
 // --- knob (left ear; rotary_encoder_knob) -> raw.head.ear
-#define KNOB_COUNTS_PER_STEP 2       // encoder counts per dial step (EC11 detents; VERIFY with bench/knob)
+#define KNOB_COUNTS_PER_STEP 2       // encoder counts per dial step (EC11 detents; steps "feel short" on the board, docs/progress.md 2026-11-14 06:30: not tuned, bench/knob is the way)
 #define KNOB_START_VALUE 3           // dial position at boot
 #define KNOB_PRESS_DEBOUNCE_MS 30
 
@@ -46,7 +46,8 @@
 #define LED_GLOW_BRIGHT 0.25f
 #define LED_FRAME_MS 33
 
-// --- DC motor (pan, port 7, 12:40 gear, ~+-100 deg). No position feedback between homings: dead reckoning.
+// --- DC motor (pan, port 13 in ../project.yaml; the robot as built runs ../standalone with the motor on port 14;
+//     12:40 gear, ~+-100 deg). No position feedback between homings: dead reckoning.
 #define MOTOR_RAMP_MS 400            // ramp speed instead of jumping: 100 ms dropped the Wi-Fi on a hub USB port (bench 2026-11-14)
 #define MOTOR_MAX_RUN_MS 1000        // never drive longer than this per command
 #define MOTOR_DEG_PER_S_FULL 120.0f  // estimated head speed at |speed| = 255 (TUNE)

@@ -2,23 +2,14 @@
 
 import type { ReactNode } from 'react';
 import type { ApiError } from '@/lib/api';
-import { AGREEMENT_LABEL, type Agreement, type State, type Verdict } from '@/lib/format';
-import { stateChip, verdictChip } from '@/lib/labels';
+import type { State } from '@/lib/format';
+import { stateChip } from '@/lib/labels';
 import { Chip, SimMark } from './dash/kit';
 
 /** Team pages use the dashboard's one chip. A bare state has no agreement, so it is shown as the cloud named it. */
 export function StateChip({ state }: { state: State; large?: boolean }) {
   const c = stateChip(state, 'agree');
   return <Chip tone={c.tone}>{c.label}</Chip>;
-}
-
-export function VerdictChip({ verdict }: { verdict: Verdict; compact?: boolean }) {
-  const c = verdictChip(verdict);
-  return <Chip tone={c.tone}>{c.label}</Chip>;
-}
-
-export function AgreementBadge({ agreement }: { agreement: Agreement }) {
-  return <Chip tone={agreement === 'agree' ? 'neutral' : agreement === 'disagree' ? 'warn' : 'ins'}>{AGREEMENT_LABEL[agreement]}</Chip>;
 }
 
 export function SimBadge({ show = true }: { show?: boolean }) {
@@ -76,15 +67,5 @@ export function PageHead({ title, lede, children }: { title: string; lede?: Reac
       </div>
       {children && <div className="page-head-aside">{children}</div>}
     </div>
-  );
-}
-
-/** Visible "camera on" / "microphone on" pill — shown whenever a device is live. */
-export function DeviceIndicator({ kind, on }: { kind: 'camera' | 'microphone'; on: boolean }) {
-  return (
-    <span className={on ? 'device on' : 'device'} role="status" aria-live="polite">
-      <span className="device-dot" aria-hidden="true" />
-      {kind === 'camera' ? 'Camera' : 'Microphone'} {on ? 'on — analysed here, nothing recorded' : 'off'}
-    </span>
   );
 }

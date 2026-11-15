@@ -98,7 +98,8 @@ def analyze_ppg(
 CAMERA_MAX_FS = 50.0  # below this the batch is the camera backup (~15 Hz, measured rate); the KY-039 sends 100 Hz
 CAMERA_FS_TOLERANCE = 0.25  # the camera's frame rate wobbles batch to batch; within this it is the same stream
 ARTEFACT_RMSSD_MS = 5.0  # a resting heart is not this metronomic over >= 8 beats; mains light flicker is (D39).
-#                           Heuristic: VERIFY against the finger cradle before trusting any robot pulse.
+#                           A heuristic from one bench artefact, never checked against a real finger recording; the
+#                           robot as built has no finger sensor (D54), so only the camera backup reaches this code.
 ARTEFACT_MIN_BEATS = 8
 
 

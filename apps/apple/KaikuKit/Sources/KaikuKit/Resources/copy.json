@@ -1,5 +1,5 @@
 {
-  "$about": "GROUND TRUTH for on-screen UI copy (iPhone, Mac, web /me) and the shared consensus words the clinician dashboard shows (state.*, verdict.*; see design/components.md). Keys are referenced from design/ia.md. Placeholders: {name}, {n}. Spoken lines live in the voice script, crisis text in config/safety_phrases.toml (crisis.body mirrors its first three sentences). en and fi must have the same keys (tested). Swedish to follow.",
+  "$about": "GROUND TRUTH for on-screen UI copy (iPhone and Mac; the Apple apps' own overlay table is apps/apple/KaikuKit/Sources/KaikuKit/Resources/copy.apple.json) and the shared consensus words the clinician dashboard shows (state.*, verdict.*; see design/components.md). Keys are referenced from design/ia.md. Placeholders: {name}, {n}. Spoken lines live in the voice script, crisis text in config/safety_phrases.toml (crisis.body mirrors its first three sentences). en and fi must have the same keys (tested). Swedish to follow.",
   "en": {
     "common.notok": "I'm not OK",
     "common.nottoday": "Not today",
@@ -143,9 +143,6 @@
     "mem.delete": "Delete",
     "mem.forgetall": "Forget everything",
     "saw.head": "Numbers only. Nothing you said, saw or typed.",
-    "saw.robot": "Robot: morning ritual, 6 min",
-    "saw.dial": "Weather check: three dial answers",
-    "saw.walk": "Walk: 24 min, 18 min in daylight",
     "saw.mac": "Mac: active minutes and app types",
     "saw.watch": "Watch: sleep times and resting heart rate",
     "saw.voice": "How you speak",
@@ -359,9 +356,6 @@
     "mem.delete": "Poista",
     "mem.forgetall": "Unohda kaikki",
     "saw.head": "Vain numeroita. Ei mitään, mitä sanoit, näit tai kirjoitit.",
-    "saw.robot": "Robotti: aamuhetki, 6 min",
-    "saw.dial": "Sääkatsaus: kolme mittarivastausta",
-    "saw.walk": "Kävely: 24 min, josta 18 min päivänvalossa",
     "saw.mac": "Mac: aktiiviset minuutit ja sovellustyypit",
     "saw.watch": "Älykello: uniajat ja leposyke",
     "saw.voice": "Puhetapasi",

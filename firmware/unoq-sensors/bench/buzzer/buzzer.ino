@@ -18,7 +18,7 @@ void setup() {
     Wire1.beginTransmission(a);
     if (Wire1.endTransmission() == 0) Monitor.println(String("{\"event\":\"i2c\",\"addr\":") + a + "}");
   }
-  Modulino.begin(Wire1);  // VERIFY: begin(TwoWire&) on Arduino_Modulino >= 0.6.1
+  Modulino.begin(Wire1);  // begin(TwoWire&): this bench passed on the board, 2026-11-14 (docs/progress.md)
   bool ok = buzzer.begin();
   Monitor.println(String("{\"event\":\"buzzer\",\"ok\":") + (ok ? 1 : 0) + "}");
   for (int p = 0; p < 5; p++) {

@@ -478,7 +478,7 @@ class StandaloneHeadSim(TapBackPerson):
         if m == "idle":
             await self._start_greeting()
         elif m == "greet":
-            await self._set_mode("talk")  # main.cpp 0.9.0 (D64): a press at the greeting opens a talk, no check-in
+            await self._set_mode("talk")  # main.cpp 0.9.0 (D66): a press at the greeting opens a talk, no check-in
         elif m == "talk":
             pass  # a press while talking starts nothing
         elif m in self.DIALS:

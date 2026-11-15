@@ -12,7 +12,7 @@ from tools.robot_bench import Seen
 
 
 def test_the_default_run_needs_no_person_no_sound_and_no_made_up_face():
-    assert rb.select([]) == ["parts", "ring", "turn", "buzzer", "camera", "face-signs"]
+    assert rb.select([]) == ["parts", "turn", "buzzer", "camera", "face-signs"]
     assert rb.select(["arm", "parts"]) == ["parts", "arm"]            # the bench's own order, whatever was typed
     with pytest.raises(ValueError, match="no such step: spin"):
         rb.select(["spin"])
@@ -81,6 +81,6 @@ def test_following_is_judged_by_the_configured_sign():
 
 
 def test_the_summary_counts_each_kind_and_only_a_fail_fails():
-    out = rb.render([rb.Result("parts", "PASS", "head: alive", {"age_s": 1.0}), rb.Result("ring", "LOOK", "white"),
+    out = rb.render([rb.Result("parts", "PASS", "head: alive", {"age_s": 1.0}), rb.Result("buzzer", "LOOK", "heard"),
                      rb.Result("turn", "FAIL", "no movement"), rb.Result("follow", "SKIP", "by hand")])
     assert "1 passed, 1 failed, 1 to look at or hear, 1 skipped" in out and '{"age_s": 1.0}' in out

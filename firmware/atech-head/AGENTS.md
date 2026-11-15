@@ -13,7 +13,7 @@ the motor on port 13, and has no orientation-sensor code, so it sends no taps.
 **The robot as it stands (2026-11-14 evening):** no display, no LED grids, taps only from the head's orientation
 sensor, motor on port 14, on a phone hotspot with the broker and the hub on a laptop. The standalone firmware is
 Edwin's (seen working on the robot: Wi-Fi, health, pans both ways, taps, a face waking it) **with the sound work
-put back on top of it** (version `atech-head-standalone-0.4.0`; his alone is `0.1.0`): the hub's songs, cues and
+put back on top of it** (version `atech-head-standalone-0.9.0` today; the sound work began at `0.4.0`, his alone is `0.1.0`): the hub's songs, cues and
 Kaiku's voice on the head's own speaker, the head's microphone to the hub while a conversation holds it open, and
 the hub leading the drum step ("tap it back"). See "Audio streams" and "Standalone on top of the robot firmware"
 below. **On the board 2026-11-15: speaker works (operator report); microphone streams but returns zeros
@@ -22,10 +22,12 @@ below. **On the board 2026-11-15: speaker works (operator report); microphone st
 **Help screen:** only the MQTT firmware has one (compiled, never seen on a display). The standalone head has no
 display: on `cmd.head {show: "help"}` it shows nothing and says so in its health. See "Help screen" below.
 
-The robot's face, ears and movement on the Atech 14-port board (ESP32-S3). The board sits in the body, and the head
-modules are cabled up the neck. It drives the Color Display eyes, the Knob ear dial, the lid Button, two chest LED
-grids, the pan motor (open loop, homed on the KY-035 hall edge) and the Speaker (purr tone and cues). The Mic is
-fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech's cloud gateway or
+The robot's ear and movement on the Atech 14-port board (ESP32-S3). The board sits in the body, and the head
+modules are cabled up the neck. On the robot as it stands the standalone firmware drives the Knob ear dial (its
+press is the only button), a ring light on port 7, the pan motor (open loop, no homing), the Speaker and the
+Microphone, and reads taps from the orientation sensor. The MQTT firmware was written for the earlier design
+(Color Display eyes, lid Button, two chest LED grids, pan homed on a KY-035 hall edge); none of those parts is
+fitted. Custom firmware speaks MQTT on the LAN. **Never** Atech's cloud gateway or
 `atech.Board.connect()` at runtime; those are for flashing and debugging only.
 
 ### What the hub may ask of the head's own ritual (standalone 0.6.0 and 0.7.0, 2026-11-15)
@@ -72,9 +74,11 @@ the custom module `kaiku_link/` (plain C++). The Atech module C++ API is touched
 `audio/head/speaker`: binary PCM frames, not an envelope (the hub's song, cues and voice; "Audio streams").
 
 **Standalone** (`kaiku_net`): `cmd/head` `eyes` (accepted, nothing to see: no display) · `pan` · `gesture` · `purr` ·
+**`activity: breathe|drum|none`** (D58: arms the next press of the ear for 20 s) ·
+**`ritual: next|end|start|pause|resume`** (D59, D66: the check-in starts, waits and comes back only on these) ·
 **`drum: hold|end`** (the hub runs the drum step: "tap it back") · `pan_mode: sway` + `bpm` (only while held;
 anything else stops it) · `mic: open|close` · **`show: help|none`** (needs no hold; no display, so see "Help screen").
-`raw/hub/face` · `audio/head/speaker`. Not obeyed: `chest`, `look`, `home`. It does not listen for taps on the bus (D55).
+`raw/hub/face` · `audio/head/speaker`. Not obeyed: `chest`, `look`, `home`, `color` (ignored since 0.9.0, D66). It does not listen for taps on the bus (D55).
 
 ## Emits (topics/endpoints)
 `raw/head/ear` `{value 1–5, delta, pressed}` (Knob turns + presses) · `raw/head/button` `{id: "head", pressed}` ·
@@ -182,8 +186,8 @@ ceiling stays the driver's (standalone: `SPEAKER_VOLUME` 0.7 in `standalone/src/
 
 | | Number | Where |
 |---|---|---|
-| Speaker ring | 8000 samples (0.5 s); full → the **newest** message is dropped | `SPK_RING_SAMPLES` |
-| Start of a sound | once 120 ms is buffered, or 120 ms after its first frame (the hub runs about 80 ms ahead: playback starts about 20 ms after the first frame, with a 120 ms cushion) | `SPK_PREBUFFER_MS` |
+| Speaker ring | 16000 samples (1 s; was 0.5 s); full → the **newest** message is dropped | `SPK_RING_SAMPLES` |
+| Start of a sound | once 300 ms is buffered, or 300 ms after its first frame (was 120 ms; raised after the sound stuttered on a phone hotspot) | `SPK_PREBUFFER_MS` |
 | Nothing left to play | one I2S cycle of zeros (128 ms), so the amplifier gets silence and no old buffer plays twice | `SPK_DMA_BLOCK(S)` |
 | Zero-length message | the ring is emptied; what the driver already took (up to 128 ms) still plays | `speakerDrop()` |
 | Microphone ring | 8000 samples (0.5 s) between the capture task and the main loop | `MIC_RING_SAMPLES` |
@@ -244,7 +248,9 @@ Rules (MQTT firmware; the standalone's are above):
 - **Never move without a live hub**: motion commands are ignored while `health/hub` is silent or `down`. After
   `HUB_SILENCE_STOP_MS` (15 s = 3 hub heartbeats) the motor brakes and the speaker stops. The first homing waits for
   the first live hub. Eyes and LEDs may change without a hub (no motion).
-- The long-press safety decision is the hub's (≥ 2 s); the firmware only reports edges and never filters long holds.
+- The long-press safety decision is the hub's (≥ 2 s); the MQTT firmware only reports the lid button's edges and
+  never filters long holds. The standalone head has no lid button and reports only the ear's press, so the robot
+  as it stands has no long-press trigger: the crisis path there starts from what the person says (hub safety gate).
 - Motor: ramp ~100 ms, ≤ 1 s per command, new moves ignored mid-gesture/homing, homing gives up after 2 s per
   direction, home after every gesture, purr only when the motor is idle.
 - Same topics + payloads as `head_sim` — the hub can't tell them apart.
@@ -271,7 +277,7 @@ Rules (MQTT firmware; the standalone's are above):
 - Standalone taps (`raw.head.tap`, `src: "imu"`, D55): the detector is the robot firmware's own (0.15 g above rest,
   at most one per 120 ms, none while the motor runs, which includes the sway, nor 400 ms after). Added on top: none
   while PCM plays nor 150 ms after (the speaker shakes the sensor), and the same rule keeps the head from being
-  woken by its own speaker. Taps are published in every step; in the drum step they count, from idle they wake it.
+  woken by its own speaker. Taps are published in every step; in the drum step they count; a tap while idle wakes nothing.
 
 ## Run standalone
 `make atech-setup` (once): a venv at `firmware/atech-head/.venv` with the pinned SDK (`requirements.txt`) and the
@@ -280,11 +286,15 @@ firmware/atech-head/.venv/bin/activate` in every terminal (it keeps PlatformIO i
 kaiku_link/secrets.example.h kaiku_link/secrets.h`, fill it in. `atech validate . && atech build . && atech upload .`
 (data cable). Without hardware: `make sim NODES=head`.
 Shortcuts from the repo root: `make atech-standalone FLASH=1` (active, D44) or `make atech-mqtt FLASH=1` (this firmware);
-both upload at 115200 with `--no-stub`, the only upload that verifies on the bench Mac. One bench part the same way:
+both upload at 115200 with `--no-stub`, the only upload that verifies on the bench Mac. **These targets and
+`standalone/build.sh` are written for macOS**: the port default is the first `/dev/cu.usbmodem*` (override with
+`ATECH_PORT=/dev/ttyACM0` or the like) and the flash step edits `platformio.ini` with BSD `sed -i ''`, which GNU
+sed on Linux rejects (build without `FLASH=1` there and upload with `pio run -d build -t upload` by hand). One bench part the same way:
 `make atech-bench PART=firmware/atech-head/bench/speaker_pcm [FLASH=1]`.
 
 ## Run with sim
-`make broker && make hub` (+ `make sim NODES=sensors` for hall edges), flash, `make tail TOPIC='kaiku/v1/+/raw/head/#'`.
+`make broker && make hub` (+ `make sim NODES=sensors` for the face messages that wake the head; no hall sensor is
+fitted, D39, so there are no hall edges to wait for), flash, `make tail TOPIC='kaiku/v1/+/raw/head/#'`.
 
 ## Config & env
 `kaiku_link/config.h` (numbers), `kaiku_link/secrets.h` (credentials). Hub side: `config/kaiku.toml [robot]`,
@@ -346,13 +356,13 @@ Standalone motor port: **14** (GPIO36/35; `standalone/project.yaml` + `src/pins.
 direction turned. At boot the firmware drives both motor lines high and low together and reports the read-back in
 `health/head` details as `motor_pins`. Seen on the robot (2026-11-14, on its charger): `36:ok 35:ok`, and `cmd.head`
 pans over MQTT turned the motor both ways. Serial `net` prints the Wi-Fi/MQTT state and, when offline, whether the
-configured network is in range (never the password). A `cmd.head` pan runs a fixed 600 ms at `speed` (sign from `target_deg`); there is no position estimate.
+configured network is in range (never the password). A `cmd.head` pan runs 120 to 600 ms at `speed` (direction from the sign of `target_deg`, length 15 ms a degree); there is no position estimate.
 `build.sh` clears its copied sources before `atech build` (a rebuild compiled them without their libraries).
 `kaiku_net` verified on the board (2026-11-14, iPhone hotspot): joins Wi-Fi, connects to the broker, `health/head`
 every 5 s + `raw.head.pan`, takes `cmd.head` eyes, and a face seen by the UNO Q woke the head from idle to greet.
 Taps (D55): the orientation sensor on port 13 is the only tap source (`shakeG` 1.15 = total g, so 0.15 g
-above rest; serial `tap_sensitivity`, never ≤ 1); each tap is published as `raw.head.tap {t_ms, force, src: imu}` in every ritual step, counts in
-DRUM and wakes the head from idle; nothing counts while the motor runs or for 400 ms after. Seen on the robot
+above rest; serial `tap_sensitivity`, never ≤ 1); each tap is published as `raw.head.tap {t_ms, force, src: imu}` in every ritual step and counts in
+DRUM (since 0.9.0 a tap while idle wakes nothing); nothing counts while the motor runs or for 400 ms after. Seen on the robot
 (2026-11-14): hand taps arrive on the broker at about one a second (0.15-0.73 g) and wake the head; at 0.3 g most
 were missed. Not yet seen: taps counted in a DRUM step over the bus, the chimes sounding on the UNO Q buzzer.
 Serial output is dropped when the USB buffer has no room: on a computer's USB port with nobody reading, writes
@@ -380,13 +390,21 @@ was run against its stand-in head on a throwaway broker.
   kept, they were tuned on the robot); the mapping of the contract's eye names onto five faces (nothing to draw).
 - Found by the first version's logic test and still true: `make head-audio-test` after any change to
   `kaiku_link/head_audio.*`. Every standalone build installs PubSubClient and ArduinoJson again: build while online.
-- **Most likely to fail first on the board** (never run): sound at all (`writeSamples` from our task, the 0.4
-  ceiling loud enough, no crackle); the stream under Wi-Fi (`audio.dry`, `loop_max_ms`); microphone level
-  (`MIC_GAIN` is a guess) and whether 250 ms of tail is enough; taps firing on the speaker or the motor despite
-  the mutes; sway (`SWAY_SPEED_PCT` 45 and `SWAY_PULSE_MS` 160 are guesses, open loop, may drift).
+- **The list above was written before the board had made a sound. What `docs/progress.md` records since
+  (2026-11-15):** sound plays on the board. A press opened a Gemini Live conversation, Tap it back played and the
+  ritual completed (01:15 UTC entry); later Kaiku's camera question came out of the head's speaker and a spoken
+  yes, heard through a phone as the microphone, arrived as a tool call. The volume is now `SPEAKER_VOLUME` 0.7 (0.4
+  and then 0.6 were too quiet on the robot; 1.0 clips the amplifier). The head's own microphone streams but has
+  returned only zeros (D56), so a phone or Mac stands in.
+- **Still open, never measured on the board:** crackle; `audio.dry` and `loop_max_ms` as numbers during a whole
+  conversation; the microphone level (`MIC_GAIN` is a guess) and whether 250 ms of tail is enough, both blocked by
+  the silent microphone; taps firing on the speaker or the motor despite the mutes; sway (`SWAY_SPEED_PCT` 45 and
+  `SWAY_PULSE_MS` 160 are guesses, open loop, may drift); and nothing of the 0.9.0 flow (a press opens a talk) has
+  been tried by a person on the robot.
 - **Risks for sound on this firmware and this network, none measured:**
   1. Two radio hops on a phone hotspot (laptop → phone → head) for 50 frames a second: late frames. The cushion is
-     120 ms (`SPK_PREBUFFER_MS`); `audio.dry` above one a sound means it is too short here.
+     300 ms (`SPK_PREBUFFER_MS`, raised from 120 ms after stutter); `audio.dry` above one a sound means it is too
+     short here.
   2. USB serial: the firmware drops its lines when nobody reads them. The bench program does the same for its own
      lines, but the Atech-generated part of it still prints a microphone level 4 times a second with a plain
      `Serial.print`: on a computer's USB port, keep `atech monitor` reading for the whole bench run.

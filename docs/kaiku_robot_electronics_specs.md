@@ -1,5 +1,12 @@
 # Kaiku robot: electronics spec
 
+> **Banner, 2026-11-15: this is the design of 14 Nov, kept for history, not the robot as built.** Superseded by
+> D39 (no finger pulse sensor), D54 (no KY-053, no LED grids), D55 (taps come from the head's orientation sensor;
+> the KY-031 knock switch and the head's display are removed), D56 (a phone stands in for the head's microphone),
+> D61 (the camera stays closed until she says yes) and D66 (a press of the ear opens a talk) in
+> [`decisions.md`](decisions.md). The robot as built: [`stack/atech.md`](stack/atech.md) and
+> [`stack/arduino-uno-q.md`](stack/arduino-uno-q.md).
+
 > **Source document (Xavier, reconciled with the printed CAD by Edwin).** How it maps onto the repo, and what we
 > build: [`plans/07-robot-electronics.md`](plans/07-robot-electronics.md) (D31 hardware, D32 software). Pins:
 > `hardware/wiring.md`; messages: `contracts/`; firmware: `firmware/*/AGENTS.md`. Where they differ, those win.

@@ -34,7 +34,7 @@ public struct VisionLookRules: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = VisionLookRules()
-        frames = min(8, max(1, try c.decodeIfPresent(Int.self, forKey: .frames) ?? d.frames))
+        frames = min(3, max(1, try c.decodeIfPresent(Int.self, forKey: .frames) ?? d.frames))
         settle_s = max(0, try c.decodeIfPresent(Double.self, forKey: .settle_s) ?? d.settle_s)
         min_interval_s = max(1, try c.decodeIfPresent(Double.self, forKey: .min_interval_s) ?? d.min_interval_s)
         max_edge_px = min(768, max(64, try c.decodeIfPresent(Int.self, forKey: .max_edge_px) ?? d.max_edge_px))

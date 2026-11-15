@@ -436,7 +436,7 @@ void loop() {
     else if (!strcmp(a, "tap_sensitivity")) { shakeG = constrain(atof(cmd.value), 1.05f, 3.0f); icm40608_imu.setShakeThreshold(shakeG); }
     else if (!strcmp(a, "knob_reverse")) knobSign = -knobSign;
     else if (!strcmp(a, "help"))
-      emit("help", "{\"commands\":[\"greet\",\"ritual\",\"next\",\"breathe [cycles]\",\"drum [seconds]\",\"idle\",\"pan -100..100\",\"purr [ms]\",\"eyes calm|happy|wide|sad|sleepy\",\"chirp\",\"threshold 100-32000\",\"mic_channel left|right\",\"mic_probe\",\"mic_pins\",\"tap_sensitivity 0.5-3.0\",\"knob_reverse\"]}");
+      emit("help", "{\"commands\":[\"greet\",\"ritual\",\"next\",\"breathe [cycles]\",\"drum [seconds]\",\"idle\",\"pan -100..100\",\"purr [ms]\",\"eyes calm|happy|wide|sad|sleepy\",\"chirp\",\"threshold 100-32000\",\"mic_channel left|right\",\"mic_probe\",\"mic_pins\",\"tap_sensitivity 1.05-3.0\",\"knob_reverse\"]}");
   }
 
   // ---- inputs every pass, latched ----

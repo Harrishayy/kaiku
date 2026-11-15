@@ -106,6 +106,10 @@ public enum NudgeScheduler {
         }
     }
 
+    /// The questionnaire is not offered in the apps (there is no screen or page for it; the robot's hub can ask it
+    /// aloud), so its notification is never planned. The rule below is kept for the day a screen exists.
+    public static let phq9Offered = false
+
     public static func id(_ kind: Kind, day: String) -> String { kind == .phq9 ? "kaiku.phq9" : "kaiku.\(kind.rawValue).\(day)" }
 
     /// The plan for today and tomorrow (so a reminder still fires if the app is not opened tomorrow morning).
@@ -147,8 +151,8 @@ public enum NudgeScheduler {
                 }
             }
         }
-        // PHQ-9 card, once ever.
-        if input.phq9Due, !input.delivered.contains(id(.phq9, day: "")),
+        // PHQ-9 card, once ever. Not planned in this build (`phq9Offered`): the apps have no questionnaire screen.
+        if phq9Offered, input.phq9Due, !input.delivered.contains(id(.phq9, day: "")),
            let at = place(input.now.addingTimeInterval(60), input) {
             out.append(Planned(id: id(.phq9, day: ""), kind: .phq9, fireDate: at, arm: nil, category: Category.phq9,
                                deepLink: "kaiku://phq9", passive: true, titleKey: "notif.phq9.t", bodyKey: "notif.phq9.d"))

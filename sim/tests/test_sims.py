@@ -392,6 +392,34 @@ async def test_sensors_distance_comes_from_the_face_box_like_the_firmware():
     assert not s.bus.events
 
 
+async def test_sensors_camera_switched_off_is_closed_like_the_firmware():
+    """`cmd.sensors {camera_enable: false}` closes the camera on the board (kaiku_unoq/camera.py): no face box, no
+    distance, no face-signs window until it is on again. The firmware starts with it on; a camera is still plugged in."""
+    from types import SimpleNamespace as NS
+
+    from kaiku_contracts import make
+
+    async def cmd(**payload):
+        await s._on_cmd(None, NS(payload=make("cmd.sensors", payload, source="hub").payload))
+
+    s = SensorsSim(arrive_after_s=None, seed=1)
+    s.bus, s.photo_time_scale = _Capture(), 0.01
+    s._arrived_at = time.monotonic() - 10                       # someone sits at the robot
+    assert s.camera                                             # as the firmware starts
+    await _run_loop(s._distance_loop(), 0.3)
+    assert s.bus.of("raw.hub.face") and s.bus.of("raw.sensors.distance")
+    await cmd(camera_enable=False)
+    s.bus.events.clear()
+    await cmd(face_signs_s=2.0)                                 # asked for while the camera is closed
+    await _run_loop(s._distance_loop(), 0.3)
+    assert not s.bus.events and s.face_boxes(36.0, 0.0) == []   # nothing from a closed camera
+    assert s.camera_ok                                          # ... which is still plugged in (health camera_ok)
+    await cmd(camera_enable=True)
+    await _run_loop(s._distance_loop(), 0.3)
+    assert s.bus.of("raw.hub.face") and s.bus.of("raw.sensors.distance")
+    assert len(s.bus.of("raw.sensors.face_signs")) == 1         # the window that waited was counted once it was on
+
+
 @pytest.mark.parametrize("mode", ["flat", "noisy", "flicker", "camera", "auto"])
 async def test_sensors_pulse_fixtures_match_firmware_shapes(mode, monkeypatch):
     from kaiku_contracts import make
@@ -484,7 +512,7 @@ async def test_standalone_head_sends_what_the_firmware_sends_in_the_same_order()
     assert _sent(head) == [("ear", 5, True), ("chime", "wake")] and head.mode == "greet"
     await head._tick()
     assert head.bus.of("raw.head.pan")[-1].payload.moving   # the greeting purr runs the motor
-    await head.press_ear()                                  # a press at the greeting opens a talk (D64) ...
+    await head.press_ear()                                  # a press at the greeting opens a talk (D66) ...
     assert head.mode == "talk"
     await head.start_checkin()                              # ... she asks for the check-in: the first question
     assert head.mode == "mood" and head.dial_value == 5

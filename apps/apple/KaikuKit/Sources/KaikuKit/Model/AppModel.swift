@@ -64,7 +64,7 @@ public final class AppModel {
     public var talkAsked = false
     public var deepLink: KaikuRoute?
     // A2 (iPhone extras)
-    /// A notification / widget asked for the PHQ-9 (web page): the shell opens `phq9URL`.
+    /// Unused in this build: the PHQ-9 is not offered in the apps, and nothing sets this.
     public var phq9Requested = false
     /// nil = not asked yet, false = turned off in Settings (You shows a calm "turned off" row).
     public var notificationsOn: Bool?
@@ -120,9 +120,15 @@ public final class AppModel {
         cameraChoice = CameraChoice(defaults: defaults)
         self.serviceDiscovery = discovery ?? ServiceDiscovery()
         self.saveService = saveService
-        // Dev/test launch arguments (UserDefaults argument domain): -kaikuPairLink <url>, -kaikuSkipOnboarding YES
+        // Dev/test launch arguments (UserDefaults argument domain): -kaikuPairLink <url>, -kaikuSkipOnboarding YES.
+        // `-kaikuPairLink`, `-kaikuName` and `-kaikuShowCrisis` are read in DEBUG builds only.
+        #if DEBUG
+        let argued = defaults.string(forKey: "kaikuPairLink").flatMap(Pairing.parse)
+        #else
+        let argued: Pairing? = nil
+        #endif
         var p = pairing
-        if let link = defaults.string(forKey: "kaikuPairLink"), let parsed = Pairing.parse(link) {
+        if let parsed = argued {
             if parsed.homeID != pairing?.homeID { cameraChoice.clearSent() }   // the day's camera receipt belongs to one home
             p = parsed
             PairingStore.save(parsed)
@@ -152,13 +158,19 @@ public final class AppModel {
         marks = m.compactMapValues { HighlightKind(rawValue: $0) }
         playedDays = defaults.dictionary(forKey: "kaiku.played") as? [String: String] ?? [:]
         talkDays = (defaults.dictionary(forKey: "kaiku.talks") as? [String: Int] ?? [:]).filter { $0.key == Self.dayKey(Date()) }
+        #if DEBUG
         nameOverride = defaults.string(forKey: "kaikuName")
+        #else
+        nameOverride = nil
+        #endif
         if let tab = defaults.string(forKey: "kaikuTab").flatMap(KaikuTab.init(rawValue:)) { selectedTab = tab }
         if let r = defaults.string(forKey: "kaikuRoute").flatMap(KaikuRoute.init(rawValue:)) { deepLink = r }
         L10n.shared.language = language
         if consents[.transcripts] != true { episodes.removeTranscripts() }
         // Screenshot hook: show the crisis screen without emitting a flag.
+        #if DEBUG
         if defaults.bool(forKey: "kaikuShowCrisis") { showCrisis = true }
+        #endif
     }
 
     private func saveDict(_ d: [String: Any], _ key: String) { defaults.set(d, forKey: key) }

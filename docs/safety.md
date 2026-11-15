@@ -5,13 +5,17 @@ clinicians.** Every screen and the pitch say so.
 
 ## Crisis path (deterministic — no LLM anywhere)
 Triggers (all unit-tested in `hub/tests`):
-1. PHQ-9 item 9 > 0 — laptop `/phq9` page or the robot's spoken PHQ-9 step (both modes obey this).
+1. PHQ-9 item 9 > 0 in an `obs.phq9`. The only surface that asks the PHQ-9 is the robot hub's spoken step (both
+   modes obey this); the apps and the website have none, and the PHQ-9 in the demo record is simulated.
 2. A phrase from `config/safety_phrases.toml` (en/fi/sv) in a live or text-mode utterance.
-3. Manual: long-press (≥ 2 s) of the robot's top button (`raw.sensors.button id=top`).
+3. Manual: long-press (≥ 2 s) of a robot button (`raw.sensors.button id=top`, `raw.head.button`). This exists in
+   the hub and on the software twin; **the robot as built has no button**, so on it only triggers 1 and 2 apply.
 
-Action, in order: stop the ritual → speak/display the pre-written script from `safety_phrases.toml`
-verbatim → show **MIELI Crisis Helpline 09 2525 0111 (24/7)** and **112** → emit `obs.safety_flag`
-on the priority uplink → consensus state **Safety** (overrides every source) with timestamp on the dashboard.
+Action, in order: stop the ritual → give the pre-written script from `safety_phrases.toml` verbatim → show
+**MIELI Crisis Helpline 09 2525 0111 (24/7)** and **112** → emit `obs.safety_flag` on the priority uplink →
+consensus state **Safety** (overrides every source) with timestamp on the dashboard. The apps show the script and
+the numbers on their own screen. **The robot as built has no display, so it stops and closes the conversation but
+cannot show or speak the message** (see "The robot on its own" below): it must have the phone app beside it.
 
 ## Limits (say these out loud)
 - The phrase list will miss things (sarcasm, indirect language, other languages, ASR errors) and will

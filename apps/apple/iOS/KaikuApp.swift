@@ -8,13 +8,12 @@ import WidgetKit
 import MWDATCore
 #endif
 
-/// iPhone shell: everything lives in KaikuKit. Links: `kaiku://today|checkin|walk|play/<game>|phq9` (notifications,
+/// iPhone shell: everything lives in KaikuKit. Links: `kaiku://today|checkin|walk|play/<game>` (notifications,
 /// widgets, Live Activities, Siri), the DAT registration callback, and pairing links (`?home=&t=`).
 @main
 struct KaikuApp: App {
     @UIApplicationDelegateAdaptor(KaikuAppDelegate.self) private var delegate
     @Environment(\.scenePhase) private var phase
-    @Environment(\.openURL) private var openURL
 
     var body: some Scene {
         WindowGroup {
@@ -23,11 +22,6 @@ struct KaikuApp: App {
                 .onOpenURL { url in Task { await delegate.route(url) } }
                 .task { await delegate.launched() }
                 .onChange(of: phase) { _, p in if p == .active { Task { await delegate.foreground() } } }
-                .onChange(of: delegate.app.phq9Requested) { _, want in
-                    guard want else { return }
-                    delegate.app.phq9Requested = false
-                    if let u = delegate.app.phq9URL { openURL(u) }
-                }
         }
         .backgroundTask(.appRefresh(KaikuAppDelegate.refreshID)) { await KaikuAppDelegate.backgroundRefresh() }
     }
@@ -69,11 +63,11 @@ final class KaikuAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
             app.consents[.watch] = true
             if await HealthSync.shared.addSampleData() { await HealthSync.shared.sync(app: app) }
         }
-        #endif
-        if let kind = UserDefaults.standard.string(forKey: "kaikuNotifyTest") {
+        if let kind = UserDefaults.standard.string(forKey: "kaikuNotifyTest") {   // DEBUG builds only
             await Notifier.shared.fireTest(kind == "checkin" ? .checkin : .invitation, app: app,
                                            in: max(3, UserDefaults.standard.double(forKey: "kaikuNotifyDelay")))
         }
+        #endif
     }
 
     /// On every foreground (and after pairing via refresh): notifications, voice cache, Health, widgets.

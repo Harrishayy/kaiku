@@ -1,5 +1,8 @@
 # Draft cut: narration by time code
 
+> **Superseded (15 Nov).** This is the narration of the 14 Nov draft cut. The video now follows the 1:58 script
+> in `docs/demo-narrative.md`.
+
 For `demo/recordings/kaiku-draft-cut.mp4` (1:48.8, 1920x1080, h264 + AAC), built by `demo/draft_cut.py` from the
 clips in `demo/recordings/` (`uv run --with pillow python demo/draft_cut.py`; the exact pieces are in
 `recordings/kaiku-draft-cut-timeline.txt`). The order is the shot table in `docs/demo-narrative.md` as it stands

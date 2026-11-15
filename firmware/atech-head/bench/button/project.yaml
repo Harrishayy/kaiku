@@ -1,5 +1,5 @@
 # Bench: Atech button alone on port 7. `atech build . && atech upload .`, then `atech monitor` (or FROM=serial:<port>).
-# VERIFY method names with `atech info button_module` (C++ camelCase per the docs example: isPressed).
+# Method names as built (this bench built on 2026-11-14 (docs/progress.md); no button is fitted on the robot as built). After an SDK change check them with `atech info button_module` (C++ camelCase per the docs example: isPressed).
 name: bench-button
 board: 14port
 modules:

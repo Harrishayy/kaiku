@@ -90,7 +90,7 @@ public final class GlassesSelfTest {
         if let f = r.frame {
             thumbnail = GlassesVision.image(f.jpeg)
             frame = .passed(T("gc.test.frame", ["w": String(f.width), "h": String(f.height)]))
-            GlassesLog.shared.log("selftest_frame", ["ok": true, "w": f.width, "h": f.height, "bytes": f.jpeg.count, "brightness": f.luminance])
+            GlassesLog.shared.log("selftest_frame", ["ok": true, "w": f.width, "h": f.height, "bytes": f.jpeg.count])
         } else {
             frame = .failed(r.note)
             GlassesStatus.shared.error(r.note, where: "selftest frame")
@@ -195,8 +195,10 @@ public struct GlassesCheckView: View {
             }
         }
         .task {
-            // `-kaikuGlassesSelfTest YES`: run the self-test on opening (simulator checks with Mock Device Kit).
+            // `-kaikuGlassesSelfTest YES` (DEBUG builds): run the self-test on opening (simulator checks with Mock Device Kit).
+            #if DEBUG
             if UserDefaults.standard.bool(forKey: "kaikuGlassesSelfTest") { await test.run(app: app) }
+            #endif
         }
         .task {
             while !Task.isCancelled {

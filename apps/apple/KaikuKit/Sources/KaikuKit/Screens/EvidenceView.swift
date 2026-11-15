@@ -2,8 +2,8 @@ import SwiftUI
 
 /// "Today, so far": what was captured today, from which device, and what is shared (pure; tested).
 /// Built only from today's stored observations for this home (`GET /v1/events`) plus this device's own count of
-/// finished conversations. Honest by construction: a walk through glasses says the glasses carried the voice and
-/// counted movement, never that they saw anything; daylight minutes appear only when a reading exists; practice
+/// finished conversations. Honest by construction: a walk through glasses says only that it was counted from the
+/// glasses' motion sensor and that no picture is saved (whether Kaiku could see on it is not known here); daylight minutes appear only when a reading exists; practice
 /// (simulated) records are labelled; nothing is inferred from a missing record.
 public struct DayEvidence: Equatable, Sendable {
     public enum Kind: String, Sendable, CaseIterable { case outing, checkin, task, camera, talk, health, robot, mac }
@@ -83,7 +83,12 @@ public struct DayEvidence: Equatable, Sendable {
         build(events: events, talks: talks, transcriptsKept: transcriptsKept, camera: [])
     }
 
-    static func build(events: [AnyEnvelope], talks: Int, transcriptsKept: Bool, camera: [CameraChoice.Sent]) -> DayEvidence {
+    /// Whether a few pictures of a check-in went to Kaiku's model today (D65): this device sent some (`looked`), or
+    /// the service holds what the model noted (`obs.vision_note`, from any device).
+    static func looked(events: [AnyEnvelope], here: Bool) -> Bool { here || events.contains { $0.type == "obs.vision_note" } }
+
+    static func build(events: [AnyEnvelope], talks: Int, transcriptsKept: Bool, camera: [CameraChoice.Sent],
+                      looked: Bool = false) -> DayEvidence {
         func of(_ types: String...) -> [AnyEnvelope] { events.filter { types.contains($0.type) } }
         func sources(_ ev: [AnyEnvelope], extra: [String] = []) -> [String] {
             let keys = Set(ev.compactMap { sourceKey($0.source) } + extra)
@@ -100,7 +105,8 @@ public struct DayEvidence: Equatable, Sendable {
             var facts = [T("evidence.outing.min", n: Int(minutes.rounded()))]
             if steps > 0 { facts.append(T("evidence.outing.steps", n: Int(steps))) }
             if daylight > 0 { facts.append(T("evidence.outing.daylight", n: Int(daylight.rounded()))) }
-            // `dat_imu` = movement measured by the glasses' motion sensor (no camera involved).
+            // `dat_imu` = movement measured by the glasses' motion sensor. The note speaks of that count only:
+            // whether Kaiku could also see on the walk ("Let Kaiku see") is not known here.
             let glasses = outings.contains { $0.payload["method"]?.string == "dat_imu" }
             items.append(Item(kind: .outing, facts: facts, sources: sources(outings, extra: glasses ? ["evidence.src.glasses"] : []),
                               sharing: .numbers, practice: practice(outings), note: glasses ? T("evidence.outing.glasses") : nil))
@@ -116,9 +122,11 @@ public struct DayEvidence: Equatable, Sendable {
                               sharing: .numbers, practice: practice(tasks)))
         }
         if let seen = cameraTasks(events: events, sent: camera) {
-            // Face signs as numbers; the note says what that means and what was never made.
+            // Face signs as numbers; the note says what that means, and whether pictures were made for a look (D65).
+            let look = Self.looked(events: events, here: looked)
             items.append(Item(kind: .camera, facts: [T("evidence.camera.n", n: seen.count)], sources: seen.sources,
-                              sharing: .numbers, practice: seen.practice, note: T("evidence.camera.note")))
+                              sharing: .numbers, practice: seen.practice,
+                              note: T(look ? "evidence.camera.note.look" : "evidence.camera.note")))
         }
         if talks > 0 {
             items.append(Item(kind: .talk, facts: [T("evidence.talk.n", n: talks)],
@@ -177,7 +185,7 @@ struct EvidenceSection: View {
 
     var evidence: DayEvidence {
         DayEvidence.build(events: app.todayEvents, talks: app.talksToday, transcriptsKept: app.consents[.transcripts] == true,
-                          camera: app.cameraChoice.sentToday())
+                          camera: app.cameraChoice.sentToday(), looked: app.cameraChoice.lookedToday())
     }
 
     var body: some View {

@@ -2,8 +2,8 @@
 # and talks JSON lines over USB serial; src/kaiku_net.* adds Wi-Fi + MQTT (contracts), the hub's sound on the head's
 # speaker, the microphone stream and the hub-led drum step (../AGENTS.md).
 # This file only tells the Atech toolchain which drivers to fetch; the program is src/.
-# Build + flash: `make atech-standalone` (then `PORT=... make atech-standalone-upload`).
-# Back to the MQTT robot firmware: flash ../ (`make atech-mqtt-upload`).
+# Build + flash: `make atech-standalone` (flash with `make atech-standalone FLASH=1`).
+# Back to the MQTT robot firmware: flash ../ (`make atech-mqtt FLASH=1`).
 name: kaiku-head-standalone
 board: 14port
 modules:

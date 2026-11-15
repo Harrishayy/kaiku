@@ -14,7 +14,7 @@ It also serves the person-facing companion (`/v1/me` mascot, highlights, garden)
 before opening Gemini Live, the tool endpoint, and Kaiku's notebook (memories, episodes, open thread).
 
 ## Boundaries
-May import `kaiku_contracts` + fastapi, numpy, httpx, modal, google-genai (voice only, lazily) — never hub, apps, sim or tools. Request/response shapes
+May import `kaiku_contracts` + fastapi, numpy, httpx, modal, google-genai (lazily: voice in `voice.py`, Gemini text / embeddings / images in `llm/gemini.py`, and the hosted Gemma's picture look through ADC in `llm/gemma_hosted._look_platform`) — never hub, apps, sim or tools. Request/response shapes
 are `kaiku_contracts.api`: change them there (contract change), never ad hoc here. `sim/patients` and
 `sim/seed_demo.py` import `kaiku_cloud.jobs.synth` (sim is a harness); never the reverse.
 
@@ -24,6 +24,8 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 - `PUT /v1/health/{home_id}` — `NodeHealthReport` from each hub.
 - `POST /v1/companion/tool` — `CompanionToolCall` a device forwards from the model (see Emits).
 - `POST /v1/companion/episode` — `EpisodeIn`: one finished session (or one run offline); idempotent by `id`.
+- `POST /v1/vision/look?home_id=` — `{task, device, frames: [base64 JPEG, 1 to 3], ref?}` from the iPhone or Mac during a
+  check-in, only with the person's opt-in (D65); pictures are looked at in memory and never saved.
 - `POST /v1/patients/{id}/actions` — `{action: flag_booster|flag_icbt_referral|acknowledge|send_message, note?, by?, ts?}`;
   `ts` = when it really happened (default now, 422 if in the future), returned in `PatientInsight.actions`.
 
@@ -46,7 +48,7 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/events?home_id=&since=&limit=` | `LiveEventsResponse` (newest first) |
 | `GET /v1/health` | `HealthOverview` |
 | `GET /v1/eval` | `EvalResult` (per-state precision/recall, false needs_call per patient-month, lead time, ablation) |
-| `POST /v1/admin/recompute?eval=true` · `POST /v1/admin/reset[?home_id=]` | recompute (+ simulation) · delete simulated data (of one home when `home_id` is given; live recordings always stay) |
+| `POST /v1/admin/recompute?eval=true` · `POST /v1/admin/reset[?home_id=]` | recompute (+ simulation) · delete simulated data; live recordings always stay. With `home_id` only that home is touched: its simulated events, and, when no events are left, every row and kv entry that holds its data (see "Reset" under Invariants). Without it: every home |
 | `GET /v1/admin/criteria` · `PUT /v1/admin/criteria` · `POST /v1/admin/criteria/preview?eval=1` | criteria in effect · apply/reset a live override · dry-run (`CriteriaResponse` / `CriteriaPreview`) |
 | `POST /v1/companion/session` | `CompanionSessionResponse {session_id, model, voice, system_instruction, tools[], context_card, persona_version, safety_phrases_version, live_token\|null, live_setup}` (home token). `live_setup` = Kaiku's recommended Live setup (persona, voice, tools, `[live]` automatic VAD + barge-in, transcriptions); the token locks only the model (`fieldMask: model`), so devices add resumption / compression / tool behaviour |
 | `POST /v1/companion/tool` | `CompanionToolResult {ok, executor, result, error, crisis}` — crisis check first, then surface + schema, then the effect |
@@ -66,7 +68,7 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `POST /v1/companion/tool` `feel` | `result` = `FeelPlan` (stance, depth, reflect_hint, recall, may_offer, follow_up_saved, scheduling): how to meet a noticed feeling for this person, decided by code — see "Notice and act" |
 | `POST /v1/companion/tool` `ask_mind` | `result` = `MindAnswer` (route memory › gemma › Gemini fallback tiers › scripted fallback; grounded cites, tags stripped) — see "Gemma-primary mind" |
 | `GET /v1/me/constellation?home_id=` | `ConstellationResponse`: people/places/likes/what helps/plans/activities + edges (no health data, scores, states, evidence ids) |
-| `GET /v1/me/week?home_id=` · `GET /v1/patients/{id}/week` | `WeekSummary` (D34): routines (daily / most days / a weekday rhythm, usual time, this week kept/partly/slipped), `going_well`, `worth_a_look` — by code (`week.py`); person wording never has states/scores/z; care team adds metric drift, verdicts, bandit, safety flags, PHQ-9 cadence; both get `sources` (the one record: what robot / apps / glasses / watch added per day, counts only); care team gets `next_steps` (fixed rules: call today on safety, check-in call on needs_call, template-suggested booster/iCBT with their action, PHQ-9 due, slipped routine, best response, disagreeing sources) |
+| `GET /v1/me/week?home_id=` · `GET /v1/patients/{id}/week` | `WeekSummary` (D34): routines (daily / most days / a weekday rhythm, usual time, this week kept/partly/slipped), `going_well`, `worth_a_look` — by code (`week.py`); person wording never has states/scores/z; care team adds metric drift, verdicts, bandit, safety flags, PHQ-9 cadence; both get `sources` (the one record: what robot / apps / glasses / watch added per day, counts only); care team gets `next_steps` (fixed rules: call today on safety, check-in call on needs_call, PHQ-9 due, slipped routine, best response, disagreeing sources) |
 | `GET /v1/me/graph?home_id=` · `GET /v1/patients/{id}/graph` | `KnowledgeGraph` ("What Kaiku has learned"): graph.py nodes + obs-only activities + routine nodes, evidence counts, detail. Care team: empty + `shared: false` unless the person shares; then only me/activity/routine (free-text helpers can contain private names/places) (`withheld` lists the rest) |
 | `GET /v1/me/sharing?home_id=` · `PUT /v1/me/sharing?home_id=` | `CareSharing {share_with_care_team}` — default **off** (D34) |
 | `POST /v1/companion/postcard` · `GET /v1/me/postcards/{id}` | `PostcardResponse {id, url, cached, model}` (Nano Banana 2 Lite, cached) · the image; **503 + `{detail, reason, hint}`** without a key / over the daily cap |
@@ -76,13 +78,14 @@ are `kaiku_contracts.api`: change them there (contract change), never ad hoc her
 | `GET /v1/patients/{id}/insight?generate=true` | `PatientInsight`: the intelligence layer in one care-team payload — `review` (Gemma findings, each citing `evidence` ids; numbers rendered by code), `trace` (steps that really ran), `comparison` (this week / week before / usual), `routine` (routines + what helps with interval), `graph` (permitted nodes/edges), `coverage`. `generate=false` never calls a model. See "Practitioner insight" |
 | `GET /v1/patients/{id}/brief` | `ClinicianBrief` (latest `POST /v1/admin/weekly` while it still matches this week's state and rule version; otherwise the template). Never reads the notebook |
 | `POST /v1/admin/reflect` · `POST /v1/admin/nightly-mind?home_id=` · `POST /v1/admin/weekly?home_id=` | daily focus · graph rebuild + Embedding 2 backfill + Gemma validated consolidation diffs + pre-render list · weekly briefs |
+| `POST /v1/vision/look?home_id=` | `VisionLookResult {ok, stored, reason?, note?}`; stores only `obs.vision_note` (source `cloud`) — see "Gemma looks at a few pictures" |
 | emits `obs.safety_flag` | `{trigger: phrase, handled_locally: false}` (source `cloud`) when a crisis phrase arrives in a tool call |
 | `/` | static Next.js export (`apps/web/out`) when built; `/v1/*` and `/healthz` always win |
 
 All models: `contracts/python/kaiku_contracts/api.py` (TS: `contracts/ts`). Interactive docs at `/docs`.
 
 Discovery advertises protocol support, not model readiness or a robot connection. Only explicit credential-free
-demo mode permits a new installation-generated home to bootstrap without provisioning; no seed or enrollment
+demo mode permits a new installation-generated home to bootstrap without provisioning; no seed or enrolment
 endpoint is needed. Its first observation establishes monitoring. Authenticated mode still requires the home's
 existing credential, and unconfigured mode keeps private/paid routes closed. Live bootstrap still enforces
 provider availability, budget and session duration; discovery never supplies a Live token.
@@ -144,6 +147,10 @@ kaiku_cloud/
                           (`heard`), deleted with the transcript; context-card line
   mind/feel.py            the `feel` tool: register a noticed feeling, decide in code how to help (stance, depth,
                           recall, one offer), save the follow-up thread; no model call
+  vision.py               POST /v1/vision/look (D65): a few pictures in memory → Gemma → `obs.vision_note`; cap
+                          per person in a rolling 24 hours; nothing of a picture is stored or logged
+  mind/face_cue.py        when Kaiku goes a little gentler after a quiet face in a task (`[face_cue]`, D52/D60)
+  mind/reflect.py         today's focus per home (flagship when available, otherwise the rule; cached per day)
   mind/walk.py            a walk session: style (config default), the nudge guide (`WalkGuide`), outdoor favourites
   jobs/settle_live.py     one-off: settle old Live reservations from what cloud databases recorded (dry run first)
   history.py              GET /v1/me/history: the person's own numbers by day and session from `[history]` + the
@@ -161,21 +168,28 @@ kaiku_cloud/
                           worth a look (drift_for per metric, verdicts, bandit, safety, PHQ-9), graph view + sharing
   api/dashboard.py        /v1/me/week|graph|sharing, /v1/patients/{id}/week|graph (registered by main.py)
   api/auth.py             fail-closed home/clinician/admin authorization, explicit credential-free demo mode
-  api/main.py             FastAPI routes (handoff §6.7); static web mounted LAST so /v1/* always wins
-  store/db.py             ALL SQL lives here (events, homes, explanations, commands, actions, node_health, kv,
-                          memories + memories_fts, episodes, threads)
+  api/main.py             FastAPI routes (listed in "Consumes" and "Emits" above); static web mounted LAST so
+                          /v1/* always wins
+  api/local.py            `make cloud-local` entry point: loads the repo `.env`, then serves the same app
+  store/db.py             the service's SQL lives here (events, homes, explanations, commands, actions,
+                          node_health, kv, memories + memories_fts, episodes, transcripts, threads, model_calls,
+                          kg_nodes, kg_edges, embeddings). One exception: the one-off `jobs/settle_live.py`
+                          reads databases with its own SQL
   analytics/
     metrics.py            generic daily extraction from Criteria [[metric]] (field / @count / @local_minutes,
                           where filters, agg, missing=zero). NO metric is defined in code
     data.py               PatientData under a Criteria: series, per-source coverage, [[rule]] readings (pure)
     baseline.py           median + MAD; scale = max(1.4826·MAD, min_mad); window ends a lag before the scored day
     drift.py              robust z, direction-aware, every threshold via crit.param(metric, …)
+    calibration.py        harness (`make calibrate`): explicit effect sizes and noisier people than `make tune`
     verdict.py            per source: weighted drifting vs worse_min_weight, [[rule]] triggers, confidence
     consensus.py          [state] rule + day-by-day replay (hysteresis) + correlated-family caveat / count-as-one
     bandit.py             Thompson sampling; reward = 0.5 immediate (intervention_response) + 0.5 next day
   llm/
     ledger.py             usage ledger `model_calls` (no content) + /v1/health/intelligence summary
-    explain.py            Consensus → Explanation; LLM JSON validated, retried once, banned words → template
+    explain.py            Consensus → Explanation; LLM JSON validated, retried once; the banned-word check runs
+                          on the Gemma-ordered result (fails → template) and on the template (logged)
+    errors.py             `LlmUnavailable`: what every adapter raises when it cannot answer
     template.py           deterministic explanation (default, always available)
     gemma.py              THE provider switch: `[gemma].provider` hosted|modal → every Gemma call; model_name()
     gemma_hosted.py       hosted Gemma adapter       gemma_vllm.py   Modal GPU adapter     prompts/explain.md
@@ -191,6 +205,8 @@ kaiku_cloud/
     simulate.py           per-state precision/recall, false needs_call / patient-month, lead time, ablation;
                           CLI for offline tuning (`make tune`)
     nightly.py            recompute all (+ simulation) inside the API process
+    demo_story.py         `--out <dir>`: reproducible synthetic trajectories + a report computed by the real code
+    transcripts_export.py reviewed, separately consented transcript export (see Invariants)
 tests/                    test_analytics.py (rule, verdicts, hysteresis, scenarios, LLM fallback), test_api.py,
                           test_companion.py (mascot, garden, highlights, voice 404/503/cache),
                           test_week.py (routines, week wording, sharing gate, graph evidence),
@@ -210,7 +226,10 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
   `KAIKU_GEMMA_PROVIDER=modal`). Review, record questions, ask_mind, nightly graph organisation and the `auto`
   explanation chain all follow; `model`/trace fields then name the HF repo (+ adapter). No call site picks a provider.
 - **Swap / add an LLM:** write `generate(prompt) -> str` (raise `LlmUnavailable` when it can't answer), register it
-  in `llm/explain.py:BACKENDS` under the `KAIKU_LLM` value. The template stays the fallback.
+  in `llm/explain.py:BACKENDS` under the `KAIKU_LLM` value. It must return one JSON object
+  `{source_order: [every source id once], focus_metrics: [≤ 5 supplied metric ids]}`: the prompt asks for exactly
+  that, and code renders the text. Add a `MODEL_KEY` entry naming its `[models]` key so `Explanation.model` and the
+  ledger show the model id; without one the backend's own name is shown. The template stays the fallback.
 - **New route:** add the response model to `kaiku_contracts/api.py` first, then the route; list it in `modules.toml`.
 - **Remove:** the bandit, LLM adapters and simulation can each be deleted without touching the consensus.
 
@@ -218,7 +237,9 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
 - The consensus is deterministic and fully determined by (events, actions, Criteria). **Gemma explains; it never
   decides or changes `state`.** `safety` only comes from `obs.safety_flag`; analytics can at most produce `needs_call`.
 - No metric names, directions, weights or thresholds in analytics code (synth scenario assertions aside).
-- Thin data is never "stable": < 2 sufficient sources → `watch` with `agreement: low_coverage`.
+- Thin data is never "stable": fewer than `[state].min_sufficient_for_stable` sufficient sources → `watch`. The
+  `agreement: low_coverage` label is a fixed "fewer than 2 sufficient sources" in `analytics/consensus.py` (with
+  one source there is nothing to compare); it is a label, not the state rule, and is not read from the criteria.
 - Only `obs.*` is accepted; duplicates by envelope `id` are ignored. Every protected route fails closed unless
   explicitly running credential-free demo mode. Home credentials are scoped to one home; mixed-home ingestion is
   rejected before any write. Clinician/admin roles cannot use private `/v1/me` or companion routes.
@@ -235,8 +256,14 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
   and removes any prior transcript. Explicit deletions leave tombstones so queued uploads cannot resurrect them.
   Training export requires a reviewed episode allowlist and separate training consent:
   `python -m kaiku_cloud.jobs.transcripts_export OUT.jsonl --reviewed-episodes ids.json --salt RANDOM_SALT`.
-  Regex redaction is assistive, not guaranteed anonymization; retention consent alone never authorizes export. The context card never contains the consensus state, scores, numbers or wearable data; tone is the
+  Regex redaction is assistive, not guaranteed anonymisation; retention consent alone never authorises export. The context card never contains the consensus state, scores, numbers or wearable data; tone is the
   only cue. A crisis phrase in a tool call stores nothing, raises `obs.safety_flag` and returns the scripted message.
+  The phrase check runs before the session check: a phrase raises the flag for the caller's home even when the
+  `session_id` belongs to another home or surface (that other home's episode is not touched). A later call on a
+  session already in crisis gets the script in the language the session was opened in (tested).
+- `/v1/me` `summary`: a person with no record, or on `watch` with `low_coverage` and nothing away from usual, reads
+  "Kaiku is still getting to know your usual.", never that something changed. The breathing line in `last_week`
+  states what was recorded before and after (reported response, not an effect).
 - **ask_mind never decides state and never stores anything.** Code verifies every cite id; an unknown id, a missing
   cite (except `emotional`), bad wording or a pick between conflicting notes → next tier or the scripted line.
   Prompts carry only the question + facts that pass `router.clean_fact` (no digits, state words, wearable/health
@@ -253,7 +280,19 @@ tests/                    test_analytics.py (rule, verdicts, hysteresis, scenari
   Stateless Gemini Interactions text, image and TTS calls set `store=False`; this does not disable provider-side
   processing/abuse retention or Gemini Live session-resumption retention.
 - One SQLite writer: on Modal the API runs as exactly one container; jobs call the API instead of opening the DB.
-- No diagnostic wording anywhere (banned-word check on every explanation; tests cover every demo patient, every
+- **Reset.** `POST /v1/admin/reset?home_id=X` touches only X: its simulated events go, its cached explanation and
+  PHQ-9 reminder markers are cleared, and when X has no events left every row of X in homes, explanations,
+  commands, actions, node_health, memories, episodes, transcripts, threads, kg_nodes, kg_edges and embeddings and
+  its kv entries (invitation, agreed activities, screens, reflection summaries, feel state, thread and upload
+  markers, daily focus, consolidation, pre-render list, brief, remember-off) go too. A home that still has live
+  events keeps its derived rows. Not removed: the contentless `model_calls` ledger, transcript deletion
+  tombstones, the sharing setting. Without `home_id` the same happens for every home (tested).
+- **Network calls (root rule 8), as built.** Only TTS retries (two attempts, a short pause between them, none
+  after the last). The explanation and the shared mind retry once on an invalid answer, not on a network error.
+  Every other provider call (hosted Gemma, Gemini text / embeddings / images, the Modal GPU, Live token minting,
+  the picture look) is one attempt with a timeout and then the deterministic fallback (template, rule, scripted
+  line, `live_token: null`, nothing stored). A failed picture look is never sent again by design.
+- No diagnostic wording anywhere (banned-word check on every explanation, Gemma-ordered or template; tests cover every demo patient, every
   voice line and every `person_hard` sentence).
 - The mascot never looks sad or worried at the person; `safety` → mood `crisis`, `line_key: null` (clients show the
   scripted screen from `config/safety_phrases.toml`). The crisis message is never synthesised by `/v1/voice`.
@@ -297,7 +336,10 @@ cd cloud && uv run modal run app.py   # simulation fanned out with .map
 ```
 `web` runs as exactly one container (single SQLite writer); DB on its app-specific Volume (`kaiku-data` for the
 default app), committed after each
-write request. A 15-minute schedule and a nightly cron (03:00 Helsinki, + simulation) call `/v1/admin/recompute`.
+write request. A 15-minute schedule and a nightly cron (03:00 Helsinki, + simulation, then the daily reflection and
+`/v1/admin/nightly-mind`) call `/v1/admin/recompute`; a weekly cron (Monday 06:00 Helsinki) calls `/v1/admin/weekly`
+for the clinician briefs. The schedules, cron strings and decorator timeouts in `app.py` / `gemma_app.py` are
+literals in code (Modal reads them at deploy time), not `config/kaiku.toml` keys.
 
 ## Run with sim
 ```bash
@@ -317,12 +359,23 @@ late-night minutes; glasses as usual with a sub-threshold cadence dip → disagr
 | `KAIKU_CLINICIAN_TOKEN` | unset → role disabled | Bearer for patient dashboards/actions, event monitoring and health/evaluation; cannot access personal notebook/transcripts |
 | `KAIKU_DEMO_MODE` | unset → fail closed | `1` permits unauthenticated local synthetic demos only when no credentials are configured; `make cloud-local` opts in explicitly |
 | `KAIKU_ADMIN_TOKEN` | unset → role disabled | distinct Bearer for `/v1/admin/*` and care dashboards/actions; cannot read private person routes |
-| `KAIKU_LLM` | `template` | `template` · `gemma_hosted` (needs `GEMINI_API_KEY` + `[models].gemma_hosted`) · `gemma_modal` |
+| `KAIKU_LLM` | `template` | consensus explanations: `template` · `auto` (`[gemma].provider`, then Gemini fast, then the template) · `gemma` (the configured provider) · `gemma_hosted` (needs `GEMINI_API_KEY` + `[models].gemma_hosted`) · `gemma_modal` · `gemini` (Gemini fast) |
 | `KAIKU_WEB_DIR` | `apps/web/out` if present | static site to serve |
 | `KAIKU_MODAL_SECRET` | `kaiku-secrets` | Modal secret to attach (deploy still works if missing) |
 | `KAIKU_MODAL_APP` | `kaiku` | deployed API app identity; use a distinct identity for staging |
 | `KAIKU_MODAL_VOLUME` | `<KAIKU_MODAL_APP>-data` | persistent API state, voice/postcard caches and spend ledger; override only for deliberate state reuse |
 | `KAIKU_GEMMA_REPO` | `[models].gemma_hf_repo` | HF repo for the vLLM class |
+| `KAIKU_GEMMA_APP` · `KAIKU_GEMMA_GPU` · `KAIKU_GEMMA_SCALEDOWN_S` · `KAIKU_GEMMA_ADAPTER` | `kaiku-gemma` · `[gemma_modal]` `gpu` / `scaledown_s` / `adapter_repo` | deploy-time overrides for `gemma_app.py` (the app name is also read by `llm/gemma_vllm.py`). `gemma_app.py` reads `config/kaiku.toml` on the deploying machine and stops with a clear message when `[models].gemma_hf_repo` or `[gemma_modal]` `gpu` / `scaledown_s` / `max_model_len` is missing |
+| `KAIKU_HF_SECRET` | `huggingface` | Modal secret holding `HF_TOKEN` for the gated Gemma weights; the only secret `gemma_app.py` attaches |
+| `KAIKU_GEMMA_PROVIDER` | `[gemma].provider` | `hosted` · `modal` for every Gemma call |
+| `KAIKU_SPEND_DB` | `logs/spend.sqlite` (`/data/spend.sqlite` on Modal) | the spend-cap ledger (`kaiku_contracts.budget`) |
+| `KAIKU_BUDGET_TOTAL_USD` · `KAIKU_BUDGET_DAILY_USD` | `[budget]` `total_usd` / `daily_usd` | spend ceilings for this process |
+| `KAIKU_GENAI_BACKEND` | `auto` | which google-genai backend `kaiku_contracts.genai_client` uses (API key or Gemini platform with ADC) |
+| `KAIKU_MIND_POSTCARD_DIR` | `[mind].postcard_dir` (`/data/postcards` on Modal) | cached walk postcards |
+| `[endpoints]` in `config/kaiku.toml` | see file | `gemini_generate_content` (hosted Gemma REST, `{model}` filled by code) and `gemini_auth_tokens` (Live ephemeral tokens); unset → that call is unavailable and the fallback answers |
+| `[cloud]` in `config/kaiku.toml` | see file | `replay_days` (consensus replay window, read once per process), simulation sizes (`eval_patients`, `eval_shards`, `eval_preview_shards`, `eval_modal_patients`, `eval_modal_shards`), `stream_poll_s`, and timeouts `reflect_timeout_s`, `brief_timeout_s`, `live_token_timeout_s`, `gemini_text_timeout_s`, `gemini_embed_timeout_s`, `gemini_image_timeout_s` |
+| `[safety]` in `config/kaiku.toml` | see file | helpline name and number and the emergency number in the `/v1/me` safety sentence and the practitioner's safety explanation |
+| `[gemma_modal]` `cold_start_s` · `warm_margin_s` | 240 · 30 | GPU seconds reserved in the budget for a cold and a warm call |
 | `KAIKU_CRITERIA` | `config/criteria.toml` | consensus criteria file (re-read on change) |
 | `GEMINI_API_KEY` | unset → voice serves cache only (503 + hint on a miss) | Gemini TTS for `/v1/voice` |
 | `KAIKU_VOICE_CACHE` | `[voice].cache_dir` (`logs/voice_cache`; `/data/voice_cache` on Modal) | rendered audio |
@@ -335,7 +388,9 @@ late-night minutes; glasses as usual with a sub-threshold cadence dip → disagr
 Consensus criteria: `config/criteria.toml` (`KAIKU_CRITERIA` points elsewhere; live overrides live in the DB).
 PHQ-9 cadence/mode: `config/kaiku.toml [ritual] phq9_every_days`, `phq9_mode` (spoken|both → the cloud queues
 `cmd.hub {phq9_due}` for the hub).
-Modal secret: `modal secret create kaiku-secrets KAIKU_HOME_TOKEN=... KAIKU_ADMIN_TOKEN=... GEMINI_API_KEY=... HF_TOKEN=...`
+Modal secret: `modal secret create kaiku-secrets KAIKU_HOME_TOKEN=... KAIKU_ADMIN_TOKEN=... GEMINI_API_KEY=...`
+The Gemma weights' token is not in it: `gemma_app.py` attaches only the Modal secret `huggingface`
+(`KAIKU_HF_SECRET`): `modal secret create huggingface HF_TOKEN=...`
 
 ## Health signal
 `GET /healthz` validates SQLite and the effective criteria schema, returning HTTP 503/degraded if either is invalid;
@@ -434,11 +489,11 @@ readable but cannot cause an unavailable activity to be selected.
   (argon_per_home_day, images_per_home_day + the spend caps), `[care_passages]`.
 
 ## Integration hardening (2026-11-14)
-- `CompanionSessionResponse.max_session_seconds` is enforced by clients. Token expiry is an authorization/resumption
+- `CompanionSessionResponse.max_session_seconds` is enforced by clients. Token expiry is an authorisation/resumption
   limit, not proof the provider terminates an established stream. App admission reserves an estimated full session
   in the spend ledger and records `live_reservation` in intelligence health; unused reservations remain conservative.
 - Successful robot bootstrap deliberately returns no ephemeral token: the robot uses its existing server-side key
-  and budget meter once. A failed/unauthorized bootstrap must block robot voice. Other surfaces require a token.
+  and budget meter once. A failed/unauthorised bootstrap must block robot voice. Other surfaces require a token.
 - `resume_session_id` reuses an existing open same-home/surface episode and returns the remaining original duration;
   unknown, foreign, closed and expired sessions return 422. Tool calls cannot mutate another home's/surface's episode.
 - Hosted Gemma collects non-thought text parts, rejects incomplete responses and validates complete JSON, enums and
@@ -471,7 +526,7 @@ readable but cannot cause an unavailable activity to be selected.
   nodes are excluded. Its bounded `source_context` contains at most one recent fact per actual input source, marks
   synthetic observations, and is withheld when others are present. Gemini Live can use that prepared context directly.
 - Clinician explanation caching ignores arrival timestamps, keys on semantic evidence/rule/model selection, and
-  serializes each home's generation. `[gemma_hosted].explanation_cooldown_s` bounds regeneration and retries after
+  serialises each home's generation. `[gemma_hosted].explanation_cooldown_s` bounds regeneration and retries after
   provider failures; changed evidence during cooldown uses the current deterministic explanation, never stale prose.
 
 - Clinician record chat (`POST /v1/patients/{id}/ask`) reads deterministic consensus, numeric observation
@@ -572,8 +627,9 @@ readable but cannot cause an unavailable activity to be selected.
   `KAIKU_LLM=gemma_modal` neither deploys `gemma_app.py` nor makes the whole service private. The optional GPU
   app must be deployed separately, and no self-hosted, fine-tuned or always-warm capability is implied.
 - The GPU explanation adapter admits/reserves its estimate before dispatch, uses `spawn()` and bounded
-  `FunctionCall.get(timeout=remaining_deadline)`, and requests best-effort `cancel(terminate_containers=False)`
-  after a result timeout. Cancellation does not refund the reservation or guarantee immediate cost cessation.
+  `FunctionCall.get(timeout=remaining_deadline)`, and after a result timeout requests best-effort
+  `cancel(terminate_containers=False)` only when the container was warm; a cold call is left running, because it is
+  what starts the GPU. Cancellation does not refund the reservation or guarantee immediate cost cessation.
   Lookup/submission/cancellation still depend on the Modal control plane; the bound applies to the result wait.
   Content-free ledger rows retain success/failure and latency, and surfaced adapter errors contain only an
   exception class. The implementation follows the official
@@ -1100,7 +1156,7 @@ Say yes to the robot or on a walk, and the phone and the Mac have it at once.
   `ping` every `[stream].heartbeat_s` of quiet. Ids are `<epoch>-<n>`: `Last-Event-ID` (or `last_event_id=`) gets
   what was missed from the home's buffer (`[stream].replay`); another process's id or one older than the buffer
   gets `hello.resync: true`. A listener whose queue (`[stream].queue`) fills is closed; the oldest goes beyond
-  `[stream].max_listeners` per home. Authorization is the ordinary home rule (`api/auth.py`: `home_id` in the
+  `[stream].max_listeners` per home. Authorisation is the ordinary home rule (`api/auth.py`: `home_id` in the
   query). Events carry ids and kinds, never words, values or states of the person (pinned by tests).
 - **Measured locally** (uvicorn, 2026-11-14): tool call → `agreed` frame on two open streams in about 0.04 s; a
   closed client is forgotten within 0.03 s; the stream also runs behind the `after_write` middleware the Modal app
@@ -1214,7 +1270,8 @@ Say yes to the robot or on a walk, and the phone and the Mac have it at once.
   If the file then names an observation type or payload field the process does not know (as the face metrics did
   for a process started before `obs.face_signs`), criteria validation fails and every route that needs the
   criteria breaks until the process is restarted. Develop against a copy (`KAIKU_CRITERIA=<file>`), write the real
-  file last, and restart the API (`make cloud-local` without `--reload` does not restart by itself).
+  file last, and restart the API (`make cloud-local` passes `--reload`, which restarts on a changed Python file, not on a changed
+  `config/*.toml`).
 
 ## More of the day from Apple Health: shown, not scored (2026-11-14, D53)
 - **What arrives:** seven optional fields on `obs.wearable_daily` (contract: `contracts/AGENTS.md`):
@@ -1388,7 +1445,8 @@ Say yes to the robot or on a walk, and the phone and the Mac have it at once.
   pictures as inline data and minimal thinking (without it the answer came back empty). `[gemma] provider = "modal"`
   → unavailable (our vLLM app serves text only). No other model stands in.
 - **Stored:** only `obs.vision_note` (source `cloud`), closed word lists re-checked by the contract. A refused
-  request, an unusable answer, a model failure or the daily cap (`[vision_look] max_per_day`) stores nothing.
+  request, an unusable answer, a model failure or the cap (`[vision_look] max_per_day`, counted over a rolling 24 hours, not a calendar day)
+  stores nothing.
 - **Invariant: a picture is never stored or logged.** The route has no request model, `vision.pictures()` answers a
   bad request with fixed words, a model failure is reported by type only and raised without a cause chain, and the
   log line carries counts. `cloud/tests/test_vision.py` proves it with a marker; keep that test when changing this.

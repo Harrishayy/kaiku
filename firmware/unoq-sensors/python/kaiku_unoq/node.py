@@ -1,14 +1,16 @@
 """UNO Q `sensors` node: Bridge (STM32 sketch) <-> MQTT contract messages, plus the camera's derived numbers.
 
 Consumes  cmd/sensors chime -> Modulino Buzzer · camera_enable -> camera on/off · ppg start|stop -> pulse
-                      (KY-039 on the sketch; camera pulse as backup per [unoq] ppg_source = auto|ky039|camera)
+                      (this build: the camera pulse, [unoq] ppg_source = camera, also the code's default; the
+                      KY-039 paths auto|ky039 stay for a board that has one, D54)
 Emits     raw/sensors/ppg {t0_ms, fs_hz, samples} (KY-039 100 Hz, quality 0.9 | camera ~15 Hz, quality 0.6)
           raw/sensors/hall {at_home} (KY-035: the head faces front; the head firmware brakes on it while homing)
-          raw/sensors/light {raw, lux_est} every light_every_s (KY-054; camera backup per [unoq] light_source)
+          raw/sensors/light {raw, lux_est} every light_every_s (this build: the camera, [unoq] light_source =
+                      camera, also the code's default; ky054 only if one is fitted, D39)
           raw/hub/face (one per face, 5 Hz) · raw/sensors/distance (from face size)
           health/sensors {camera_ok, mcu_ok, mcu_fw, ppg}
 Taps are the Atech head's (its orientation sensor, raw/head/tap src imu): the KY-031 knock switch is gone (D55).
-The eyes, knob, LED grids and motor are the Atech head's (cmd/head). The UNO Q LED matrix is a hidden status display.
+The knob and the motor are the Atech head's (cmd/head). The UNO Q LED matrix is a hidden status display.
 Hub and broker run on the laptop today; set MQTT_HOST=localhost later to run them on this board (D32).
 """
 
@@ -37,7 +39,7 @@ def camera_config() -> CameraConfig:
     keys = CameraConfig.__dataclass_fields__
     raw = {"index": get("unoq", "camera_index", 0), "detector": get("unoq", "face_detector", "haar"),
            **{k: get("unoq", k) for k in keys if get("unoq", k) is not None}}
-    if str(get("unoq", "light_source", "ky054")) != "camera":
+    if str(get("unoq", "light_source", "camera")) != "camera":
         raw["light_every_s"] = float("inf")  # the KY-054 does room light; the camera only as backup
     return CameraConfig(**{k: v for k, v in raw.items() if k in keys})
 
@@ -47,12 +49,12 @@ class SensorsNode:
         self.bridge = bridge
         self.bus = Bus("sensors", version=VERSION, sim=sim, details=self._details)
         self.bus.on("cmd/sensors", self._on_sensors_cmd)
-        self.light_source = str(get("unoq", "light_source", "ky054"))  # ky054 | camera
+        self.light_source = str(get("unoq", "light_source", "camera"))  # camera (this build, D39) | ky054 (not fitted)
         self.light_every_s = float(get("unoq", "light_every_s", 10))
         self.lux_per_count = float(get("unoq", "ky054_lux_per_count", 0.25))
         self.at_home: bool | None = None
         self.mcu_fw: str | None = None
-        self.ppg_source = str(get("unoq", "ppg_source", "auto"))  # auto | ky039 | camera
+        self.ppg_source = str(get("unoq", "ppg_source", "camera"))  # camera (this build, D54) | auto | ky039 (not fitted)
         self.ppg_fallback_s = float(get("unoq", "ppg_fallback_s", 4.0))
         self.ppg_min_range = int(get("unoq", "ppg_min_range", 30))
         self.ppg_max_value = int(get("unoq", "ppg_max_value", 16000))

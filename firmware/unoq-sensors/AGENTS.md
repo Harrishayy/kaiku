@@ -28,7 +28,7 @@ Taps are not this node's any more (D55): the KY-031 knock switch is removed; the
 `raw/sensors/ppg` `{t0_ms, fs_hz, samples}`: KY-039 100 Hz × 25 (quality 0.9), or the camera backup ~15 Hz (quality
 0.6) · `raw/hub/face` per face at 5 Hz · `raw/sensors/distance` `{cm}` from the biggest face (`far_cm` when nobody is
 there) · `raw/sensors/face_signs` `{duration_s, samples, coverage, smile_share?, smiles?, head_movement?}` once after a
-Photo time window (Haar cascades; a sign that was not measured is absent; written 15 Nov, not yet run on the board) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, ppg, at_home}`.
+Photo time window (Haar cascades; a sign that was not measured is absent; written 15 Nov. `demo/robot-test-plan.md` records one 5 s count from the board on 2026-11-15 through `make robot-bench`: the result came back after 5.2 s with 26 frames looked at. `docs/progress.md` has no entry for it, and no Photo time window in a conversation is recorded) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, ppg, at_home}`.
 
 ## Map
 ```
@@ -48,7 +48,9 @@ bench/<part>/         one-part tests: knock (part not fitted, D55), hall, light,
 
 ## Extension points
 - New sensor: a bench part first, then a sketch handler + `Bridge.notify`, a `provide` in `node.py`, and its message.
-- Pulse source: `[unoq] ppg_source = auto|ky039|camera`. Light source: `[unoq] light_source = ky054|camera`.
+- Pulse source: `[unoq] ppg_source = auto|ky039|camera`. Light source: `[unoq] light_source = ky054|camera`. Both are
+  `camera` in `config/kaiku.toml` and in the code's own defaults, so a missing config cannot fall back to a part
+  that is not fitted.
 - **The robot on its own** (no laptop in its path): this board's Linux side also runs the broker (mosquitto, a
   system service) and the hub (a system service, outside App Lab), next to this app. Runbook and
   `scripts/unoq_robot_setup.sh`: docs/robot-network-handover.md → "The robot on its own". This app's code does not
@@ -88,22 +90,26 @@ ADS1115 or buzzer; `ads-missing` is expected in this build, D54). `camera_ok` fa
 
 ## Known issues
 Verified on the board (2026-11-14): the sketch compiles and runs (`arduino-cli compile --profile default -b
-arduino:zephyr:unoq`, libraries pinned in `bench/sketch.yaml`); health ok with camera + sketch; knock taps, faces,
-distance, camera room light, buzzer chimes on `cmd.sensors`; works together with the Atech head over one broker.
+arduino:zephyr:unoq`, libraries pinned in `bench/sketch.yaml`); health ok with camera + sketch; faces, distance,
+camera room light, buzzer chimes on `cmd.sensors`; works together with the Atech head over one broker.
+History: knock taps from the KY-031 were also seen that day (bench 5 of 5); the part was removed afterwards (D55)
+and this node reads no taps now.
 
 Board setup that is **not in the repo** (redo it on a fresh board):
-- `~/ArduinoApps/kaiku-sensors/.env`: `MQTT_HOST=<broker IP>` (the laptop on the hotspot: `172.20.10.11` today),
+- `~/ArduinoApps/kaiku-sensors/.env`: `MQTT_HOST=<broker IP>` (the laptop on the hotspot),
   `MQTT_PORT=1883`, `KAIKU_HOME_ID=demo-aino`.
 - **Default app** = `kaiku-sensors`, so it starts at boot: `arduino-app-cli properties set default
   ~/ArduinoApps/kaiku-sensors` (check with `properties get default`). Before that it never restarted after a power cut.
 - Wi-Fi (NetworkManager): the hotspot is saved with `autoconnect-priority 10` and `autoconnect-retries 0` (retry
-  forever); the venue `Junction2026` is saved with autoconnect off. iPhone hotspots stop broadcasting when nobody
+  forever); the venue's Wi-Fi is saved with autoconnect off. iPhone hotspots stop broadcasting when nobody
   is connected: keep the phone on Settings → Personal Hotspot while the UNO Q boots (~1-1.5 min to app running).
 
-**Not on the board yet (2026-11-14 evening): sketch `unoq-sketch-0.3.0` and the app without the knock code (D55).**
-The board was off the network when they were written, so it still runs the app copied over earlier that day, which
-reads a knock switch that is no longer fitted: a `raw/head/tap` with `"src":"knock"` on the broker comes from that
-old app, not from a person. Deploying, as it was done before: `make unoq-app` on the laptop, copy `python/` and
+**Deployed (`docs/progress.md`, 2026-11-15 02:35 UTC):** the board had been running older code than the repo; the
+repo's `python/` and `sketch/` were copied over ssh (the old app is kept on the board as `~/kaiku-sensors.bak`) and
+the app started ("started successfully"). That entry does not record the sketch version the board reported
+(`health/sensors` `details.mcu_fw`) nor a check that no `raw/head/tap` with `"src":"knock"` appears any more; before
+that deploy such a tap came from the old app, not from a person. Not seen on the robot per that entry: the
+camera's light going on with a yes and the spoken confirmation. Deploying, as it was done: `make unoq-app` on the laptop, copy `python/` and
 `sketch/` into `~/ArduinoApps/kaiku-sensors/` over ssh (the board's `.env` stays), start the app (it rebuilds and
 flashes the sketch), and check `health/sensors` `details.mcu_fw`. A new broker address is one line in that `.env`
 (`MQTT_HOST`) and an app restart: commands in docs/robot-network-handover.md → "UNO Q".
@@ -120,4 +126,4 @@ Traps:
 - The App Lab serial relay garbles the sketch monitor: read it on the board (`socat` on 127.0.0.1:7500).
 - Unplugging another board from a shared supply rebooted the UNO Q: give it its own supply (PD hub + Arduino PSU).
 
-Still to do: tune `distance_k_cm`; KY-035 / KY-054 / KY-039 / KY-053 code stays for a future build (`HAS_HALL 0`).
+Still to do: tune `distance_k_cm`; the KY-035 / KY-054 / KY-039 / KY-053 code paths are still in the sketch and the app but unused: none of those parts is fitted and none is planned (D39, D54; `HAS_HALL 0`).

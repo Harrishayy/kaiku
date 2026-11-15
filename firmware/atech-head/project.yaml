@@ -1,8 +1,12 @@
 # Kaiku Atech board (14-port, ESP32-S3), in the body; display, knob and mic are cabled up the neck into the head.
 # Build offline: `atech validate . && atech build . && atech upload .`
-# Port plan (D31, hardware/wiring.md): all 12 ports used. Confirm GPIOs with `atech validate`; never hard-code them.
+# NOT WHAT THE ROBOT RUNS: this is the earlier, hub-driven MQTT firmware for the earlier design (display 3-4, lid
+# button 7, LED grids 11/14, motor 13: all 12 ports). The robot as built runs standalone/ (no display, button or LED
+# grids; motor 14, orientation sensor 13; hardware/wiring.md). Confirm GPIOs with `atech validate`; never hard-code them.
 #
-# VERIFY with `atech guide` / `atech info <module>` before the first build:
+# The two points below were open before the first build. Since then this file has compiled and, on 2026-11-14
+# 06:30, run on the board with the earlier parts (health, pan reports, button, knob, display eyes:
+# docs/progress.md), so the names below are the ones that built. Check with `atech info <module>` after an SDK change:
 #   - whether `code:` takes `setup:` as well as `loop:` (the docs only show loop)
 #   - C++ method names. The docs' C++ example uses camelCase (`btn.wasPressed()`, `led.setAll(..); led.show()`, Knob
 #     `getPosition` / `isPressed` / `enableRing`), so camelCase is used below. Only this file touches them.

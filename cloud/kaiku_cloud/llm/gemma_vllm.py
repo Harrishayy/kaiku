@@ -33,11 +33,13 @@ def generate(prompt: str, timeout_s: float = 60.0, *, task: str = "explain", hom
         raise LlmUnavailable("gemma_modal requires a finite positive timeout")
     deadline = time.monotonic() + timeout_s
     gpu = "modal-" + str(get("gemma_modal", "gpu", "H100"))
-    scaledown = float(get("gemma_modal", "scaledown_s", 60))
+    scaledown = float(get("gemma_modal", "scaledown_s", 300))
+    cold_s = float(get("gemma_modal", "cold_start_s", 240))
+    margin_s = float(get("gemma_modal", "warm_margin_s", 30))
     # Cold (measured 235 s to a first answer, 2026-11-15): the start plus one idle tail. Warm: the idle time since
     # the last answer plus this call; the tail was reserved with the cold call.
     warm = _warm(scaledown)
-    est = budget.estimate(gpu, gpu_s=(time.monotonic() - _last_answer + 30) if warm else (240 + scaledown))
+    est = budget.estimate(gpu, gpu_s=(time.monotonic() - _last_answer + margin_s) if warm else (cold_s + scaledown))
     cap = int(max_output_tokens or get("gemma_modal", "max_output_tokens", 1200))
     try:
         budget.guard("modal", gpu, est)

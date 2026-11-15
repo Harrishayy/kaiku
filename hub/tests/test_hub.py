@@ -306,3 +306,22 @@ async def test_default_light_disabled_produces_no_observation_or_context(hub):
         await hub.on_raw(topic, sample)
     assert hub.light._values == []
     assert not any(e.type == 'obs.light_level' for e in hub.emitted)
+
+
+def test_timings_moved_to_config_keep_their_values():
+    """Numbers that used to be constants in the code are read from config/kaiku.toml with the same values."""
+    from kaiku_hub.live import meter
+    from kaiku_hub.live.tools import ASK_TWICE_TOOL, ask_twice_tool
+    from kaiku_hub.settings import Settings
+
+    s = Settings.load()
+    got = (s.crisis_dedupe_s, s.help_screen_s, s.think_timeout_s, s.attention_hz, s.long_press_s, s.ask_twice_s,
+           s.camera_wait_s, s.turn_deg, s.turn_pulse_s, s.turn_pause_s, s.track_better_min, s.face_signs_quality,
+           s.photo_wait_extra_s, s.cloud_timeout_s, s.nudge_timeout_s, s.session_timeout_s, s.command_poll_s,
+           s.health_report_s, s.session_attempts, s.session_backoff_s)
+    assert got == (60, 600, 8, 5, 2, 20, 12, 40, 0.45, 20, 0.08, 0.6, 6, 5, 3, 4, 3, 10, 3, 0.5)
+    assert meter.open_estimate_min() == 5
+    bare = Settings()                                           # the built-in defaults say the same
+    assert (bare.ask_twice_s, bare.think_timeout_s, bare.face_signs_quality) == (20, 8, 0.6)
+    assert ask_twice_tool(20) is ASK_TWICE_TOOL                 # the voice is told the wait the hub really keeps
+    assert "the next 9 seconds" in ask_twice_tool(9)["description"]

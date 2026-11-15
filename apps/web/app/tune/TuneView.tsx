@@ -161,7 +161,7 @@ export function TuneView() {
           <h2 id="adm-h">{unauthorized ? 'Admin token rejected' : 'Admin token'}</h2>
           <p className="muted small">
             Paste <code>KAIKU_ADMIN_TOKEN</code> (or open this page once with <code>?admin=…</code>). It is kept in this browser only and sent
-            only to <code>/v1/admin/*</code>. A local cloud without an admin token accepts requests without one.
+            only to this service: the admin and debug routes, and the record routes when no care-team token is set. A local cloud without an admin token accepts requests without one.
           </p>
           <form
             className="btn-row"
@@ -171,7 +171,7 @@ export function TuneView() {
               setTokenInput('');
             }}
           >
-            <input type="password" aria-label="Admin token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} style={{ maxWidth: 320 }} />
+            <input type="password" aria-label="Admin token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} style={{ maxWidth: 'calc(var(--k-space-8) * 5)' }} />
             <button className="d-btn d-btn-secondary" type="submit" disabled={!tokenInput.trim()}>
               Use token
             </button>

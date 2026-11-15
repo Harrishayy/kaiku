@@ -1,5 +1,7 @@
 """Assemble the draft cut of the demo video from the clips in demo/recordings (no invented footage).
 
+SUPERSEDED (15 Nov): this builds the earlier 1:55 cut; the video now follows the 1:58 script in docs/demo-narrative.md.
+
     uv run --with pillow python demo/draft_cut.py     # → demo/recordings/kaiku-draft-cut.mp4, -sheet.png, -timeline.txt
 
 The order follows the shot table in docs/demo-narrative.md. CUT is the whole edit, top to bottom. An entry is

@@ -1,5 +1,11 @@
 # Kaiku intelligence architecture and audit
 
+> **Banner, 2026-11-15: a point-in-time report of 14 Nov, kept for history.** Since then the robot lost its knock
+> switch, display, LED grids and buttons (D54, D55: taps come from the head's orientation sensor), the head runs
+> its own steps and the hub follows (D44), a phone can be the robot's microphone (D56), the camera asks first
+> (D61), a press opens a talk (D66), Gemma can look at a few check-in pictures (D65) and the service is deployed
+> on Modal with Gemma verified on our own GPU for two jobs. Current state: [`stack/INDEX.md`](stack/INDEX.md).
+
 Audit date: 14 November 2026. This is a point-in-time report of the working tree, not a replacement for the module instructions, contracts or configuration. Existing uncommitted changes were preserved.
 
 Kaiku has a working synthetic software path and a coherent shared intelligence layer. Full physical end-to-end readiness remains blocked by unfinished firmware/app paths and device acceptance. A successful simulation, model-list lookup or template fallback does not establish that a physical source or paid reasoning model worked.
@@ -162,7 +168,7 @@ private notebook people/places, episodes or transcripts.
 | Store | Contents and location | Retention/access |
 |---|---|---|
 | Observation database | Local `logs/kaiku.sqlite`; Modal volume `kaiku-data`, mounted as `/data/kaiku.sqlite` | `events` stores accepted observations; `homes`/`explanations` cache derived results. No general observation TTL was found |
-| Private notebook | Same database: `memories`, FTS search index, `threads` | Person-authorized access; plans expire after seven days, open threads after three days |
+| Private notebook | Same database: `memories`, FTS search index, `threads` | Person-authorised access; plans expire after seven days, open threads after three days |
 | Session metadata | Same database: `episodes` | Surface, intent, times, tool names, outcome; metadata is separate from conversation words |
 | Opted-in conversation words | Same database: `transcripts`, keyed by episode ID; `turns` is JSON role/text/optional completion metadata | Person routes can list/delete; no automatic transcript TTL was found; care routes do not read it |
 | Local observations and controller state | Hub `logs/uplink_queue.sqlite` and `logs/hub_state.json`; Apple Application Support/Kaiku/`outbox.json`; browser localStorage keys scoped to API origin/home | Stable observation IDs support retry. These contain derived records/state, not captured audio/video. Apple queues are bounded, so prolonged offline use does not imply unlimited retention |

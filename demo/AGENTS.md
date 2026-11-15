@@ -3,7 +3,9 @@
 > Read the root `AGENTS.md` first. Owner D.
 
 - The story, video script and wording live in `docs/demo-narrative.md` (one source). `demo_script.md` is the
-  presenter's table checklist and `video_shotlist.md` the recording checklist; neither repeats the narrative.
+  presenter's table checklist. `video_shotlist.md` and `draft-cut-narration.md` are superseded (15 Nov): they
+  follow the earlier 1:55 cut, kept for the clip list and the recording commands; the video's script is the
+  narrative's.
 - `make demo` (`scripts/demo.sh`): starts what is not running (broker, local API with the built dashboard), seeds
   Aino's sixteen-day record through the real routes (`cloud/kaiku_cloud/jobs/single_person.py`), prints the links.
   Idempotent; `KAIKU_DEMO_PORT`, `KAIKU_DEMO_MQTT_PORT`, `KAIKU_DB_PATH`, `KAIKU_DEMO_ONCE=1`.
@@ -13,7 +15,14 @@
   practitioner API; `ARGS="--url ... --kind good|rough"` posts one to a running local API.
 - `robot-test-plan.md`: how to know each robot feature works before a recording: the machine checks
   (`make robot-bench`, `tools/robot_bench.py`) and the numbered voice-and-hands script with the log line that proves
-  each step. Its part B is dated; re-check it when the robot's conversation rules change.
+  each step. Part A's last run is dated (firmware 0.8.0); part B is written for D66 and has not been tried on the robot.
+  Re-check both when the robot's conversation rules change.
+- `deck/index.html` is the pitch deck's source (1280×720 slides); `deck/render.py`
+  (`uv run --with playwright python demo/deck/render.py [--png DIR]`, needs a Playwright Chromium and the network
+  once for the fonts) writes `deck/kaiku-deck.pdf`. Slides 5, 6, 9, 10 and
+  11 were corrected on 15 Nov for the robot as built and the real-glasses runs, and the PDF was rendered again from
+  them (12 pages; `CHROME=<path to a Chrome binary>` works in place of the Playwright one). Slide 6 still holds a
+  placeholder for a photo of the built robot.
 - Rule: the demo only shows what runs. Claims are checked against `docs/track-readiness.md` §5.
 
 ## Recordings (gitignored: `demo/recordings/`)
@@ -23,7 +32,9 @@ free ports with a temp DB, so they run beside other dev servers.
 - `scripts/record_robot_demo.sh [OUT]` (default `demo/recordings/robot-sim`, ~3 min): broker :18832 + cloud :18010 +
   `seed_demo --reset` + head/sensors twins driven by `scripts/robot_demo_driver.py` (walk up → greeting → button dial
   ×3 → breathe → knock drum → suggestion → goodbye → leave; then glasses walk, laptop session, Mac hour, phone
-  morning) + hub. Writes `bus.jsonl` (`tools/record.py`), `hub.log` (epoch-stamped), `markers.jsonl`, `cloud/*.json`
+  morning) + hub. **Legacy: a drive-mode twin recording, not the robot's flow.** The robot as built has no button
+  and no knock switch; its head runs its own steps, a press of the ear opens a talk and the check-in starts only
+  when asked (D55, D66). Writes `bus.jsonl` (`tools/record.py`), `hub.log` (epoch-stamped), `markers.jsonl`, `cloud/*.json`
   (`/v1/me`, consensus, patients, constellation, memories, intelligence, companion session, one `ask_mind`).
 - `scripts/record_web_demo.py --url <dashboard URL>` (Playwright video, ~100 s → `web-dashboard.mp4`, `-sheet.png`,
   `-steps.txt`): the one-viewport practitioner dashboard for one person (`--person`, default `aino`): default view,
@@ -65,6 +76,6 @@ free ports with a temp DB, so they run beside other dev servers.
   → `recordings/kaiku-draft-cut.mp4`: the pieces in the order of the narrative's shot table with their titles,
   Kaiku's voice where it speaks, and for every shot that still needs filming either its stand-in (a typed
   simulator take, the simulated glasses, the app's own renders: marked on screen) or a 2 s card; each is replaced
-  by `recordings/shot-NN-*.mp4` when present. Narration by time code: `draft-cut-narration.md`.
-- Which clip covers which shot of the narrative, what still needs a person with the devices and how to record it:
-  `video_shotlist.md`.
+  by `recordings/shot-NN-*.mp4` when present. It builds the earlier 1:55 cut, which is superseded (15 Nov), as are
+  its narration by time code (`draft-cut-narration.md`) and its clip list (`video_shotlist.md`: which clip covered
+  which shot of that cut and how each was recorded).

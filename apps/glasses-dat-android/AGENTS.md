@@ -1,36 +1,42 @@
 # apps/glasses-dat-android — AGENTS.md
 
-> Read the root `AGENTS.md` first. Owner D/B · kind app · optional (only with time + a compatible phone, D2/D3).
+> Read the root `AGENTS.md` first. Owner D · kind app · **not built; not part of the entry.**
 
 ## Purpose
-Device Access Toolkit app: sparse camera frames on walks → Gemini vision → `daylight_min` → `obs.outing`.
+A placeholder for an Android app on Meta's Device Access Toolkit. This folder holds this page only: no code was
+written and nothing here runs. The glasses integration that exists is in the iPhone app
+([`apps/apple/AGENTS.md`](../apple/AGENTS.md)); what has run on real glasses is in
+[`docs/stack/meta-glasses.md`](../../docs/stack/meta-glasses.md).
+
+An earlier version of this page planned to estimate daylight minutes from camera frames. That design is withdrawn:
+since D43 no observation is derived from a glasses picture (root rule 5). Frames go only to an open, unmuted Gemini
+Live walk conversation with the person's opt-in, and are never stored or sent to the Kaiku cloud.
 
 ## Consumes (topics/endpoints)
-Glasses camera via the DAT SDK.
+None.
 
 ## Emits (topics/endpoints)
-`POST /v1/events`: `obs.outing {method: "dat_camera", daylight_min}` (source `glasses`).
+None (`modules.toml` lists no message for this module).
 
 ## Invariants
-Frames are processed and discarded; no faces stored; pause/stop on hinge close or removal. The Gemini key never
-ships in the app: call it via the cloud, or a gitignored `local.properties` for local testing only.
+- Nothing in the submission, the video or the docs may present this folder as a working app.
+- If it is ever built, root rule 5 holds as on the iPhone: no frame is stored or uplinked and no observation is
+  derived from a frame; the Gemini key never ships in an app.
 
 ## Run standalone
-Android 10+, Android Studio, Kotlin 2.2+. `claude plugin marketplace add facebook/meta-wearables-dat-android`, then
-`claude plugin install mwdat-android@mwdat-android-marketplace`. Developer Mode: Meta AI app → Settings → App Info →
-tap App version 5×.
+Nothing to run.
 
 ## Run with sim
-Mock Device Kit + `make cloud-local`.
+Nothing to run.
 
 ## Config & env
-Cloud URL + pairing token; `local.properties` (gitignored).
+None.
 
 ## Health signal
-An outing with `daylight_min` appears on the dashboard.
+None.
 
 ## Tests
-Mock Device Kit session end to end.
+None.
 
 ## Known issues
-Not started.
+Not built. Remove the folder and its `modules.toml` entry (`make agents && make test`) if it stays unused.

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from kaiku_contracts.api import Explanation, SourceNote
+from kaiku_contracts.config import get
 from kaiku_contracts.sources import SOURCE_LABELS
 
 CAVEATS = ("Change signals are measured against this person's own recent baseline; they are not clinical "
@@ -32,28 +33,48 @@ def template_explanation(ctx: dict[str, Any]) -> Explanation:
     sufficient = [v for v in sources if v["verdict"] != "insufficient"]
     if state == "safety":
         headline = f"{name}: safety trigger — contact today"
-        text = ("A crisis trigger was raised (PHQ-9 item 9, crisis language or the manual button). The person was "
-                "shown the MIELI Crisis Helpline and 112 on the spot. Please contact them today.")
+        # "was shown" only when the flag itself says the device handled it (payload `handled_locally`)
+        helpline, emergency = get("safety", "helpline_name", ""), get("safety", "emergency_number", "")
+        shown = (f"The person was shown the {helpline} and {emergency} on the spot. "
+                 if ctx.get("safety_handled_locally") and helpline and emergency
+                 else "The flag does not record that the person was shown crisis contacts on their device. ")
+        text = ("A crisis trigger was raised (PHQ-9 item 9, crisis language or the manual button). "
+                f"{shown}Please contact them today.")
         actions = ["check_in_call", "send_message"]
     elif state == "needs_call":
         labels = [SOURCE_LABEL[v["source"]].lower() for v in worse]
-        names = (", ".join(labels[:-1]) + " and " + labels[-1]) if len(labels) > 1 else (labels[0] if labels
-                                                                                          else "two sources")
-        headline = f"{name}: {names} show change from their usual — needs a call"
-        text = (f"{len(worse)} source groups report worse than this person's usual. "
-                + ("A clinician acknowledged it; the state holds until three stable days. " if ctx.get("acknowledged")
-                   else "") + "Worth a check-in call. What follows from it is the care team's decision.")
+        ack = "A clinician has acknowledged it. " if ctx.get("acknowledged") else ""
+        if labels:
+            names = (", ".join(labels[:-1]) + " and " + labels[-1]) if len(labels) > 1 else labels[0]
+            verb = "show" if len(labels) > 1 or names.endswith("s") else "shows"
+            headline = f"{name}: {names} {verb} change from their usual — needs a call"
+            count = "One source group reports" if len(worse) == 1 else f"{len(worse)} source groups report"
+            text = (f"{count} worse than this person's usual. {ack}"
+                    "Worth a check-in call. What follows from it is the care team's decision.")
+        else:  # held from an earlier day (consensus hysteresis): nothing is away from usual today
+            headline = f"{name}: held from an earlier change — needs a call"
+            text = ("No source group reports worse than usual today. The state is held from an earlier change until "
+                    f"enough as-usual days have passed or the care team acknowledges it. {ack}"
+                    "Worth a check-in call. What follows from it is the care team's decision.")
         actions = ["check_in_call", "send_message"]
     elif state == "watch":
         if len(sufficient) < 2:
             headline = f"{name}: too little data from enough sources — watching"
             text = (f"Only {len(sufficient)} source has enough recent data, so the consensus can't confirm a stable "
                     "picture. Encourage the missing sessions or walks.")
+        elif not worse:  # nothing away from usual: a young record, or a day still settling
+            forming = ctx["agreement"] == "low_coverage"
+            headline = (f"{name}: baseline still forming — watching" if forming
+                        else f"{name}: no change from their usual — watching")
+            text = ("No source group reports worse than usual. "
+                    + ("This person's own baseline is still forming, so the consensus stays on watch." if forming
+                       else "The consensus stays on watch for now."))
         else:
-            src = SOURCE_LABEL[worse[0]["source"]].lower() if worse else "one source"
+            src = SOURCE_LABEL[worse[0]["source"]].lower()
             verb = "show" if src.endswith("s") else "shows"
             headline = f"{name}: {src} {verb} change from their usual — watching"
-            text = "One source reports worse than usual; the others look as usual. Not enough on its own for a call."
+            count = "One source group reports" if len(worse) == 1 else f"{len(worse)} source groups report"
+            text = f"{count} worse than usual. Not enough on its own for a call."
         actions = ["none"]
     else:
         headline = f"{name}: consensus stable — as usual"

@@ -1,9 +1,9 @@
-# Plan 04 — Making the mind robust: skills, context, memory, graph, RAG, fine-tuned Gemma · 🟡 CURRENT (with 02, 03)
+# Plan 04 — Making the mind robust: skills, context, memory, graph, RAG, fine-tuned Gemma · ⏹ SUPERSEDED BY 08 (what was built is in `docs/progress.md`)
 
 > Builds on [`03-intelligence.md`](03-intelligence.md) (one mind, many bodies; numbers decide, models talk).
 > 03 says *what* the mind is; 04 says *how we make it good and keep it good*. Every item is tagged
 > **MUST** (in the demo), **SHOULD** (if on schedule) or **STRETCH**, with a rough cost. Deadline Sun 10:00.
-> Team answers folded in (2026-11-14): track PDFs live in `docs/tracks/`; flagship = **Gemini 4 Argon**
+> Team answers folded in (2026-11-14): the track briefs as text live in `docs/tracks/*.md`; flagship = **Gemini 4 Argon**
 > (`gemini-4-argon`); "Hydrogen" and "Carbon" are newer Gemini 4 names the team expects but **not yet in the Gemini
 > API model list** (checked 2026-11-14) → config slots `flagship_alt_1/2 = "VERIFY-gemini-4-hydrogen|carbon"`,
 > switch when docs list them; watch/sleep data is **collection only** — Kaiku never mentions it in conversation.

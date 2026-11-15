@@ -6,7 +6,8 @@
 ## Purpose
 The practitioner dashboard for Kaiku, owner **D**, kind app (`modules.toml` → `web`). The website is only for the
 care team: `/` opens one person's record as a one-viewport dashboard of movable panels. Everything the person
-does (check-ins, games, PHQ-9, talking to Kaiku, consent) lives in the iPhone and Mac apps (`apps/apple`), not here.
+does (check-ins, games, talking to Kaiku, consent) lives in the iPhone and Mac apps (`apps/apple`), not here. There
+is no `/me`, `/session`, `/phq9` or `/clinician` page; the dashboard only reads recorded PHQ-9 results.
 Internal team pages (`/health/`, `/eval/`, `/tune/`, `/debug/`) stay reachable from a quiet link row in the dashboard footer.
 The look is `design/` (tokens, component spec, copy): this app reads those files and never copies or redraws them.
 **Next.js 15 App Router + TypeScript, static export** (`output: 'export'`, `trailingSlash: true`) to `out/`, served by
@@ -14,8 +15,8 @@ the Modal cloud from the same origin as `/v1`.
 
 | route | for | what |
 |---|---|---|
-| `/` (`?id=` picks a person; a compact switcher appears only when there is more than one) | practitioner | header strip (person, day of record and calibration stage, consensus in plain words, freshness) + panel grid + dock of collapsed panels. Default: Trends, Consensus now and Kaiku's review side by side; Daily account and the Knowledge graph (as its small overview) join from 800 px height, Routine waits first in the dock |
-| `/health/` `/eval/` `/tune/` | team | node heartbeats, simulation, criteria tuning (admin token), inside `TeamShell` |
+| `/` (`?id=` picks a person; a compact switcher appears only when there is more than one) | practitioner | header strip (person, day of record and calibration stage, consensus in plain words, freshness) + panel grid + dock of collapsed panels. Default: Trends, Consensus now and Kaiku's review side by side; Daily account and the Knowledge graph (as its small overview) join on a viewport at least 1280 px wide and 800 px high (`lib/layout.ts → defaultLayout`), Routine waits first in the dock |
+| `/health/` `/eval/` `/tune/` | team | node heartbeats (per home, under its home id), simulation, criteria tuning (admin token; `/tune/?admin=<token>` takes it once from the address, stores it and strips it from the URL), inside `TeamShell` |
 | `/debug/` (`?id=<home>&date=<YYYY-MM-DD>`; no `date` = the home's today, no `id` = the first home the service lists) | team (developers) | one day of one home through the pipeline, answer first: see **Debug day** below |
 
 ### Panels (`lib/layout.ts` → `PANEL_IDS`)
@@ -58,7 +59,9 @@ only places and words them.
 
 ### Debug day (`/debug/`, team only)
 For a developer wiring a device or checking a step: one local day of one home, top to bottom, answer first. It is
-never linked from a person-facing surface and never shown to a practitioner as a view of the record.
+not a person-facing surface and not a view of the record for a practitioner. It is reachable, like the other team
+pages, from the quiet "Debug day" link in the dashboard footer (`Dashboard.tsx`), and on a deployed service the
+route behind it answers only with the admin token.
 
 | part | shows |
 |---|---|
@@ -87,7 +90,13 @@ upgrades the Review and trace in place) · `GET /v1/patients/{id}/week` · `GET 
 team: `GET /v1/health` · `GET /healthz` · `GET /v1/eval` · `GET /v1/admin/criteria` · `POST /v1/admin/criteria/preview` ·
 `GET /v1/debug/day?home_id=&date=&generate=` (`DebugDay`; `/debug/` only).
 If `/insight` is unavailable, `lib/insight.ts` derives the same panel shapes from consensus, timeline, week, graph
-and events and the Review panel says so (no trace, no state history, no action log in that mode).
+and events and the Review panel says so (no trace, no state history, no action log in that mode). In that mode
+only, the browser itself words two things, labelled `by: 'template'`: the better / worse / similar tone of this
+week against the week before (similar within half of the usual band's half-width, or within 5 % of the usual value
+when there is no band) and the certainty label of "what helps" (fewer than 5 tries "early", fewer than 12
+"building"). The four constants are named at the top of `lib/insight.ts` (`FALLBACK_*`); no endpoint serves them,
+and they differ from the cloud's own (`help_early_tries`, `help_consistent_tries` in its config). No state or
+verdict is decided there.
 
 ## Emits (topics/endpoints)
 - `POST /v1/patients/{id}/actions` (`ActionRequest`: acknowledge | send_message | flag_booster | flag_icbt_referral).
@@ -110,7 +119,7 @@ components/dash/
   Chart.tsx         the one chart style (TrendChart + ChartLegend)
   data.ts           useRecord(): all fetching for one record; panels degrade one by one
   panels/*.tsx      one file per panel
-components/  Mascot.tsx (brand mark from design/mascot.spec.json) · TeamShell.tsx · ui.tsx (team pages; chips and buttons are the dashboard's Chip / d-btn)
+components/  Mascot.tsx (brand mark from design/mascot.spec.json) · TeamShell.tsx · ui.tsx (team pages; chips and buttons are the dashboard's Chip / d-btn). No icon set: the dashboard uses text, chips and shape marks
 components/debug/
   DebugView.tsx     `/debug/` shell: home and day in the address bar, the bar, section state, jump-to-row, closed / unknown-home states
   useDebugDay.ts    the one fetch: free load, Gemma only on request, 10 s poll for today, what a refresh brought
@@ -143,7 +152,8 @@ tests/              node --test (pure libs + scope/wording/token guards)
 - One viewport at ≥ 1100 × 600: the page never scrolls; panels scroll inside themselves; with many panels open the
   panel area scrolls while the main panel stays in view. Below that the panels stack and the page scrolls.
 - Panels cannot overlap: `slots(n)` tiles the grid exactly (tested). Moving only reorders, collapsing only docks.
-- The frontend never decides a state. State, verdicts, day-by-day state history and early-baseline flags come from
+- The frontend never decides a state (its only thresholds of its own are the fallback's wording constants, see
+  Consumes). State, verdicts, day-by-day state history and early-baseline flags come from
   the cloud; low coverage always reads "Not enough data", never "Stable". A record on an early baseline says so
   in the header, the consensus panel, the chart band and the tooltip.
 - Every number is shown with its meaning against the person's own usual (`meaningOf`). "What helps" always shows
@@ -156,8 +166,11 @@ tests/              node --test (pure libs + scope/wording/token guards)
   chart style; state tone by colour **and** shape; visible focus; reduced motion honoured.
 - No hard-coded person data. Conversations and private memories are never shown.
 - Static export only: no API routes, server actions or runtime server fetching. Credentials in the browser: the
-  tab-scoped care-team token and the admin token for `/tune/` (`/debug/` sends that same stored token to
-  `/v1/debug/`), nothing else.
+  tab-scoped care-team token (sessionStorage `kaiku.clinician`, pasted under "Care team access", never in a link)
+  and the admin token for `/tune/` (localStorage `kaiku.admin`; pasted on the page, or given once as
+  `/tune/?admin=<token>`, which is stored and removed from the address at once but has by then been in the address
+  bar and the browser history; `/debug/` sends that same stored token to `/v1/debug/`), nothing else. The website
+  holds no person credential: `lib/credentials.ts` gives a person's own routes no token.
 - Every panel has loading, empty and error states; a cloud outage never white-screens.
 - `/tune/` never changes the ground truth: `config/criteria.toml` is it.
 - `/debug/` decides nothing: every state, verdict, reading, status, flag and sentence is the one `GET /v1/debug/day`
@@ -166,7 +179,8 @@ tests/              node --test (pure libs + scope/wording/token guards)
 - `/debug/` never spends without being asked: every load and every poll sends `generate=false`; `generate=true`
   goes out once when the Ask Gemma switch goes on and once per manual Refresh while it is on, never from
   auto-refresh. A Gemma read on screen is kept across polls and says when the day's digest has moved on.
-- `/debug/` is the one place a home id is shown and typed (it is the page's address). It shows no words from a
+- Home ids are shown only on team pages: `/debug/` shows and takes one (it is the page's address) and `/health/`
+  lists each reporting home under its id. The dashboard never renders one. `/debug/` shows no words from a
   conversation and uses the `--k-*` tokens only (tested), in its own block of `globals.css`.
 
 ## Run standalone
@@ -210,8 +224,5 @@ sentences without causal words, captions and labels that fit, the privacy note; 
   (the full name is in the tooltip and in the column once selected); values are never cut. A link between two
   nodes in different neighbourhoods (drawn only for the node in focus) can pass over the dimmed rows of a third.
   The map has been checked in a browser at 1440 × 900 and 1280 × 720 with the seeded person only.
-- `tools/ui_copy_check.py` exempts `/tune`, `/eval` and `/health` as team pages but not yet `/debug`, so the one
-  developer word it bans in person-facing copy ("payload", a column head) lives in `lib/debug.ts` with the other
-  column definitions. Adding `debug` to its exempt list lets the page say it inline.
 - `/debug/` at 1280 px wide truncates long metric labels (the full label and unit are in the tooltip, the criteria
   name is always whole); below 1000 px the result stacks and the bar stops being sticky.

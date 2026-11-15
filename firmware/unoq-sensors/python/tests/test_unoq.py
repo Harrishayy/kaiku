@@ -149,3 +149,13 @@ def test_photo_time_face_signs_are_numbers_and_absent_when_not_measured():
     # a face seen too briefly: coverage only
     brief = face_signs([SignFrame(0.0, 1, 1, 1, 50, True), SignFrame(0.1, 1, 1, 1, 50, True)] + [SignFrame(1, 0)] * 8, 2.0)
     assert set(brief) == {"duration_s", "samples", "coverage"}
+
+
+def test_a_missing_config_falls_back_to_the_camera_not_to_unfitted_parts(monkeypatch):
+    """No `[unoq] light_source` / `ppg_source` in the config: the code's own defaults are the fitted camera, never
+    the KY-054 or the KY-039 (not fitted, D39, D54)."""
+    from kaiku_unoq import node as node_module
+
+    monkeypatch.setattr(node_module, "get", lambda _section, _key, default=None: default)
+    node = SensorsNode(FakeBridge(), camera=False, sim=True)
+    assert node.light_source == "camera" and node.ppg_source == "camera"

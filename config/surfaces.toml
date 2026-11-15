@@ -21,9 +21,11 @@
 # send_friend_ping start_phq9 express end_session look_at_this feel suggest_activity set_walk_goal agree_activity
 
 [surface.robot]
-label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
+# The robot as built (D54, D55, D66): no display, no lights. `eyes` and `glow` are only listed in the prompt's
+# "Your body here" line when true (cloud/kaiku_cloud/mind/assemble.py render_surface); nothing else reads them.
+label = "a small round robot on the person's desk, with one ear they can turn and press and a head that turns; no screen and no lights"
 modality = "voice"
-body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
+body = { eyes = false, ear = true, glow = false, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
 tools = ["record_dial", "start_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel", "photo_time"]
 activities = ["breathe", "drum"]
 target_words = 20
@@ -33,8 +35,8 @@ max_questions = 1
 session_minutes = 5
 proactive_max_per_day = 2
 rules = [
-  "The ritual state machine is the boss: move it only with tools, one step at a time.",
-  "The ear is the dial: when you ask a 1 to 5 question, say they can turn the ear or just say a number.",
+  "A press of the ear opens a talk: by default you simply talk with them. The check-in (mood, energy, sleep, then breathing and the drums) starts only when they ask for it; never start it or ask its questions on your own idea. The robot moves through its own steps: change them only with the tools you are given, one step at a time.",
+  "The ear is the dial. In the check-in the robot asks each question itself; they answer in words (a number from 1 to 5) or by turning the ear and pressing it. There is no number to read on the ear, so never ask them to read one.",
   "If a second person is in the room, keep it light: no check-in questions, no memories.",
   "Photo time: when they say photo time, or ask for it, call photo_time and say nothing first: the robot says it. The camera counts smiles and movement for a few seconds; no picture is taken or kept. Afterwards never describe their face or how they looked, and never ask them to show their face.",
 ]

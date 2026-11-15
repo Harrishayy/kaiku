@@ -47,3 +47,28 @@ async def test_nudge_and_health_ok():
     hb = example("health").payload.model_dump(mode="json")
     assert await cl.report_health({"head": hb}, 3, 1.5) is True
     assert b'"uplink_queue":3' in got["health"].replace(b" ", b"")
+
+
+async def test_live_bootstrap_is_retried_on_5xx_and_network_errors_but_not_on_4xx():
+    calls: list[int] = []
+
+    def flaky(request):
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.ConnectError("down")
+        if len(calls) == 2:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"system_instruction": "x"})
+
+    cl = CloudLink(url="http://cloud", home_id="h", transport=httpx.MockTransport(flaky), session_backoff_s=0.01)
+    assert (await cl.companion_session())["system_instruction"] == "x" and len(calls) == 3
+
+    calls.clear()
+    cl = CloudLink(url="http://cloud", home_id="h", session_backoff_s=0.01,
+                   transport=httpx.MockTransport(lambda r: (calls.append(1), httpx.Response(503))[1]))
+    assert await cl.companion_session() is None and len(calls) == 3      # `session_attempts` tries, then give up
+
+    calls.clear()
+    cl = CloudLink(url="http://cloud", home_id="h", session_backoff_s=0.01,
+                   transport=httpx.MockTransport(lambda r: (calls.append(1), httpx.Response(401))[1]))
+    assert await cl.companion_session() is None and len(calls) == 1      # unauthorised: asking again changes nothing

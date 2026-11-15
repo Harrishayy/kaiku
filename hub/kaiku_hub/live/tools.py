@@ -22,11 +22,14 @@ def from_registry(name: str) -> dict:
 # `record_dial` is honoured there: she may answer a dial question in words or with the ear (the hub records the
 # spoken answer and moves the head on). `start_activity` comes back as asking twice (below).
 HEAD_RUNS_ITS_STEPS = frozenset({"start_activity", "start_breathing", "start_drum", "start_phq9"})
+# `express` changes the eyes of a head the hub drives. The head that runs its own ritual has no display (D54) and
+# takes no eyes from the hub, so the tool could only ever fail there: it is not offered in follow mode either.
+NOT_ON_THIS_HEAD = frozenset({"express"})
 
 
 # Asking twice (D58): on a head that runs its own ritual the person can ask for an activity in words. The words alone
-# start nothing: the hub arms the head and only a press of its ear inside ASK_TWICE_S starts it.
-ASK_TWICE_S = 20.0
+# start nothing: the hub arms the head and only a press of its ear inside `[hub] ask_twice_s` starts it.
+ASK_TWICE_S = 20.0  # the default of `[hub] ask_twice_s`; the description below is written with the configured value
 ASK_TWICE_KINDS: dict[str, str] = {"breathe": "the breathing", "drum": "the drums"}
 ASK_TWICE_TOOL: dict = {
     "name": "start_activity",
@@ -49,7 +52,6 @@ ASK_TWICE_TOOL: dict = {
 CAMERA_LINE = "Before we start: shall I have my camera on while we talk? Yes or no."
 CAMERA_ON_LINE = "Camera on. Only numbers, never a picture."
 CAMERA_OFF_LINE = "Okay, the camera stays off."
-CAMERA_WAIT_S = 12.0
 CAMERA_TOOL: dict = {
     "name": "camera_choice",
     "description": "The robot itself has just asked, once, whether its camera may be on for this conversation. Call "
@@ -84,7 +86,7 @@ TURN_TOOL: dict = {
 }
 
 
-# The check-in runs only when she asks for it, and her talking has priority over it (D64).
+# The check-in runs only when she asks for it, and her talking has priority over it (D66).
 CHECKIN_TOOL: dict = {
     "name": "checkin",
     "description": "The robot's daily check-in (three short questions: mood, energy, sleep; then breathing and the "
@@ -103,12 +105,21 @@ CHECKIN_TOOL: dict = {
 }
 
 
-def with_ask_twice(tools: list[dict]) -> list[dict]:
+def ask_twice_tool(seconds: float = ASK_TWICE_S) -> dict:
+    """The ask-twice declaration, naming the wait the hub really keeps (`[hub] ask_twice_s`)."""
+    if int(seconds) == int(ASK_TWICE_S):
+        return ASK_TWICE_TOOL
+    return {**ASK_TWICE_TOOL, "description": ASK_TWICE_TOOL["description"].replace(
+        f"the next {int(ASK_TWICE_S)} seconds", f"the next {max(1, int(seconds))} seconds")}
+
+
+def with_ask_twice(tools: list[dict], seconds: float = ASK_TWICE_S) -> list[dict]:
     """The follow-mode tool list plus the hub's own tools there (the ask-twice `start_activity`, the camera
-    answer), in the list's own shape."""
+    answer, the head turn, the check-in), in the list's own shape."""
+    own = [ask_twice_tool(seconds), CAMERA_TOOL, TURN_TOOL, CHECKIN_TOOL]
     if any(isinstance(t, dict) and "function_declarations" in t for t in tools):
-        return [*tools, {"function_declarations": [ASK_TWICE_TOOL, CAMERA_TOOL, TURN_TOOL, CHECKIN_TOOL]}]
-    return [*tools, ASK_TWICE_TOOL, CAMERA_TOOL, TURN_TOOL, CHECKIN_TOOL]
+        return [*tools, {"function_declarations": own}]
+    return [*tools, *own]
 
 
 def without(tools: list[dict], names: frozenset[str] | set[str]) -> list[dict]:
@@ -151,11 +162,3 @@ TOOLS: list[dict] = [
     # Photo time: the sensors board counts face signs for a few seconds (rituals/photo_time.py). No picture.
     from_registry("photo_time"),
 ]
-
-SYSTEM_PROMPT = (
-    "You are Kaiku, a warm, brief tabletop companion for people after depression treatment. "
-    "Speak in short, calm sentences. Never diagnose, never give medical advice, never claim to be a "
-    "therapist. Guide the morning ritual: greet; three dial questions (mood, energy, last night's sleep, "
-    "each 1-5, call record_dial for each answer); breathing; drumming; one small suggestion. "
-    "Use the tools to act. If the person mentions self-harm, stop and let the hub's safety script run."
-)

@@ -1,10 +1,9 @@
-"""Atech head adapter (KAIKU_HEAD=atech) — only needed if Atech firmware can't run an MQTT client (D6).
+"""Atech head adapter (KAIKU_HEAD=atech): a stub that does nothing, kept so the switch has a place to land.
 
-TODO(A/B): after the Phase 0 Atech spike, implement:
-  - read the head's native Wi-Fi/BLE/serial API -> publish raw.head.tap / raw.head.ear / raw.head.pan
-  - subscribe cmd/head -> translate to Atech calls (eyes, pan, chest, purr)
-  - publish health/head on the head's behalf (bus heartbeat does this when node="head")
-If Atech CAN speak MQTT directly, this adapter is unused: the firmware publishes the same topics.
+It was planned for a head that could not run an MQTT client (D6). The Atech head does speak MQTT (D44: both its
+firmwares publish the contract topics themselves), so nothing here is needed and nothing is implemented:
+`KAIKU_HEAD=atech` only logs one line at start. A head with a vendor-only API would get its translation here
+(native API -> raw.head.* and health/head; cmd/head -> vendor calls).
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ log = get_logger("hub")
 
 class AtechAdapter:
     async def start(self) -> None:
-        log.warning("atech_adapter_todo", "KAIKU_HEAD=atech but the adapter is not implemented yet (see docstring)")
+        log.info("atech_adapter_stub", "KAIKU_HEAD=atech selects a stub: the head speaks MQTT itself (D44), nothing to adapt")
 
     async def stop(self) -> None:
         return None

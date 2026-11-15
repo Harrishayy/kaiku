@@ -235,9 +235,13 @@ public final class BotModel {
 
     // MARK: launch arguments (`-kaiku…`, like the rest of the app)
 
-    /// `-kaikuBotAddress host[:port]`: the address for this run only (tests, pictures); never remembered.
+    /// `-kaikuBotAddress host[:port]` (DEBUG builds): the address for this run only (tests, pictures); never remembered.
     static var launchAddress: BotAddress? {
-        UserDefaults.standard.string(forKey: "kaikuBotAddress").flatMap(BotAddress.parse)
+        #if DEBUG
+        return UserDefaults.standard.string(forKey: "kaikuBotAddress").flatMap(BotAddress.parse)
+        #else
+        return nil
+        #endif
     }
 
     static var replayPath: String? {

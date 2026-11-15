@@ -55,8 +55,23 @@ class Settings:
     head_mode: str = "auto"  # auto | follow | drive ([hub]; follow = the standalone head runs the ritual, D44)
     robot_home_id: str | None = None  # the home the robot boards publish on, when it is not the person's record id
     head_stale_s: float = 15.0
-    talk_idle_end_s: float = 180.0  # [hub]: a talk on the robot with nothing said this long ends by itself (D64)
+    talk_idle_end_s: float = 180.0  # [hub]: a talk on the robot with nothing said this long ends by itself (D66)
     follow_offer_every_s: float = 300.0  # follow mode: the spoken invitation at the head's greeting, at most this often
+    # [hub] the Live bootstrap (POST /v1/companion/session): tries, the first wait between them (doubling), one try's cap
+    session_attempts: int = 3
+    session_backoff_s: float = 0.5
+    session_timeout_s: float = 4.0
+    cloud_timeout_s: float = 5.0   # [hub] commands, acknowledgements, health reports
+    nudge_timeout_s: float = 3.0   # [hub] GET /v1/nudge
+    command_poll_s: float = 3.0    # [hub] how often pending cloud commands are fetched
+    health_report_s: float = 10.0  # [hub] how often node health goes to the cloud
+    crisis_dedupe_s: float = 60.0  # [hub] one obs.safety_flag per trigger kind in this long
+    help_screen_s: float = 600.0   # [hub] the head takes its help screen down by itself after this (firmware HELP_SHOW_MS)
+    think_timeout_s: float = 8.0   # [hub] a cloud tool slower than this -> "Let me think about that later."
+    attention_hz: float = 5.0      # [hub] the attention / follow tick
+    ask_twice_s: float = 20.0      # [hub] asking twice (D58): the press of the ear must come within this
+    camera_wait_s: float = 12.0    # [hub] the camera question (D61): this long for an answer, then off
+    long_press_s: float = 2.0      # [robot] a button held this long is the manual safety trigger
     trace: bool = True  # raw.hub.trace on the home broker: Kaiku's own lines and tool names, for the apps' Kaiku bot tab
     # ritual timings (s)
     greet_s: float = 20
@@ -98,6 +113,8 @@ class Settings:
     voice_audio: str = "auto"  # auto | head | local ([voice] audio): Kaiku's Live voice and the microphone
     tap_back: TapBackConfig = field(default_factory=TapBackConfig)  # [tap_back]: the drum step as a rhythm game
     photo_time_s: float = 8  # [photo_time] seconds: how long the robot's camera counts face signs
+    photo_wait_extra_s: float = 6.0  # [photo_time] wait_extra_s: the board's one answer is given up on this long after
+    face_signs_quality: float = 0.6  # [photo_time] quality: envelope quality of the robot's obs.face_signs (a constant)
     transcript_to_phone: bool = True  # [hub] transcript_to_phone: her words to the phone that is the microphone (D63)
     camera_window_s: float = 30  # [photo_time] conversation_window_s: one window of counting while she said yes (D61)
     expr_enabled: bool = True     # [robot_expression]: a visible change in her smile -> one gentle question (D60)
@@ -112,11 +129,15 @@ class Settings:
     track_edge: float = 0.45     # |x_norm| past which the head turns toward her
     track_speed: float = 1.0     # motor speed of one nudge, 0-1 (below full speed the head did not visibly move)
     turn_s: float = 2.0          # [follow_track] turn_s: how long one asked-for turn of the head lasts
+    turn_deg: float = 40.0       # [follow_track] turn_deg: the size of each pulse of an asked-for turn (the longest)
+    turn_pulse_s: float = 0.45   # [follow_track] turn_pulse_s: one pulse this often (the head's longest is 600 ms)
+    turn_pause_s: float = 20.0   # [follow_track] turn_pause_s: after a turn she asked for, following waits this long
+    track_better_min: float = 0.08  # [follow_track] better_min: a nudge worked if her face is this much nearer the middle
     track_nudge_deg: float = 10.0  # the length of one nudge: not an angle, 15 ms a "degree" (10 = 150 ms)
     track_every_s: float = 2.0   # at most one turn this often
     track_max_misses: int = 3    # turns in a row with her no nearer the middle before giving up for a while
     track_give_up_s: float = 60.0
-    # models (VERIFY in docs; never hard-code in code)
+    # models ([models]: IDs looked up in the current docs; never hard-coded in code)
     gemini_live_model: str = ""
     lyria_model: str = ""
     # attention ladder ([attention]; AttentionConfig picks the keys it knows)
@@ -166,6 +187,20 @@ class Settings:
             head_stale_s=_f(c, "hub", "head_stale_s", 15),
             talk_idle_end_s=_f(c, "hub", "talk_idle_end_s", 180),
             follow_offer_every_s=_f(c, "hub", "follow_offer_every_s", 300),
+            session_attempts=max(1, int(_f(c, "hub", "session_attempts", 3))),
+            session_backoff_s=max(0.0, _f(c, "hub", "session_backoff_s", 0.5)),
+            session_timeout_s=_f(c, "hub", "session_timeout_s", 4.0),
+            cloud_timeout_s=_f(c, "hub", "cloud_timeout_s", 5.0),
+            nudge_timeout_s=_f(c, "hub", "nudge_timeout_s", 3.0),
+            command_poll_s=max(0.2, _f(c, "hub", "command_poll_s", 3.0)),
+            health_report_s=_f(c, "hub", "health_report_s", 10.0),
+            crisis_dedupe_s=_f(c, "hub", "crisis_dedupe_s", 60.0),
+            help_screen_s=_f(c, "hub", "help_screen_s", 600.0),
+            think_timeout_s=_f(c, "hub", "think_timeout_s", 8.0),
+            attention_hz=max(0.5, _f(c, "hub", "attention_hz", 5.0)),
+            ask_twice_s=max(1.0, _f(c, "hub", "ask_twice_s", 20.0)),
+            camera_wait_s=_f(c, "hub", "camera_wait_s", 12.0),
+            long_press_s=_f(c, "robot", "long_press_s", 2.0),
             trace=bool(h.get("trace", True)),
             presence_leave_s=_f(c, "hub", "presence_leave_s", 6),
             presence_stale_s=_f(c, "hub", "presence_stale_s", 5),
@@ -204,6 +239,8 @@ class Settings:
             voice_audio=(str(c.get("voice", {}).get("audio", "auto")).lower()
                          if str(c.get("voice", {}).get("audio", "auto")).lower() in ("auto", "head", "local") else "auto"),
             photo_time_s=min(30.0, max(2.0, _f(c, "photo_time", "seconds", 8))),
+            photo_wait_extra_s=_f(c, "photo_time", "wait_extra_s", 6.0),
+            face_signs_quality=min(1.0, max(0.0, _f(c, "photo_time", "quality", 0.6))),
             camera_window_s=min(30.0, max(5.0, _f(c, "photo_time", "conversation_window_s", 30))),
             transcript_to_phone=bool(c.get("hub", {}).get("transcript_to_phone", True)),
             expr_enabled=bool(c.get("robot_expression", {}).get("enabled", True)),
@@ -218,6 +255,10 @@ class Settings:
             track_edge=_f(c, "follow_track", "edge", 0.45),
             track_speed=min(1.0, max(0.1, _f(c, "follow_track", "speed", 1.0))),
             turn_s=min(6.0, max(0.6, _f(c, "follow_track", "turn_s", 2.0))),
+            turn_deg=min(40.0, max(8.0, _f(c, "follow_track", "turn_deg", 40.0))),
+            turn_pulse_s=min(0.6, max(0.1, _f(c, "follow_track", "turn_pulse_s", 0.45))),
+            turn_pause_s=_f(c, "follow_track", "turn_pause_s", 20.0),
+            track_better_min=_f(c, "follow_track", "better_min", 0.08),
             track_nudge_deg=min(40.0, max(8.0, _f(c, "follow_track", "nudge_deg", 10.0))),
             track_every_s=max(0.8, _f(c, "follow_track", "every_s", 2.0)),
             track_max_misses=int(_f(c, "follow_track", "max_misses", 3)),
@@ -240,5 +281,5 @@ class Settings:
 
 
 def model_id_ok(model_id: str) -> bool:
-    """Model IDs in config start as VERIFY-... placeholders until someone checks the docs."""
+    """A model ID is usable when it is set and is not a `VERIFY-...` placeholder (how an unchecked ID is marked)."""
     return bool(model_id) and not model_id.upper().startswith("VERIFY")

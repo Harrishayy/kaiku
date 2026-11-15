@@ -10,7 +10,9 @@ consensus source map, the criteria schema, and a tiny shared kit (MQTT `Bus`, co
 Pydantic v2 models are authoritative; JSON Schema and TypeScript are generated from them for non-Python modules.
 
 ## Boundaries
-Imports only pydantic (+ `aiomqtt`, lazily, inside `bus.py`). Never imports hub, cloud, sim, tools or apps.
+Imports only pydantic and the standard library at import time. Two third-party packages are imported lazily,
+inside the function that needs them: `aiomqtt` in `bus.py` and `google.genai` in `genai_client.py` (a process that
+never opens a bus or a model client needs neither). Never imports hub, cloud, sim, tools or apps.
 Business logic (perception, analytics, the consensus itself) does not belong here.
 
 ## Consumes (topics/endpoints)
@@ -53,7 +55,7 @@ Command delivery: `GET /v1/commands` peeks pending commands; `POST /v1/commands/
 returns `CommandAckResult {ok, id}` after the device successfully applies the command.
 API: `MeResponse.mascot {mood: idle|happy|cozy|crisis, line_key}`, `highlights [{date, kind: good|hard, text,
 source}]`, `garden {plants, resting}`; `VoiceLinesResponse` (`GET /v1/voice`).
-Companion mind (plan 03 §3–§6, workstream I1): `companion_tools.py` = the tool registry (12 tools: JSON-schema
+Companion mind (plan 03 §3–§6, workstream I1): `companion_tools.py` = the tool registry (18 tools today, counted from `companion_tools.TOOLS`; it was 12 when this line was written: JSON-schema
 `parameters`, `surfaces`, `executor` cloud|device; plus `Surface`, `Intent`, `Skill`, `MemoryCategory`,
 `SKILL_OF_INTENT`) → `schemas/companion_tools.json` + `COMPANION_TOOLS` in `ts/index.ts` (Swift/TS read these).
 `wording.py` = the deterministic wording linter (stdlib only, port verbatim to Swift). `safety.py` = the crisis
@@ -66,7 +68,7 @@ Robot electronics (plan 07, D32; additive): `raw.head.button` (`RawButton`, `id:
 (`look_left|look_right|shake`; the head only pans) · `cmd.sensors.chime` (`wake|ok|start_drum|end_drum|alert`) · `raw.head.tap.force` and
 `obs.drum_session.force_mean` optional (`None` for a knock switch, never invented).
 Gemini-first mind (plan 06, workstream I4): tool `ask_mind {question ≤ 300, kind: fact|care|memory|plan|emotional}`
-(executor cloud, all surfaces; 13 tools) → result = `MindAnswer {answer, kind, route: memory|flash|argon|fallback,
+(executor cloud, all surfaces; the 13th tool then, 18 today) → result = `MindAnswer {answer, kind, route: memory|flash|argon|fallback,
 confidence, cites[], ask_person, model}`. API: `IntelligenceHealth` + `ModelUsageRow` (`GET /v1/health/intelligence`),
 `ConstellationResponse/Node/Edge` (`GET /v1/me/constellation`, no health fields by construction),
 `PostcardRequest/Response` (`WeatherWord`), `ClinicianBrief` + `BriefSection` (`GET /v1/patients/{id}/brief`).
@@ -128,6 +130,10 @@ python/kaiku_contracts/
   bus.py        async MQTT client: validates both ways, reconnects, heartbeat + last-will
   config.py     config/kaiku.toml + KAIKU_<SECTION>_<KEY> env overrides, .env loader
   jlog.py       JSON-lines logging
+  budget.py     the hard spend cap for every paid model call: one SQLite ledger, estimate() / guard() / charge(),
+                Live reservations and their settlement (prices and caps: config/kaiku.toml [budget])
+  genai_client.py  one way to build a google-genai client (platform or API key, KAIKU_GENAI_BACKEND);
+                imports `google.genai` lazily
   export.py     writes schemas/ + ts/index.ts (make contracts); --check for tests
 schemas/  ts/   GENERATED — never edit by hand
 tests/          round trips, rejections, topics, source map, criteria validation, bus on a real broker, stale schemas,
@@ -280,12 +286,23 @@ the received words unchanged; completion metadata never authorises transcript re
 
 ## Face signs: counted on the device, shown and citable, not scored (2026-11-14, additive, D52)
 - **`obs.face_signs`** (`payloads.FaceSigns`, uplinkable, signal group `laptop` = "Apps", beside `obs.play_session`):
-  what the phone or Mac camera counted during ONE task. `task` (`FaceTask`: every `PlayGame` value + `check_in`),
-  `device` (as `PlaySession.device`), `method` (`arkit_blendshapes | vision_landmarks`), `duration_s`, `samples`
+  what the phone or Mac camera (or the robot's, below) counted during ONE task. `task` (`FaceTask`: every `PlayGame` value + `check_in` + `photo_time`, the robot's few seconds in front of its camera),
+  `device` (`FaceDevice`: `phone | mac | web | robot`), `method` (`arkit_blendshapes | vision_landmarks |
+  haar_cascades`; the last is the robot's camera, OpenCV cascades on the UNO Q: smiles and head movement only, on
+  its own scale), `duration_s`, `samples`
   (≥ 1, frames looked at: about 30 a second with `arkit_blendshapes`, 15 with `vision_landmarks`), `coverage` (0–1, share of them with one usable face); optional signs, each null when the
   method cannot measure it (`FACE_SIGNS`): `smile_share`, `smiles`, `brow_raise_share`, `brow_furrow_share`,
   `mouth_open_share`, `blinks_per_min`, `gaze_on_share`, `head_movement`, `expression_range`; optional `ref` (the
-  envelope id of the task record it belongs to). Envelope `quality` = `coverage`.
+  envelope id of the task record it belongs to). Envelope `quality` = `coverage` from the apps. The hub sends a
+  constant instead (`config/kaiku.toml [photo_time] quality`, 0.6) for the robot's `haar_cascades` windows that had
+  a face, and none for a window with no face: read `coverage` in the payload, not the envelope, for those.
+- **The robot's camera messages** (D61, additive): `cmd.sensors.face_signs_s` (0–30 s: count face signs for this
+  long, then send one `raw.sensors.face_signs`; nothing is recorded) and `cmd.sensors.camera_enable` (false = the
+  board closes its camera). `raw.sensors.face_signs` (`payloads.RawFaceSigns`, source `sensors`, never uplinked):
+  `duration_s`, `samples`, `coverage`, and when a face was in view `smile_share`, `smiles`, `head_movement`; no
+  frame, no label. The hub turns it into `obs.face_signs` (device `robot`, method `haar_cascades`, task
+  `photo_time` or `check_in`). `cmd.hub.photo_time: true` starts Photo time from a button; the companion tool
+  `photo_time` (executor device, surface robot) from her words. On the robot both need her yes to the camera.
 - **What it cannot carry** (`extra=forbid`, tested): an emotion or mood label, a frame, per-frame coefficients or
   landmarks, an embedding, an identity. A session with `coverage` 0 must carry no sign at all (validator): no
   face in view is missing evidence, never a zero. Values are comparable only within one `method`: the landmark
@@ -333,6 +350,11 @@ the received words unchanged; completion metadata never authorises transcript re
   keep reporting taps, obey `eyes` and `pan_mode: sway` + `bpm`; re-sent at least every 5 s (the hub: every 3 s),
   the head takes its own timer back after 10 s without one. `end` = the drum phase is over. It means nothing
   outside the head's own drum step, and a hub-driven head (`kaiku_link`) ignores it.
+- **`cmd.head.ritual: "start" | "pause" | "resume" | "next" | "end"`** (optional; only for a head that runs its
+  own ritual, D59 and D66): `start` = the check-in begins (the mood question), `pause` = the open step waits while
+  she talks, `resume` = back to the step that waited, `next` = the dial question was answered in words, go on,
+  `end` = back to rest. **`cmd.head.activity: "breathe" | "drum" | "none"`** (optional; asking twice, D58): the
+  next press of the ear inside the head's own window starts that step; `none` disarms. A hub-driven head ignores both.
 - **`cmd.head.mic: "open" | "close"`** (optional): the head streams its microphone only while this is held:
   `open` again at least every 3 s (the hub: every 2 s), the head closes after 10 s without one; `close` at the end.
 - **`cmd.head.show: "help" | "none"`** (optional; sent by the hub's crisis path only): `help` = the head shows the
@@ -349,7 +371,8 @@ the received words unchanged; completion metadata never authorises transcript re
   the cloud's result says so. `ms` (a tool call's duration), `ok`. `detail` (≤ 80), a machine word: session
   `open | close`; music `start | song | hush | stop`; game `level:<n> | your_turn | band:<perfect|great|nice|again>`.
   `bpm`: the tempo of a music `song` or a game `level`. **`heard` carries nothing but its kind** (she spoke; her
-  words never travel on the bus), and the model validator refuses `text` on any kind but `said`, `tool` on any
+  words are never in the trace. With a phone as the robot's microphone they travel once, unstored, as
+  `raw.hub.transcript` for that phone's own screen, D63), and the model validator refuses `text` on any kind but `said`, `tool` on any
   kind but `tool`, and a model's name as the `by` of a `said`. No field exists for a tool's arguments or result.
   Not stored: `tools/record.py` and `tools/replay.py` drop its `text`. Examples: `registry.EXAMPLES`,
   `registry.TRACE_EXAMPLES`. Tests: `hub/tests/test_trace.py`, `tools/tests/test_tools.py`.

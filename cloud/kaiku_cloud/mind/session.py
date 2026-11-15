@@ -86,6 +86,7 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
     if not previous:
         store.episode_upsert({"id": sid, "home_id": req.home_id, "surface": req.surface, "intent": req.intent,
                               "start": memory.iso(now), "tools": []})
+        store.kv_set(_lang_key(sid), card.language)  # the crisis script is given in the session's language
     model, voice = models()
     pv = assemble.persona_version(persona)
     # Only a walk may answer an input with silence (its own nudges); a talk, a check-in and the ritual always answer.
@@ -93,7 +94,7 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
                              proactive_audio=live_token.proactive("walk" if walking else req.purpose))
     # Robot is a trusted server-side adapter with its own budgeted key; apps receive one reserved token.
     # One token and its budget reservation cover at most `token_minutes`; a longer call resumes and gets the next.
-    token_minutes = min(max_seconds / 60, float(live.get("token_minutes", 10)))
+    token_minutes = min(max_seconds / 60, float(live.get("token_minutes", 5)))
     if previous:  # the token before this one was in use until now: settle it before the next one is reserved
         live_token.settle(store, sid, via="resume")
     token = None if req.surface == "robot" else mint(model, live_setup=setup, home_id=req.home_id,
@@ -155,6 +156,16 @@ def _log_tool(store: Store, session_id: str | None, name: str) -> None:
         live_token.seen(store, session_id)  # the conversation was alive now: no settlement may end it earlier
 
 
+def _lang_key(session_id: str) -> str:
+    return f"session-lang:{session_id}"
+
+
+def _session_language(store: Store, session_id: str | None) -> str:
+    """The language the session was opened in; the home's configured language when it is not known."""
+    lang = store.kv_get(_lang_key(session_id)) if session_id else None
+    return lang if isinstance(lang, str) and lang else str(load_config().get("home", {}).get("language", "en"))
+
+
 def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang: str) -> CompanionToolResult:
     env = make("obs.safety_flag", {"trigger": "phrase", "handled_locally": False}, source="cloud",
                home_id=call.home_id)
@@ -163,6 +174,8 @@ def _crisis(store: Store, settings: Settings, call: CompanionToolCall, hit_lang:
     # every open agreed activity leaves every screen at once, and the screens are told the day changed (D50)
     agree.ingested(store, call.home_id, [env.model_dump(mode="json", exclude_none=True)])
     ep = store.episode(call.session_id) if call.session_id else None
+    if ep and ep["home_id"] != call.home_id:
+        ep = None  # a session id of another home: the flag is raised for the caller's home, that episode is not touched
     if ep:
         store.episode_upsert({**ep, "end": memory.iso(datetime.now(UTC)), "outcome": "crisis"})
         affect.forget(store, call.home_id, ep["id"])  # nothing of a crisis conversation is summarised
@@ -178,16 +191,19 @@ def run_tool(store: Store, settings: Settings, call: CompanionToolCall,
              now: datetime | None = None) -> CompanionToolResult:
     now = now or datetime.now(UTC)
     name = call.name
-    episode = store.episode(call.session_id) if call.session_id else None
-    if episode and (episode["home_id"] != call.home_id or episode["surface"] != call.surface):
-        return CompanionToolResult(ok=False, name=name, error="session does not belong to this home and surface")
-    if episode and episode["outcome"] == "crisis":
-        return CompanionToolResult(ok=False, name=name, crisis=True, error="crisis",
-                                   result={"stop_session": True, "script": _gate().script("en")})
+    # The crisis gate is FIRST, before anything about the session is checked: a phrase raises the flag for the
+    # caller's home whatever session id came with it.
     for s in _strings(call.args):
         hit = _gate().check(s)
         if hit:
             return _crisis(store, settings, call, hit.language)
+    episode = store.episode(call.session_id) if call.session_id else None
+    if episode and (episode["home_id"] != call.home_id or episode["surface"] != call.surface):
+        return CompanionToolResult(ok=False, name=name, error="session does not belong to this home and surface")
+    if episode and episode["outcome"] == "crisis":
+        script = _gate().script(_session_language(store, call.session_id))
+        return CompanionToolResult(ok=False, name=name, crisis=True, error="crisis",
+                                   result={"stop_session": True, "script": script})
     if name not in TOOLS:
         return CompanionToolResult(ok=False, name=name, error="unknown tool")
     spec = TOOLS[name]

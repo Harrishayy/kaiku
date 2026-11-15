@@ -1,4 +1,8 @@
 # Whole Atech firmware (kaiku_link) over the broker. Run after every single-part bench passed.
+# LEGACY: this bench is for the earlier MQTT firmware (`../../`, kaiku_link) and the earlier design. The robot as built
+# runs `../../standalone` and has no display, no lid button, no chest LED grids and no hall sensor (D39, D54, D55), so
+# it cannot produce the `raw.head.button` events, the hall edge or the eyes and chest this bench asks for. Use
+# `make robot-bench` (tools/robot_bench.py) for the robot as built.
 part = "head-link"
 board = "mqtt"
 program = ""

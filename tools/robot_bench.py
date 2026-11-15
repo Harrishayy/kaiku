@@ -2,7 +2,7 @@
 microphone, nobody's words.
 
     make robot-bench                                  # every step that needs no person, in order
-    make robot-bench ARGS="parts ring turn"           # only these steps
+    make robot-bench ARGS="parts turn"                # only these steps
     make robot-bench ARGS="arm"                       # needs a person: press the ear when asked
     make robot-bench ARGS="--with-sound turn-waits-for-speaker"
     make robot-bench ARGS="--synthetic-face follow"   # the real hub WILL act on the made-up face
@@ -17,9 +17,11 @@ can check on the bus, and prints one of
 Exit code 0 only when nothing FAILED. The audio topics and `raw/hub/transcript` (the person's words, D63) are never
 read: the bench does not subscribe to them and drops them if a broker sends them anyway.
 
+There is no ring step: the standalone head (0.9.0, D66) ignores `cmd.head {color}`. Its ring is orange at rest and
+blue while the microphone streams, which this bench never opens.
+
 Steps (default: all but the three that need a person, a sound or a made-up face):
     parts        health/head, health/sensors, health/hub are fresh; versions, camera_ok, hub talk and mic_source
-    ring         the ear ring white, green, orange (firmware 0.8.0 has no readback: LOOK)
     turn         a turn left then right; raw/head/pan must say moving, then still
     buzzer       cmd.sensors {chime: ok} (LOOK: hear it)
     camera       camera_enable false = no face, no distance (its light out); true = distance comes back; then off
@@ -36,6 +38,7 @@ import asyncio
 import contextlib
 import json
 import math
+import os
 import struct
 import sys
 import time
@@ -61,11 +64,10 @@ from kaiku_contracts.topics import (  # noqa: E402
 
 from tools.busio import decode, mqtt_kwargs  # noqa: E402
 
-STEPS = ("parts", "ring", "turn", "buzzer", "camera", "face-signs", "turn-waits-for-speaker", "follow", "arm")
-DEFAULT = ("parts", "ring", "turn", "buzzer", "camera", "face-signs")  # no person, no sound, no made-up face
+STEPS = ("parts", "turn", "buzzer", "camera", "face-signs", "turn-waits-for-speaker", "follow", "arm")
+DEFAULT = ("parts", "turn", "buzzer", "camera", "face-signs")  # no person, no sound, no made-up face
 FILTERS = ("health/#", "raw/head/#", "raw/sensors/#", "raw/hub/face", "cmd/head")  # never audio, never transcript
 HEALTH_MAX_AGE_S = 12.0
-RING = (("white", "#ffffff"), ("green", "#28dc5a"), ("orange", "#ff8c28"))
 
 
 # ------------------------------------------------------------------------------------------------ pure parts
@@ -229,13 +231,6 @@ class Bench:
                      f"{node}: alive on the broker" if ok else f"{node}: no fresh heartbeat (powered? on this Wi-Fi?)",
                      **numbers)
 
-    async def ring(self) -> None:
-        for name, colour in RING:
-            await self.send("cmd.head", {"color": colour})
-            self.add("ring", "LOOK", f"the ear ring is {name} now (it breathes while the microphone is open). "
-                                     "Firmware 0.8.0 sends nothing back about its ring.", sent=colour)
-            await asyncio.sleep(2.0)
-
     async def turn(self) -> None:
         for way, deg in (("left", -30.0), ("right", 30.0)):
             t0 = await self.send("cmd.head", {"pan": {"target_deg": deg, "speed": 0.6}})
@@ -335,7 +330,7 @@ class Bench:
             await asyncio.sleep(0.2)
         pans = after(self.seen, t0, "cmd/head", lambda p: isinstance(p.get("pan"), dict), source="hub")
         if not pans:
-            self.add("follow", "FAIL", "the hub asked for no turn (it follows only inside a check-in that is not idle, "
+            self.add("follow", "FAIL", "the hub asked for no turn (it follows only while the head is awake, in a talk or a step, "
                      "never while the speaker has sound, never in the rhythm game; `[follow_track] enabled`?)")
         else:
             ok = follow_sign_ok(pans[0].payload["pan"], 0.8, sign)
@@ -365,7 +360,7 @@ class Bench:
                  else f"the head did not go back to rest (it is in {step()}; needs firmware 0.7.0 or later)", step=step())
 
     async def run(self, steps: list[str]) -> list[Result]:
-        table = {"parts": self.parts, "ring": self.ring, "turn": self.turn, "buzzer": self.buzzer,
+        table = {"parts": self.parts, "turn": self.turn, "buzzer": self.buzzer,
                  "camera": self.camera, "face-signs": self.face_signs, "turn-waits-for-speaker": self.turn_waits,
                  "follow": self.follow, "arm": self.arm}
         for s in steps:
@@ -400,7 +395,9 @@ async def main_async(args: argparse.Namespace) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("steps", nargs="*", help=f"steps to run (default: {' '.join(DEFAULT)}); all: {' '.join(STEPS)}")
-    ap.add_argument("--home", default="demo-aino", help="the home id the robot's boards publish under")
+    ap.add_argument("--home", default=os.environ.get("KAIKU_HUB_ROBOT_HOME_ID") or os.environ.get("KAIKU_HOME_ID")
+                    or "demo-aino", help="the home id the robot's boards publish under (default: "
+                                         "KAIKU_HUB_ROBOT_HOME_ID, else KAIKU_HOME_ID, else demo-aino)")
     ap.add_argument("--with-sound", action="store_true", help="allow the step that plays 2 s of a quiet tone")
     ap.add_argument("--synthetic-face", action="store_true", help="allow the step that sends a made-up face")
     ap.add_argument("--json", action="store_true", help="results as JSON")

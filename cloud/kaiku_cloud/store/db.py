@@ -281,29 +281,48 @@ class Store:
             env["quality"] = r["quality"]
         return env
 
+    # Every table that holds rows of one home (events aside), and the kv rows kept under a home's id. The usage
+    # ledger `model_calls` is not here: it has no content and stays as the record of what was spent.
+    _HOME_TABLES = ("homes", "explanations", "commands", "actions", "node_health", "memories", "episodes",
+                    "transcripts", "threads", "kg_edges", "kg_nodes", "embeddings")
+    _HOME_KV = ("invite:{h}", "agree:{h}", "screens:{h}", "affect:{h}", "feel:{h}", "feel-prep:{h}",
+                "remember_off:{h}", "consolidation:{h}", "prerender:{h}", "brief:{h}")
+    _HOME_KV_PREFIX = ("episode-thread:{h}:", "episode-uploaded:{h}:", "phq9_due:{h}:", "reflect:{h}:")
+
+    def _kv_delete_prefix(self, prefix: str) -> None:
+        # substr, not LIKE: a home id may contain `_` or `%`
+        self._db.execute("DELETE FROM kv WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
+
+    def _wipe_home(self, home: str) -> None:
+        """Every derived row of ONE home that was left without events (call with the lock held)."""
+        for table in self._HOME_TABLES:
+            self._db.execute(f"DELETE FROM {table} WHERE home_id=?", (home,))
+        # Their episodes and threads are gone, so the "this episode already opened its thread" markers, the day's
+        # invitation, what they had agreed to and the reflection summaries must go too: a re-seed of the same days
+        # has the same episode ids, and with the markers left behind it would never open its threads again
+        # (seen 2026-11-14).
+        for key in self._HOME_KV:
+            self._db.execute("DELETE FROM kv WHERE key = ?", (key.format(h=home),))
+        for prefix in self._HOME_KV_PREFIX:
+            self._kv_delete_prefix(prefix.format(h=home))
+
     def delete_sim(self, home_id: str | None = None) -> int:
-        """Demo reset: drop simulated events (of one home, or all) and every derived row of homes left without
-        events, with their thread markers and invitation state. Other homes are untouched when `home_id` is given."""
+        """Demo reset: drop simulated events and every derived row of a home left without events (`_wipe_home`).
+        With `home_id`, only that home is touched, in every table and kv row that holds its data; a home that
+        still has live events keeps its derived rows and only its cached explanation and PHQ-9 reminder markers
+        are cleared. Without `home_id`: every home, and every cached explanation."""
         with self._lock:
-            if home_id is None:
-                n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
-            else:
+            if home_id is not None:
                 n = self._db.execute("DELETE FROM events WHERE sim=1 AND home_id=?", (home_id,)).rowcount
-            wiped = [r[0] for r in self._db.execute(
-                "SELECT home_id FROM homes UNION SELECT home_id FROM episodes UNION SELECT home_id FROM threads"
-                " EXCEPT SELECT DISTINCT home_id FROM events")]
-            for table in ("homes", "explanations", "commands", "actions", "node_health", "memories", "episodes",
-                          "threads"):
-                self._db.execute(f"DELETE FROM {table} WHERE home_id NOT IN (SELECT DISTINCT home_id FROM events)")
-            for home in wiped:
-                # Their episodes and threads are gone, so the "this episode already opened its thread" markers
-                # and the day's invitation must go too: a re-seed of the same days has the same episode ids, and
-                # with the markers left behind it would never open its threads again (seen 2026-11-14).
-                prefix = f"episode-thread:{home}:"
-                self._db.execute("DELETE FROM kv WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
-                self._db.execute("DELETE FROM kv WHERE key = ?", (f"invite:{home}",))
-                # ... and what they had agreed to today, with which screens were seen (mind/agree.py, D50)
-                self._db.execute("DELETE FROM kv WHERE key IN (?, ?)", (f"agree:{home}", f"screens:{home}"))
+                self._db.execute("DELETE FROM explanations WHERE home_id=?", (home_id,))  # cheap to regenerate
+                self._kv_delete_prefix(f"phq9_due:{home_id}:")
+                if self._db.execute("SELECT 1 FROM events WHERE home_id=? LIMIT 1", (home_id,)).fetchone() is None:
+                    self._wipe_home(home_id)
+                return n
+            n = self._db.execute("DELETE FROM events WHERE sim=1").rowcount
+            known = " UNION ".join(f"SELECT home_id FROM {t}" for t in self._HOME_TABLES)
+            for home in [r[0] for r in self._db.execute(f"{known} EXCEPT SELECT DISTINCT home_id FROM events")]:
+                self._wipe_home(home)
             self._db.execute("DELETE FROM explanations")  # cheap to regenerate
             self._db.execute("DELETE FROM kv WHERE key LIKE 'phq9_due:%'")
             self._db.execute("DELETE FROM kv WHERE key LIKE 'remember_off:%' AND substr(key, 14) NOT IN"

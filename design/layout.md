@@ -7,7 +7,7 @@ applies all four at once. Check it before you call a screen done.
 
 ## Sizes
 - Phone widths: design at 375 pt, must hold at 320 pt. Mac window min 720 × 480 pt; under 720 the sidebar turns
-  into a top strip. Web `/me` goes to one column under 760 px.
+  into a top strip. (The web dashboard has its own layout rules: `apps/web/AGENTS.md`.)
 - Screen side padding `space.4` 16 pt (iPhone, web under 760 px), `space.5` 24 pt (Mac pane, desktop web). Respect
   safe areas (status bar, home indicator, Dynamic Island, notch). Text columns cap at `size.content-max` (680),
   multi-column panes at `size.pane-max` (1000).

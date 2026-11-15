@@ -7,17 +7,20 @@
   per-metric obs/field/filter, daily aggregation, worse direction, weight, enabled, per-metric thresholds;
   per-source vote settings including `max_age_days` (stale data cannot vote); how verdicts combine into states; direct rules (PHQ-9). Validated by
   `kaiku_contracts/criteria.py`. This is the file that changes most — see "Tuning" below.
-- `kaiku.toml` — every other non-secret setting: home, model IDs (`VERIFY-` placeholders until looked up in
-  current docs), MQTT, uplink, ritual timings + PHQ-9 mode, perception thresholds, music BPM range, safety numbers.
+- `kaiku.toml` — every other non-secret setting: home, model IDs (looked up in the current docs; a `VERIFY-`
+  prefix is how an unchecked one is marked, and none is left in `[models]`), MQTT, uplink, ritual timings + PHQ-9 mode, perception thresholds, music BPM range, safety numbers.
 - `persona.md` — **who Kaiku is** on every surface: values, how it speaks, hard limits, hand-off rules, per-language
   notes, good/bad example exchanges. Compiled into every system instruction (never a per-surface prompt);
   versioned `persona+<sha8>`. Every edit: `make eval-companion DRY=1` (+ a real pass) must not regress.
 - `surfaces.toml` — per surface (`robot`, `glasses`, `iphone`, `mac`, `web`): body capabilities, allowed tools,
   activities, word/sentence/question caps (enforced by the wording linter), session length, proactive limits,
   extra rules, surface-only banned phrases. The header comment documents every key.
-- `safety_phrases.toml` — crisis phrases (en/fi/sv) and the scripted message spoken/shown verbatim. No LLM.
-- `voice_lines.toml` — every line Kaiku says on every surface, keyed (`greet.morning`, `walk.light_hunt.1`, …),
-  en/fi/sv + optional `style`. Clients use keys, never their own wording; served by `GET /v1/voice[/{key}]`.
+- `safety_phrases.toml` — crisis phrases (en/fi/sv) and the scripted message shown verbatim. No LLM. `[script]`
+  has `en` and `fi` only: a Swedish phrase triggers the same path and the English script is used (`CrisisScript.text`
+  falls back to `en`, then to a built-in English text that a hub test holds to `kaiku.toml [safety]`).
+- `voice_lines.toml` — the keyed lines Kaiku says (`greet.morning`, `walk.light_hunt.1`, …), en/fi/sv + optional
+  `style`. Clients use keys, never their own wording; served by `GET /v1/voice[/{key}]`. **Not every line is here
+  yet: the robot hub's own lines are constants in its code** (see "The robot hub" below).
   The voice itself (one Gemini prebuilt voice + TTS model) is `kaiku.toml [voice]` (D27). Never a crisis line here.
   fi/sv are drafts: have a native speaker check them.
 - `mosquitto.conf` — dev/demo broker.
@@ -223,3 +226,41 @@ and `tap_back_timing` ("Tap it back: timing", percent from the song's tempo, the
 numbers of `obs.tap_back`. `[graph]`: `obs.tap_back` is listed under the morning ritual. **No `[[metric]]` in
 `criteria.toml` reads `obs.tap_back`** (tested in `contracts/tests/test_tap_back_audio.py`): it is a game, and a
 tempo she was given is not her own tempo (D51).
+
+## The robot hub (2026-11-15)
+**Lines that live in the hub's code, not in `voice_lines.toml`.** `hub/kaiku_hub/follow.py` (`TALK_OFFER_LINE`,
+`STEP_LINES`: the invitation, the talk's opening, the check-in's step lines, the goodbye), `live/tools.py` (the
+three camera lines), `rituals/steps.py` (the hub-driven ritual: greetings, dial questions, breathing, drum, the
+PHQ-9 wording, suggestions), `rituals/tap_back.py` (the game), `rituals/photo_time.py`, `main.py` ("Let me think
+about that later.", the ritual-time invitation, the care-team message prefix), `live/gemini_live.py BUDGET_LINE`.
+They are English only. Moving them is not a mechanical change (each keyed line needs `fi` and `sv` text, is served
+by `GET /v1/voice/{key}` only after the cloud restarts, and is rendered anew), so it was not done before the
+robot could be heard again; `hub/AGENTS.md` → Invariants has the detail. A line whose text equals a keyed line
+here is already spoken through its key. The crisis script is never among them (`safety_phrases.toml`).
+
+**`kaiku.toml` keys the hub reads** (all overridable by env, `hub/kaiku_hub/settings.py`):
+- `[hub]`: `talk_idle_end_s` (a talk nobody continues ends, D66), `transcript_to_phone` (her words to the phone
+  that is the robot's microphone, as `raw.hub.transcript`, never stored, D63), the local session store
+  (`store_*`), `presence_leave_s`, `presence_stale_s`, `engagement_enabled`, `head_mode`, `robot_home_id`,
+  `head_stale_s`, `follow_offer_every_s`, `trace`; the Live bootstrap `session_attempts` (3), `session_backoff_s`
+  (0.5, doubling) and `session_timeout_s` (4): after the last failure the next press of the ear tries again;
+  `cloud_timeout_s` (5), `nudge_timeout_s` (3), `command_poll_s` (3), `health_report_s` (10), `crisis_dedupe_s`
+  (60: one safety flag per trigger kind in that time), `help_screen_s` (600, the head firmware's `HELP_SHOW_MS`:
+  change both), `think_timeout_s` (8), `attention_hz` (5), `ask_twice_s` (20: the head firmware arms itself for
+  20 s too, change both), `camera_wait_s` (12), `open_estimate_min` (5: minutes of spend a Live or Lyria session
+  must be able to afford to open).
+- `[robot]`: `dial_input`, `press_window_s`, `long_press_s` (2: the manual safety trigger of a build with a button;
+  the robot as built has none), `drum_input` (the sims), `drum_sway`.
+- `[follow_track]` (D62: keeping her in view, and a turn she asks for): `enabled`, `sign`, `edge`, `speed`,
+  `nudge_deg`, `every_s`, `max_misses`, `give_up_s`, `better_min` (0.08), `turn_s`, `turn_deg` (40),
+  `turn_pulse_s` (0.45), `turn_pause_s` (20).
+- `[robot_expression]` (D60 on the robot: a visible change in her smile during a conversation with the camera on →
+  one private note to Kaiku, a reason to ask and never a finding): `enabled`, `lower_smile_max`,
+  `earlier_smile_min`, `brighter_smile_min`, `min_coverage`, `every_s`, `max_per_conversation`.
+- `[photo_time]`: `seconds` (Photo time's window), `conversation_window_s` (one window of counting while the
+  camera is on in a conversation, D61), `wait_extra_s` (6), `quality` (0.6: the constant envelope quality of the
+  robot's `obs.face_signs`; its `coverage` is the measure).
+- Still constants in the hub's code, on purpose: the engagement summary's ranges and weights, the pulse gates, the
+  context-event thresholds (listed in `hub/AGENTS.md` → Invariants).
+- `surfaces.toml [surface.robot]` describes the robot as built: `eyes = false`, `glow = false` (the flags only
+  decide what the prompt's "Your body here" line lists), a talk by default and the check-in only when asked.

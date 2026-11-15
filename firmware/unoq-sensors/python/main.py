@@ -58,7 +58,7 @@ def main() -> None:
 
     node = SensorsNode(RouterBridge(), camera=not a.no_camera)
     threading.Thread(target=lambda: asyncio.run(node.run()), name="kaiku-node", daemon=True).start()
-    App.run(user_loop=lambda: time.sleep(1))  # VERIFY: App.run signature on the current App Lab release
+    App.run(user_loop=lambda: time.sleep(1))  # ran on the board under App Lab 0.12 (docs/progress.md, 2026-11-14)
 
 
 if __name__ == "__main__":

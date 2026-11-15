@@ -1,5 +1,5 @@
 # Bench: Atech microphone alone on ports 9-10 (ICS-43434). Prints RMS + peak at 10 Hz.
-# VERIFY method names with `atech info microphone` (camelCase: getSoundLevel / getPeakAmplitude), and set 16 kHz/16-bit.
+# Method names as built (this bench ran on the board on 2026-11-14: levels rose with sound (docs/progress.md)). After an SDK change check them with `atech info microphone` (camelCase: getSoundLevel / getPeakAmplitude), and set 16 kHz/16-bit.
 name: bench-mic
 board: 14port
 modules:

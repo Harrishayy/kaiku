@@ -6,8 +6,8 @@
 
 ## Purpose
 The single source of Kaiku's look (plan 02 §2–§3, D22–D23): colour, type, spacing and motion tokens, the mascot's
-geometry and states, and the motion rules. Web, the Apple apps and the robot eye display consume what is here and
-never redraw or re-pick by eye. The published design artifact (directions, mascot sheet, key screens) is linked from
+geometry and states, and the motion rules. Web and the Apple apps consume what is here and never redraw or re-pick
+by eye (the robot as built has no display, D54 and D55; the spec's robot eye crop is kept for a head with a screen). The published design artifact (directions, mascot sheet, key screens) is linked from
 `docs/progress.md`; this folder is what code reads.
 
 ## Boundaries
@@ -30,10 +30,14 @@ None. Outputs are files: `generated/tokens.css`, `generated/Tokens.swift`, `masc
   loading/empty/error/offline states, sheet, toast, icons, voice of copy, accessibility floor.
 - `mascot.spec.json` — **ground truth** for the mascot: parts (ids, shapes, colour token refs, pivots, clips), blink
   modes, per-state pose + keyframe tracks + events, interactions, ambient-mood → state map, robot eye crop.
-- `copy.json` — **ground truth** for on-screen UI copy (en + fi, same keys; `{name}`/`{n}` placeholders). Apps
-  render keys, never inline strings or dev notes.
+- `copy.json` — **ground truth** for the shared on-screen UI copy (en + fi, same keys; `{name}`/`{n}`
+  placeholders) and for the consensus words the dashboard shows (`state.*`, `verdict.*`). Apps render keys, never
+  inline strings or dev notes. It is not the whole of the Apple apps' copy: their own table, an overlay of the keys
+  this file lacks (most of what the apps show today), is
+  `apps/apple/KaikuKit/Sources/KaikuKit/Resources/copy.apple.json`. The Apple apps bundle a copy of this file:
+  after a change here run `apps/apple/scripts/sync_design.sh`.
 - `ia.md` — the app's information architecture: tabs (Today · Play · Talk · History · You; Your days sits under History), every screen with its
-  components, states and copy keys, games (intro → play → gentle end, what each records), Mac/island/web extras.
+  components, states and copy keys, games (intro → play → gentle end, what each records), Mac/island extras.
 - `layout.md` — overflow-proofing rules: stress case (fi + long name + 1.35× text + 320 pt), wrapping/truncation,
   scrolling, text scaling, safe areas.
 - `motion.md` — how Kaiku moves: principles, easings, blink schedule, breathing, per-state table, haptics, Reduce
@@ -108,5 +112,4 @@ clinical words.
 - Fonts: web uses Fredoka (display) + Nunito (body) + DM Mono (receipts/numbers) from Google Fonts; Apple uses
   SF Pro Rounded via `.rounded` design. The two families differ slightly by design.
 - `copy.json` has no Swedish yet; the persona already speaks sv.
-- `play_session` game `"pebbles"` is not in the contracts enum yet (backend adds it); fields in `ia.md`.
 - `Tokens.swift` is type-checked with `swiftc -typecheck` by hand, not in CI.

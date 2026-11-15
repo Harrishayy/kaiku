@@ -27,6 +27,8 @@ LABEL = {"robot": "Check-ins & robot", "glasses": "Walks & outings", "laptop": "
 WORDS = {"watch": "worth a check-in / still forming", "needs_call": "needs a call", "stable": "stable", "safety": "safety"}
 SHOW = ("mood", "energy", "sleep", "outing_min", "firefly_reaction", "late_night", "watch_sleep", "resting_hr")
 
+HOME = os.environ.get("KAIKU_HOME_ID") or "aino"  # the seeded person's record
+
 
 def reading(client, home: str) -> dict:
     cons = client.get(f"/v1/patients/{home}/consensus").json()
@@ -80,10 +82,10 @@ def local_run() -> int:
                                                     llm="template")))
             single_person.seed("http://127.0.0.1:1", rows, jobs=False, client=client)
             if kind == "good":
-                show("As the record opens this morning (sixteen days, nothing yet today)", reading(client, "aino"))
+                show("As the record opens this morning (sixteen days, nothing yet today)", reading(client, HOME))
             posted = client.post("/v1/events", json={"events": single_person.today_events(now.date(), kind, now=now)}).json()
             assert not posted["rejected"], posted
-            results[kind] = reading(client, "aino")
+            results[kind] = reading(client, HOME)
             show(f"After a {kind} day today", results[kind])
     ok = results["good"]["state"] != results["rough"]["state"] or results["good"]["sources"] != results["rough"]["sources"]
     print("\n" + ("The two days read differently: today's recordings move the comparison." if ok
@@ -98,10 +100,10 @@ def remote_run(url: str, kind: str) -> int:
         if client.get("/v1/discovery").json().get("mode") != "demo":
             print("this API is not in credential-free local mode; not posting", file=sys.stderr)
             return 1
-        show("Before", reading(client, "aino"))
+        show("Before", reading(client, HOME))
         posted = client.post("/v1/events", json={"events": single_person.today_events(now.date(), kind, now=now)}).json()
         print(f"\nposted a {kind} day: {posted['accepted']} new, {posted['duplicates']} already there")
-        show(f"After a {kind} day today", reading(client, "aino"))
+        show(f"After a {kind} day today", reading(client, HOME))
     return 0
 
 

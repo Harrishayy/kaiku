@@ -2,37 +2,48 @@
 
 Pure state machine: messages in, a list of actions out (`Hub._follow_do` executes them). No I/O, no clock of its own.
 
-What the standalone head sends over MQTT (firmware/atech-head/standalone/src/main.cpp + kaiku_net.cpp):
+What the standalone head sends over MQTT (firmware/atech-head/standalone/src/main.cpp + kaiku_net.cpp, 0.9.0):
 
-    health/head        every 5 s, retained: details.step = idle|greet|mood|energy|sleep|breathe|drum|done,
-                       details.firmware = "standalone"; last will = status down
+    health/head        every 5 s and at once on a step change, retained: details.step =
+                       idle|greet|talk|mood|energy|sleep|breathe|drum|done, details.firmware = "standalone";
+                       last will = status down
     raw.head.ear       {value, delta, pressed:false}  a knob turn, ONLY while a dial step is open; value = dial 1-10
                        {value, 0, pressed:true}       every knob press in ANY step (value = the last dial value):
-                         idle -> greet · greet -> mood (starts the ritual) · mood/energy/sleep -> confirms that dial
-                         with `value` and moves on · breathe -> skips to drum · drum -> ends it · done -> idle
+                         idle -> greet · greet -> talk (D66: a press opens a TALK, not the check-in) ·
+                         mood/energy/sleep -> confirms that dial with `value` and moves on · breathe -> skips to
+                         drum · drum -> ends it · done -> idle
     cmd.sensors{chime} wake = the head entered greet · start_drum = entered drum · end_drum = drum over, now done
-    raw.head.pan       {deg 0, homed, moving}: on change + every 2 s (the UNO Q mutes knocks while the motor runs)
-  and from the UNO Q, unchanged: raw.head.tap (knock, no force), raw.hub.face, raw.sensors.distance, raw.sensors.ppg.
+    raw.head.pan       {deg 0, homed, moving}: on change + every 2 s
+    raw.head.tap       {t_ms, force, src: "imu"} from the head's own orientation sensor (D55; none while its motor
+                       moves or its speaker plays). The knock switch on the UNO Q is gone.
+  and from the UNO Q, only while its camera is on (D61): raw.hub.face, raw.sensors.distance, raw.sensors.ppg (camera).
+
+`talk` is not a ritual step: the head is awake and the conversation is open, no check-in runs. The check-in's steps
+(mood ... drum) open only when she asks for them: the hub sends `cmd.head {ritual: start}` (also `pause`, `resume`,
+`next`, `end`; `Hub._checkin`), or `{activity: breathe|drum}` and her press (asking twice, D58).
 
 The head never sends the ritual's results (mood/energy/sleep, the drum summary, breathing completed): those go to
 USB serial only. So the follower keeps a shadow of the head's step and derives:
 
     obs.ritual         greet / dial (mood+energy+sleep) / breathe / drum / close: started + completed|skipped|aborted
-    obs.self_report    one per confirmed dial press: `scale_10` = the value as dialled, `value` = ceil(scale_10 / 2)
-    obs.drum_session   from the UNO Q knocks received while the head is in drum (>= min_taps; not while it moves)
+    obs.self_report    one per confirmed dial press (or spoken answer, D59): `scale_10` = the value as dialled,
+                       `value` = ceil(scale_10 / 2)
+    obs.drum_session   from the taps received while the head is in drum (>= min_taps; not while it moves), unless
+                       the hub ran Tap it back there (then obs.tap_back, from the hub)
     obs.hrv_session    only if the UNO Q pulse passes every gate (the hub asks the UNO Q for it during breathe)
 
 Honesty rules:
 - A dial answer is held until the head itself confirms the hub's shadow (the next health with the same step, or a
   chime the shadow expected). If they disagree (a lost press, a USB-serial command), the held answers are dropped
   with a note, never relabelled: a value is only ever recorded under the item it was dialled for.
-- Not derivable, so never emitted: a post-drum mood (the head doesn't ask), drum force and the head's own
-  motion-sensor taps (serial only), PHQ-9, a suggestion.
+- Not derivable, so never emitted: a post-drum mood (the head doesn't ask), PHQ-9, a suggestion.
 - A greeting is an offer, not a ritual: it is recorded when the person presses to start (then `greet` started /
   completed carry its real times). An unanswered greeting is recorded (`greet` skipped) at most once per
   `unanswered_gap_s`, because the head greets again whenever it sees a face.
 - The head disappears (health `down`, or silent for `stale_s`): the open step is `aborted`, the ritual `ended_early`.
 - A ritual the hub did not see start by a press (joined mid-way) is recorded but not consented: no engagement summary.
+- A wake's record ends `completed` (the whole check-in), `ended_early` (a check-in started, not finished) or
+  `skipped` (she only talked).
 """
 
 from __future__ import annotations
@@ -44,7 +55,7 @@ from typing import Any
 from .perception.hrv import HrvResult, PpgBuffer
 from .perception.taps import TapAnalyzer
 
-# `talk` (firmware 0.9.0, D64): awake and talking, no check-in running. A press at the greeting leads there; the
+# `talk` (firmware 0.9.0, D66): awake and talking, no check-in running. A press at the greeting leads there; the
 # check-in's own steps open only when she asks for them in words. It is not a ritual step (no obs.ritual of its own).
 HEAD_STEPS: tuple[str, ...] = ("idle", "greet", "talk", "mood", "energy", "sleep", "breathe", "drum", "done")
 CHECKIN_STEPS: tuple[str, ...] = ("mood", "energy", "sleep", "breathe", "drum")
@@ -59,12 +70,11 @@ CHIMES: dict[str, tuple[str, tuple[str | None, ...]]] = {
     "start_drum": ("drum", ("breathe", "drum")),
     "end_drum": ("done", ("drum", "done")),
 }
-# What Kaiku says when the head enters one of its own steps while a conversation is open (D51). True for the
-# standalone head: its dial is the ear, 1 to 10, shown on its screen; its chest light paces the breath; a press moves
-# on. `drum` is for free drumming only (Tap it back has its own lines); `done` is the goodbye.
-# This robot's head has no screen and no light (D54, D55): the dial starts in the middle (5 of 10) and she cannot
-# see its number, so the lines give a direction, not a number (main.cpp: clockwise is higher), and the breathing is
-# paced by Kaiku's words, not by a light.
+# What Kaiku says when the head enters one of its own steps while a conversation is open (D51). Written for the
+# standalone head as built: its dial is the ear, 1 to 10, and a press moves on. It has no screen and no light (D54,
+# D55): the dial starts in the middle (5 of 10) and she cannot see its number, so the lines give a direction, not a
+# number (main.cpp: clockwise is higher), and the breathing is paced by Kaiku's words, not by a light.
+# `drum` is for free drumming only (Tap it back has its own lines); `done` is the goodbye.
 TALK_OFFER_LINE = "Hello. Press my ear if you'd like to talk."  # at the head's greeting: a press opens a talk
 STEP_LINES: dict[str, str] = {
     "talk": "I'm here. What's on your mind?",  # once, when the talk opens; a check-in only if she asks for one
@@ -119,7 +129,7 @@ class HeadFollower:
     muted_taps: int = 0
     game: bool = False               # the hub is running Tap it back in the head's drum step: its taps are the game's
     game_levels: int = 0             # levels of that game with a measured try (the hub keeps this current)
-    checkin_started: bool = False    # a check-in step was open in this wake (D64): how the wake's record ends
+    checkin_started: bool = False    # a check-in step was open in this wake (D66): how the wake's record ends
     asked: str | None = None         # the step the hub sent the head to (asking twice, D58): going there, also
                                      # backwards, is this ritual going on, not a new one
     unanswered: int = 0              # greetings nobody answered since the hub started
@@ -186,7 +196,8 @@ class HeadFollower:
                                              "channel": "robot"}, None, None)]
 
     def on_tap(self, t_ms: int, force: float | None = None) -> bool:
-        """A UNO Q knock. Counted only while the head is in drum and its motor is still."""
+        """A tap (on this robot from the head's own orientation sensor, D55). Counted only while the head is in drum
+        and its motor is still."""
         if self.step != "drum" or not self.active or self.game:
             return False
         if self.pan_moving:

@@ -1,7 +1,7 @@
 """Kaiku cloud API (FastAPI). Local: `make cloud-local` (uvicorn kaiku_cloud.api.main:app). Modal: cloud/app.py.
 
-Routes are listed in docs/plans/01-foundation.md §6.7 (ground truth for shapes: kaiku_contracts.api). The static web app (Next.js export) is mounted at `/` last,
-so /v1/* and /healthz always win.
+Routes are listed in cloud/AGENTS.md ("Consumes" and "Emits"; ground truth for shapes: kaiku_contracts.api). The
+static web app (Next.js export) is mounted at `/` last, so /v1/* and /healthz always win.
 """
 
 from __future__ import annotations
@@ -72,6 +72,7 @@ from kaiku_contracts.api import (
     VoiceSayRequest,
 )
 from kaiku_contracts.companion_tools import Surface
+from kaiku_contracts.config import get as cfg_get
 from kaiku_contracts.jlog import get_logger
 
 from .. import clinician_chat, debug_day, history, service, vision, voice
@@ -255,7 +256,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
             while True:
                 for cmd in await asyncio.to_thread(store.pending_commands, home_id, None):
                     await ws.send_json(cmd)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(float(cfg_get("cloud", "stream_poll_s", 1.0)))
         except (WebSocketDisconnect, RuntimeError):
             return
 
@@ -440,7 +441,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         except voice.UnknownLine:
             raise HTTPException(404, f"unknown line {line_key!r} (see GET /v1/voice)") from None
         except voice.VoiceUnavailable as e:
-            log.warning("voice_unavailable", str(e), key=line_key, lang=lang)
+            log.warning("voice_unavailable", type(e.__cause__ or e).__name__, key=line_key, lang=lang)
             return JSONResponse(status_code=503, content={
                 "detail": "voice audio unavailable", "reason": str(e),
                 "hint": "show the text from GET /v1/voice instead; set GEMINI_API_KEY on the cloud or pre-render "
@@ -456,7 +457,7 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         try:
             data = voice.say(req.text, req.lang)
         except voice.VoiceUnavailable as e:
-            log.warning("voice_unavailable", str(e), key="say", lang=req.lang)
+            log.warning("voice_unavailable", type(e.__cause__ or e).__name__, key="say", lang=req.lang)
             return JSONResponse(status_code=503, content={
                 "detail": "voice audio unavailable", "reason": str(e),
                 "hint": "show the text and let the person retry when Kaiku’s voice is available"})
@@ -636,7 +637,9 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
         if cached and cached.get("rule_version") == service.active_criteria(store).rule_version:
             return EvalResult.model_validate(cached)
         crit = service.active_criteria(store)
-        result = eval_runner(crit) if eval_runner else nightly.run_eval(n_patients=18, shards=2, criteria=crit)
+        result = eval_runner(crit) if eval_runner else nightly.run_eval(
+            n_patients=int(cfg_get("cloud", "eval_patients", 18)), shards=int(cfg_get("cloud", "eval_shards", 2)),
+            criteria=crit)
         store.kv_set("eval", result.model_dump(mode="json"))
         return result
 

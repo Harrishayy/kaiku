@@ -368,7 +368,9 @@ public struct SawTodayView: View {
         out.append(Line(id: "voice", text: T("saw.voice"), signal: .voice))
         // Face signs during games and the check-in: how many activities had the camera on (numbers, never pictures).
         let seen = DayEvidence.cameraTasks(events: ev, sent: app.cameraChoice.sentToday())
-        out.append(Line(id: "camera", text: seen.map { T("saw.camera.n", n: $0.count) } ?? T("saw.camera.none"), signal: .camera))
+        let look = DayEvidence.looked(events: ev, here: app.cameraChoice.lookedToday())
+        out.append(Line(id: "camera", text: seen.map { T(look ? "saw.camera.n.look" : "saw.camera.n", n: $0.count) } ?? T("saw.camera.none"),
+                        signal: .camera))
         #if os(macOS)
         // The same local aggregate the hourly usage-rhythm numbers come from (numbers + app types only).
         out.append(Line(id: "mac", text: MacUsageStore.shared.receiptLines().joined(separator: "\n"), signal: .mac))
@@ -649,17 +651,25 @@ public struct HelpView: View {
     }
 }
 
-/// MIELI, 112, care team. Phone numbers come from copy (help.*.d) — tel: links where the device can call.
+/// MIELI, 112, care team. The numbers shown come from copy (`help.*.d`), the numbers dialled from copy too
+/// (`help.mieli.tel`, `help.112.tel`); the literals here are the fallback, because this must work whatever the
+/// bundle holds and with no network.
 struct CallButtons: View {
     let style: KButtonKind
     @Environment(\.openURL) private var openURL
     @Environment(AppModel.self) private var app
     var body: some View {
         VStack(spacing: KaikuTokens.Space.s3) {
-            call(T("help.mieli"), T("help.mieli.d"), "tel:0925250111")
-            call(T("help.112"), T("help.112.d"), "tel:112")
+            call(T("help.mieli"), T("help.mieli.d"), Self.tel("help.mieli.tel", fallback: "0925250111"))
+            call(T("help.112"), T("help.112.d"), Self.tel("help.112.tel", fallback: "112"))
             Text(T("crisis.delivery.contact")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
         }
+    }
+
+    /// `tel:` + the digits of a copy key, or the fallback when the key is missing or holds no digit.
+    static func tel(_ key: String, fallback: String) -> String {
+        let digits = (L10n.shared.has(key) || L10n.shared.has(key, .en) ? T(key) : "").filter { $0.isASCII && $0.isNumber }
+        return "tel:" + (digits.isEmpty ? fallback : digits)
     }
 
     private func call(_ title: String, _ detail: String, _ url: String?) -> some View {

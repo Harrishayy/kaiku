@@ -1,6 +1,6 @@
 # Kaiku components
 
-One spec for the parts every surface shares (iPhone, Mac, web dashboard, robot display). Numbers are tokens from
+One spec for the parts every surface shares (iPhone, Mac, web dashboard; the robot as built has no display). Numbers are tokens from
 [`tokens.json`](tokens.json); if a number here and there disagree, the JSON wins. Swift: `KaikuTokens.*`. CSS: `--k-*`.
 Layout stress rules are in [`layout.md`](layout.md), motion in [`motion.md`](motion.md), words in `copy.json`.
 
@@ -145,8 +145,8 @@ remembers?").
 outline, `radius.sm`; each segment ≥ 44 tall. Stacks vertically when labels do not fit.
 
 ## Icons
-SF Symbols on Apple (filled variants, weight semibold); the web uses the same set of shapes from
-`apps/web/components/Icon.tsx` at 24 (`size.icon`), 1.75 px stroke, `currentColor`. Decorative icons are hidden
+SF Symbols on Apple (filled variants, weight semibold). The web dashboard has no icon set (it uses text, chips
+and shape marks); an icon added there is 24 (`size.icon`), 1.75 px stroke, `currentColor`. Decorative icons are hidden
 from assistive tech; an icon-only control always has a label.
 
 ## Voice of copy

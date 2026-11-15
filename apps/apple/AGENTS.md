@@ -14,8 +14,11 @@ screens and copy are implemented from `design/` (`ia.md`, `layout.md`, `motion.m
 ## Boundaries
 Imports nothing from the repo at build time. Ground-truth files are **copied** into KaikuKit by
 `scripts/sync_design.sh` (`design/generated/Tokens.swift`, `design/copy.json`, `design/mascot.spec.json`,
-`config/safety_phrases.toml`); `SyncFreshnessTests` fails when a copy is stale. Talks to the cloud over HTTPS only.
-Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 5).
+`config/safety_phrases.toml`); `SyncFreshnessTests` fails when a copy is stale. What it talks to: the Kaiku service over HTTP(S) (HTTPS for a
+hosted service; plain `http://` only to a service on the local network, which App Transport Security allows through
+`NSAllowsLocalNetworking`); Gemini Live over a WebSocket straight to Google (`wss://generativelanguage.googleapis.com`,
+`LiveSession.endpoint`) with the service's short-lived token; and, for Kaiku bot, plain MQTT over TCP to the broker
+on the home network. Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 5).
 
 ## Consumes (topics/endpoints)
 - `GET /v1/me` (mascot mood, garden + `garden.days` = one plot per local day for 14 days, highlights, next suggestion), `GET /v1/nudge` (the one suggestion),
@@ -41,7 +44,7 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
   opt-in `transcripts` signal, D33). `GET /v1/me/transcripts` + `DELETE /v1/me/transcripts` (count + delete all in
   What Kaiku remembers). See "Conversation pipeline". Kaiku's voice outside Live is always Gemini TTS:
   `GET /v1/voice?lang=` (line texts), `GET /v1/voice/{key}?lang=` (prefetched on Wi-Fi, fetched on demand on a miss),
-  `POST /v1/voice/say` (the app's own lines, cached by text hash). **Never an on-device synthesizer**: cloud
+  `POST /v1/voice/say` (the app's own lines, cached by text hash). **Never an on-device synthesiser**: cloud
   unreachable AND nothing cached → silent, the text stays on screen.
 - **When Kaiku speaks (2026-11-15): never by itself on a screen.** A spoken line needs an origin
   (`VoiceLines.play/say/playReporting(…, origin:)`, no default): `.pressed` = the person just pressed something to
@@ -54,16 +57,19 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
   DEBUG runs open the call on appear with `-kaikuTalkStart YES` (also a Talk demo or `-kaikuTalkSay`).
   `VoiceOriginTests` pin this. Still by itself: Kaiku's Live voice in a walk the person started, the Mac quick
   talk after its shortcut, and `walk.done` when a crisis ends a walk (crisis path left as it was).
-- iPhone: Apple Health (read-only, HealthKit), Meta glasses via the DAT SDK (MWDAT 1.0.1, SPM; Motion = dev/beta
+- iPhone: Apple Health (HealthKit; read-only in a Release build. A Debug build, which is what
+  `scripts/run_on_iphone.sh` installs, also asks for write access to sleep, steps, distance, daylight, resting heart
+  rate and HRV for the sample-data button: `HealthSync.shareTypes`), Meta glasses via the DAT SDK (MWDAT 1.0.1, SPM; Motion = dev/beta
   channel), local notifications (no APNs), ActivityKit (no push), App Intents.
 - All shapes: `contracts/schemas/` (mirrored in `KaikuKit/Model/Contracts.swift`).
 - **The home robot's MQTT broker, only while Kaiku bot is on screen** (see "Kaiku bot"; read-only except the
   "Robot microphone" switch, D56, which also keeps the connection while it is on): subscribes to
   `kaiku/v1/<home>/raw/#`, `cmd/#`, `obs/#`, `health/#` (QoS 0) and reads `health`, `raw.head.*`, `raw.sensors.*`,
-  `raw.hub.face`, `raw.hub.trace`, `cmd.head`, `cmd.sensors`, `cmd.hub`, `cmd.friendlink` and every `obs.*` the robot
+  `raw.hub.face`, `raw.hub.trace`, `raw.hub.transcript` (the person's words, D63: see "Kaiku bot"), `cmd.head`, `cmd.sensors`, `cmd.hub`, `cmd.friendlink` and every `obs.*` the robot
   sends on. Never subscribes to `audio/#` or `kaiku/v1/#`. Publishes one thing only, with "Robot microphone" on and
   while the hub holds the robot's microphone open: this device's microphone as 640-byte PCM frames on
-  `kaiku/v1/<home>/audio/phone/mic` (never an envelope, never a command).
+  `kaiku/v1/<home>/audio/phone/mic` (never an envelope, never a command). "Turn the camera" (D64, a `cmd.head` pan
+  from the app) is **not in this build**: no code for it exists in the repository.
 
 ## Emits (topics/endpoints)
 `POST /v1/events` (source `phone` on iPhone, `laptop` on Mac), always through the offline queue:
@@ -147,11 +153,12 @@ KaikuKit/Sources/KaikuKit/
   Net/APIClient.swift       async client: timeouts, retry + backoff + jitter, Bearer home token
   Net/OfflineQueue.swift    origin/home-scoped observation outbox; batch flush; idempotent by id
   Net/EpisodeOutbox.swift   origin/home-scoped durable completions and opt-in transcript retry
-  Net/Pairing.swift         ?home=&t= link parser; Keychain storage (file fallback for unsigned sim builds)
+  Net/Pairing.swift         ?home=&t= link parser; Keychain storage (file `pairing.json` for unsigned sim / Mac debug
+                            builds, and as the fallback when the Keychain refuses the item: see Config & env)
   Net/HomeStream.swift      the home stream's connection: SSEParser (pure), HomeStreamEvent, StreamBackoff, StreamWatch
                             (heartbeat rule), HomeStreamClient (connect, read, reconnect with Last-Event-ID)
   Net/BotBus.swift          Kaiku bot's wire: BotTopics (the four filters, the audio guard), BotAddress (parse, the
-                            local-network guess), MQTTOut (CONNECT/SUBSCRIBE/PING/DISCONNECT/acks: no PUBLISH),
+                            local-network guess), MQTTOut (CONNECT/SUBSCRIBE/PING/DISCONNECT/acks and ONE PUBLISH: `micFrame`, D56),
                             MQTTDecoder (pure, fragments, malformed input throws), BotBusClient (NWConnection, keep-alive,
                             reconnect with backoff)
   Net/HomeUpdates.swift     when the stream runs (StreamGate, AppPresence) and what each event refreshes; the Mac's
@@ -178,7 +185,7 @@ KaikuKit/Sources/KaikuKit/
                             ActivityCardView), CallActivity (the call outside the app: KaikuCall, the Live Activity),
                             CheckInChat (the check-in as a small chat), TalkDemo (Debug: every call state on a scripted
                             Live), AudioCapture (Tell Kaiku)
-  Platform/                 Haptics, platform constants, QR scanner (iOS), Sound (synthesised soft UI tones)
+  Platform/                 Haptics, platform constants, Sound (synthesised soft UI tones)
   Mac/                      pure Mac-extras logic (tested): MacIslandGeometry/Shape/Layout (the island), MacUsage (bundle-id → category table, aggregator,
                             ScreenActivity payload, MacUsageStore = the local aggregate), MacPeek (peek rules +
                             ledger, invitation time); quick talk (tested): QuickTalkTrigger (key combination, pure
@@ -211,7 +218,8 @@ KaikuKit/Sources/KaikuKit/
                             ratios on landmark points), TaskCamera.swift (the controller: begin / suspend / resume /
                             her off tap / finish; `TaskCameraSource`; the Vision source; the DEBUG stand-in source),
                             ARKitFaceSource.swift (iOS only: face tracking blendshapes, no view), CameraChoice.swift
-                            (the wording agreed to, what was sent today, the payload, `AppModel` recording),
+                            (the wording agreed to, what was sent today, the payload, `AppModel` recording), ExpressionCue.swift
+                            (visible expression cues, D60: pure detector + the fixed context sentences), VisionLook.swift (D65),
                             TaskCameraViews.swift (the chip, the one-time question, the in-front rule)
   Health/                   HealthSync (HealthKit queries, asking iOS again for kinds of data an update added, debug
                             sample data and its simulated mark, HealthAccess = the screens' one call),
@@ -237,7 +245,7 @@ days is History's first block and a screen under it, and Kaiku bot is a screen u
 | `walk` | ✓ | — | iPhone only: walk with Kaiku: Calm · Playful · Chatty, spotting game (+ glasses, Live Activity, Dynamic Island) |
 | `talk` | ✓ | ✓ | a call on Gemini Live with a cloud token: mute me, mute Kaiku, captions always, typing behind the call bar; without a call one line + one action; iPhone: goes on outside the app (Lock Screen, Dynamic Island) |
 | `history` · `historyMeasure` | ✓ | ✓ | the person's own numbers: one card per measure in groups (robot first), a measure's page with day · week · month; one column on iPhone, two columns of cards and chart beside sessions on Mac; `kaiku://history` |
-| `bot` | ✓ | ✓ | Kaiku bot: what the robot at home hears and does, live (read-only, see "Kaiku bot"). A tab in the Mac sidebar; on iPhone a screen under You → Devices (`KaikuRoute.bot`, `kaiku://bot`), because a sixth tab puts the fifth and sixth behind "More" |
+| `bot` | ✓ | ✓ | Kaiku bot: what the robot at home hears and does, live (it sends no command; its one PUBLISH is the "Robot microphone" frames, see "Kaiku bot"). A tab in the Mac sidebar; on iPhone a screen under You → Devices (`KaikuRoute.bot`, `kaiku://bot`), because a sixth tab puts the fifth and sixth behind "More" |
 | `days` · `markDay` | ✓ | ✓ | under History (`KaikuRoute.days`, `kaiku://days`): this week's strip is History's first block; day marks are local (no contract yet) |
 | `glasses` | ✓ | — | You → Glasses check: toolkit, sound route, Live and camera state, 20-second self-test, shareable log |
 | `you` · `memories` · `saw` · `voice` · `quiet` · `devices` · `help` | ✓ | ✓ | Devices: glasses (ready / connected during a walk), watch (Health); debug "Try it out" section |
@@ -256,8 +264,9 @@ Live tool call → device tool (Conversation.deviceTool: express, record_dial, s
 ```
 - Setup (`LiveSession.setup`, tested): server VAD with `START_OF_ACTIVITY_INTERRUPTS`; start sensitivity HIGH on a
   headset route (glasses), LOW on a loudspeaker (echo leftovers must not interrupt); end LOW + 800 ms silence
-  (slow speakers with long pauses aren't cut off); affective dialog; proactive audio; input + output
-  transcription; context-window sliding compression (walks > 15 min); session resumption. `ask_mind` is
+  (slow speakers with long pauses aren't cut off); no affective dialog (`enableAffectiveDialog` is never sent: the
+  model closed the socket on it, 2026-11-14); `proactivity` only when the service's `live_setup` carries it (today
+  the walk); input + output transcription; context-window sliding compression (walks > 15 min); session resumption. `ask_mind` is
   `NON_BLOCKING` (Kaiku keeps talking while the mind thinks; answer scheduled `WHEN_IDLE`).
 - Context events: the walk sends `[walk started · …]` (a later conversation on the same walk: `[walk goes on · …]`),
   `[spotting game · trees · 2 of 3 found · 1 left]`, `[walk · 10 min]`, `[glasses disconnected · …]`; Talk sends `[the person just opened Talk]` (Kaiku greets in its live voice) and
@@ -312,7 +321,7 @@ Live tool call → device tool (Conversation.deviceTool: express, record_dial, s
 - **Daily invitation**: one local notification with today's suggestion line at 17:00, moved to the end of quiet
   hours when it falls inside them; replanned when the suggestion changes; nothing while paused or unpaired.
   `DailyInvitation.schedule(app:)` is the interface to swap for a shared scheduler (A2) later.
-- **Demo**: menu bar → "Simulate a late evening" (debug builds) or launch with `-kaikuSimulateLate YES` feeds a
+- **Demo** (Debug builds only, both ways): menu bar → "Simulate a late evening" or launch with `-kaikuSimulateLate YES` feeds a
   synthetic 00:00–01:10 through the same aggregator and rules: the island peeks at once and the closed hour goes to
   the cloud as `obs.screen_activity` with `sim: true` (the real aggregate and peek ledger are untouched).
 
@@ -379,11 +388,14 @@ Live tool call → device tool (Conversation.deviceTool: express, record_dial, s
   support it.
 - `start_activity` runs only on the person's word: their latest words ask for it or say a clear yes
   (`TalkModel.asked`, en/fi/sv; "maybe" is not a yes), or they open the activity card. Otherwise the model is told no.
-  Talk supports `start_phq9` and walking activities. PHQ-9 forwards pairing credentials in a consumed URL fragment.
+  Talk supports walking activities. **The PHQ-9 is not offered in the apps**: there is no questionnaire screen, and
+  the service has no page for the person (the website is the practitioner dashboard only). `start_phq9` is answered
+  with a no in Talk and in the check-in, `kaiku://phq9` parses and opens nothing, and its notification is never
+  planned (`NudgeScheduler.phq9Offered = false`). The robot's hub can ask the questions aloud.
 - Mock adapters are explicit debug choices, never automatic fallbacks; their outings carry `sim=true` through
   normal completion and draft recovery. Real motion connection is shown only after a sample arrives.
 - The local safety gate gives the same answer as `kaiku_contracts.safety` on `safety_cases.json` (tested).
-- Notifications: at most one invitation a day + one check-in reminder + PHQ-9 once; never in quiet hours, never a
+- Notifications: at most one invitation a day + one check-in reminder (no PHQ-9 card, see above); never in quiet hours, never a
   crisis message, never time-sensitive; never mention Health/watch data. Rules live only in `NudgeScheduler`.
   An activity the person said yes to in a conversation gets one notification of its own, once per item, under
   the same quiet hours and pause (`NudgeScheduler.agreed`; see "Agreed in one place, shown everywhere").
@@ -407,7 +419,10 @@ xcodebuild -project Kaiku.xcodeproj -scheme "Kaiku iOS" -destination "generic/pl
 xcodebuild -project Kaiku.xcodeproj -scheme "Kaiku Mac" -destination "platform=macOS" build
 ```
 Without a cloud the app runs offline: Today shows the sky banner, check-ins and games queue on disk, Talk says
-the service can't be reached and offers "Try again". Launch arguments for dev/screenshots (UserDefaults argument domain):
+the service can't be reached and offers "Try again". Launch arguments for dev/screenshots (UserDefaults argument domain;
+`-kaikuPairLink`, `-kaikuName`, `-kaikuShowCrisis`, `-kaikuSimulateLate`, `-kaikuNotifyTest`, `-kaikuGlassesSelfTest`
+and `-kaikuBotAddress` are read by Debug builds only, which is what the scripts and the UI tests build; a Release
+build ignores them):
 `-kaikuSkipOnboarding YES`, `-kaikuPairLink "http://127.0.0.1:8000/?home=demo-aino"`, `-kaiku.lang fi`,
 `-kaikuTab play`, `-kaikuRoute firefly`, `-kaikuAutostart YES` (skip a game intro), `-kaikuName Annemarie-Kristiina`
 (layout stress), `-kaikuShowCrisis YES`, `-kaikuOnboardingStep 2`; Mac only: `-kaikuSnapshot /tmp/x.png`
@@ -443,7 +458,7 @@ History: `-kaikuTab history`, `-kaikuRoute days` (Your days); DEBUG: `-kaikuHist
 measure's page once History has loaded, `-kaikuHistoryRange day|week|month` picks its range. See "History".
 Camera during activities (DEBUG): `-kaikuFaceSource scripted` (the stand-in source: no camera is opened, what it
 yields is sent `sim: true`), `-kaiku.consents "<dict><key>camera</key><true/><key>checkins</key><true/></dict>"`
-and `-kaiku.camera.wording 3` (the choice for this run only; a lower number = made under an older wording, so the
+and `-kaiku.camera.wording 4` (= `CameraChoice.wording`; the choice for this run only; a lower number = made under an older wording, so the
 one-time question shows). With `-kaikuWindowShots` the Mac's games can be pictured while played (`-kaikuShotScreens
 breathe -kaikuAutostart YES`), and the check-in on the scripted Live (`-kaikuShotScreens weather -kaikuTalkDemo
 live`). See "Face signs during tasks".
@@ -473,7 +488,10 @@ How to record (modes, the cloud, cost, env, clips, post-processing) is written w
 header of [`scripts/record_app_demo.sh`](scripts/record_app_demo.sh), the top of
 [`iOSUITests/DemoTourTests.swift`](iOSUITests/DemoTourTests.swift) (the flows, what is typed, `KAIKU_DEMO_*`) and
 [`demo/AGENTS.md`](../../demo/AGENTS.md) → Recordings (which clips exist and what they may be shown as). Only
-what the app itself provides for a recording is listed here:
+what the app itself provides for a recording is listed here. Two seeded homes exist and are not the same record:
+`make seed` (`sim/seed_demo.py`) writes `demo-aino`, which the examples above and `KaikuFlowTests` / `ExtrasFlowTests`
+use; the recorder and `DemoTourTests` default to `aino` (`KAIKU_TEST_HOME`), the one person written by
+`kaiku_cloud.jobs.single_person`. `scripts/run_on_iphone.sh` reaches the service on port 8000 unless `KAIKU_PORT` says otherwise.
 - Debug launch arguments the tour drives conversations with, never the microphone: `-kaikuTalkSay "text"`,
   `-kaikuTalkSayLater "one|two"`, `-kaikuTalkSayDelay <s>` (typed into the real Live socket, also while locked);
   `-kaikuTalkDemo <state>` (the scripted Live: layout text, never a clip); `-kaikuCallTrace <file>` (one line per
@@ -500,12 +518,15 @@ what the app itself provides for a recording is listed here:
   `ITSAppUsesNonExemptEncryption = NO` (TLS only).
 No `config/*.toml` keys are read at runtime. Bundled copies: `design/copy.json`, `design/mascot.spec.json`,
 `design/generated/Tokens.swift`, `config/safety_phrases.toml`. Pairing (cloud URL, home id, token) is in the
-Keychain; settings (language, consents, pauses, quiet hours, day marks) in UserDefaults. Info.plist usage strings
+Keychain, with one fallback: if the Keychain refuses the item (`SecItemAdd` fails), the same JSON, token included,
+is written to `Application Support/Kaiku/pairing.json` (iPhone: complete file protection; Mac: mode 0600), which is
+also where unsigned simulator and Mac debug builds keep it (`PairingStore.save`); settings (language, consents, pauses, quiet hours, day marks) in UserDefaults. Info.plist usage strings
 (mic, camera, speech, Health, motion, Bluetooth) and the `MWDAT` dictionary (Developer Mode: `MetaAppID 0`,
 callback `kaiku://`, analytics opt-out) live in `project.yml`. Widgets read `group.fi.kaiku` (UserDefaults suite).
 Notification bookkeeping (delivered, answered, snooze, usual check-in time) is UserDefaults `kaiku.notify`.
 The camera choice's bookkeeping is UserDefaults `kaiku.camera.wording` (which wording was agreed to) and
-`kaiku.camera.sent` (ids of today's face-sign envelopes from this device, for the day's receipt; no numbers).
+`kaiku.camera.sent` (ids of today's face-sign envelopes from this device, for the day's receipt; no numbers) and
+`kaiku.camera.look` (the local day on which this device last sent pictures for a look, D65; a date and nothing else).
 
 ## Health signal
 The app has no heartbeat (not a bus node). You → "Paired with Kaiku at home" + "n things waiting to be sent" shows
@@ -527,7 +548,7 @@ the gap, non-notch, external display, screen picking), island shape (band = coll
 of the menu bar, body = expanded width, concave shoulders, collapsed = strip, pill), Kaiku + its z's inside the
 body's 16 pt content rect in peek and expanded at 1× and 2×. UI: `Kaiku iOS UITests` (needs a seeded cloud).
 online); parity table. A2 (+21): scheduler §7 cases (21:59 vs 22:00 quiet, walked on glasses, check-in on the
-robot, Later once, Not today / delivered final, timezone change keeps ids, DST day, paused, PHQ-9 once, weekend
+robot, Later once, Not today / delivered final, timezone change keeps ids, DST day, paused, the PHQ-9 card never planned, weekend
 sleep-in), deep links, spoken dial en/fi/sv + on-device gate en/fi/sv, gait (cadence/regularity/head-up on the
 mock walk, standing still), daylight, wearable builder (merge, midpoint, no data → no obs, idempotent id), A2
 payloads ⊆ schemas. UI: `Kaiku iOS UITests` (needs a seeded cloud): `KaikuFlowTests` + `ExtrasFlowTests`.
@@ -539,7 +560,7 @@ sees and what is sent is in "Face signs during tasks" below; this section keeps 
 **The two older camera numbers** in `obs.play_session` (`expressivity_index`, `face_movement`, with
 `camera_face_coverage`, `camera_samples`, `camera_method: vision_landmarks`) are still filled as before, by the same
 controller: `TaskCameraFeatures`, five looks a second. Expressivity is the mean sample standard deviation of mouth
-and eye height/width ratios; movement is mean adjacent face-centre displacement in normalized image coordinates
+and eye height/width ratios; movement is mean adjacent face-centre displacement in normalised image coordinates
 (it can include phone/camera motion). At least two valid samples are required for variability; insufficient
 measurements stay nil. Exactly one face with usable lip and eye landmarks counts toward coverage; multiple faces,
 missing faces and invalid geometry count as uncovered samples and break movement continuity. These are geometry
@@ -573,7 +594,9 @@ With the choice "Camera during activities" on (off by default), the device's fro
 face while a task runs, and one `obs.face_signs` a task goes out: what the face did, as numbers (the contract
 is `contracts/schemas/obs/face_signs.schema.json`, mirrored as `FaceSigns` in `Model/Contracts.swift`).
 **Nothing is recorded.** A frame is looked at in memory on the device and let go: no frame, face template or
-identity is stored, logged or sent, and nothing of the camera goes to the Live conversation. **Signs, not
+identity is stored, logged or sent. No picture and no number of the camera goes to the Live conversation; the
+one thing that can is a fixed context sentence for a visible expression cue (D60, below). The separate choice "Let
+Kaiku's model look" (D65, last section) is the only case in which pictures leave the device. **Signs, not
 feelings.** A face does not reliably show what a person feels; no field names an emotion, and the numbers are
 only comparable within the same task and `method`. No model weights are in the repo: both methods are Apple's
 own on-device frameworks.
@@ -596,7 +619,10 @@ own on-device frameworks.
   question is answered. No permission, no camera, a closed lid, the camera taken by another app: the state is
   `unavailable`, the chip says "Camera not in use right now", the task goes on, and what was sampled before the
   camera went away is still that task's.
-- **What she sees** (`TaskCameraChip`, the design system's chip). While sampling: "Camera on: face movement only"
+- **What she sees** (`TaskCameraChip`, the design system's chip). In a check-in that is collecting pictures for
+  a look (D65: `camera.lookRules` set) the chip reads "Camera on: face movement, and a few pictures for Kaiku's
+  model" and VoiceOver adds "Pictures are not saved; only what it notes is kept." (`task.camera.active.look`,
+  `.look.a11y`). Otherwise, while sampling: "Camera on: face movement only"
   and "Turn off" (to VoiceOver one button: "Camera on. Face movement only, as numbers made on this device. No
   pictures.", hint "Turns the camera off for this activity"; at very large text the chip shortens to "Camera
   on"). One tap turns it off for this task and throws away what was sampled in it. The chip then reads "Camera
@@ -610,9 +636,9 @@ own on-device frameworks.
   receipt), is put to her once with the whole text: `CameraConfirmCard` ("Keep it on" / "Turn it off") on a
   game's start screen and at the top of the check-in. Until she answers nothing is sampled
   (`AppModel.cameraNeedsConfirm`; `AppModel.cameraOn` is the one gate every task asks). The text's version is
-  `CameraChoice.wording`, now 3: 3 added its last two sentences ("You see the numbers in History. Your care
-  team sees them beside your record, and the numbers decide nothing."), so a choice made under 2 is asked once
-  more under the new text. Raise the number whenever `sig.camera.d` changes what she agrees to.
+  `CameraChoice.wording`, now 4: 3 added "You see the numbers in History. Your care team sees them beside your
+  record, and the numbers decide nothing."; 4 added the visible expression cues (D60), so a choice made under an
+  older number is asked once more under the new text. Raise the number whenever `sig.camera.d` changes what she agrees to.
 - **What the copy may say** (`CopyWordingTests.swift`). The service's wording rule `face_talk`
   (`contracts/python/kaiku_contracts/wording.py`) is ported pattern for pattern as `FaceTalk`, and every line of
   `design/copy.json` and `copy.apple.json` is run through it: app copy never says Kaiku saw her or her face,
@@ -664,10 +690,26 @@ own on-device frameworks.
   refuses the whole batch (400 / 422) gets each envelope alone, and only the one refused alone is dropped.
 - **Receipts.** "Today, so far" (Your days, What Kaiku saw today) has a line "Camera during activities:
   Activities with the camera on: n" with "Face signs as numbers, made on this device. No pictures."; What Kaiku
-  saw today has the camera's own row with its switch. `DayEvidence.cameraTasks` counts each task once from what
+  saw today has the camera's own row with its switch. On a day when pictures of a check-in went to Kaiku's model
+  (D65: this device sent some, `CameraChoice.lookedToday`, or the service holds an `obs.vision_note`) both lines
+  say so instead of "no pictures": "A few pictures of a check-in went to Kaiku's model. Pictures are not saved;
+  only what it notes is kept." (`evidence.camera.note.look`, `saw.camera.n.look`; `DayEvidence.looked`). `DayEvidence.cameraTasks` counts each task once from what
   the service holds (`obs.face_signs`; a game record with camera numbers and no face signs) and from this
   device's own list of what it sent today (`CameraChoice.sent`: envelope ids only, UserDefaults
   `kaiku.camera.sent`, emptied when the home changes), so the line is true before a service knows the type.
+- **Visible expression cues (D60).** From the same per-frame numbers the device notices when an expression has
+  stayed lower, more tense or brighter for a while than this person's own level earlier in the same task
+  (`TaskCapture/ExpressionCue.swift`, pure: `ExpressionCueDetector`, thresholds `ExpressionCueRules` from the
+  session's `expression_cue`, defaults otherwise). Two things come of it. (1) Counts: `obs.face_signs.cues`
+  (`{kind: {n, seconds}}`, absent when none held or no usable face); shown and citable, not scored. (2) In a
+  check-in only, and only when the service allows it (`expression_cue.enabled` and `.speak`), the camera choice
+  stands and nothing is paused: ONE fixed context sentence goes into the open Live conversation
+  (`CheckInChat.beginCamera` → `Conversation.expressionCue` → `handCue` → `LiveSession.sendContext`), when nobody
+  is speaking; a cue that finds no quiet moment within 30 s is dropped. The sentence is fixed text
+  (`ExpressionCueText`): no number, no picture, no word of the person's; it tells Kaiku it may ask one open
+  question and must not say it saw a face, mention a camera or name a feeling. Never in a game, Talk or a walk.
+  A cue is a visible sign and a reason to ask, not a finding. `-kaikuExpressionDebug YES` (DEBUG) shows the last
+  cue as one line on the check-in screen. Tests: `ExpressionCueTests`. Not verified on a real face.
 - **History.** The service's group `camera` ("Camera during activities") gets `camera.fill` and the sage tone
   (`HistoryGroup.symbol` / `.tone`); a group key this build does not know is still drawn, with the neutral chart
   icon and ink tone.
@@ -679,7 +721,7 @@ own on-device frameworks.
   no camera, plays made-up readings, and whatever it yields is sent `sim: true` and shown as "Simulated". It is
   for layout pictures and UI tests, never a recording of the product at work. A picture run of the Mac app
   (`-kaikuWindowShots`, `-kaikuSnapshot`) and `-kaikuInspectOnly` never open a camera. `-kaiku.consents
-  "<dict><key>camera</key><true/><key>checkins</key><true/></dict>" -kaiku.camera.wording 3` sets the choice
+  "<dict><key>camera</key><true/><key>checkins</key><true/></dict>" -kaiku.camera.wording 4` sets the choice
   for one run without writing it.
 - **Tests.** `FaceSignsTests.swift`: `FaceSignsAccumulatorTests` (a still face, a blink train, eyes shut for
   long, looking down, two smiles and a syllable, a smile at the line, a face that leaves, broken numbers, one
@@ -720,7 +762,7 @@ own on-device frameworks.
 call". Still true: the distinct reasons, and pairing as an explicit sheet action.)
 Talk always displays a labelled voice control, including before a Live connection exists. It says Start voice
 conversation, Mute microphone, Resume microphone, Open microphone settings, or Connect Kaiku for voice as
-appropriate. Unpaired/unauthorized, unreachable service, unavailable voice and microphone startup failure are
+appropriate. Unpaired/unauthorised, unreachable service, unavailable voice and microphone startup failure are
 distinct statuses. Pairing is an explicit sheet action and is never silently changed. A live iPhone session
 shows Speaking through plus the actual AVAudioSession output name. The mascot remains a secondary shortcut.
 
@@ -776,7 +818,7 @@ remain independent hardware states. `KAIKU_SERVICE_URL` defaults empty; a develo
 verified LAN URL during the build. Local network permission is necessary for LAN discovery and API access.
 
 `ServiceDiscoveryTests` covers descriptor/auth/schema gates, explicit selection, stable separate home identities,
-existing credential preservation, concurrent probes and disconnect behavior. The optional integration test
+existing credential preservation, concurrent probes and disconnect behaviour. The optional integration test
 `KAIKU_DISCOVERY_TEST_CLOUD=http://127.0.0.1:8000 swift test --filter ServiceDiscoveryTests/testRealDiscoveryAndFreshProfileReadWithoutRobot`
 passed against the real demo API without a robot, seeded home, microphone, or paid model request. It is a native
 Mac test, not proof of physical iPhone networking. Signed build 3 was verified through the device app inventory (only one Kaiku bundle, `fi.kaiku.app`).
@@ -958,8 +1000,9 @@ UI: `iOSUITests/SetupFlowTests` (full flow, resume, run again; never presses the
 - `DayEvidence.build` (pure, tested) turns today's stored observations + this device's finished-conversation count
   into "Today, so far" (Your days, and on top of What Kaiku saw today): time outside (minutes, steps, daylight
   only when measured), check-ins, activities, conversations, Health, robot, Mac rhythm; each with its devices and
-  what is shared. A `dat_imu` walk says the glasses carried the voice and counted movement and did not see
-  anything; simulated records say "Simulated"; a safety flag is never a list item. The Health line names the
+  what is shared. A `dat_imu` walk says only that it was counted from the glasses' motion sensor and
+  that no picture is saved (true with or without "Let Kaiku see"; the receipt does not know whether frames went
+  to the Live conversation on that walk); simulated records say "Simulated"; a safety flag is never a list item. The Health line names the
   kinds of numbers the day's summary held (`DayEvidence.healthNames`: "Last night and yesterday: sleep, sleep
   stages, time awake at night, …"), never a value and never a word about how the night was.
 - Today hides robot suggestions (drum, friend light) unless a robot event arrived today.
@@ -999,8 +1042,11 @@ Microphone and speakers are not toolkit features: they are Bluetooth hands-free 
 - **Glasses check** (You → Glasses check, `GlassesCheckView`): registration, device, worn, camera permission (+ ask),
   microphone permission, hands-free device, current route, service, Live state, last heard / last spoke, frames
   sent and per second, last problem; `GlassesSelfTest` (Kaiku line through the route → 3 s microphone level → one
-  frame thumbnail, nothing kept); `GlassesLog` = `Application Support/Kaiku/glasses-log.jsonl` (states, counts,
-  errors; never audio, pictures or words) with Share.
+  frame thumbnail, nothing kept). **The self-test opens the glasses camera for one frame without "Let Kaiku see"**:
+  the person pressed "Run the self-test", the frame is shown as a thumbnail from memory, it is not sent anywhere
+  (no Live conversation is open) and not stored, and the thumbnail is cleared with the screen. `GlassesLog` =
+  `Application Support/Kaiku/glasses-log.jsonl` (states, counts, frame size in pixels and bytes, errors; never
+  audio, pictures, words or a frame's brightness) with Share.
 - **Camera link over Bluetooth (2026-11-15)**: `UISupportedExternalAccessoryProtocols: [com.meta.ar.wearable]` and
   `external-accessory` in `UIBackgroundModes` (project.yml) let the toolkit stream over Bluetooth Classic. Without
   them it can only use the glasses' own Wi-Fi, which the phone cannot join while it is a Personal Hotspot: the
@@ -1011,7 +1057,7 @@ Microphone and speakers are not toolkit features: they are Bluetooth hands-free 
   `NSBluetoothAlwaysUsageDescription`, `bluetooth-central`, and `com.apple.developer.networking.HotspotConfiguration`
   (the toolkit streams over Wi-Fi hosted by the glasses). While the phone is on that Wi-Fi a LAN-only Kaiku service
   may be unreachable: observations queue, Live itself needs mobile data.
-- Launch arguments: `-kaikuRoute glasses`, `-kaikuGlassesSelfTest YES` (run the self-test on opening),
+- Launch arguments: `-kaikuRoute glasses`, `-kaikuGlassesSelfTest YES` (DEBUG: run the self-test on opening),
   `-kaikuGlasses datmock` (simulated glasses incl. a generated h265 camera feed).
 - Tests: `GlassesVisionTests` (frame format, encode, brightness, log, route words), `GlassesFrameGateTests`
   (frames only with the choice, open, unmuted, unpaused), paid `RealGlassesVisionTests`
@@ -1048,7 +1094,7 @@ a small chat with Kaiku, not a form. `Talk/CheckInChat.swift` holds it: `CheckIn
 - **Three ways to answer, all count.** Voice (Live), typing (the same Live socket: `sendText`), or the three dials
   under the chat ("Or just turn the dials": the same screen, never a gate). Kaiku's hello is on screen as text at
   once (`checkin.hello`); Live says its own hello over it when there is a voice; without Live the cached Gemini
-  voice line plays (silent otherwise, never a synthesizer).
+  voice line plays (silent otherwise, never a synthesiser).
 - **Brief or stay.** `chat_shape.depth` opens the chat, the latest `feel` plan's `depth` updates it. Brief: the
   model closes (`end_session` + its goodbye): the screen shows "Good to see you", ticks the stop
   (`AppModel.checkInDone()`, one completion moment) and offers the next stop / "Keep talking". Stay: the chat
@@ -1338,9 +1384,9 @@ and adds nothing but sums and averages of the days it was sent.
   group draws without an app change (`HealthHistoryFormatTests`). A session's long number wraps inside its row
   (`FlowRow`) instead of running past the edge. A measure that has sessions and no counted day says "practice"
   only where a practice round is listed (`HistoryFormat.emptyKey`); otherwise "Nothing counted yet".
-- **Simulated records** are labelled "Simulated" as in "Today, so far": on the card when the latest day is, by
-  the period's summary when every counted day is, on each session; where a period mixes simulated and other days
-  the simulated marks are drawn lighter and a line under the chart says so.
+- **Simulated records are not marked in History** (the "Simulated" label and the lighter marks were removed on
+  2026-11-15; `HistoryPeriod.simulatedDays` is still computed and unused). "Today, so far" still labels a line
+  "Simulated" when every record behind it is.
 - **Offline** (`HistoryModel`, `HistoryCache`): the last answer is kept in `history.json` and shown at once on
   opening, with "Updated: …" under the list; when the service cannot be reached the line says so and gives when
   the numbers were last updated. See Invariants for what a pairing change does to it.
@@ -1681,10 +1727,16 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   `cmd.head` came on. While on, the connection stays up when the page is left or the app goes to the background
   (iPhone: background audio, and the screen is kept awake). The hub mutes it while the robot's speaker plays
   (hub `AGENTS.md`), so the status line reads waiting / Kaiku is speaking / listening through this device.
-- **What it never does:** publish anything but those microphone frames (no envelope, no command), subscribe to `audio/#` (the head's microphone and
+- **The person's words (D63).** While this device is the robot's microphone the hub publishes
+  `raw.hub.transcript` (what the person said, from the Live input transcription); `BotState` keeps both sides of
+  the conversation in memory (the last 200 turns, 500 characters each, gone when the app quits) and the
+  "Robot microphone" card opens them as a transcript page (`bot.transcript.open`). They are shown there and
+  nowhere else: the feed says only that the person spoke, and nothing is stored or sent on.
+- **What it never does:** publish anything but those microphone frames (no envelope and no command: "Turn the
+  camera", D64, is not in this build), subscribe to `audio/#` (the head's microphone and
   speaker frames) or `kaiku/v1/#`, store or send on anything it heard (memory only: the last 300 feed lines, 40
-  records, until the app quits), show the person's words (`heard` carries none; a typed `cmd.hub say` is "not
-  shown"), show `feel`'s manner cue (only the tool's name), show a safety flag's details ("Safety flag" in the
+  records, 200 transcript turns, until the app quits), show the person's words anywhere but that transcript page
+  (the feed's `heard` carries none; a typed `cmd.hub say` is "not shown"), show `feel`'s manner cue (only the tool's name), show a safety flag's details ("Safety flag" in the
   records; "Help numbers shown on the robot" while `cmd.head {show: help}` holds), or use a state, verdict or score
   word (`BotStateTests.testNoStateOrVerdictWordInTheTabsCopy`).
 - **When it listens:** the page is on screen AND the app is in front (iPhone: scene active; Mac: app active, display
@@ -1719,11 +1771,11 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   Wi-Fi). The hub-driven greeting waits for an ear press; in the run below nobody pressed, so it was skipped. Tap it back with the hub's own beat
   on its own broker: `make tap-back BEAT=1 ARGS="--broker-port 18831"` and `-kaikuBotAddress 127.0.0.1:18831
   -kaiku.bot.home tap-back-check`.
-- **Launch arguments:** `-kaikuBotAddress host[:port]` (this run only, never remembered), `-kaiku.bot.home <id>`;
+- **Launch arguments:** `-kaikuBotAddress host[:port]` (DEBUG; this run only, never remembered), `-kaiku.bot.home <id>`;
   DEBUG: `-kaikuBotReplay <file.jsonl>` plays a recording made by `BotRobotRunTests` instead of the network (the page
   says "Playing back a recording"), `-kaikuBotScroll now|senses|voice|records|feed|robot` and `-kaikuYouScroll
   devices` (iPhone pictures of the rest of a page). Mac pictures: `-kaikuWindowShots <dir> -kaikuShotScreens bot`.
-- **Tests** (`BotTests.swift`): the wire (CONNECT / SUBSCRIBE bytes, no PUBLISH, remaining length at every boundary,
+- **Tests** (`BotTests.swift`): the wire (CONNECT / SUBSCRIBE bytes, no PUBLISH but the microphone frame, remaining length at every boundary,
   packets in any pieces, QoS 1/2, malformed and random input), the filters and the audio guard, the address and the
   guess, the reducer on every example of `contracts/schemas/examples.json` and on `raw.hub.trace` as `HubTrace`
   defines it, the microphone rule, floods as one line, 300 lines, unknown types, the copy (no state words, every
@@ -1756,7 +1808,11 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   `VisionLookBatch`, `VisionLookRequest`. `TaskCameraSource.lookFor(_:)` is implemented by `ARKitFaceSource` and
   `VisionTaskCamera`; `TaskCamera.lookRules`/`onPicture`; only `CheckInChat` sets them.
 - **Sending:** `CheckInChat.sendPictures()` at the end of a check-in she took part in: `APIClient.visionLook`, once,
-  `retry: false`. Dropped unsent when she left without taking part, turned a choice off, or left the screen.
+  `retry: false`. At most three pictures, enforced on the device whatever the service asks for
+  (`VisionLookRules.frames` clamps to 3). Dropped unsent when she left without taking part, turned a choice off,
+  turned the camera off in that check-in (the chip's "Turn off"), or left the screen.
+- **What she is told:** the chip and the day's receipts say when pictures are made or were sent (see "Face signs
+  during tasks" → What she sees, Receipts); the device's mark of a sent look is a date only (`kaiku.camera.look`).
 - **Invariant:** a picture lives only in `VisionLookBatch` (memory). Never a file, never `OfflineQueue`, never a log,
   never a second send. `VisionLookTests` holds this; games, Talk and walks never make pictures.
 - **Not verified:** on a real iPhone or Mac camera. The package builds and its tests pass; the app needs a new

@@ -119,7 +119,7 @@ and tool route) with a synthetic voice. In those five turns the voice chose `fee
 - **The check-in is a small chat.** Today's first stop opens with Kaiku's hello, like meeting on the street. Answer by voice, by typing, or turn the three dials underneath; all three count. An ordinary day closes in a few turns; a really good or really hard one goes on as long as the person wants.
 - **A suggestion comes as a card.** When Kaiku suggests a game, a journal entry, breathing or a walk, it makes a tool call that puts one card in the conversation. Nothing opens without the person's yes, and a no is final for that conversation.
 - **One mind on every device.** A favourite place mentioned on a glasses walk is known to the phone, the Mac and the robot the next time ([tested](cloud/tests/test_walk.py)). Once a day Kaiku may bring one thing up on Today, chosen by rule and worded around her own words.
-- **Agreed in one place, shown everywhere.** When she says yes to an activity on the robot, the glasses or in any talk, Kaiku's cloud keeps it for the day and every screen shows the same thing: a card on Today, a notification when the app is behind or the phone is locked, "Done" everywhere once the activity's own record arrives. Code decides what counts as her yes; "maybe" keeps nothing, and on an extra-gentle day only her own ask is kept. An open app has it in well under a second (7 to 39 ms on one machine); a phone that has put the app to sleep shows it when the app is next opened (Kaiku sends no Apple push; that was considered and left out).
+- **Agreed in one place, shown everywhere.** When she says yes to an activity on the robot, the glasses or in any talk, Kaiku's cloud keeps it for the day and every screen shows the same thing: a card on Today, a notification when the app is behind or the phone is locked, "Done" everywhere once the activity's own record arrives. Code decides what counts as her yes; "maybe" keeps nothing, and on an extra-gentle day only her own ask is kept. An open app has it in well under a second; a phone that has put the app to sleep shows it when the app is next opened (Kaiku sends no Apple push; that was considered and left out).
 - **None of this sets the state.** The consensus stays code. The plan shapes a conversation; it never changes what the practitioner sees as the state.
 
 <p align="center">
@@ -150,8 +150,8 @@ real robot, and the Mac's own banner, have not been shown.
 </table>
 
 - **Three minutes a day.** Today's path is a small check-in chat with Kaiku, its one suggestion, the Lantern game and one more game in turn. Games end on what grew, never a time or a count; they are short activities inspired by research, not validated tests ([games](docs/validation.md#games)).
-- **Talk is a call.** One voice everywhere: a Gemini Live call opened with a short-lived token from the cloud, so the app never holds the API key. Mute yourself or mute Kaiku, independently; the words of both keep coming as captions. The call goes on when the phone locks, with a bar on the Lock Screen and in the Dynamic Island (elapsed time, the last caption, mute, end), and ends by itself after three quiet minutes in the background. If the voice is unavailable Kaiku stays silent and shows text, never a synthesizer.
-- **History: her own numbers.** One tab holds everything Kaiku has collected about her, from every device: the robot's drum tempo, taps and steadiness, the morning ritual and first hello, each game's result, walks, check-ins, the watch and the Mac. Each measure opens by day, week or month with the average, the range and a band for her own usual range, and the single sessions under it. Numbers only: no state, no verdict, and seeded readings say "Simulated". From Apple Health, when she allows it (D53): the night's sleep with its deep, REM and core stages and the time awake, resting and walking heart rate, steps, distance walked and time in daylight, as daily totals; no sleep score, because Apple gives apps none. The new ones are shown, not scored.
+- **Talk is a call.** One voice everywhere: a Gemini Live call opened with a short-lived token from the cloud, so the app never holds the API key. Mute yourself or mute Kaiku, independently; the words of both keep coming as captions. The call goes on when the phone locks, with a bar on the Lock Screen and in the Dynamic Island (elapsed time, the last caption, mute, end), and ends by itself after three quiet minutes in the background. If the voice is unavailable Kaiku stays silent and shows text, never a synthesiser.
+- **History: her own numbers.** One tab holds everything Kaiku has collected about her, from every device: the robot's drum tempo, taps and steadiness, the morning ritual and first hello, each game's result, walks, check-ins, the watch and the Mac. Each measure opens by day, week or month with the average, the range and a band for her own usual range, and the single sessions under it. Numbers only: no state and no verdict. From Apple Health, when she allows it (D53): the night's sleep with its deep, REM and core stages and the time awake, resting and walking heart rate, steps, distance walked and time in daylight, as daily totals; no sleep score, because Apple gives apps none. The new ones are shown, not scored.
 - **Face signs, as numbers (D52).** With "Camera during activities" on (off by default), the iPhone or Mac counts how the face moves while a game or a check-in is on screen: smiles, blinks, range of expression. Apple's face tracking does it on the device; only the counts are sent, no picture is kept or sent, and nothing labels an emotion. A chip shows when the camera is on, with a one-tap off. The counts sit in History and beside the practitioner's record as shown, not scored: they never change the consensus. On a day when they are clearly below her own usual Kaiku goes a little gentler and never says why.
 - **Her choices, her day.** Every signal has its own switch, set at first run and reversible. "Today, so far" lists what was noticed, from which device and what is shared. Readings queue on the phone until the cloud confirms them.
 
@@ -231,7 +231,7 @@ Build it: [illustrated assembly guide (PDF)](hardware/assembly_guide/kaiku_assem
 
 **What it does**
 
-- **It speaks first.** A three-minute morning ritual with no typing: three turns of an ear dial for mood, energy and sleep, one guided breath while the chest glows, and a short rhythm tapped on its head. The drum is inspired by research on improvisational music therapy; the chest light is not light therapy.
+- **It speaks first.** A three-minute morning ritual with no typing: three turns of an ear dial for mood, energy and sleep, one guided breath, and a short rhythm tapped on its head. The drum is inspired by research on improvisational music therapy. The robot as built has no screen and no chest light (D54).
 - **Ran on the hardware twin.** The whole hub-driven ritual, its crisis gate and the upload of derived numbers run against software twins of the head and sensors over real MQTT (`make sim`, `make hub`). The twins speak the same messages as the boards, and their records are marked simulated.
 - **Ran on the boards.** The Atech head ran the full ritual by knob, without a laptop, on its standalone firmware (D44). Over MQTT its knob and button, and the UNO Q's face camera, distance, room light and buzzer, were seen on the broker. On 14 Nov the head as built (no display, taps from its orientation sensor, D54 and D55) ran firmware `atech-head-standalone-0.4.0` on the laptop's broker beside the UNO Q, and the hub switched to follow mode with voice and music routed to the head.
 
@@ -334,7 +334,8 @@ today is then compared with her sixteen days. Details: [`apps/apple/AGENTS.md`](
 
 **On people: unknown.** Nobody has used Kaiku while unwell, so there is no measured sensitivity or specificity,
 and we claim none. What we can measure is how the rule behaves on labelled synthetic courses from our own
-generator: 40 synthetic people per course, 60 days, rule `consensus-v1+ef17c3f3`. Assumptions and every limit
+generator: 40 synthetic people per course, 60 days, rule `consensus-v1+ef17c3f3` (measured 14 Nov; the rule file
+has changed since, to `consensus-v1+db93b715`, and the table has not been measured again). Assumptions and every limit
 are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrate`.
 
 | On synthetic courses | Mild change (1 SD) | Moderate (2 SD) | Marked (3 SD) |
@@ -350,13 +351,13 @@ are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrat
 
 | Part | Real today | Simulated or pending a physical test |
 |---|---|---|
-| Cloud, consensus, dashboard | Deployed on Modal and checked from outside; 973 Python tests passed at the last logged merge | Every record is authored and marked simulated; thresholds are engineering defaults |
+| Cloud, consensus, dashboard | Deployed on Modal and checked from outside; 1485 Python tests pass (`make test`, 15 Nov) | Every record is authored and marked simulated; thresholds are engineering defaults |
 | Gemma | Reviews through Google's hosted API on the simulated record; the review and a record question also from our own vLLM on a Modal H100 (15 Nov) | Our own GPU is not the default path; no tuned weights |
 | Gemini Live | Real Live calls with injected speech, typed turns (ordinary day, hard day, spotting game) and pictures as the walk's view | A spoken exchange on a real microphone |
-| iPhone app | Signed build installed on a real iPhone; 309 Swift tests passed (11 skipped); a real typed call kept going while the simulator was locked | Microphone, Kaiku's voice while locked and Apple Health on the device |
+| iPhone app | Signed build installed on a real iPhone; 604 Swift tests passed, 14 skipped (last logged run, 15 Nov); a real typed call kept going while the simulator was locked | Microphone, Kaiku's voice while locked and Apple Health on the device |
 | Mac app | Builds; a simulated late evening produced the notch peek and its hourly record; quick talk rendered in every state | Quick talk by real key presses and voice; a screen capture; real usage over days |
-| Meta glasses | Registration and connection on real Gen 2 glasses (Developer Mode); a three-minute walk with Meta's mock glasses and real Live | Voice, head motion, walk styles and opt-in seeing on the real glasses: one filmed walk |
-| Robot | Ritual by knob on the Atech board; knob, button, face camera, distance, room light and buzzer seen over MQTT; head, UNO Q and hub together on one broker in follow mode | A whole ritual on the physical robot with its records on the dashboard, Tap it back and Kaiku's voice heard from the head's speaker, the head's microphone, motor, pulse |
+| Meta glasses | On real Gen 2 glasses (Developer Mode): registration, the self-test (speaker, microphone, camera frame) and a walk that sent 30 frames to Gemini Live and heard the wearer; a three-minute walk with Meta's mock glasses and real Live | Kaiku's replies heard in the glasses, head motion, walk styles, the glasses coming off mid-walk |
+| Robot | Ritual by knob on the Atech board; knob, face camera, distance, room light and buzzer seen over MQTT; head, UNO Q and hub together on one broker in follow mode; taps and the neck motor over MQTT; a Gemini Live conversation and Tap it back through the head's speaker with a phone as the microphone | The robot's records on the dashboard, the head's own microphone (it returns silence so far), the newest flow (a press opens a talk) tried by a person, pulse |
 | People | Four logged sessions, all by the project lead | Testers outside the team; any clinical validation |
 
 Sources: the dated audit [`docs/track-readiness.md`](docs/track-readiness.md) and the latest entries of [`docs/progress.md`](docs/progress.md).
@@ -373,7 +374,7 @@ the robot's camera to the practitioner's page.
 
 - **Gemini Live on four bodies.** One voice on iPhone, Mac, Meta glasses and the robot. The apps speak to Live over a raw WebSocket with a one-use token minted by the cloud (locked to the model, five minutes, renewed mid-call between two sentences); the robot's hub uses `google-genai`.
 - **Session features we lean on.** Barge-in, input and output transcription (captions, and the crisis gate reads them), voice activity tuned for slow speech (900 ms of silence), session resumption and sliding-window compression for 30-minute walks, proactive audio on walks only, one picture a second from the glasses.
-- **Function calling does the work.** One registry of 18 tools. `feel` is non-blocking: the voice tells Kaiku's mind what it heard and code answers with a plan in about 5 ms, so the talk never stalls. Other calls move the robot's check-in, keep a walk's spotting game, put a card on the phone and reach Gemma (`ask_mind`).
+- **Function calling does the work.** 18 tools in one shared registry, plus three robot-only tools in the hub. `feel` is non-blocking: the voice tells Kaiku's mind what it heard and code answers with a plan in about 5 ms, so the talk never stalls. Other calls move the robot's check-in, keep a walk's spotting game, put a card on the phone and reach Gemma (`ask_mind`).
 - **Code decides what counts as her yes.** Every tool call passes the crisis gate and a schema; a memory must be grounded in her own words; "maybe" starts nothing; on the robot a model's call only arms the head and her own press starts the activity.
 - **Six more models, one job each.** TTS in the same voice for fixed lines, cached; Embedding 2 for her notes; Lyria RealTime for the drum game; Flash and Argon as fallback and escalation behind Gemma; an image model for a walk's postcard.
 - **Measured:** 2.3 s from the end of her speech to Kaiku's first sound (5 turns); a 4 min 48 s call across a token renewal while the phone was locked.
@@ -411,7 +412,7 @@ the robot's camera to the practitioner's page.
 
 - **Both halves used.** The Linux side reads a USB camera and turns each frame into numbers on the board (face position, distance, room light); the microcontroller plays the chimes; Arduino's Bridge joins them.
 - **Only numbers leave the board,** and the camera device is closed unless she said yes in this conversation.
-- **Board to board.** A face seen by the UNO Q wakes the Atech head through the broker, with no hub in between.
+- **Board to board.** A face seen by the UNO Q woke the Atech head through the broker, with no hub in between (14 Nov). Since then the camera stays closed until she says yes (D61), so a press of the ear is what wakes the robot.
 
 ## What each jury can click or see
 
@@ -430,11 +431,11 @@ are newer than the deck. Details for every row: [`docs/stack/`](docs/stack/INDEX
 
 ## Safety and privacy
 
-- **The crisis path is deterministic and contacts nobody.** A fixed phrase list, PHQ-9 item 9 or a long press on the robot's button shows a pre-written message with the MIELI Crisis Helpline 09 2525 0111 and 112 and sets "Safety" on the dashboard. It will miss indirect language. [`docs/safety.md`](docs/safety.md)
+- **The crisis path is deterministic and contacts nobody.** A fixed phrase list or PHQ-9 item 9 shows a pre-written message with the MIELI Crisis Helpline 09 2525 0111 and 112 and sets "Safety" on the dashboard. On the robot the conversation, microphone and speaker close at once and the flag is raised; the robot as built has no screen and no button, so it cannot show the message and the phone app must be beside it. It will miss indirect language. [`docs/safety.md`](docs/safety.md)
 - **No raw media is stored.** Only derived numbers reach the record and the cloud rejects anything else. Audio goes to Gemini Live only during a conversation she started; Google can keep Live session state for up to 24 hours. [`docs/privacy.md`](docs/privacy.md)
 - **The glasses-frames rule (D43).** Off by default. Frames may go to that walk's Gemini Live conversation and nowhere else; no state, observation or crisis trigger comes from a picture, and people in view are never described. [`docs/decisions.md`](docs/decisions.md)
 - **Camera during activities (D52).** Off by default. Counts of face movement per game or check-in are made on the device and only those numbers are sent; no picture leaves it and no emotion is inferred from a face anywhere in Kaiku. The idea comes from research on reduced facial movement at higher symptom severity; it is not validated here and every level is uncalibrated, which is why the counts have no vote. [`docs/validation.md`](docs/validation.md)
-- **Consent per signal.** One switch per signal, pausable, listed in "What Kaiku saw today". Conversation text is kept only after a separate opt-in, and practitioners never see conversations or the notebook.
+- **Consent per signal.** One switch per signal, pausable, listed in "Today, so far". Conversation text is kept only after a separate opt-in, and practitioners never see conversations or the notebook.
 - **A research prototype.** Not a medical device, not a crisis service, and no replacement for clinicians. It reports a change from a person's usual; a practitioner decides what that means.
 
 ## Repo map
@@ -450,7 +451,7 @@ Every module has one doc, its `AGENTS.md`. New here? Read the root [`AGENTS.md`]
 | [`apps/apple/`](apps/apple/AGENTS.md) | SwiftUI iPhone and Mac apps: Today, Play, Talk, History, You; the glasses walk |
 | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | Instructions only for a glasses display web app; not part of the entry |
 | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | Instructions only for an optional Android camera app; not part of the entry |
-| [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | Atech board: knob ear dial, lid button, neck motor, speaker and microphone, taps from the orientation sensor (no display on this robot) |
+| [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | Atech board: knob ear dial, neck motor, speaker and microphone, taps from the orientation sensor (no display on this robot) |
 | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | Arduino UNO Q: camera (faces, distance, room light, pulse), buzzer chimes |
 | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | LoRa friend lamp, a stretch idea; not in the demo |
 | [`sim/`](sim/AGENTS.md) | Software twins of every hardware node, synthetic people, cloud seeder |

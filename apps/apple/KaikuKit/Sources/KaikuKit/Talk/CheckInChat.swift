@@ -217,6 +217,7 @@ final class CheckInChat {
         let taken = batch.take()
         guard !taken.isEmpty, state.ticked, let app, app.lookOn, let home = app.pairing?.homeID else { return }
         let request = VisionLookRequest(task: FaceSigns.checkIn, device: KaikuPlatform.isPhone ? "phone" : "mac", pictures: taken)
+        app.cameraChoice.noteLook()   // the day's receipt may no longer say "no pictures"
         Task { _ = await app.api.visionLook(request, home: home) }
     }
 
@@ -228,7 +229,12 @@ final class CheckInChat {
     /// The check-in is over: the camera closes at once. What it measured is sent only for a check-in that counted
     /// (she took part); one she only opened and left sends nothing.
     private func endCamera() {
-        if camera.state == .stopped { cameraOffByHer = true }
+        if camera.state == .stopped {
+            // She turned the camera off in this check-in: what was sampled is thrown away, the pictures with it.
+            cameraOffByHer = true
+            pictures?.drop()
+            pictures = nil
+        }
         guard camera.state != .off else { return }
         let seen = camera.finish()
         sendPictures()

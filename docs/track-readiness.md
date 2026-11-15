@@ -1,7 +1,16 @@
 # Track readiness audit
 
+> **State on 14 November 2026; superseded by [`stack/`](stack/INDEX.md) and [`tracks.md`](tracks.md).** A few rows
+> were updated on 15 Nov (the Modal deployment, Gemma on our own GPU); the rest is kept as written. Since then: the
+> robot as built has five Atech modules and no display, LED grids, button, knock switch or pulse sensor (D39, D54,
+> D55); the head runs its own steps and the hub follows (D44); a Gemini Live conversation and Tap it back have
+> played through the head's speaker with a phone as the microphone (D56); the real glasses passed their self-test
+> and a walk sent 30 frames (Kaiku's replies not yet heard in the glasses); the service is deployed on Modal; and
+> with the current rule a first flag is possible from day 11 and a record never reads Stable before day 21, so
+> "day 14" below is out of date. Where this page disagrees with the stack pages, they are newer.
+
 Audit of the working tree on 14 November 2026 (branch `companion-apps`), read from code, not from earlier docs.
-Briefs: `docs/tracks/*.pdf`. Final submission closes **Sunday 15 November 10:00**; drafts are not reviewed.
+Briefs, as text: `docs/tracks/*.md`. Final submission closes **Sunday 15 November 10:00**; drafts are not reviewed.
 Status words: **met** (code and evidence exist), **partial** (built, but a named proof is missing), **not met**.
 "Landing" marks work other workstreams were finishing during this audit: verify before FINAL.
 
@@ -104,7 +113,7 @@ standard Bluetooth (HFP), not a DAT capability; the Motion capability is beta, d
 7. **Gemma on our own GPU is proven for two paths only** (the review and a record question, 15 Nov, local API). The public demo uses the hosted API; say "production runs it on our own GPU, the demo you are looking at uses Google's API".
 8. **The authored 16-day record and the consensus rule.** See §4, weak point 1: check what the timeline really shows for the dip days before narrating it.
 9. **Autonomic sensing.** The Aalto brief highlights HRV; robot pulse is disabled. Show Apple Health data only if real.
-10. **Track PDFs in a public repo** contain the venue Wi-Fi password, a credit redemption code and mentor e-mail addresses (`docs/tracks/guide.pdf`, `modal.pdf`, `atech.pdf`). Root `AGENTS.md` forbids exactly this. Remove or replace with links before FINAL.
+10. **Track PDFs: resolved.** The challenge PDFs held the venue Wi-Fi password, a credit redemption code and mentor e-mail addresses. They are local only (ignored by git) and are not in the repository; the briefs are kept as text in `docs/tracks/*.md` without those details.
 
 ## 4. How each service is built, and what is real
 

@@ -151,7 +151,7 @@ the same gate. A test parses the safety package and fails if it imports any mode
 
 ### Failing softly
 
-- No token, no key or no budget: the microphone stays closed and Kaiku shows text. **Never a synthesizer**
+- No token, no key or no budget: the microphone stays closed and Kaiku shows text. **Never a synthesiser**
   (there is no on-device speech fallback anywhere in the code).
 - A dropped socket: the app pings every 20 s, reconnects quietly with the resumption handle, and on a third
   failure opens a fresh line carrying the last six lines as context.
@@ -168,7 +168,7 @@ the same gate. A test parses the safety package and fails if it imports any mode
 - **Embeddings** index her notebook entries and the activities in the knowledge graph, with asymmetric
   question/document prefixes. Recall is cosine similarity, then one hop along the graph, top three. They feed
   `ask_mind`'s facts and the card's memories; the `recall` tool itself uses full-text search. Without a key
-  everything falls back to full-text search. Measured: 341 ms a note (108 calls), 629 ms a question.
+  everything falls back to full-text search. Measured in the runs of 14 Nov behind `explainers/intelligence-flow.html` (not logged in `progress.md`): 341 ms a note (median of 108 calls), 629 ms a question (median of 5).
 - **Lyria RealTime** plays in the robot's rhythm game, Tap it back: a short song at a set tempo, then her taps
   are compared with it. In free drumming it follows her instead: a tempo change of 6 bpm or more, at most every
   4 seconds, re-steers the music. We chose the realtime model because only a streaming model can change tempo
@@ -181,12 +181,12 @@ All with real provider calls, 14 to 15 November, on a simulated record.
 | What | Result |
 |---|---|
 | End of her speech to Kaiku's first sound | 2.3 s median over 5 turns (1.5 to 2.6); 2.1 s through the robot head's software twin |
-| Session bootstrap including the token; Live ready | 845 ms median (3 runs); 1.2 s |
+| Session bootstrap including the token; Live ready | 845 ms median (3 sessions on 14 Nov, 577 to 1,295 ms; from the explainer's runs, not logged in `progress.md`); 1.2 s |
 | `make e2e-intelligence` | All pass: token, typed turn, spoken turn ended by voice activity, tool call, barge-in, TTS, `ask_mind` |
 | A call across a token renewal | 4 min 48 s on the simulator while locked; the reply arrived on the Lock Screen |
 | Walk with pictures as the view | A dull road got no words; a lone tree got "Is that your favourite tree up there?" |
 | Check-in and Talk with proactive audio off | 3 of 3 answered each |
-| Lyria | Opened in 0.38 to 0.71 s; one whole game, 66.6 s, with taps from the head's twin |
+| Lyria | Opened in 0.38 to 0.71 s; one whole game in one run on 14 Nov, 66.6 s, with taps from the head's twin (from the explainer's run, not logged in `progress.md`) |
 | Real glasses (15 Nov) | The glasses microphone and camera reached Live: 30 frames in one walk, the wearer heard twice |
 | Real robot (15 Nov) | An ear press opened a Live session through the head's speaker, with a phone as the microphone; her spoken yes to the camera arrived as a tool call 8 s after the session opened |
 

@@ -12,6 +12,10 @@ import XCTest
 final class FaceSignsUITests: XCTestCase {
     private let on = "<dict><key>camera</key><true/><key>checkins</key><true/><key>walks</key><true/></dict>"
 
+    /// The current wording of the camera choice: keep equal to `CameraChoice.wording` in KaikuKit (this target
+    /// does not link the package). A lower number makes the app ask the one-time question.
+    private static let wording = 4
+
     override func setUp() { continueAfterFailure = false }
 
     private func shot(_ name: String) {
@@ -25,7 +29,7 @@ final class FaceSignsUITests: XCTestCase {
     }
 
     /// `camera`: nil = the choice was never turned on; otherwise the wording it was agreed under (0 = an older build's).
-    private func launch(camera wording: Int? = 3, _ extra: [String] = [], onboarded: Bool = true, cloud: String? = nil) -> XCUIApplication {
+    private func launch(camera wording: Int? = Self.wording, _ extra: [String] = [], onboarded: Bool = true, cloud: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         var args = ["-kaiku.lang", "en", "-AppleLanguages", "(en)", "-kaikuFaceSource", "scripted", "-kaikuMute", "YES"]
         if onboarded { args += ["-kaikuSkipOnboarding", "YES"] }

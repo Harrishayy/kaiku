@@ -17,6 +17,10 @@ struct TaskCameraChip: View {
     var holdsPlace = false
     @Environment(AppModel.self) private var app
 
+    /// A look (D65) is collecting in this task: a few pictures are made beside the numbers, so the chip may not
+    /// say "face movement only". Set by the check-in before the camera opens; a game never sets it.
+    private var look: Bool { camera.lookRules != nil }
+
     private var shows: Bool { camera.state == .capturing || camera.state == .stopped || camera.state == .unavailable }
 
     var body: some View {
@@ -33,7 +37,7 @@ struct TaskCameraChip: View {
             Button { camera.stopForThisTask() } label: {
                 HStack(spacing: KaikuTokens.Space.s2) {
                     ViewThatFits(in: .horizontal) {
-                        KChip(T("task.camera.active"), tone: .sage, icon: "camera.fill")
+                        KChip(T(look ? "task.camera.active.look" : "task.camera.active"), tone: .sage, icon: "camera.fill")
                         KChip(T("task.camera.active.short"), tone: .sage, icon: "camera.fill")
                     }
                     Text(T("task.camera.off")).kText(.caption, weight: .semibold).foregroundStyle(action)
@@ -44,7 +48,7 @@ struct TaskCameraChip: View {
             .buttonStyle(.plain)
             .kPointer()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(T("task.camera.active.a11y"))
+            .accessibilityLabel(T(look ? "task.camera.active.look.a11y" : "task.camera.active.a11y"))
             .accessibilityHint(T("task.camera.off.hint"))
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("task.camera.on")

@@ -1,4 +1,4 @@
-# Plan 05 — iPhone extras: notifications, voice, Live Activities, Siri, watch, glasses · 🟡 NEXT (after A1 core)
+# Plan 05 — iPhone extras: notifications, voice, Live Activities, Siri, watch, glasses · ✅ DONE (the MUST items, built 2026-11-14; see `docs/progress.md`)
 
 > Builds on [`02-companion-apps.md`](02-companion-apps.md) §4–§5 and [`03-intelligence.md`](03-intelligence.md) §5.2–5.3.
 > Scope guard ([`04-mind-depth.md`](04-mind-depth.md)) applies: every item is **MUST** (demo path) or **STRETCH**.
@@ -101,7 +101,7 @@
 | Spoken "maybe a two" / "kakkonen" / "en tvåa" in weather check | energy = 2 |
 | HealthKit denied / no watch | no wearable obs; consensus shows "No watch connected"; nothing breaks |
 | Same Health day synced twice | one `wearable_daily` (idempotent id) |
-| Voice line 503 / offline | on-device synthesizer speaks the same line |
+| Voice line 503 / offline | on-device synthesiser speaks the same line |
 
 ## 8. Done when
 

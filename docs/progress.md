@@ -359,7 +359,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   + `kaiku://` deep links. Voice: prefetched `/v1/voice` cache with AVSpeechSynthesizer fallback, Talk audio session
   with Bluetooth HFP, interruption/route handling, reconnect, on-device Speech safety gate + spoken dial parser
   (en/fi/sv). Walk (Light hunt) with `GlassesAdapter` (`MockGlasses`, `DATGlasses` on MWDAT 1.0.1 via SPM), gait
-  analyzer → `obs.outing{method: dat_imu}`, draft recovery after a kill. Widget extension: Walk + Breathe Live
+  analyser → `obs.outing{method: dat_imu}`, draft recovery after a kill. Widget extension: Walk + Breathe Live
   Activities (Dynamic Island + Lock Screen, bigger Kaiku + `KaikuGlyph` for compact/minimal per lead feedback) and
   the Kaiku widget (small/medium/lock). App Intents + App Shortcuts. HealthKit → `obs.wearable_daily` (idempotent id).
 - Verified: `swift test` 46/46; iOS + Mac builds green; `ExtrasFlowTests` on the iPhone 17 Pro simulator against a
@@ -461,7 +461,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `fieldMask: "model"` (as google-genai's tokens.py; without the mask the token would lock every setup field and
   drop the device's persona/tools). **apple**: `enableAffectiveDialog` removed from the Live setup (gemini-3.8-live
   closes with 1007 "invalid argument" when it is true — bisected live, SDK + raw key too); close reason kept on
-  `LiveSession`; opt-in paid `LiveIntegrationTests` + `scripts/live_e2e.sh`. Voice: the on-device synthesizer is
+  `LiveSession`; opt-in paid `LiveIntegrationTests` + `scripts/live_e2e.sh`. Voice: the on-device synthesiser is
   gone (`VoiceLines`): cached Gemini TTS, else fetched on demand, else silent; glasses-lost notice is a toast.
 - Verified (real Gemini, ~1 min each): iphone + glasses surfaces — setup accepted, Kaiku speaks, spoken
   interruption → `interrupted` (+ pending tool cancelled), transcription, `recall(walking)` → graph → "You like
@@ -469,7 +469,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   `swift test` 81 (1 skipped = the paid test), iOS + Mac builds green, cloud mind tests green.
 - Broken/blocked: **hub (owner B)**: `gemini_live.live_config` sets `enable_affective_dialog=True` → every robot
   Live session closes with 1007 (reproduced with the SDK + key). Also the hub's offline voice is macOS `say` /
-  espeak and `.env` has `KAIKU_VOICE=text` → robotic; lead's rule: never a synthesizer, use cached `/v1/voice`.
+  espeak and `.env` has `KAIKU_VOICE=text` → robotic; lead's rule: never a synthesiser, use cached `/v1/voice`.
   **Budget**: daily cap $4 hit ($3.98, mostly evals) → only 1 of 99 voice lines pre-rendered; apps stay silent for
   uncached lines until `make voice-prerender` runs with budget. **Signing**: accept the Apple PLA for team
   the lead's team; iPhone 14 shows "unavailable" in devicectl.
@@ -510,7 +510,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   Gemini voice, cached by hash, never a crisis line). Apps: Talk is a continuous conversation (tap Kaiku to open the
   mic, Gemini takes turns, talking or typing over Kaiku interrupts it, tap again to stop) on one audio engine with
   voice processing (echo cancellation); every line outside Live (greeting, "I'm back", scripted replies) is Gemini
-  TTS from the cloud, the on-device synthesizer only when offline with nothing cached. Talk layout: header-sized
+  TTS from the cloud, the on-device synthesiser only when offline with nothing cached. Talk layout: header-sized
   Kaiku on a clear background + status line + mic button, the transcript gets the rest; bubbles up to 80 % width,
   never squeezed; pinned to the newest line, also when the keyboard opens. `make e2e-intelligence` added.
 - Fixed: the old token request used `liveConnectConstraints` (the SDK's name); the REST API answers 400, so every
@@ -562,7 +562,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   layout (header-sized Kaiku = tap to mute/unmute, full-width chat, bubbles ≤ 80 %, welcome + starters) on top of
   `Conversation`. Cloud tokens lock only the model (`fieldMask: model`) so device setup fields aren't silently
   ignored; `live_setup` is still returned and the loudspeaker VAD comes from `config/kaiku.toml [live]`.
-  `VoiceLines` = Gemini TTS keyed + `/v1/voice/say`, never a synthesizer. Two D33s: transcripts keep D33, the
+  `VoiceLines` = Gemini TTS keyed + `/v1/voice/say`, never a synthesiser. Two D33s: transcripts keep D33, the
   dashboard sharing decision is now D34 (references updated).
 - Verified: `make check` 538 passed; `swift test` 84 (1 paid skip); iOS + Mac builds; web build; ui_copy_check clean.
 - Contract changes: none beyond the merged branches (`make contracts` re-run).
@@ -592,11 +592,11 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   LiveSession.sendAudio, so real microphone speech never reaches Gemini. Native crisis UI promises team contact
   independent of upload/delivery; care-team button only shows a toast. Talk/walk record_dial bypass check-in consent.
   Mock glasses readings use the normal sim=false envelope. Advertised PHQ-9/friend tools and Talk-started walk are
-  unhandled. Episode finalization is not durable offline; same-day Health summary IDs prevent later corrections.
+  unhandled. Episode finalisation is not durable offline; same-day Health summary IDs prevent later corrections.
 - Broken/blocked (hub B): reproduced spoken-crisis self-cancellation in GeminiLiveVoice.close_session, before script
   or safety_flag (CancelledError, zero flags). end_ritual/end_session skip only the current step instead of stopping.
   Attention-triggered sessions open the microphone before affirmative ritual consent. Hub still enables affective
-  dialogue despite the earlier recorded 1007 rejection. Normal ritual completion does not finalize a cloud episode.
+  dialogue despite the earlier recorded 1007 rejection. Normal ritual completion does not finalise a cloud episode.
 - Broken/blocked (cloud C): reproduced unauthenticated record reads, sharing changes, transcript deletion, and
   Safety -> Watch acknowledgement even with both tokens configured. Tokens do not bind a home identity. Reproduced
   stable consensus seven days after every source stopped. Source votes map by observation type, not physical device,
@@ -609,7 +609,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   documented as blocked/unverified; physical glasses/audio/sensor integration was not established by this audit.
   No external personal messaging integration found. Web safety uploads have no persistent retry queue.
 - Contract changes: none.
-- Next: owners fix microphone wiring, robot crisis/stop/consent, API authorization/home isolation, stale-data policy
+- Next: owners fix microphone wiring, robot crisis/stop/consent, API authorisation/home isolation, stale-data policy
   and honest alert delivery before claiming end-to-end readiness. Acceptance must exercise actual device controllers
   across two surfaces, tool effects, fresh observations on the dashboard, and offline/crisis recovery; socket-only
   Live tests and seeded dashboards cannot substitute for that pass. Full findings delivered in the audit chat.
@@ -644,7 +644,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 
 ### 2026-11-14 — Codex hub integration repairs
 - Fixed: consented robot microphone startup (attention/cloud invitations stay mic-off; incidental speech,
-  rotation and timeout do not consent); authorized cloud bootstrap required. end_session/end_ritual stop
+  rotation and timeout do not consent); authorised cloud bootstrap required. end_session/end_ritual stop
   all remaining steps; breathe/drum selection targets the named step. Spoken crisis no longer cancels its
   own receive task before the fixed visible script and priority safety flag; split transcription phrases
   are checked cumulatively. No local say/espeak fallback remains; normal fallback is Gemini audio or text.
@@ -655,7 +655,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Persistence: robot episode completion uses a SQLite outbox with stable IDs and retries; opt-in transcripts
   are off by default and erased on crisis. Cloud commands repeat until acknowledged after local application.
   Ground truth hub/AGENTS.md updated; parent owns config/contracts/modules sync. Demo driver now explicitly
-  presses the simulated button to accept (parent-authorized scripts/robot_demo_driver.py exception).
+  presses the simulated button to accept (parent-authorised scripts/robot_demo_driver.py exception).
 - Verified: hub unit/controller suites (151 non-MQTT tests; latest focused changes 27 passing), isolated real
   mosquitto ritual test. Production Gemini adapter with injected model/audio edges covers PCM upload,
   consent timeout/acceptance, spoken crisis, exact activity/stop, barge-in during a blocked cloud tool,
@@ -677,7 +677,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Verified actual GeminiLiveVoice + Hub against the current isolated real cloud:489,920 bytes of generated
   synthetic16kHzPCM passed through the production microphone callback; input transcription arrived;333,122
   outputPCM bytes received; automatic ask_mind returned ok(route=argon); episode and opted-in transcript
-  were stored and retrieved through the realAPI. No physical audio device was used. Runtime authorized
+  were stored and retrieved through the realAPI. No physical audio device was used. Runtime authorised
   budget overrides only; no cap change written. Log:/private/tmp/kaiku-hub-live-real.log.
 - Added configured bounded ask_mind timeout for longer reasoning while keeping other tools short; Live
   receive/barge-in/safety remain concurrent. Explicit stop during a reconnect handshake is regression-tested
@@ -728,7 +728,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   resurrect content. Explicit opt-in remains required; training export additionally needs reviewed, separately
   training-consented episode IDs. Shared care graphs omit free-text helpers that may name people or places.
 - Voice admission: apps reserve the configured Live duration in the existing spend ledger, with usage visible in
-  intelligence health. Robot bootstrap intentionally does not mint a second token: the authorized robot adapter
+  intelligence health. Robot bootstrap intentionally does not mint a second token: the authorised robot adapter
   meters its own key. Resume requests reuse only an open same-home/surface episode and retain the original duration.
   Source context is prepared from actual input-source metadata, marks synthetic events and excludes private metrics.
 - Gemma: on-demand ask_mind now uses hosted Gemma before explicit Gemini fallback; exact memory lookup and crisis
@@ -749,7 +749,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Real-provider proofs using synthetic data and the existing spend DB: Gemma primary tool answer 2.22 s with a
   verified phone-source citation; four-source clinician explanation 6.27 s; Gemma graph organisation 1.93 s with one
   semantic merge, organised bootstrap and unchanged original notebook, repeated organisation cached; clinician
-  record question 6.16 s with 13 verified citations (11 human-unit metrics), repeat cached, unauthorized requests
+  record question 6.16 s with 13 verified citations (11 human-unit metrics), repeat cached, unauthorised requests
   rejected. Gemini Live microphone/speaker/Meta hardware validation is owned by the app/hub workstreams, not implied
   by these API proofs. Hosted Gemma is verified; no private Modal GPU deployment or persistent warm GPU is claimed.
 - Ground truth: cloud/AGENTS.md updated. Parent owns contracts/config/modules regeneration, system-wide make check,
@@ -765,14 +765,14 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   evidence citations, retry states and memory-only chat cleared on access changes. No clinician request reads the
   person's private notebook or transcript endpoints. Routine comparisons now use a structured table; the relationship
   graph is secondary supporting context rather than the main evidence view.
-- Added a recent task inspector using authorized GET /v1/patients/{id}/tasks: actual dates/device, timing, optional
+- Added a recent task inspector using authorised GET /v1/patients/{id}/tasks: actual dates/device, timing, optional
   spoken features and camera method/coverage. Facial features are described as experimental movement only, never
   emotions, independent signal groups or comparable baselines across different capture methods.
 - Firefly camera capture is explicit opt-in and off by default, with visible preview/indicator and Stop control.
   MediaPipe runs locally; only numeric movement/sample/coverage features are sent. The separate spoken session
   measures microphone pace/pauses/pitch and now defaults its camera off. Silence returns missing speech evidence.
   Leaving, backgrounding, cancellation or crisis releases capture; late permission grants are stopped. Interrupted
-  reaction tasks are discarded. Failed audio initialization releases the microphone.
+  reaction tasks are discarded. Failed audio initialisation releases the microphone.
 - Verified: web TypeScript check, all 32 tests, and production static export pass. New tests cover human units and
   dated baseline evidence, silent speech, late and pre-cancelled permission requests, empty camera samples, and audio
   setup cleanup. Final export includes the renamed signal groups and same-origin API (no integration port embedded).
@@ -809,7 +809,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 
 ### 2026-11-14 — Codex web grounded-answer attribution correction
 - Updated Ask this record attribution to “Evidence selected by Gemma; facts checked by code” to match the cloud's
-  deterministic fact/direction rendering. Response contract and UI behavior are unchanged. Module AGENTS updated.
+  deterministic fact/direction rendering. Response contract and UI behaviour are unchanged. Module AGENTS updated.
 - Verified TypeScript and successful production static export. Cloud owns model/direction regression tests.
 
 ### 2026-11-14 — Codex native task sensing, physical installation and visible voice control
@@ -867,7 +867,7 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   service/schema identity, effective demo/authenticated/unconfigured mode, auth requirement and supported API
   capabilities; never home identifiers, credentials or a Live token. Configured credentials override demo mode.
 - A fresh app-generated installation home can bootstrap companion voice and ingest its first observation in
-  explicit demo mode without a robot, QR flow, seeded patient or new enrollment endpoint. Authenticated mode
+  explicit demo mode without a robot, QR flow, seeded patient or new enrolment endpoint. Authenticated mode
   retains existing per-home provisioning; an unconfigured deployment remains closed. Provider/budget gates
   are unchanged, so discovery alone does not promise voice readiness.
 - Verified production-route tests cover all modes, credential privacy, fail-closed private routes and a fresh
@@ -944,10 +944,10 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   deployed public API is claimed. HTTP LAN browser capture needs HTTPS or localhost, now explained before capture.
 - Updated architecture, privacy, track/submission claims and tester feedback. Remaining external boundaries:
   no SMS/WhatsApp connector or external clinician notification, no verified physical robot bench, no iPhone DAT
-  camera stream, and no production multi-user enrollment/public HTTPS deployment. These are not silently mocked.
+  camera stream, and no production multi-user enrolment/public HTTPS deployment. These are not silently mocked.
 
 ### 2026-11-14 — Codex Apple: independent voice service discovery, no QR/robot prerequisite
-- Replaced QR-first onboarding with nearby companion services and advanced account access, plus separate service host/settings in You. `_kaiku-api._tcp` discovery validates public descriptors without sending credentials or profile data. Only a build-configured, verified explicit-demo service can automatically provision; Bonjour candidates require selection, production authorization is retained, origins get stable distinct device homes, existing profiles survive, and explicit disconnect prevents silent reprovisioning. Robot telemetry and Meta registration remain independent.
+- Replaced QR-first onboarding with nearby companion services and advanced account access, plus separate service host/settings in You. `_kaiku-api._tcp` discovery validates public descriptors without sending credentials or profile data. Only a build-configured, verified explicit-demo service can automatically provision; Bonjour candidates require selection, production authorisation is retained, origins get stable distinct device homes, existing profiles survive, and explicit disconnect prevents silent reprovisioning. Robot telemetry and Meta registration remain independent.
 - Updated developer install script to retain a profile/create a fresh device identity by default instead of silently using seeded demo-aino; launch arguments use the required separator. Existing explicit account links remain supported. New discovery contract mirrored in Swift, Apple AGENTS updated.
 - Validation: 121 Swift cases reported, 116 passed / 5 optional skipped / 0 failures (`/private/tmp/kaiku-discovery-tests.log`); optional real native discovery → new home → /me integration separately passed0.031s (`/private/tmp/kaiku-discovery-integration.log`) without paid model or capture. Signed iOS build4 succeeded; Mac build passed before final in-flight coalescing update and final rebuild running. Skips are icon export, paid controller, old raw LiveSession, task DB integration, and discovery HTTP integration; controller/task DB/discovery have separate successful evidence.
 - Physical evidence: one Kaiku app in device inventory, fi.kaiku.app build3; initial launch rejected specifically because iPhone locked. After unlock/local-network approval, parent observed phone10.0.38.179 GET /v1/discovery200 and /v1/me200 on LAN8000, distinct from Mac test traffic. Final build4 installed preserving profile/Meta and successfully launched You at03:56:10, without opening mic/camera. User-started phone/glasses voice acceptance pending; no further reinstall while they test. Parent owns global checks (636 passed before these final native changes).
@@ -1650,3 +1650,89 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Contract changes: none.
 - Broken/blocked: nothing new.
 - Next: fix `submission.md` from the stack pages before FINAL.
+
+## 2026-11-15 04:00 UTC — Claude Code — docs: video script for the storyboard, track briefs as text
+- Did: `docs/demo-narrative.md` → "The video (1:58)" rewritten to the storyboard's scenes and times (Harrish, 118 s):
+  beat-by-beat table (picture, sound, on-screen text, what it proves per track, the swap line if a step fails),
+  rhythm notes, a table of where each judging criterion appears, four decisions to take before the narration is
+  recorded, and what the briefs ask for outside the video. The first rule now says the video follows Harrish and
+  the public link and pitch beats still use Aino. New `docs/tracks/{aalto,meta,gemini,gemma,atech,arduino,modal}.md`
+  (the briefs as text, credit codes and e-mail addresses left out) and a new `INDEX.md`; `docs/tracks.md` gains an
+  Arduino UNO Q row.
+- Verified: nothing run; words only. Scene lengths add up to 118 s. No code, link or e-mail address from the briefs
+  is in the new files (grep).
+- Contract changes: none.
+- Broken/blocked: the 3:00 pitch beats and the "how to talk about each service" paragraphs below the video section
+  still describe Aino and the 14 Nov state of the robot and Gemma. `demo/draft-cut-narration.md` and
+  `demo/video_shotlist.md` still follow the old 1:55 cut. Line 05 of the narration differs from the storyboard
+  ("Kaiku keeps none" for "Nothing is saved"): see the section's decision 1. The Arduino row's claims need a check on
+  the hardware. `make check` not run.
+- Next: choose the swap lines, record the narration; publish the Arduino Project Hub entry and the Atech Discord post.
+
+## 2026-11-15 07:50 UTC — Claude Code — pre-submission audit: docs against code, ignore rules, spelling, small fixes
+- Did: one pass over every module (six read-only audits, each module's `AGENTS.md` against its code, and the
+  judge-facing docs against the code and this log). Fixed: `README.md` and `docs/submission.md` brought in line with
+  the robot as built and the 15 Nov runs (no eyes, chest light or button; four states; Modal deployed; glasses and
+  Tap it back runs; test counts; the calibration table's rule hash marked as 14 Nov); web: the care-team token is
+  now sent on `GET /v1/events` and `/v1/eval` (`lib/credentials.ts`; the day's records were empty on a service with
+  tokens); cloud: the rule-based explanation no longer says "one source" or "two sources" changed when none did
+  (young record, held state), nor that an acknowledged state "holds until three stable days"; hub: its own
+  `raw.hub.trace` is no longer written to the session store; apple: pictures collected for the model's look are
+  dropped when she turns the camera off in that check-in, the look is capped at three pictures on the device, and
+  the camera permission text no longer says "or sent"; `raw.hub.transcript` declared in `modules.toml`,
+  `hub/AGENTS.md` and `contracts/AGENTS.md`; stale lines in the firmware docs (version 0.9.0, pan length, taps
+  while idle, long press, parts fitted), D35 → D39 in the UNO Q summary, two dangling make targets, `make help`
+  now lists `e2e-intelligence`; American spellings in prose; `.gitignore` covers the video scenes in `demo/`;
+  `demo/video_shotlist.md` and `demo/draft-cut-narration.md` headed as superseded.
+- Verified: `make check` passes (lint clean, 1485 tests, agents in sync); web tests 44 passed;
+  `swift build` passes. `swift test` could not run in this session (the SwiftUI preview macro plugin was not
+  found by the command-line toolchain), so the two Swift changes are compiled, not tested.
+- Contract changes: none (`modules.toml` lists a message that already existed).
+- Broken/blocked (found, not fixed): "Turn the camera" (D64) is in the docs and `modules.toml` but its code is not
+  in the repository; hardware docs, the assembly guide PDF and the deck still show the pre-D54 robot (eyes, LED
+  grids, KY parts, button); `tools/head_voice_check.py`, `tools/robot_bench.py` (`ring` step) and
+  `demo/robot-test-plan.md` script pre-D66 behaviour; the app's PHQ-9 link opens a web page that does not exist;
+  `POST /v1/admin/reset?home_id=` also clears homes that have no events; the cloud's crisis gate runs after the
+  session check on `/v1/companion/tool`; the hub's Live bootstrap has no retry; `hub/AGENTS.md` bring-up tables,
+  `sim/AGENTS.md`, `contracts/AGENTS.md` (tool count, face-signs methods) and `config/surfaces.toml` (robot body)
+  are behind D61 and D66; the sensors twin keeps sending faces when the camera is disabled.
+- Next: decide on the track briefs (`docs/tracks/*.md`, untracked), re-render the deck, add the video link.
+
+## 2026-11-15 08:30 UTC — Claude Code — docs: shorter punchline and description for the Junction form
+- Did: `docs/submission.md`: new punchline (within 200 characters) and a paste-ready description (within 5000
+  characters) that carries its own short technology and safety sections; the longer sections stay below it as the
+  evidence. The form's old text claimed things the build does not have (animated eyes, pulse and HRV, a glowing
+  chest, booster and referral actions, health reasoning only on our own infrastructure, an unsourced "about half
+  of responders" figure); none of that is in the new text.
+- Verified: character counts by script. Words only; `make check` not run.
+- Contract changes: none.
+- Broken/blocked: the README's tagline is still the earlier, shorter line.
+- Next: paste into the form, set the project to FINAL.
+
+## 2026-11-15 22:10 UTC — Claude Code — post-submission audit, second round: the open findings fixed (committed after the 10:00 deadline)
+- Did: the items listed as found-not-fixed in the 07:50 entry, by module.
+  Cloud: `/v1/admin/reset?home_id=` clears only that home; the crisis gate runs before the session check on
+  `/v1/companion/tool`; the wording check covers both explanation paths; the rule-based explanation no longer
+  counts sources that are not worse; crisis numbers come from `config/safety_phrases.toml`; endpoints and new
+  `[cloud]` timings come from `config/kaiku.toml`. Hub: Live bootstrap retries and resets; Photo time waits for
+  the camera yes; `express` is not offered while following; hub, robot, follow and photo timings moved to
+  `config/kaiku.toml`; the hub drops the echo of its own trace; the sensors twin stops sending faces when the
+  camera is disabled. Web: the care-team token goes on `/v1/events` and `/v1/eval`; dead code removed. Apple:
+  pictures dropped when the camera stops, at most three per look, the PHQ-9 link disabled, help numbers from copy,
+  debug switches under `#if DEBUG`, `QRScanner.swift` removed. Docs and tools: hardware docs, the assembly guide
+  text, the deck (slides 5, 6, 9, 10, 11; PDF rendered again), `demo/demo_script.md`, `demo/robot-test-plan.md`,
+  `tools/head_voice_check.py` and `tools/robot_bench.py` follow the robot as built (D54, D55, D61, D66);
+  `hub`, `sim`, `contracts`, `config` AGENTS.md and `config/surfaces.toml` brought up to date; `modules.toml`:
+  glasses apps marked not built, hub consumes corrected; the track briefs (`docs/tracks/*.md`) added without
+  staff names; `docs/submission.md` rewritten without `[verify]` tags.
+- Verified: `make check`: lint clean, agents in sync, 1504 tests, all passing (14 in `cloud/tests/test_agree.py`
+  failed once when run across local midnight and pass otherwise: the test stamps an observation five minutes
+  ahead, which fell on the next day). Web tests 42 passed. Swift changes were compiled in a scratch copy only;
+  `swift test` cannot run in this session.
+- Contract changes: none.
+- Broken/blocked: "Turn the camera" (D64) code is still not in the repository; the cloud fixes need a deploy to
+  reach the public service; `tools/head_voice_check.py` (D66 flow) not run against the robot; assembly guide
+  figures and deck slide 6 still lack a picture of the built robot; the README has no video link yet;
+  `tools/companion_evals/fixtures/dry_replies.yaml` holds replies from the earlier robot;
+  `cloud/tests/test_agree.py` is sensitive to the five minutes before local midnight.
+- Next: run `swift test` in Xcode, deploy the cloud, add the video link.

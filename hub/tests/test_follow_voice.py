@@ -85,10 +85,14 @@ class Rig:
         s.tap_back = quick(**over)
         s.greet_s, s.dial_s = 5, 5
         self.client, self.requests = TalkClient(), []
+        self.session_fail = 0  # this many bootstraps are answered 503 first
         voice = GeminiLiveVoice("fake-live", client=self.client, audio=object(), meter_factory=Meter, stall_s=0.5)
 
         def cloud(request):
             self.requests.append((request.url.path, json.loads(request.content or b"{}")))
+            if request.url.path.endswith("/session") and self.session_fail > 0:
+                self.session_fail -= 1
+                return httpx.Response(503)
             if request.url.path.endswith("/session"):
                 return httpx.Response(200, json={"system_instruction": "Test persona", "session_id": "talk-1",
                                                  "tools": [{"name": n, "parameters": {"type": "object", "properties": {}}}
@@ -137,7 +141,7 @@ class Rig:
         await self.raw("raw.head.ear", {"value": value, "delta": 0, "pressed": True})
 
     async def greeted_and_pressed(self, checkin=True):
-        """The head greets, she presses its ear: a talk opens (D64), and with it (her own start) the conversation.
+        """The head greets, she presses its ear: a talk opens (D66), and with it (her own start) the conversation.
         `checkin` = she then asks for the check-in in words (the voice's `checkin {start}`) and the head goes to
         its first question, as the firmware does on `cmd.head {ritual: start}`."""
         await self.health("idle")
@@ -218,8 +222,10 @@ async def test_her_own_press_opens_the_conversation_kaiku_says_each_step_and_the
     assert r.mic()[0] == "open"                                        # forced through to a head the hub never commands
     declared = {d["name"] for block in r.client.configs[-1]["tools"] for d in block["function_declarations"]}
     # no tool the hub cannot honour on this head; start_activity only as asking twice (D58)
-    assert declared == (set(DECLARED) - HEAD_RUNS_ITS_STEPS) | {"start_activity", "camera_choice", "turn_head",
-                                                                 "checkin"}
+    # ... and no `express`: this head has no face the hub could change (D54)
+    assert declared == (set(DECLARED) - HEAD_RUNS_ITS_STEPS - {"express"}) | {"start_activity", "camera_choice",
+                                                                               "turn_head", "checkin"}
+    assert (await hub.on_tool("express", {"feeling": "happy"}))["ok"] is False
 
     await settle(lambda: r.said(follow.STEP_LINES["mood"]), timeout=3)  # said through the head, by the Live voice
     await settle(lambda: len(r.wire.frames) >= 4, timeout=3)
@@ -265,6 +271,57 @@ async def test_the_first_press_the_hub_sees_opens_the_conversation_whatever_step
     assert len(r2.bootstraps()) == 1 and r2.hub.follower.step == "energy"
 
 
+async def test_a_failed_bootstrap_is_tried_again_and_after_the_last_failure_her_next_press_opens_the_talk(settings):
+    """The cloud's Live bootstrap can fail for a moment. It is tried `[hub] session_attempts` times with a backoff;
+    if all fail, the robot is not listening and does not claim to be (`talk: closed`), and the talk is not used
+    up: her next press of the ear tries again."""
+    settings.session_backoff_s = 0.01
+    r = Rig(settings)
+    r.session_fail = 2                                                 # two 503s, the third try answers
+    await r.greeted_and_pressed(checkin=False)
+    assert len(r.bootstraps()) == 3 and r.hub.voice.in_session and r.hub._details()["talk"] == "open"
+
+    settings.session_backoff_s = 0.01
+    r = Rig(settings)
+    hub = r.hub
+    r.session_fail = 99                                                # the cloud is down for every try
+    await r.health("idle")
+    await r.chime("wake")
+    await r.press()
+    await settle(lambda: len(r.bootstraps()) == 3 and hub._live_open_task.done(), timeout=3)
+    assert not hub.voice.in_session and r.mic() == []                  # nothing was opened ...
+    assert not hub.conversation_consented and not hub._talk_used       # ... and the hub does not pretend it was
+    assert hub._details()["talk"] == "closed"
+    await asyncio.sleep(0.05)
+    assert not r.client.connections                                    # no line of a talk nobody listens to
+    r.session_fail = 0                                                 # the cloud is back
+    await r.health("talk")
+    await r.press()                                                    # she presses again
+    await settle(lambda: hub.voice.in_session and hub.head_audio.mic is not None, timeout=3)
+    assert len(r.bootstraps()) == 4 and hub.conversation_consented and r.mic()[0] == "open"
+
+
+async def test_photo_time_from_a_command_needs_her_yes_to_the_camera_like_the_tool(settings):
+    """`cmd.hub {photo_time: true}` (a button in an app) follows the tool's rule on this robot (D61): with the
+    camera not agreed to in an open conversation, nothing is said and the board is not asked to count."""
+    r = Rig(settings)
+    hub = r.hub
+    hub.photo_time.seconds, hub.photo_time.wait_extra_s = 0.05, 0.05
+    await r.greeted_and_pressed(checkin=False)
+
+    async def command():
+        env = make("cmd.hub", {"photo_time": True}, source="cloud", home_id=r.home)
+        await hub.on_cmd(parse_topic(f"kaiku/v1/{r.home}/cmd/hub"), env)
+        await asyncio.sleep(0.3)
+
+    await command()
+    assert not [p for t, p in r.sent if t == "cmd.sensors" and "face_signs_s" in p]
+    assert "obs.face_signs" not in r.types() and not hub.photo_time.running
+    hub._camera = True                                                 # she said yes to the camera
+    await command()
+    assert [p for t, p in r.sent if t == "cmd.sensors" and p.get("face_signs_s") == 0.05]
+
+
 async def test_asking_twice_her_words_arm_the_head_and_only_a_press_of_the_ear_starts_the_activity(settings):
     """D58. She asks for the drums in words (the voice calls start_activity): nothing starts, the head is armed.
     Her press of the ear is the yes: it is not a dial answer, the head goes to the drum step by itself, and the
@@ -294,8 +351,7 @@ async def test_asking_twice_her_words_arm_the_head_and_only_a_press_of_the_ear_s
 
 
 async def test_asking_twice_without_a_press_starts_nothing_and_kaiku_is_told(settings, monkeypatch):
-    from kaiku_hub import main as hub_main
-    monkeypatch.setattr(hub_main, "ASK_TWICE_S", 0.1)
+    settings.ask_twice_s = 0.1
     r = Rig(settings)
     hub = r.hub
     await r.greeted_and_pressed()
@@ -341,7 +397,7 @@ async def test_the_camera_is_asked_once_per_conversation_and_never_again(setting
     """D61. When a conversation opens the ROBOT asks once, in a fixed line, whether its camera may be on. The voice
     only reports the answer. Photo time needs a yes. The next conversation is asked again; the same one never is."""
     from kaiku_hub import main as hub_main
-    monkeypatch.setattr(hub_main, "CAMERA_WAIT_S", 0.3)
+    settings.camera_wait_s = 0.3
     r = Rig(settings)
     hub = r.hub
     hub.node_health["sensors"] = {"status": "ok", "details": {"camera_ok": True}}
@@ -410,6 +466,11 @@ async def test_she_can_ask_for_a_turn_and_the_head_keeps_her_in_view(settings):
     assert (await hub.on_tool("set_light", {"colour": "white"}))["ok"] is False   # the light colour was removed
     assert not [h for h in r.heads() if "color" in h]
     assert (await hub.on_tool("turn_head", {"direction": "left"}))["ok"]
+    await asyncio.sleep(0.01)                                          # the turn runs as its own task: let it send
+    for t in hub._tasks:                                               # one pulse is enough here; stop the rest
+        if t.get_name() == "turn-head":
+            t.cancel()
+    hub.speaker._play_until = 0.0                                      # (the head never turns while its speaker has sound)
     assert r.heads()[-1]["pan"] == {"target_deg": -40.0, "speed": 1.0}   # full speed, the longest nudge
     n = len(r.heads())
     hub._track_pause_until = 0.0                                       # (a turn she asked for pauses the following)
@@ -427,7 +488,7 @@ async def test_she_can_ask_for_a_turn_and_the_head_keeps_her_in_view(settings):
 
 
 async def test_a_press_opens_a_talk_and_the_check_in_runs_only_when_she_asks_for_it(settings):
-    """D64. The press at the greeting opens the conversation and the head rests in `talk`: no step, no question.
+    """D66. The press at the greeting opens the conversation and the head rests in `talk`: no step, no question.
     "Let's start" (the voice's `checkin {start}`) sends the head to its first question. Talking about something
     else pauses it (`pause`): the head is back in `talk`, Kaiku says no line of her own, and nothing brings the
     check-in back but her asking: "continue" returns to the step that waited."""
@@ -470,7 +531,7 @@ async def test_a_press_opens_a_talk_and_the_check_in_runs_only_when_she_asks_for
 
 
 async def test_a_paused_check_in_that_is_never_resumed_is_kept_as_ended_early_and_a_quiet_talk_ends(settings):
-    """D64. Paused and not resumed: when the talk ends the episode is saved as ended early with what was answered.
+    """D66. Paused and not resumed: when the talk ends the episode is saved as ended early with what was answered.
     A talk in which nothing happens for `[hub] talk_idle_end_s` sends the head back to rest. A named activity asked
     for from the talk (asking twice, D58) goes straight to that step."""
     r = Rig(settings)
@@ -1037,7 +1098,7 @@ async def test_a_head_that_missed_the_help_screen_is_sent_it_once_more_and_one_t
 
     r = Rig(settings)                                                  # after the head's own ten minutes: nothing
     await r.hub.crisis(Trigger("manual", "button", "en"))
-    r.hub._help_at -= hub_main.HELP_S
+    r.hub._help_at -= r.hub.settings.help_screen_s
     await health(r, False)
     assert len(helps(r)) == 1
 

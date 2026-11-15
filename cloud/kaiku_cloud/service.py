@@ -130,9 +130,10 @@ def nudge_arms(store: Store, home_id: str) -> tuple[str, ...]:
 
 
 def explain_ctx(home_id: str, c: Consensus, notes: list[str], sim: bool, families: list[str] | None = None,
-                name: str | None = None) -> dict[str, Any]:
+                name: str | None = None, safety_handled_locally: bool = False) -> dict[str, Any]:
     return {
         "display_name": name or display_name(home_id), "simulated": sim,
+        "safety_handled_locally": safety_handled_locally,
         "state": c.state, "agreement": c.agreement, "rule_version": c.rule_version,
         "acknowledged": c.acknowledged_by is not None, "notes": notes, "correlated_families": families or [],
         "sources": [{**v.model_dump(mode="json", exclude={"computed_at", "home_id"}),
@@ -147,7 +148,8 @@ def evaluate_home(store: Store, home_id: str, crit: Criteria, today: date | None
     c, last = compute(data, crit, end)
     c.simulated = data.sim
     name = display_name(home_id, data.first_day)
-    ctx = explain_ctx(home_id, c, last.notes, data.sim, last.correlated_families, name)
+    handled = c.safety_since is not None and c.safety_since in data.safety_local  # the open flag's own payload
+    ctx = explain_ctx(home_id, c, last.notes, data.sim, last.correlated_families, name, handled)
     c.explanation = template_explanation(ctx)
     summary = PatientSummary(
         id=home_id, display_name=name, state=c.state, agreement=c.agreement,
@@ -158,7 +160,7 @@ def evaluate_home(store: Store, home_id: str, crit: Criteria, today: date | None
         acknowledged=c.acknowledged_by is not None, sim=data.sim,
     )
     return {"summary": summary.model_dump(mode="json"), "consensus": c.model_dump(mode="json"), "notes": last.notes,
-            "correlated_families": last.correlated_families,
+            "correlated_families": last.correlated_families, "safety_handled_locally": handled,
             "state_since": last.state_since.isoformat() if last.state_since else None}
 
 
@@ -198,7 +200,8 @@ def preview(store: Store, candidate: Criteria | None, *, with_eval: bool = False
     if with_eval:
         from .jobs.simulate import run_eval
 
-        ev = run_eval(n_patients=18, shards=1, criteria=cand)
+        ev = run_eval(n_patients=int(get("cloud", "eval_patients", 18)),
+                      shards=int(get("cloud", "eval_preview_shards", 1)), criteria=cand)
     return CriteriaPreview(current_rule_version=current.rule_version, candidate_rule_version=cand.rule_version,
                            changes=changes, unchanged=unchanged, eval=ev)
 
@@ -217,7 +220,8 @@ def get_consensus(store: Store, settings: Settings, row: dict[str, Any], log: An
     if settings.llm == "template":
         return c
     ctx = explain_ctx(c.home_id, c, row.get("notes", []), bool(row["summary"].get("sim")),
-                      row.get("correlated_families"), row["summary"].get("display_name"))
+                      row.get("correlated_families"), row["summary"].get("display_name"),
+                      bool(row.get("safety_handled_locally")))
     # Arrival timestamps are presentation metadata, not new explanation evidence.
     semantic = {**ctx, "sources": [{k: v for k, v in source.items() if k != "last_data_at"}
                                     for source in ctx["sources"]]}
@@ -301,8 +305,24 @@ ME_STATE = {
     "stable": "Your recent days have looked much like your usual.",
     "watch": "A few things look a little different from your usual. That's common and nothing to act on alone.",
     "needs_call": "Things look different from your usual in a few ways, so your care team may get in touch for a chat.",
-    "safety": "If you need support right now, call the MIELI Crisis Helpline on 09 2525 0111, or 112 in an emergency.",
 }
+ME_FORMING = "Kaiku is still getting to know your usual."
+
+
+def me_summary(row: dict[str, Any] | None) -> str:
+    """The one plain sentence of /v1/me. A person with no record yet, or one whose own usual is still forming
+    (`low_coverage` with nothing away from usual), is never told that something changed. The crisis contacts are
+    `config/kaiku.toml [safety]`."""
+    summary = (row or {}).get("summary", {})
+    state = summary.get("state", "watch")
+    if state == "safety":
+        return (f"If you need support right now, call the {get('safety', 'helpline_name', 'MIELI Crisis Helpline')} "
+                f"on {get('safety', 'helpline_number', '09 2525 0111')}, "
+                f"or {get('safety', 'emergency_number', '112')} in an emergency.")
+    worse = any(s.get("verdict") == "worse" for s in summary.get("sources", []))
+    if state == "watch" and (row is None or (summary.get("agreement") == "low_coverage" and not worse)):
+        return ME_FORMING
+    return ME_STATE[state]
 
 
 def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | None,
@@ -326,10 +346,12 @@ def me(store: Store, settings: Settings, home_id: str, row: dict[str, Any] | Non
     if breaths:
         avg = sum(r["delta"]["rmssd_ms"] for r in breaths) / len(breaths)
         if avg > 0:
-            lines.append(f"Breathing with Kaiku calmed your heart rhythm on average (+{avg:.0f} ms HRV).")
+            # what was recorded before and after, never a claim that the breathing caused it
+            lines.append("In the sessions where you breathed with Kaiku, your heart rhythm measure was on average "
+                         f"{avg:.0f} ms higher afterwards than before.")
     helps = [HelpStat(**h) for h in bandit.help_stats(data.nudge_outcomes, data.interventions)]
     nxt = suggest(store, home_id, data)
-    return MeResponse(home_id=home_id, summary=ME_STATE[state], last_week=lines, what_helps=helps,
+    return MeResponse(home_id=home_id, summary=me_summary(row), last_week=lines, what_helps=helps,
                       next_suggestion=nxt, phq9_due=phq9_due(data, settings.phq9_every_days, today),
                       mascot=companion.mascot_for(state, now_local.hour, companion.together_recently(events, today)),
                       highlights=companion.highlights_for(events, data, crit, today),
