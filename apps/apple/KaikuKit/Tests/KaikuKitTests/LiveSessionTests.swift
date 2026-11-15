@@ -54,6 +54,22 @@ final class LiveSessionTests: XCTestCase {
         XCTAssertNil((setup(.init())["sessionResumption"] as! [String: Any])["handle"])
     }
 
+    func testTheOnDeviceRecogniserListensInTheAppsLanguage() {
+        XCTAssertEqual(OnDeviceListener.locale(.en).identifier, "en-US")
+        XCTAssertEqual(OnDeviceListener.locale(.fi).identifier, "fi-FI")
+    }
+
+    func testThePersonsSpeechIsTranscribedInTheLanguageTheCloudNames() {
+        // Without the cloud's word the field is still sent (empty: the safety gate needs the transcript).
+        XCTAssertEqual((setup(.init())["inputAudioTranscription"] as? [String: Any])?.count, 0)
+        var s = session()
+        s.live_setup = .object(["inputAudioTranscription": .object(["languageCodes": .array([.string("en-US")])])])
+        let sent = LiveSession.setup(session: s, options: .init())["setup"] as! [String: Any]
+        XCTAssertEqual((sent["inputAudioTranscription"] as? [String: Any])?["languageCodes"] as? [String], ["en-US"],
+                       "English speech is heard as English, not guessed (it came back as German)")
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(["setup": sent]))
+    }
+
     func testWhatLetsACallOutliveOneSocketIsAlwaysSentAndTheCloudsSettingsWin() {
         // Without `live_setup`: resumption and sliding-window compression are still asked for. Proactive audio
         // (the model may leave an input unanswered) is not: the field is left out.

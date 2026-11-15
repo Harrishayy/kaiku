@@ -231,7 +231,7 @@ final class CheckInChat {
             // Kaiku says its one line, and the conversation closes itself.
             talk.conversation.closeAfterAnswer(to: Self.dialContext(v))
         } else if case .dials(let key)? = state.end {
-            VoiceLines.shared.play(key, lang: app.language, fallback: T(key))
+            VoiceLines.shared.play(key, lang: app.language, fallback: T(key), origin: .chat)
         }
         await app.recordWeather(v, celebrates: false)
     }

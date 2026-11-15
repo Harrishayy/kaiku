@@ -217,9 +217,6 @@ struct HistoryCard: View {
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
-    /// That day's records are simulated (labelled the way "Today, so far" labels them).
-    private var simulated: Bool { latest?.sim ?? measure.sessions.contains(where: \.sim) }
-
     /// The devices a list of sessions came from, most first.
     static func devices(of sessions: [HistorySession]) -> [String] {
         Dictionary(grouping: sessions, by: \.device).sorted { ($0.value.count, $1.key) > ($1.value.count, $0.key) }.map(\.key)
@@ -250,7 +247,7 @@ struct HistoryCard: View {
         .contentShape(RoundedRectangle(cornerRadius: KaikuTokens.Radius.lg, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(measure.title)
-        .accessibilityValue([latest.map { HistoryFormat.value($0.value, of: measure) } ?? "", line, simulated ? T("common.simulated") : ""]
+        .accessibilityValue([latest.map { HistoryFormat.value($0.value, of: measure) } ?? "", line]
             .filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
     }
@@ -259,7 +256,6 @@ struct HistoryCard: View {
         VStack(alignment: .leading, spacing: KaikuTokens.Space.s1) {
             Text(measure.title).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
             Text(line).kText(.footnote).foregroundStyle(KaikuTokens.Colors.muted).wraps()
-            if simulated { Text(T("common.simulated")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted) }
         }
     }
 
@@ -281,8 +277,7 @@ struct HistoryCard: View {
 }
 
 /// The last seven days, drawn as the measure's page draws them: bars standing on zero for an amount, dots at
-/// their height for a level. A day with nothing recorded is a short grey tick, not a zero; simulated days are
-/// drawn lighter where the week also has days that are not.
+/// their height for a level. A day with nothing recorded is a short grey tick, not a zero.
 struct HistorySparkline: View {
     let points: [HistoryPoint]
     let tone: KTone
@@ -292,13 +287,12 @@ struct HistorySparkline: View {
     var body: some View {
         GeometryReader { g in
             let low = domain.lowerBound, high = domain.upperBound
-            let mixed = HistoryMath.stats(points).partlySimulated
             HStack(alignment: .bottom, spacing: 3) {
                 ForEach(points) { p in
                     ZStack(alignment: .bottom) {
                         Color.clear
                         if let v = p.value {
-                            let fill = tone.ink.opacity(mixed && p.simulated ? 0.45 : 1)
+                            let fill = tone.ink
                             let f = high > low ? Swift.min(1, Swift.max(0, (v - low) / (high - low))) : 0.5
                             if dots {
                                 Circle().fill(fill).frame(width: 6, height: 6).offset(y: -CGFloat(f) * (g.size.height - 6))

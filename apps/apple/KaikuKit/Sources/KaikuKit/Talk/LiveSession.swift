@@ -243,7 +243,9 @@ public final class LiveSession: NSObject, @unchecked Sendable, URLSessionWebSock
             "realtimeInputConfig": realtime,
             "sessionResumption": resumption,
             "contextWindowCompression": compression,
-            "inputAudioTranscription": [String: Any](),
+            // The cloud names the language of the person's speech (`live_setup.inputAudioTranscription.languageCodes`,
+            // config/kaiku.toml [live] transcription_language_hint): without it English came back as German.
+            "inputAudioTranscription": session.live_setup?["inputAudioTranscription"]?.any as? [String: Any] ?? [String: Any](),
             "outputAudioTranscription": [String: Any](),
         ]
         // Proactive audio lets the model leave an input unanswered. Only the cloud turns it on, for the purposes

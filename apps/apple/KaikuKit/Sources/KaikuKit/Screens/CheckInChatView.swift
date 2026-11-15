@@ -49,9 +49,10 @@ public struct CheckInChatView: View {
         .task {
             guard !staticLayout, !chat.left else { return }
             chat.talk.screenAppeared()
+            VoiceLines.shared.chat("checkin", showing: true)
             await chat.start(app: app)
         }
-        .onDisappear { chat.leave() }
+        .onDisappear { VoiceLines.shared.chat("checkin", showing: false); chat.leave() }
         // The camera beside the check-in: only while this screen is in front, and only with her choice on.
         .keepsCameraInFront(chat.camera)
         .onChange(of: app.cameraOn) { _, on in Task { await chat.cameraChoiceChanged(on: on) } }

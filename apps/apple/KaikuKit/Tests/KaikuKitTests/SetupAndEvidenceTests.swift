@@ -214,6 +214,9 @@ final class DayEvidenceTests: XCTestCase {
         XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: false), "setup.hello.unavailable")
         XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: nil), "setup.hello.loading")
         XCTAssertEqual(HelloStep.voiceNoteKey(paired: false, played: nil), "setup.hello.silent")
+        // Kaiku's hello is not said because the page appeared: before "Hear Kaiku" nothing is loading.
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: true, played: nil, asked: false), "setup.hello.tap")
+        XCTAssertEqual(HelloStep.voiceNoteKey(paired: false, played: nil, asked: false), "setup.hello.silent")
         XCTAssertFalse(L10n.shared.string("setup.hello.unavailable", lang: .en).lowercased().contains("that was my voice"))
     }
 }

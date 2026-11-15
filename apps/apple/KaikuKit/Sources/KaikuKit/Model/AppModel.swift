@@ -54,6 +54,9 @@ public final class AppModel {
     /// Bumped by every finished task, game, walk or check-in: the root view plays one completion moment per bump.
     public private(set) var celebration = 0
     public var selectedTab: KaikuTab = .today
+    /// The person just pressed something that means "talk with Kaiku now" (a yes on Today's talk card). Talk takes
+    /// it once as it appears and opens the call; opening the Talk tab any other way only shows "Call Kaiku".
+    public var talkAsked = false
     public var deepLink: KaikuRoute?
     // A2 (iPhone extras)
     /// A notification / widget asked for the PHQ-9 (web page): the shell opens `phq9URL`.

@@ -159,7 +159,7 @@ final class CallOutsideTests: XCTestCase {
                      "I am nearly home. What was the first thing I told you about the weather?"]
         let app = XCUIApplication()
         app.launchArguments = ["-kaiku.lang", "en", "-AppleLanguages", "(en)", "-kaikuMute", "YES", "-kaikuSkipOnboarding", "YES",
-                               "-kaikuPairLink", "\(cloud)/?home=\(home)", "-kaikuTab", "talk", "-kaiku.talk.voiceMuted", "NO",
+                               "-kaikuPairLink", "\(cloud)/?home=\(home)", "-kaikuTab", "talk", "-kaikuTalkStart", "YES", "-kaiku.talk.voiceMuted", "NO",
                                "-kaikuTalkSay", first, "-kaikuTalkSayLater", later.joined(separator: "|"), "-kaikuTalkSayDelay", "\(delay)"]
         if let trace = env["KAIKU_CALL_TRACE"] { app.launchArguments += ["-kaikuCallTrace", trace] }
         app.launch()

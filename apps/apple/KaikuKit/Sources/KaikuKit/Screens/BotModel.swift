@@ -35,12 +35,17 @@ public final class BotModel {
     public private(set) var micSent = 0
     public private(set) var micSentAt: Date?
     @ObservationIgnored private var capture: AudioCapture?
-    @ObservationIgnored private var robotHome: String?
 
     @ObservationIgnored private var visible = false
     @ObservationIgnored private var inFront = true
     @ObservationIgnored private var client: BotBusClient?
-    @ObservationIgnored private(set) var home: String?
+    /// The home named by hand (`kaiku.bot.home`); nil = any home on the broker, then the first one heard.
+    @ObservationIgnored private var namedHome: String?
+    /// The home the robot on this broker publishes under, learned from the first message heard. A home broker has
+    /// one robot, and its boards may use another id than the person's record (`demo-aino` vs `aino`), so the
+    /// paired home is not assumed.
+    @ObservationIgnored private var heardHome: String?
+    var home: String? { namedHome ?? heardHome }
     @ObservationIgnored private var serviceURL: URL?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var password: String?
@@ -72,11 +77,10 @@ public final class BotModel {
     /// A profile the app made for itself on a nearby service (`device-<uuid>`, `ServiceIdentity`) is not a home the
     /// robot publishes under, so then it listens to any home on the broker (`+`); `kaiku.bot.home` names one.
     public func configure(serviceURL: URL?, home: String?) {
-        let paired = home.flatMap { $0.hasPrefix("device-") ? nil : $0 }
-        let robotHome = defaults.string(forKey: Self.homeKey).flatMap { $0.isEmpty ? nil : $0 } ?? paired
-        let changed = serviceURL != self.serviceURL || robotHome != self.home
+        let named = defaults.string(forKey: Self.homeKey).flatMap { $0.isEmpty ? nil : $0 }
+        let changed = serviceURL != self.serviceURL || named != namedHome
         self.serviceURL = serviceURL
-        self.home = robotHome
+        namedHome = named
         resolveAddress()
         if changed, client != nil { restart() }
     }
@@ -96,13 +100,30 @@ public final class BotModel {
 
     private func connect() {
         guard let address else { return }
-        let c = makeClient(address, home, user.isEmpty ? nil : user, password, { [weak self] s in
+        heardHome = nil
+        let c = makeClient(address, namedHome, user.isEmpty ? nil : user, password, { [weak self] s in
             guard let self else { return }
             if s == .listening, self.link != .listening { self.heardSinceConnect = 0 }
             self.link = s
+            if s == .unreachable { self.tryOtherAddress() }
         }, { [weak self] topic, data in self?.heard(topic, data) })
         client = c
         c.start()
+    }
+
+    /// Nobody answers at the address in use and there is another one to try (the typed one and the one where the
+    /// Kaiku service runs): switch to it. An old typed address then never hides a robot that is right there.
+    private func tryOtherAddress() {
+        guard Self.launchAddress == nil, state.messages == 0 || heardSinceConnect == 0 else { return }
+        let typed = defaults.string(forKey: Self.addressKey).flatMap(BotAddress.parse)
+        let guess = BotAddress.guess(serviceURL: serviceURL)
+        guard let typed, let guess, typed != guess, let now = address else { return }
+        address = now == typed ? guess : typed
+        addressGuessed = address == guess
+        Task { @MainActor [weak self] in
+            guard let self, self.client != nil, self.link == .unreachable else { return }
+            self.disconnect(); self.evaluate()
+        }
     }
 
     private func disconnect() {
@@ -115,7 +136,7 @@ public final class BotModel {
 
     func heard(_ topic: String, _ data: Data, now: Date = Date()) {
         guard BotTopics.allowed(topic, home: home), let env = BotEnvelope.decode(data) else { return }
-        if env.type == "cmd.head" { robotHome = topic.split(separator: "/").dropFirst(2).first.map(String.init) }
+        if home == nil { heardHome = topic.split(separator: "/").dropFirst(2).first.map(String.init) }
         heardSinceConnect += 1
         state.take(env, now: now)
     }
@@ -163,7 +184,7 @@ public final class BotModel {
     /// time what this device hears is dropped here and never leaves it.
     func sendMic(_ frames: [Data], now: Date = Date()) {
         guard micOn, let client, state.micHeld(now: now) else { return }
-        for f in frames where client.sendMicFrame(f, home: home ?? robotHome) {
+        for f in frames where client.sendMicFrame(f, home: home) {
             micSent += 1
             micSentAt = now
         }

@@ -13,6 +13,12 @@ public struct BotView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model = BotModel.shared
     @State private var filter: BotKind? = nil
+    /// "Where the robot is": nil = open only while there is something to fix (no address, nobody answers, refused).
+    @State private var showSetup: Bool? = nil
+    @State private var showAll = UserDefaults.standard.string(forKey: "kaikuBotScroll") != nil
+    private var setupOpen: Bool {
+        showSetup ?? (model.address == nil || model.link == .unreachable || model.link == .refused)
+    }
     /// iPhone: a screen under You (back + title); Mac: a tab root (page header).
     let pushed: Bool
     public init(pushed: Bool = false) { self.pushed = pushed }
@@ -22,25 +28,24 @@ public struct BotView: View {
         TimelineView(.periodic(from: .now, by: 1)) { tick in
             KScreen(T("bot.title"), subtitle: T("bot.sub"), back: pushed ? { dismiss() } : nil, maxWidth: KaikuTokens.Size.paneMax) {
                 if pushed { Text(T("bot.sub")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink2).wraps() }
-                if model.state.messages == 0 {
-                    // Nothing heard yet: where it listens, the parts, the address field (the empty state).
-                    BotConnectionCard(model: model, now: tick.date, part: .all)
-                    if model.link == .listening { BotQuietCard() }
-                    BotRobotMicCard(model: model, now: tick.date)
-                } else {
-                    // Heard: one line on the connection on top, what the robot does next, the parts and the address
-                    // at the end.
-                    BotConnectionCard(model: model, now: tick.date, part: .status)
-                    BotRobotMicCard(model: model, now: tick.date).id("robotmic")
-                    KAdaptiveColumns(minWidth: 640, spacing: KaikuTokens.Space.s5, leadingFraction: 0.5, stack: KaikuTokens.Space.s5) {
-                        BotNowCard(state: model.state, now: tick.date).id("now")
-                        BotSensesCard(state: model.state, now: tick.date).id("senses")
-                    } trailing: {
-                        BotVoiceCard(state: model.state, now: tick.date).id("voice")
-                        BotRecordsCard(state: model.state, now: tick.date).id("records")
+                // Three things on top, always: is the robot there, this device as its microphone, what it is doing.
+                // Where the robot is and everything it sends are one tap away, closed until asked for.
+                BotConnectionCard(model: model, now: tick.date, part: .status)
+                BotRobotMicCard(model: model, now: tick.date).id("robotmic")
+                if model.state.messages > 0 { BotNowCard(state: model.state, now: tick.date).id("now") }
+                BotMore(title: T("bot.more.setup"), detail: T("bot.more.setup.d"), open: setupOpen, id: "bot.more.setup") { showSetup = !setupOpen }
+                if setupOpen { BotConnectionCard(model: model, now: tick.date, part: .details).id("robot") }
+                if model.state.messages > 0 {
+                    BotMore(title: T("bot.more.all"), detail: T("bot.more.all.d"), open: showAll, id: "bot.more.all") { showAll.toggle() }
+                    if showAll {
+                        KAdaptiveColumns(minWidth: 640, spacing: KaikuTokens.Space.s5, leadingFraction: 0.5, stack: KaikuTokens.Space.s5) {
+                            BotSensesCard(state: model.state, now: tick.date).id("senses")
+                            BotRecordsCard(state: model.state, now: tick.date).id("records")
+                        } trailing: {
+                            BotVoiceCard(state: model.state, now: tick.date).id("voice")
+                        }
+                        BotFeedCard(model: model, filter: $filter, now: tick.date).id("feed")
                     }
-                    BotFeedCard(model: model, filter: $filter, now: tick.date).id("feed")
-                    BotConnectionCard(model: model, now: tick.date, part: .details).id("robot")
                 }
             }
         }
@@ -134,7 +139,8 @@ struct BotFact: View {
 // MARK: 1 · connection
 
 struct BotConnectionCard: View {
-    enum Part { case all, status, details }
+    /// status = the connection line and the robot's parts; details = the address and the sign-in.
+    enum Part { case status, details }
     let model: BotModel
     let now: Date
     let part: Part
@@ -158,13 +164,34 @@ struct BotConnectionCard: View {
 
     var body: some View {
         if part == .status {
-            KSection { statusRow }
+            KSection {
+                statusRow
+                if model.link == .unreachable && model.state.messages == 0 && !model.replaying {
+                    Text(T("bot.empty")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                        .padding(.horizontal, KaikuTokens.Space.s4).padding(.bottom, KaikuTokens.Space.s3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(partKeys, id: \.self) { key in
+                    if let part = model.state.parts[key] {
+                        KDivider()
+                        BotPartRow(name: key, part: part, now: now)
+                    }
+                }
+            }
         } else {
-            KSection(T("bot.sec.link"), subtitle: T("bot.sec.link.d"), icon: "wifi", tone: .sky) {
-                if part == .all { statusRow; KDivider(plain: true) }
-                details
+            KSection {
+                addressRow
+                if signIn || model.link == .refused {
+                    KDivider(plain: true)
+                    BotSignIn(model: model)
+                }
             }
         }
+    }
+
+    private var partKeys: [String] {
+        let known = ["head", "sensors", "hub", "friendlink"]
+        return known.filter { model.state.parts[$0] != nil } + model.state.parts.keys.sorted().filter { !known.contains($0) }
     }
 
     private var statusRow: some View {
@@ -174,27 +201,6 @@ struct BotConnectionCard: View {
                         ?? T("bot.address.none"),
                     accessory: .none)
             .accessibilityIdentifier("bot.link")
-    }
-
-    @ViewBuilder private var details: some View {
-            if model.link == .unreachable && model.state.messages == 0 && !model.replaying {
-                Text(T("bot.empty")).kText(.footnote).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
-                    .padding(.horizontal, KaikuTokens.Space.s4).padding(.vertical, KaikuTokens.Space.s3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                KDivider(plain: true)
-            }
-            ForEach(["head", "sensors", "hub", "friendlink"].filter { model.state.parts[$0] != nil }
-                    + model.state.parts.keys.sorted().filter { !["head", "sensors", "hub", "friendlink"].contains($0) }, id: \.self) { key in
-                if let part = model.state.parts[key] {
-                    BotPartRow(name: key, part: part, now: now)
-                    KDivider()
-                }
-            }
-            addressRow
-            if signIn || model.link == .refused {
-                KDivider(plain: true)
-                BotSignIn(model: model)
-            }
     }
 
     @ViewBuilder private var addressRow: some View {
@@ -308,6 +314,35 @@ struct BotQuietCard: View {
         KCard(tone: .sky) {
             Text(T("bot.quiet")).kText(.body).foregroundStyle(KaikuTokens.Colors.ink).wraps()
         }
+    }
+}
+
+/// One line that opens or closes the cards under it.
+struct BotMore: View {
+    let title: String
+    let detail: String
+    let open: Bool
+    let id: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: KaikuTokens.Space.s3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).kText(.body, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink)
+                    Text(detail).kText(.caption).foregroundStyle(KaikuTokens.Colors.ink2).wraps()
+                }
+                Spacer(minLength: KaikuTokens.Space.s2)
+                Image(systemName: open ? "chevron.up" : "chevron.down").foregroundStyle(KaikuTokens.Colors.muted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, KaikuTokens.Space.s4)
+            .frame(minHeight: KaikuTokens.Size.tapMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .kPointer()
+        .accessibilityValue(T(open ? "bot.more.open" : "bot.more.closed"))
+        .accessibilityIdentifier(id)
     }
 }
 

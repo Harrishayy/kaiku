@@ -87,7 +87,7 @@ public struct TodayView: View {
 
     private func agreedStack(_ board: AgreedBoard, mascot: Bool) -> some View {
         AgreedStack(board: board, showsMascot: mascot, waiting: invite.settling,
-                    hear: { VoiceLines.shared.say($0.text, lang: app.language) },
+                    hear: { VoiceLines.shared.say($0.text, lang: app.language, origin: .pressed) },
                     start: { start($0) }, notNow: { putAside($0) })
     }
 
@@ -116,7 +116,7 @@ public struct TodayView: View {
 
     private func invitationCard(_ inv: Invitation, mascot: Bool) -> some View {
         InvitationCard(invitation: inv, showsMascot: mascot, waiting: invite.sending,
-                       hear: { VoiceLines.shared.say(inv.text, lang: app.language) },
+                       hear: { VoiceLines.shared.say(inv.text, lang: app.language, origin: .pressed) },
                        yes: { answer(.yes) }, notNow: { answer(.not_now) })
             .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
     }
@@ -128,7 +128,7 @@ public struct TodayView: View {
         if a == .not_now { declined = true }
         Task {
             switch await invite.answer(a, app: app) {
-            case .talk?: app.selectedTab = .talk
+            case .talk?: app.talkAsked = true; app.selectedTab = .talk   // her yes to "talk about it" is the press
             case .route(let r)?: app.deepLink = r; app.selectedTab = r.tab
             case nil: break
             }

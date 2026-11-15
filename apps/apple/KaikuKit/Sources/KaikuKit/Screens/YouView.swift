@@ -425,12 +425,27 @@ public struct VoiceLanguageView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var player = VoiceSample()
+    @State private var kaikuMuted = Conversation.voiceMutedSaved
     public init() {}
+
+    /// One choice for every place Kaiku speaks: saved, and applied at once to a conversation that is open.
+    private var muteKaiku: Binding<Bool> {
+        Binding(get: { kaikuMuted }, set: { on in
+            kaikuMuted = on
+            UserDefaults.standard.set(on, forKey: Conversation.voiceMutedKey)
+            TalkModel.active?.conversation.setVoiceMuted(on)
+            WalkModel.shared.companion?.setVoiceMuted(on)
+        })
+    }
 
     public var body: some View {
         @Bindable var app = app
         KScreen(T("voice.title"), back: { dismiss() }) {
             KSection {
+                KToggleRow(icon: "speaker.slash.fill", tint: KaikuTokens.Colors.sky, title: T("call.mute.kaiku"),
+                           detail: T("voice.mute.d"), isOn: muteKaiku)
+                    .accessibilityIdentifier("voice.mute")
+                KDivider()
                 KRow(icon: "globe", tint: KaikuTokens.Colors.sky, title: T("voice.lang"), accessory: .value("English"))
                 KDivider()
                 HStack(alignment: .top, spacing: KaikuTokens.Space.s3) {

@@ -84,7 +84,10 @@ targets:
         NSBluetoothAlwaysUsageDescription: "To walk with your Meta glasses."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        UIBackgroundModes: [audio, fetch, bluetooth-central]
+        # external-accessory + com.meta.ar.wearable: the toolkit's Bluetooth Classic link, so the glasses camera
+        # also streams when the phone's Wi-Fi is busy (Personal Hotspot) and cannot join the glasses' own Wi-Fi.
+        UIBackgroundModes: [audio, fetch, bluetooth-central, external-accessory]
+        UISupportedExternalAccessoryProtocols: [com.meta.ar.wearable]
         BGTaskSchedulerPermittedIdentifiers: [fi.kaiku.app.refresh]
         NSSupportsLiveActivities: true
         KaikuAppGroup: $(KAIKU_APP_GROUP)

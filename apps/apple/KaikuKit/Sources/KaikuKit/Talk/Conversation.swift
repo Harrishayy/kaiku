@@ -63,6 +63,8 @@ public final class Conversation {
     /// output transcription stay on). Independent of the microphone mute. Remembered on this device.
     public private(set) var voiceMuted = UserDefaults.standard.bool(forKey: Conversation.voiceMutedKey)
     public static let voiceMutedKey = "kaiku.talk.voiceMuted"
+    /// The saved choice, for places without a conversation of their own (scripted lines, You → Voice).
+    public static var voiceMutedSaved: Bool { UserDefaults.standard.bool(forKey: voiceMutedKey) }
     /// When Live first answered in this conversation (the call's clock starts here).
     public private(set) var liveSince: Date?
     /// False when the conversation runs without the microphone (permission off): Kaiku still speaks and answers

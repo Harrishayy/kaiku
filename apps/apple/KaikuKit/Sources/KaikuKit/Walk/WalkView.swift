@@ -91,6 +91,16 @@ public struct WalkView: View {
             }
             if let c = walk.companion, !c.lines.isEmpty { transcript(c) }
             if walk.talking {
+                // Kaiku's voice is one choice everywhere (Talk, check-ins, the walk): muted in Talk means muted
+                // here, so the walk shows it and can change it.
+                if let c = walk.companion {
+                    Button { c.setVoiceMuted(!c.voiceMuted) } label: {
+                        Label(T(c.voiceMuted ? "call.unmute.kaiku" : "call.mute.kaiku"),
+                              systemImage: c.voiceMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(c.voiceMuted ? .kPrimary : .kSecondary)
+                    .accessibilityIdentifier("walk.voice")
+                }
                 Button(walk.companionMuted ? T("walk.talk.unmute") : T("walk.talk.mute")) {
                     walk.setTalking(walk.companionMuted)
                 }

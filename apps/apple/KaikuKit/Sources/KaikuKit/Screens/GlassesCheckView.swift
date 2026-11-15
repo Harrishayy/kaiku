@@ -55,7 +55,7 @@ public final class GlassesSelfTest {
         GlassesLog.shared.log("selftest_route", ["in": route.input, "in_type": route.inputType, "out": route.output,
                                                  "out_type": route.outputType, "headset_settled": settled])
         // "Played" only when audio really started (a service without a voice must read as silent).
-        let spoke = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("gc.test.line"))
+        let spoke = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("gc.test.line"), origin: .pressed)
         try? await Task.sleep(nanoseconds: 300_000_000)
         var waited = 0
         while VoiceLines.shared.speaking && waited < 60 { try? await Task.sleep(nanoseconds: 100_000_000); waited += 1 }

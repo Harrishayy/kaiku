@@ -406,10 +406,13 @@ struct HelloStep: View {
     @State private var heard = false
     /// nil = still trying; true = audio really started; false = no voice (say so, never claim it).
     @State private var voicePlayed: Bool?
+    @State private var asked = false
     @Environment(AppModel.self) private var app
 
-    static func voiceNoteKey(paired: Bool, played: Bool?) -> String {
+    /// `asked`: the person pressed "Hear Kaiku". Before that nothing is loading and nothing was heard.
+    static func voiceNoteKey(paired: Bool, played: Bool?, asked: Bool = true) -> String {
         guard paired else { return "setup.hello.silent" }
+        guard asked else { return "setup.hello.tap" }
         switch played {
         case nil: return "setup.hello.loading"
         case true?: return "setup.hello.voice"
@@ -428,11 +431,11 @@ struct HelloStep: View {
             } else {
                 Bubble(T("setup.hello.title"), big: true)
                 HStack(spacing: KaikuTokens.Space.s3) {
-                    Text(T(Self.voiceNoteKey(paired: app.isPaired, played: voicePlayed))).kText(.footnote)
+                    Text(T(Self.voiceNoteKey(paired: app.isPaired, played: voicePlayed, asked: asked))).kText(.footnote)
                         .foregroundStyle(KaikuTokens.Colors.muted).wraps()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    if app.isPaired, voicePlayed == true {
-                        Button(T("setup.hello.again")) { hello() }.buttonStyle(KButtonStyle(.ghost, fullWidth: false)).fixedSize()
+                    if app.isPaired {
+                        Button(T(voicePlayed == true ? "setup.hello.again" : "setup.hello.hear")) { hello() }.buttonStyle(KButtonStyle(.ghost, fullWidth: false)).fixedSize()
                     }
                 }
                 KCard(tone: .sky) {
@@ -450,22 +453,19 @@ struct HelloStep: View {
                     Haptics.finished()
                     withAnimation(KaikuTokens.Spring.gentle) { finished = true }
                     app.celebrate()
-                    if app.isPaired { VoiceLines.shared.play("welcome.done", lang: app.language, fallback: T("setup.done.body")) }
                 }
                 .buttonStyle(.kPrimary)
                 Button(T("common.skip"), action: done).buttonStyle(.kGhost)
             }
         }
-        .task {
-            hello()
-            try? await Task.sleep(nanoseconds: 3_500_000_000)
-            heard = true
-        }
+        // Kaiku's hello is not said because the page appeared: "Hear Kaiku" plays it.
+        .task { heard = true }
         .onDisappear { VoiceLines.shared.stop() }
     }
 
     private func hello() {
         guard app.isPaired else { return }
-        Task { voicePlayed = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("setup.hello.title")) }
+        asked = true
+        Task { voicePlayed = await VoiceLines.shared.playReporting("welcome.hello", lang: app.language, fallback: T("setup.hello.title"), origin: .pressed) }
     }
 }

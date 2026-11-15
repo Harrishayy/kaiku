@@ -98,8 +98,9 @@ public final class VoiceLines {
     /// Plays a keyed line in Kaiku's Gemini voice: cached audio, else fetched now. A key the service does not know
     /// yet (an older service) falls back to the same words through `/v1/voice/say` when `fallback` is given.
     /// Still Gemini TTS either way; with neither, silent.
-    public func play(_ key: String, lang: KaikuLanguage, fallback: String? = nil) {
-        guard !muted else { return }
+    public func play(_ key: String, lang: KaikuLanguage, fallback: String? = nil, origin: VoiceOrigin) {
+        // Lines Kaiku says by itself follow "Mute Kaiku"; a line the person asked to hear (`say`, the self-test) plays.
+        guard !muted, allows(origin), !UserDefaults.standard.bool(forKey: Conversation.voiceMutedKey) else { return }
         request += 1
         let id = request
         let url = Self.audioURL(key, lang.rawValue)
@@ -122,8 +123,8 @@ public final class VoiceLines {
 
     /// Same as `play`, and reports whether audio actually started: the caller must not claim a voice was heard
     /// when the service has none (muted, offline, no TTS).
-    public func playReporting(_ key: String, lang: KaikuLanguage, fallback: String? = nil) async -> Bool {
-        guard !muted else { return false }
+    public func playReporting(_ key: String, lang: KaikuLanguage, fallback: String? = nil, origin: VoiceOrigin) async -> Bool {
+        guard !muted, allows(origin) else { return false }
         request += 1
         let id = request
         let url = Self.audioURL(key, lang.rawValue)
@@ -143,8 +144,8 @@ public final class VoiceLines {
     }
 
     /// Says any short line in Kaiku's Gemini voice (`POST /v1/voice/say`, cached); silent when that fails.
-    public func say(_ text: String, lang: KaikuLanguage) {
-        guard !muted, !text.isEmpty else { return }
+    public func say(_ text: String, lang: KaikuLanguage, origin: VoiceOrigin) {
+        guard !muted, !text.isEmpty, allows(origin) else { return }
         request += 1
         let id = request
         let url = Self.sayURL(text, lang.rawValue)
@@ -155,6 +156,25 @@ public final class VoiceLines {
                 if id == request { _ = playData(wav) }
                 return
             }
+        }
+    }
+
+    // MARK: when Kaiku may speak (2026-11-15)
+
+    /// The chat screens showing right now ("talk", "checkin"). A chat line is spoken only while its screen is in
+    /// front: one that was asked for there and arrives after the person left stays silent.
+    public private(set) var chatShowing: Set<String> = []
+    public func chat(_ screen: String, showing: Bool) {
+        if showing { chatShowing.insert(screen) } else { chatShowing.remove(screen) }
+    }
+
+    /// The one rule: Kaiku's voice never starts by itself on a screen. A line is spoken because the person just
+    /// pressed something to hear it or to talk (`.pressed`), or inside a chat that is on screen (`.chat`). Every
+    /// caller has to say which; there is no way to play a line without an origin.
+    public func allows(_ origin: VoiceOrigin) -> Bool {
+        switch origin {
+        case .pressed: return true
+        case .chat: return !chatShowing.isEmpty
         }
     }
 
@@ -211,4 +231,13 @@ extension APIClient {
               (resp as? HTTPURLResponse)?.statusCode == 200, data.count > 44 else { return nil }
         return data
     }
+}
+
+/// Why a line is being spoken (`VoiceLines.allows`). There is no case for "the screen appeared", "a timer fired"
+/// or "something changed": those never speak.
+public enum VoiceOrigin: Sendable {
+    /// The person just pressed a button whose point is to hear Kaiku or to talk.
+    case pressed
+    /// Inside the check-in chat or Talk, while that screen is showing.
+    case chat
 }

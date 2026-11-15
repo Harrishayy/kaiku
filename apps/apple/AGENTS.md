@@ -43,6 +43,17 @@ Never holds a Gemini key: Live uses the cloud-minted ephemeral token (root rule 
   `GET /v1/voice?lang=` (line texts), `GET /v1/voice/{key}?lang=` (prefetched on Wi-Fi, fetched on demand on a miss),
   `POST /v1/voice/say` (the app's own lines, cached by text hash). **Never an on-device synthesizer**: cloud
   unreachable AND nothing cached → silent, the text stays on screen.
+- **When Kaiku speaks (2026-11-15): never by itself on a screen.** A spoken line needs an origin
+  (`VoiceLines.play/say/playReporting(…, origin:)`, no default): `.pressed` = the person just pressed something to
+  hear Kaiku or to talk; `.chat` = inside the check-in chat or Talk while that screen is showing
+  (`VoiceLines.chat(_:showing:)`; a chat line that arrives after the person left stays silent). There is no origin
+  for "the screen appeared", a timer or a state change. Opening the **Talk** tab no longer opens a call: it shows
+  "Call Kaiku" (`TalkModel.Mode.ready`), and coming back to the app does not reopen one; a yes on Today's talk card
+  sets `app.talkAsked` and Talk opens the call once. The check-in chat still opens its conversation as it appears.
+  Onboarding's hello plays on "Hear Kaiku", and the "well done" line after the practice task is text only.
+  DEBUG runs open the call on appear with `-kaikuTalkStart YES` (also a Talk demo or `-kaikuTalkSay`).
+  `VoiceOriginTests` pin this. Still by itself: Kaiku's Live voice in a walk the person started, the Mac quick
+  talk after its shortcut, and `walk.done` when a crisis ends a walk (crisis path left as it was).
 - iPhone: Apple Health (read-only, HealthKit), Meta glasses via the DAT SDK (MWDAT 1.0.1, SPM; Motion = dev/beta
   channel), local notifications (no APNs), ActivityKit (no push), App Intents.
 - All shapes: `contracts/schemas/` (mirrored in `KaikuKit/Model/Contracts.swift`).
@@ -990,6 +1001,12 @@ Microphone and speakers are not toolkit features: they are Bluetooth hands-free 
   sent and per second, last problem; `GlassesSelfTest` (Kaiku line through the route → 3 s microphone level → one
   frame thumbnail, nothing kept); `GlassesLog` = `Application Support/Kaiku/glasses-log.jsonl` (states, counts,
   errors; never audio, pictures or words) with Share.
+- **Camera link over Bluetooth (2026-11-15)**: `UISupportedExternalAccessoryProtocols: [com.meta.ar.wearable]` and
+  `external-accessory` in `UIBackgroundModes` (project.yml) let the toolkit stream over Bluetooth Classic. Without
+  them it can only use the glasses' own Wi-Fi, which the phone cannot join while it is a Personal Hotspot: the
+  stream stayed at `waitingForDevice`. Seen on the real glasses: self-test frame and 30 walk frames with the hotspot on.
+- **Mute Kaiku on the walk**: Kaiku's voice mute is one saved choice (`kaiku.talk.voiceMuted`) shared by Talk,
+  check-ins and the walk; the walk screen now has the same Mute Kaiku / Unmute Kaiku button (`walk.voice`).
 - **Info.plist / entitlements for the camera**: `_bonjour._tcp` in `NSBonjourServices`, local-network text,
   `NSBluetoothAlwaysUsageDescription`, `bluetooth-central`, and `com.apple.developer.networking.HotspotConfiguration`
   (the toolkit streams over Wi-Fi hosted by the glasses). While the phone is on that Wi-Fi a LAN-only Kaiku service
@@ -1114,6 +1131,11 @@ starters, no scripted replies on screen; a state that needs explaining gets one 
   sent when the new socket answers. The setup frame always carries `sessionResumption` and
   `contextWindowCompression` (the cloud's `live_setup` values when present). `proactivity` is sent only when the
   cloud's `live_setup` carries it (today a walk); otherwise the field is left out, never defaulted.
+- **Language of what Kaiku hears (2026-11-15).** `LiveSession.setup` sends the cloud's
+  `live_setup.inputAudioTranscription` (`{languageCodes: ["en-US"]}`) as it is, empty only when the cloud gave none:
+  one path for Talk, the check-in chat and the walk through the glasses, on iPhone and Mac (`Conversation` →
+  `POST /v1/companion/session` → `LiveSession.setup`). The on-device recogniser (`OnDeviceListener`, the safety
+  gate and the spoken dial) is created with the app language's locale (`en-US`); the app language is English only.
 - **Whose turn it is** (`Conversation.ModelTurn`). A model turn that answers the person plays at once: they
   spoke or typed, or did something on screen (`personDid(_:)`: a card, the dials, the walk's "Found one"), and
   the credit also covers a tool their words set off and the goodbye of a conversation the model closed. Every
@@ -1640,6 +1662,15 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   reconnect with backoff 1 · 2 · 4 · 8 · 15 s (× 4 after a refused name/password), DISCONNECT on stop. A QoS 1/2
   delivery is acknowledged; a packet larger than 1 MB or malformed drops the connection. `BotTopics.allowed` drops
   anything that is not one of those four kinds for that home before it is decoded.
+- **The page, simplified (2026-11-15; this replaces the layout described under "The page" below):** three cards on
+  top, always: the connection line with the robot's parts, "Robot microphone", and Now (once something was heard).
+  Under them two lines that open on a tap (`BotMore`): "Where the robot is" (the address and the sign-in; open by
+  itself only while there is no address, nobody answers or the broker refuses) and "Everything the robot sends"
+  (Senses, Voice and mind, Sent on to your record, the feed; closed by default).
+- **Nothing to configure in the usual case:** the address is the paired service's host; a typed address that does
+  not answer falls back to that one and back (`BotModel.tryOtherAddress`). The home id is no longer taken from the
+  pairing (the boards may publish under another id than the person's record, `demo-aino` vs `aino`): the page
+  listens to any home on the broker and keeps to the first one heard (`heardHome`); `kaiku.bot.home` still names one.
 - **Robot microphone (D56, 2026-11-15):** the first card under the connection line, one switch, "Use this device as
   the robot's microphone", off by default and off again at every launch (`BotModel.micOn`, never stored). On:
   microphone permission is asked if needed, `AudioCapture` runs (memory only), its 16 kHz PCM is cut into 640-byte

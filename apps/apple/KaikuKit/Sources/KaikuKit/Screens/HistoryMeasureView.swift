@@ -62,7 +62,6 @@ struct HistoryMeasureBody: View {
         if range == .day {
             if HistorySessionChart.fades(marks, measure: m) { notes.append(T("history.legend.warmup")) }
         } else {
-            if stats.partlySimulated { notes.append(T("history.legend.sim")) }
             if points.contains(where: { $0.day == today && $0.value != nil }) { notes.append(T("history.legend.today")) }
         }
         return KAdaptiveColumns(minWidth: 600, leadingFraction: 0.56) {
@@ -79,7 +78,7 @@ struct HistoryMeasureBody: View {
                         HistorySessionChart(measure: m, marks: marks, tone: group.tone)
                     } else {
                         HistoryDayChart(measure: m, points: points, range: range, tone: group.tone,
-                                        fades: stats.partlySimulated, selected: $selected)
+                                        fades: false, selected: $selected)
                         if let s = selected, let p = points.first(where: { $0.day == s }) {
                             HistoryPicked(measure: m, point: p, today: today)
                         }
@@ -158,7 +157,6 @@ struct HistoryHeadline: View {
                     HStack(alignment: .top, spacing: KaikuTokens.Space.s5) { facts }
                     VStack(alignment: .leading, spacing: KaikuTokens.Space.s2) { facts }
                 }
-                if stats.simulated { Text(T("common.simulated")).kText(.caption).foregroundStyle(KaikuTokens.Colors.muted) }
             } else {
                 Text(T(HistoryFormat.emptyKey(measure, card: false))).kText(.body)
                     .foregroundStyle(KaikuTokens.Colors.ink2).wraps()
@@ -204,7 +202,7 @@ struct HistoryDayChart: View {
     let points: [HistoryPoint]
     let range: HistoryRange
     let tone: KTone
-    /// Draw simulated days lighter (only when the period mixes simulated and other days).
+    /// Unused since 2026-11-15: History no longer marks simulated days (always false).
     let fades: Bool
     @Binding var selected: String?
 
@@ -278,16 +276,16 @@ struct HistorySessionChart: View {
             return hours.keys.sorted().map { Bar(id: "h\($0)", minute: Double($0) * 60 + 30, value: Double(hours[$0]?.count ?? 0), light: false) }
         }
         let mixed = Self.fades(marks, measure: measure)
-        return marks.map { Bar(id: $0.id, minute: $0.minute, value: $0.value, light: mixed && ($0.warmup || $0.simulated)) }
+        return marks.map { Bar(id: $0.id, minute: $0.minute, value: $0.value, light: mixed && $0.warmup) }
     }
 
     /// A day's sessions always stand on zero: each bar is one session's own reading (or how many in that hour).
     private var domain: ClosedRange<Double> { 0...Swift.max(1, (bars.map(\.value).max() ?? 1) * 1.08) }
 
-    /// Warm-up and simulated sessions are drawn lighter only when the day also has other sessions to tell them from.
+    /// Warm-up sessions are drawn lighter only when the day also has other sessions to tell them from.
     static func fades(_ marks: [HistoryMark], measure: HistoryMeasure) -> Bool {
         measure.rule != .count && !measure.isClock
-            && marks.contains { $0.warmup || $0.simulated } && marks.contains { !$0.warmup && !$0.simulated }
+            && marks.contains { $0.warmup } && marks.contains { !$0.warmup }
     }
 
     var body: some View {
@@ -358,8 +356,7 @@ struct HistoryPicked: View {
         let day = HistoryFormat.day(point.day, today: today, soFar: true)
         let words: String = {
             guard let v = point.value else { return "\(day) · \(T("history.none.day"))" }
-            var parts = [day, HistoryFormat.value(v, of: measure), T("history.sessions.n", n: point.sessions)]
-            if point.simulated { parts.append(T("common.simulated")) }
+            let parts = [day, HistoryFormat.value(v, of: measure), T("history.sessions.n", n: point.sessions)]
             return parts.joined(separator: " · ")
         }()
         Text(words).kText(.footnote, weight: .semibold).foregroundStyle(KaikuTokens.Colors.ink).wraps()
@@ -491,7 +488,6 @@ struct HistorySessionRow: View {
         if label != nil { parts.append(when) }
         if let name = HistoryDevice.name(session.device) { parts.append(name) }
         if session.warmup == true { parts.append(T("history.warmup")) }
-        if session.sim { parts.append(T("common.simulated")) }
         return parts.joined(separator: " · ")
     }
 

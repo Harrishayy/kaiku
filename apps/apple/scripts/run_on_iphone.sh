@@ -19,7 +19,7 @@ TEAM="${KAIKU_TEAM:?set KAIKU_TEAM to your Apple team id}"
 SUFFIX="${KAIKU_ENTITLEMENTS_SUFFIX-.nogroup}"
 IP="$(ipconfig getifaddr en0 || ipconfig getifaddr en1)"
 DD="${TMPDIR:-/tmp}/kaiku-device-dd"
-DEVICE="$(xcrun devicectl list devices 2>/dev/null | awk '/available \(paired\)/ && /iPhone/ {print $3; exit}')"
+DEVICE="$(xcrun devicectl list devices 2>/dev/null | awk '/available \(paired\)|connected/ && /iPhone/ {print $3; exit}')"
 [ -n "$DEVICE" ] || { echo "no available paired iPhone (cable/unlock/trust/Developer Mode)"; exit 1; }
 if ! curl -sf "http://$IP:8000/healthz" >/dev/null; then
   # Installing does not need the service; only a launch that should connect does.

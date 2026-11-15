@@ -7,7 +7,8 @@ import SwiftUI
 @Observable @MainActor
 final class TalkModel {
     struct Line: Identifiable, Equatable { let id: UUID; let text: String; let me: Bool; var interrupted = false }
-    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied, paused, muted, ended }
+    /// `ready`: no call was asked for yet on this screen (the screen shows "Call Kaiku").
+    enum Mode: Equatable { case connecting, live, scripted, listening, thinking, speaking, denied, paused, muted, ended, ready }
 
     var expression: MascotState?
     private var scripted: [Line] = []
@@ -80,7 +81,7 @@ final class TalkModel {
         if denied && !hasLive && conversation.unavailableReason == .microphone { return .denied }
         if scriptedThinking { return .thinking }
         switch conversation.phase {
-        case .idle: return started ? .ended : .connecting
+        case .idle: return started ? .ended : .ready
         case .connecting: return .connecting
         case .listening: return .live
         case .hearing: return .listening
@@ -131,7 +132,10 @@ final class TalkModel {
         if !ok {
             // No Live: Kaiku still says hello in its own Gemini voice (cached / fetched line; silent offline).
             let key = silentGreeting ?? Self.greetingKey()
-            VoiceLines.shared.play(key, lang: app.language, fallback: silentGreeting == nil ? nil : T(key))
+            // Only for the conversation that is still the one on screen: the start above can take seconds, and a
+            // hello that arrives after the person left would be Kaiku talking on some other screen.
+            guard started, onScreen != false, conversation === c else { return }
+            VoiceLines.shared.play(key, lang: app.language, fallback: silentGreeting == nil ? nil : T(key), origin: .chat)
         }
     }
 
@@ -505,19 +509,43 @@ public struct TalkView: View {
             PairStep(back: { showPairing = false }, next: { showPairing = false; model.restart() })
                 .environment(app)
         }
-        .onAppear { if governsCall { model.screenAppeared() } }
-        .task { if !staticLayout { await model.start(app: app) } }
-        .onDisappear { if governsCall { model.screenDisappeared() } else { model.stop() } }
+        .onAppear {
+            VoiceLines.shared.chat("talk", showing: true)
+            model.app = app   // "Call Kaiku" works before any call was opened here
+            if governsCall { model.screenAppeared() }
+        }
+        // Opening this screen does not open a call (2026-11-15): Kaiku never starts talking because a tab was
+        // shown. "Call Kaiku" starts it, or a press elsewhere that asked for exactly this (`app.talkAsked`).
+        .task {
+            let asked = app.talkAsked || Self.launchStarts
+            app.talkAsked = false
+            if !staticLayout, asked { await model.start(app: app) }
+        }
+        .onDisappear {
+            VoiceLines.shared.chat("talk", showing: false)
+            if governsCall { model.screenDisappeared() } else { model.stop() }
+        }
         .onChange(of: app.pairing) { _, _ in model.stop(); text = "" }
         // No call: nothing to type into. A call without the microphone: typing is the way to talk, so it is open.
         .onChange(of: model.hasLive, initial: true) { _, live in typing = live && !model.conversation.listens }
         .onChange(of: phase) { _, p in
             bgTask?.cancel()
             if p == .background { bgTask = Task { await model.backgrounded() } }
-            // Back in front: Talk picks up again, but only the Talk that is showing. (This also fires for a Talk
-            // tab that sits behind another tab; `start` refuses there.)
-            if p == .active { Task { await model.start(app: app) } }
+            // Back in front: a call that ended while the app was away is not opened again by itself; the
+            // screen shows "Call Kaiku".
         }
+    }
+
+    /// Test, demo and picture runs open the call as the screen appears (`-kaikuTalkStart YES`, a Talk demo, or
+    /// lines to type): there is nobody to press "Call Kaiku". Never in a release build.
+    static var launchStarts: Bool {
+        #if DEBUG
+        let d = UserDefaults.standard
+        return d.bool(forKey: "kaikuTalkStart") || TalkDemo.state != nil || d.bool(forKey: "kaikuInspectOnly")
+            || d.string(forKey: "kaikuTalkSay") != nil || d.string(forKey: "kaikuTalkSayLater") != nil
+        #else
+        return false
+        #endif
     }
 
     /// On the iPhone and iPad this screen owns its call: it starts while the screen is showing and ends when it

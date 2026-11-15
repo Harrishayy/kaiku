@@ -225,8 +225,8 @@ public final class WalkModel {
         if talking {
             if !byKaiku { companion?.personDid(g.contextLine) }      // the person's own tap: Kaiku's answer is theirs
         } else if let app {
-            if g.done { VoiceLines.shared.play("walk.light_hunt.found", lang: app.language) }
-            else if g.isLightHunt { VoiceLines.shared.play("walk.light_hunt.\(g.found + 1)", lang: app.language) }
+            if g.done { VoiceLines.shared.play("walk.light_hunt.found", lang: app.language, origin: .pressed) }
+            else if g.isLightHunt { VoiceLines.shared.play("walk.light_hunt.\(g.found + 1)", lang: app.language, origin: .pressed) }
         }
         GlassesLog.shared.log("walk_goal_count", ["found": g.found, "target": g.target, "by_kaiku": byKaiku])
         tick()
@@ -385,7 +385,7 @@ public final class WalkModel {
         GlassesLog.shared.log("walk_end", ["minutes": outing.minutes, "steps": outing.steps ?? -1, "turns": turns,
                                            "frames": frames, "in_ear": heardInEar, "method": outing.method.rawValue,
                                            "saved": String(describing: saved)])
-        VoiceLines.shared.play("walk.done", lang: app.language)
+        VoiceLines.shared.play("walk.done", lang: app.language, origin: .pressed)
         if await Self.emitOuting(outing, id: envelopeID, start: start, simulated: simulated, scope: scope, app: app) {
             // The path's walk stop is ticked at once and stays ticked today (the garden only shows the outing after
             // the next full refresh).
