@@ -361,9 +361,13 @@ class PlaySession(Strict):
         return self
 
 
-FaceTask = Literal["firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in"]
-FACE_TASKS: tuple[str, ...] = ("firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in")
-FaceMethod = Literal["arkit_blendshapes", "vision_landmarks"]
+# photo_time: the robot's "Photo time!" moment (a few seconds in front of its camera; no picture is taken or kept).
+FaceTask = Literal["firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in", "photo_time"]
+FACE_TASKS: tuple[str, ...] = ("firefly", "breathe", "tell", "pebbles", "lantern", "seeds", "watering", "check_in",
+                               "photo_time")
+# haar_cascades: the robot's camera (OpenCV cascades on the UNO Q): smiles and head movement only, its own scale.
+FaceMethod = Literal["arkit_blendshapes", "vision_landmarks", "haar_cascades"]
+FaceDevice = Literal["phone", "mac", "web", "robot"]
 FACE_SIGNS: tuple[str, ...] = ("smile_share", "smiles", "brow_raise_share", "brow_furrow_share", "mouth_open_share",
                                "blinks_per_min", "gaze_on_share", "head_movement", "expression_range")
 
@@ -382,10 +386,12 @@ class FaceSigns(Strict):
     Counts toward the "laptop" (display: Apps) group beside the task; config/criteria.toml reads it as shown, not
     scored."""
 
-    task: FaceTask = Field(description="the task it belongs to: a game (PlayGame) or the check-in chat")
-    device: PlayDevice
+    task: FaceTask = Field(description="the task it belongs to: a game (PlayGame), the check-in chat, or the "
+                                       "robot's Photo time")
+    device: FaceDevice
     method: FaceMethod = Field(description="arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); "
-                                           "vision_landmarks: 2-D face landmarks (Mac, other iPhones)")
+                                           "vision_landmarks: 2-D face landmarks (Mac, other iPhones); "
+                                           "haar_cascades: OpenCV cascades on the robot's camera")
     duration_s: float = Field(ge=0, le=86_400, description="seconds the camera sampled")
     samples: int = Field(ge=1, description="frames looked at; none is kept")
     coverage: float = Field(ge=0, le=1, description="share of sampled frames with exactly one usable face")
@@ -525,6 +531,19 @@ class RawLight(Strict):
     lux_est: float = Field(ge=0)
 
 
+class RawFaceSigns(Strict):
+    """What the robot's camera counted in one "Photo time" window (`cmd.sensors face_signs_s`): numbers only, made
+    in the camera thread; no frame leaves it. The hub turns it into `obs.face_signs` (task photo_time, device robot,
+    method haar_cascades). A sign the cascades could not measure is None, never a zero; coverage 0 carries none."""
+
+    duration_s: float = Field(ge=0, le=60, description="seconds the camera sampled")
+    samples: int = Field(ge=1, description="frames looked at; none is kept")
+    coverage: float = Field(ge=0, le=1, description="share of sampled frames with exactly one face")
+    smile_share: float | None = Field(default=None, ge=0, le=1, description="share of face frames with a smile")
+    smiles: int | None = Field(default=None, ge=0, description="distinct smiles")
+    head_movement: float | None = Field(default=None, ge=0, description="face-centre travel per second, in face widths")
+
+
 class RawButton(Strict):
     id: str = Field(min_length=1, max_length=32)
     pressed: bool
@@ -628,6 +647,15 @@ class HeadCmd(_AtLeastOne):
                                   "conversation the person started is open); close = stop. Re-sent at least every "
                                   "3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while "
                                   "its speaker plays and about 250 ms after")
+    ritual: Literal["next", "end"] | None = Field(
+        default=None, description="only for a head that runs its own ritual (standalone firmware): next = go on to "
+                                  "the next step now (she answered the dial question in words instead of with the "
+                                  "ear); end = she asked to stop: back to idle now, quietly. Ignored while idle")
+    activity: Literal["breathe", "drum", "none"] | None = Field(
+        default=None, description="only for a head that runs its own ritual (standalone firmware), the second half of "
+                                  "asking twice (D58): the person asked Kaiku in words for this activity; for the next "
+                                  "20 s a press of the ear starts it (the head goes straight to that step) instead of "
+                                  "doing what a press does in the current step. none = no longer. Ignored while idle")
     show: Literal["help", "none"] | None = Field(
         default=None, description="help = the head shows the helpline's name and number and the emergency number on "
                                   "its own screen, from constants compiled into the firmware, until `none`, a new "
@@ -638,6 +666,9 @@ class SensorsCmd(_AtLeastOne):
     ppg: Literal["start", "stop"] | None = None
     camera_enable: bool | None = None
     chime: Chime | None = Field(default=None, description="short cue on the Modulino Buzzer; alert = device fault only")
+    face_signs_s: float | None = Field(
+        default=None, gt=0, le=30, description="Photo time: count face signs for this many seconds, then send one "
+                                               "raw.sensors.face_signs. Nothing is recorded; ignored without a camera")
 
 
 class FriendPing(Strict):
@@ -663,6 +694,8 @@ class HubCmd(_AtLeastOne):
     start_ritual: bool | None = None
     phq9_due: bool | None = Field(default=None, description="ask PHQ-9 in the next ritual (spoken mode)")
     say: str | None = Field(default=None, max_length=500, description="text-mode user utterance (sim/demo)")
+    photo_time: bool | None = Field(default=None, description="start the robot's Photo time now (a button or a tool; "
+                                                               "the same thing as saying it to Kaiku)")
 
     @field_validator("set_ritual_time")
     @classmethod

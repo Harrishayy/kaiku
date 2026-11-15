@@ -215,7 +215,8 @@
           "enum": [
             "phone",
             "mac",
-            "web"
+            "web",
+            "robot"
           ],
           "title": "Device",
           "type": "string"
@@ -272,10 +273,11 @@
           "title": "Head Movement"
         },
         "method": {
-          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)",
+          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones); haar_cascades: OpenCV cascades on the robot's camera",
           "enum": [
             "arkit_blendshapes",
-            "vision_landmarks"
+            "vision_landmarks",
+            "haar_cascades"
           ],
           "title": "Method",
           "type": "string"
@@ -346,7 +348,7 @@
           "title": "Smiles"
         },
         "task": {
-          "description": "the task it belongs to: a game (PlayGame) or the check-in chat",
+          "description": "the task it belongs to: a game (PlayGame), the check-in chat, or the robot's Photo time",
           "enum": [
             "firefly",
             "breathe",
@@ -355,7 +357,8 @@
             "lantern",
             "seeds",
             "watering",
-            "check_in"
+            "check_in",
+            "photo_time"
           ],
           "title": "Task",
           "type": "string"

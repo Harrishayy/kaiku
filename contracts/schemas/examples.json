@@ -322,6 +322,14 @@
   "raw.sensors.distance": {
     "cm": 58.0
   },
+  "raw.sensors.face_signs": {
+    "coverage": 0.91,
+    "duration_s": 8.0,
+    "head_movement": 0.18,
+    "samples": 64,
+    "smile_share": 0.4,
+    "smiles": 2
+  },
   "raw.sensors.hall": {
     "at_home": true
   },

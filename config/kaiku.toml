@@ -46,6 +46,7 @@ silence_ms = 900                              # quiet this long = the person's t
 affective_dialog = false                      # the Live guide lists it as supported on gemini-3.8-live (v1beta, enable_affective_dialog), but true closes the session with 1007 "invalid argument" on the first turn (real calls 2026-11-14: SDK, raw key and token endpoint). Leave off until a real call passes.
 feel_scheduling = "WHEN_IDLE"                 # FunctionResponse scheduling for the non-blocking `feel` tool (INTERRUPT | WHEN_IDLE | SILENT). Real Live sessions 2026-11-14: the model calls `feel` before it speaks; with WHEN_IDLE it then answers using the plan, with SILENT it said nothing that turn.
 proactive_audio_purposes = ["walk"]           # setup.proactivity.proactiveAudio only for these purposes, on every surface; off for all others (D49). "The model can reject responding to the last prompt" (Live API reference, ProactivityConfig): right for a walk's own look and quiet nudges (a declined nudge has no words; the device drops its audio, see [walk]); wrong for a talk, a check-in and the ritual, where a plain statement like "it has been a hard day" went unanswered in a real check-in. The robot's own Live session (hub live_config) never sets it.
+transcription_language_hint = true            # inputAudioTranscription.languageCodes = the session language's code from [voice] lang_codes (en -> en-US), on every Live session (robot, iPhone, Mac, glasses through the iPhone). "BCP-47 language codes providing hints about the languages present in the audio. If omitted or empty, defaults to automatic language detection" (Live API reference, AudioTranscriptionConfig): without it English speech came back transcribed as German (2026-11-15). false = automatic detection again
 context_compression = true                    # sliding window. Without it Gemini ends an audio-only session at 15 minutes and one with camera frames at 2 (Live session-management guide, 2026-11-14)
 session_max_minutes = 5                      # clients stop at this limit; cloud reserves estimated token-session cost
 talk_max_minutes = 30                        # a Talk on the phone or Mac is like a call: the person sets the length (purpose/intent talk)
@@ -324,6 +325,11 @@ out = "head"        # head | speaker | file. Where the drum music and its cues a
 head_lead_ms = 80   # head: the hub sends one 20 ms frame every 20 ms, this far ahead of real time (120 at most):
                     # the head keeps a short buffer and plays silence when it runs dry
 head_gain = 1.0     # head: the level as generated (was 0.8: too quiet on the robot, 2026-11-14)
+
+[photo_time]
+# "Photo time!" on the robot (hub/kaiku_hub/rituals/photo_time.py): the sensors board's camera counts face signs
+# (smiles, head movement) for this long and sends numbers only. No picture is taken or kept. Shown, not scored.
+seconds = 8
 
 [tap_back]
 # "Tap it back" (D51): the robot's drum step as a rhythm game. Kaiku plays a short song at a tempo, the song goes

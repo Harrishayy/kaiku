@@ -1898,7 +1898,7 @@ export interface FaceSigns {
    * share of sampled frames with exactly one usable face
    */
   coverage: number;
-  device: "phone" | "mac" | "web";
+  device: "phone" | "mac" | "web" | "robot";
   /**
    * seconds the camera sampled
    */
@@ -1916,9 +1916,9 @@ export interface FaceSigns {
    */
   head_movement?: number | null;
   /**
-   * arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)
+   * arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones); haar_cascades: OpenCV cascades on the robot's camera
    */
-  method: "arkit_blendshapes" | "vision_landmarks";
+  method: "arkit_blendshapes" | "vision_landmarks" | "haar_cascades";
   /**
    * share of face frames with the mouth open
    */
@@ -1940,9 +1940,9 @@ export interface FaceSigns {
    */
   smiles?: number | null;
   /**
-   * the task it belongs to: a game (PlayGame) or the check-in chat
+   * the task it belongs to: a game (PlayGame), the check-in chat, or the robot's Photo time
    */
-  task: "firefly" | "breathe" | "tell" | "pebbles" | "lantern" | "seeds" | "watering" | "check_in";
+  task: "firefly" | "breathe" | "tell" | "pebbles" | "lantern" | "seeds" | "watering" | "check_in" | "photo_time";
 }
 /**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
@@ -2387,6 +2387,10 @@ export interface MetricComparison {
  */
 export interface HeadCmd {
   /**
+   * only for a head that runs its own ritual (standalone firmware), the second half of asking twice (D58): the person asked Kaiku in words for this activity; for the next 20 s a press of the ear starts it (the head goes straight to that step) instead of doing what a press does in the current step. none = no longer. Ignored while idle
+   */
+  activity?: ("breathe" | "drum" | "none") | null;
+  /**
    * for pan_mode=sway or chest=breathe
    */
   bpm?: number | null;
@@ -2410,6 +2414,10 @@ export interface HeadCmd {
   pan?: PanTarget | null;
   pan_mode?: ("track" | "still" | "sway") | null;
   purr?: Purr | null;
+  /**
+   * only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly. Ignored while idle
+   */
+  ritual?: ("next" | "end") | null;
   /**
    * help = the head shows the helpline's name and number and the emergency number on its own screen, from constants compiled into the firmware, until `none`, a new ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only
    */
@@ -2808,6 +2816,10 @@ export interface HrvSession {
  */
 export interface HubCmd {
   clinician_message?: ClinicianMessage | null;
+  /**
+   * start the robot's Photo time now (a button or a tool; the same thing as saying it to Kaiku)
+   */
+  photo_time?: boolean | null;
   /**
    * ask PHQ-9 in the next ritual (spoken mode)
    */
@@ -3924,6 +3936,40 @@ export interface RawFace {
   y_norm: number;
 }
 /**
+ * What the robot's camera counted in one "Photo time" window (`cmd.sensors face_signs_s`): numbers only, made
+ * in the camera thread; no frame leaves it. The hub turns it into `obs.face_signs` (task photo_time, device robot,
+ * method haar_cascades). A sign the cascades could not measure is None, never a zero; coverage 0 carries none.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "RawFaceSigns".
+ */
+export interface RawFaceSigns {
+  /**
+   * share of sampled frames with exactly one face
+   */
+  coverage: number;
+  /**
+   * seconds the camera sampled
+   */
+  duration_s: number;
+  /**
+   * face-centre travel per second, in face widths
+   */
+  head_movement?: number | null;
+  /**
+   * frames looked at; none is kept
+   */
+  samples: number;
+  /**
+   * share of face frames with a smile
+   */
+  smile_share?: number | null;
+  /**
+   * distinct smiles
+   */
+  smiles?: number | null;
+}
+/**
  * This interface was referenced by `KaikuContracts`'s JSON-Schema
  * via the `definition` "RawHall".
  */
@@ -4070,6 +4116,10 @@ export interface SensorsCmd {
    * short cue on the Modulino Buzzer; alert = device fault only
    */
   chime?: ("wake" | "ok" | "start_drum" | "end_drum" | "alert") | null;
+  /**
+   * Photo time: count face signs for this many seconds, then send one raw.sensors.face_signs. Nothing is recorded; ignored without a camera
+   */
+  face_signs_s?: number | null;
   ppg?: ("start" | "stop") | null;
 }
 /**

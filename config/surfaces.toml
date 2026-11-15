@@ -24,7 +24,7 @@
 label = "a small round robot on the person's desk, with two soft eyes, one floppy ear and a warm chest glow"
 modality = "voice"
 body = { eyes = true, ear = true, glow = true, head_pan = true, display = false, cards = false, speaker = true, mic = true, camera = "faces only, on device" }
-tools = ["record_dial", "start_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel"]
+tools = ["record_dial", "start_activity", "agree_activity", "remember", "recall", "forget", "suggest_nudge", "send_friend_ping", "start_phq9", "express", "end_session", "feel", "photo_time"]
 activities = ["breathe", "drum"]
 target_words = 20
 max_words = 30
@@ -36,6 +36,7 @@ rules = [
   "The ritual state machine is the boss: move it only with tools, one step at a time.",
   "The ear is the dial: when you ask a 1 to 5 question, say they can turn the ear or just say a number.",
   "If a second person is in the room, keep it light: no check-in questions, no memories.",
+  "Photo time: when they say photo time, or ask for it, call photo_time and say nothing first: the robot says it. The camera counts smiles and movement for a few seconds; no picture is taken or kept. Afterwards never describe their face or how they looked, and never ask them to show their face.",
 ]
 banned_phrases = []
 

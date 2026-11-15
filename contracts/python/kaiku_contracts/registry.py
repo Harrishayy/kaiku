@@ -41,6 +41,7 @@ RAW: dict[str, type[BaseModel]] = {
     "raw.sensors.ppg": p.RawPpg,
     "raw.sensors.distance": p.RawDistance,
     "raw.sensors.light": p.RawLight,
+    "raw.sensors.face_signs": p.RawFaceSigns,
     "raw.sensors.button": p.RawButton,
     "raw.sensors.hall": p.RawHall,
     "raw.hub.face": p.RawFace,
@@ -152,6 +153,8 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "raw.sensors.ppg": {"t0_ms": 1000, "fs_hz": 100.0, "samples": [512, 530, 561, 590, 600]},
     "raw.sensors.distance": {"cm": 58.0},
     "raw.sensors.light": {"raw": 410, "lux_est": 210.0},
+    "raw.sensors.face_signs": {"duration_s": 8.0, "samples": 64, "coverage": 0.91, "smile_share": 0.4, "smiles": 2,
+                               "head_movement": 0.18},
     "raw.sensors.button": {"id": "top", "pressed": True},
     "raw.sensors.hall": {"at_home": True},
     "raw.hub.face": {"x_norm": -0.2, "y_norm": 0.1, "size": 0.3, "confidence": 0.93},
@@ -191,6 +194,8 @@ PLAY_EXAMPLES: dict[str, dict[str, Any]] = {
 # obs.face_signs beside the main example (D52): what the landmark method sends (signs it cannot measure are absent,
 # never zero), and a session in which no usable face was seen (provenance only).
 FACE_EXAMPLES: dict[str, dict[str, Any]] = {
+    "robot": {"task": "photo_time", "device": "robot", "method": "haar_cascades", "duration_s": 8.0, "samples": 64,
+              "coverage": 0.91, "smile_share": 0.4, "smiles": 2, "head_movement": 0.18},  # cascades: smiles + movement
     "landmarks": {"task": "firefly", "device": "mac", "method": "vision_landmarks", "duration_s": 58.0, "samples": 870,
                   "coverage": 0.88, "mouth_open_share": 0.04, "blinks_per_min": 12.5, "head_movement": 0.031,
                   "expression_range": 0.27},  # no smile, brow or gaze sign from this method; other scales than ARKit

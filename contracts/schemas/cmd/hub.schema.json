@@ -30,6 +30,19 @@
           ],
           "default": null
         },
+        "photo_time": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "start the robot's Photo time now (a button or a tool; the same thing as saying it to Kaiku)",
+          "title": "Photo Time"
+        },
         "phq9_due": {
           "anyOf": [
             {

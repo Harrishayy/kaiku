@@ -173,6 +173,11 @@ TOOLS: dict[str, dict[str, Any]] = {
     "send_friend_ping": {
         "description": "Light the friend's lamp.",
         "executor": "device", "surfaces": ["robot"], "parameters": _EMPTY},
+    "photo_time": {
+        "description": "Photo time: the robot's camera counts smiles and how much the face moves for a few seconds. "
+                       "No picture is taken or kept. Call it when the person says \"photo time\" or asks for it; "
+                       "the robot says \"Photo time!\" itself, so say nothing until the result comes back.",
+        "executor": "device", "surfaces": ["robot"], "parameters": _EMPTY},
     "start_phq9": {
         "description": "Start the two-weekly questionnaire (read items verbatim; code scores it).",
         "executor": "device", "surfaces": ["robot", "iphone", "mac", "web"], "parameters": _EMPTY},

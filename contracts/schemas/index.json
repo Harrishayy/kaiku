@@ -176,6 +176,11 @@
       "schema": "raw/sensors.distance.schema.json",
       "topic": "kaiku/v1/<home_id>/raw/sensors/distance"
     },
+    "raw.sensors.face_signs": {
+      "payload_model": "RawFaceSigns",
+      "schema": "raw/sensors.face_signs.schema.json",
+      "topic": "kaiku/v1/<home_id>/raw/sensors/face_signs"
+    },
     "raw.sensors.hall": {
       "payload_model": "RawHall",
       "schema": "raw/sensors.hall.schema.json",

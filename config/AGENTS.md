@@ -96,7 +96,8 @@ ordinary day and stays on a very good or very hard one; at most one check-in que
 `[insight] reflection_label_at_episode_end` turns the one Gemma labelling call after an opted-in conversation on.
 
 `persona.md` → "Walking together" (company, not a guide; quiet, playful and chatty in one paragraph each; connect
-what is in view to what is theirs as a question; keep a favourite they point out; never claim to see with the
+what is in view to what is theirs as a question; one light invitation, once, when that thing comes with something
+they keep meaning to do; keep a favourite they point out; never claim to see with the
 camera off; a feeling ends the game) is compiled only into walk prompts. `surfaces.toml`
 `[surface.glasses.styles.quiet|playful|chatty]` holds each style's word limits and rules (the wording linter and
 the prompt both use them; a walk on the phone uses the same tables); `activities` per surface is the list of

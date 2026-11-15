@@ -361,6 +361,17 @@
         "glasses"
       ]
     },
+    "photo_time": {
+      "description": "Photo time: the robot's camera counts smiles and how much the face moves for a few seconds. No picture is taken or kept. Call it when the person says \"photo time\" or asks for it; the robot says \"Photo time!\" itself, so say nothing until the result comes back.",
+      "executor": "device",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      },
+      "surfaces": [
+        "robot"
+      ]
+    },
     "recall": {
       "description": "Look up to 3 things the person told Kaiku before about a topic.",
       "executor": "cloud",

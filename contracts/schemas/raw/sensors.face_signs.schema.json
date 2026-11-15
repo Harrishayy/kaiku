@@ -1,0 +1,156 @@
+{
+  "$defs": {
+    "RawFaceSigns": {
+      "additionalProperties": false,
+      "description": "What the robot's camera counted in one \"Photo time\" window (`cmd.sensors face_signs_s`): numbers only, made\nin the camera thread; no frame leaves it. The hub turns it into `obs.face_signs` (task photo_time, device robot,\nmethod haar_cascades). A sign the cascades could not measure is None, never a zero; coverage 0 carries none.",
+      "properties": {
+        "coverage": {
+          "description": "share of sampled frames with exactly one face",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage",
+          "type": "number"
+        },
+        "duration_s": {
+          "description": "seconds the camera sampled",
+          "maximum": 60,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "head_movement": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "face-centre travel per second, in face widths",
+          "title": "Head Movement"
+        },
+        "samples": {
+          "description": "frames looked at; none is kept",
+          "minimum": 1,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "smile_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with a smile",
+          "title": "Smile Share"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "distinct smiles",
+          "title": "Smiles"
+        }
+      },
+      "required": [
+        "duration_s",
+        "samples",
+        "coverage"
+      ],
+      "title": "RawFaceSigns",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/RawFaceSigns"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<raw.sensors.face_signs>",
+  "type": "object"
+}

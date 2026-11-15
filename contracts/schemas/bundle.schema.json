@@ -4130,7 +4130,8 @@
           "enum": [
             "phone",
             "mac",
-            "web"
+            "web",
+            "robot"
           ],
           "type": "string"
         },
@@ -4182,10 +4183,11 @@
           "description": "how much the head moved; the scale belongs to the method"
         },
         "method": {
-          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones)",
+          "description": "arkit_blendshapes: TrueDepth face tracking coefficients (iPhone); vision_landmarks: 2-D face landmarks (Mac, other iPhones); haar_cascades: OpenCV cascades on the robot's camera",
           "enum": [
             "arkit_blendshapes",
-            "vision_landmarks"
+            "vision_landmarks",
+            "haar_cascades"
           ],
           "type": "string"
         },
@@ -4250,7 +4252,7 @@
           "description": "distinct smiles"
         },
         "task": {
-          "description": "the task it belongs to: a game (PlayGame) or the check-in chat",
+          "description": "the task it belongs to: a game (PlayGame), the check-in chat, or the robot's Photo time",
           "enum": [
             "firefly",
             "breathe",
@@ -4259,7 +4261,8 @@
             "lantern",
             "seeds",
             "watering",
-            "check_in"
+            "check_in",
+            "photo_time"
           ],
           "type": "string"
         }
@@ -4748,6 +4751,23 @@
       "additionalProperties": false,
       "description": "Robot face + body, all on the Atech head node: eyes/look (Color Display), chest/color/bpm (LED grids),\npan/home/gesture (pan motor, hall homing), purr (speaker tone; no purr motor on the current build).",
       "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "breathe",
+                "drum",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only for a head that runs its own ritual (standalone firmware), the second half of asking twice (D58): the person asked Kaiku in words for this activity; for the next 20 s a press of the ear starts it (the head goes straight to that step) instead of doing what a press does in the current step. none = no longer. Ignored while idle"
+        },
         "bpm": {
           "anyOf": [
             {
@@ -4919,6 +4939,22 @@
             }
           ],
           "default": null
+        },
+        "ritual": {
+          "anyOf": [
+            {
+              "enum": [
+                "next",
+                "end"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly. Ignored while idle"
         },
         "show": {
           "anyOf": [
@@ -5639,6 +5675,18 @@
             }
           ],
           "default": null
+        },
+        "photo_time": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "start the robot's Photo time now (a button or a tool; the same thing as saying it to Kaiku)"
         },
         "phq9_due": {
           "anyOf": [
@@ -9422,6 +9470,76 @@
       "title": "RawFace",
       "type": "object"
     },
+    "RawFaceSigns": {
+      "additionalProperties": false,
+      "description": "What the robot's camera counted in one \"Photo time\" window (`cmd.sensors face_signs_s`): numbers only, made\nin the camera thread; no frame leaves it. The hub turns it into `obs.face_signs` (task photo_time, device robot,\nmethod haar_cascades). A sign the cascades could not measure is None, never a zero; coverage 0 carries none.",
+      "properties": {
+        "coverage": {
+          "description": "share of sampled frames with exactly one face",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "duration_s": {
+          "description": "seconds the camera sampled",
+          "maximum": 60,
+          "minimum": 0,
+          "type": "number"
+        },
+        "head_movement": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "face-centre travel per second, in face widths"
+        },
+        "samples": {
+          "description": "frames looked at; none is kept",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "smile_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "share of face frames with a smile"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "distinct smiles"
+        }
+      },
+      "required": [
+        "duration_s",
+        "samples",
+        "coverage"
+      ],
+      "title": "RawFaceSigns",
+      "type": "object"
+    },
     "RawHall": {
       "additionalProperties": false,
       "properties": {
@@ -10292,6 +10410,20 @@
           ],
           "default": null,
           "description": "short cue on the Modulino Buzzer; alert = device fault only"
+        },
+        "face_signs_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 30,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Photo time: count face signs for this many seconds, then send one raw.sensors.face_signs. Nothing is recorded; ignored without a camera"
         },
         "ppg": {
           "anyOf": [

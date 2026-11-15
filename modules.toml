@@ -29,12 +29,12 @@ kind = "node"
 summary = "Robot orchestrator: perception, ritual state machine, safety gate, Gemini Live / Lyria adapters, uplink"
 removable = false
 consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
-            "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "cmd.hub", "cmd.sensors",
-            "obs.friend_link", "health"]
+            "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "raw.sensors.face_signs", "cmd.hub",
+            "cmd.sensors", "obs.friend_link", "health"]
 emits = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_session", "obs.tap_back", "obs.speech_features",
          "obs.light_level", "obs.engagement", "obs.ritual", "obs.intervention_response", "obs.nudge_offered",
          "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag", "cmd.head", "cmd.sensors",
-         "cmd.friendlink", "raw.hub.face", "raw.hub.trace", "health"]
+         "cmd.friendlink", "raw.hub.face", "raw.hub.trace", "obs.face_signs", "health"]
 http = ["POST /v1/events", "GET /v1/commands", "GET /v1/nudge", "PUT /v1/health/{home_id}", "GET /v1/voice/{line_key}",
         "POST /v1/voice/say", "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode",
         "POST /v1/commands/{command_id}/ack"]
@@ -143,7 +143,7 @@ summary = "UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY
 removable = true
 consumes = ["cmd.sensors"]
 emits = ["raw.sensors.ppg", "raw.sensors.light", "raw.sensors.hall", "raw.sensors.distance",
-         "raw.hub.face", "health"]
+         "raw.hub.face", "raw.sensors.face_signs", "health"]
 
 [[module]]
 name = "friendlink"
@@ -162,7 +162,7 @@ summary = "Twins of every hardware node + glasses/laptop/phone sources; syntheti
 removable = true
 consumes = ["cmd.head", "cmd.sensors", "cmd.friendlink", "obs.ritual", "obs.drum_session", "obs.tap_back", "raw.head.tap", "raw.hub.face"]
 emits = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
-         "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "obs.friend_link", "obs.outing",
+         "raw.sensors.face_signs", "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "obs.friend_link", "obs.outing",
          "obs.intervention_response", "obs.laptop_session", "obs.phq9", "obs.safety_flag", "obs.screen_activity",
          "obs.play_session", "obs.face_signs", "obs.wearable_daily", "obs.self_report", "cmd.hub", "cmd.sensors",
          "health"]

@@ -24,7 +24,8 @@ def _raw():
 
 # ---------------------------------------------------------------------------------------------------- the payload
 def test_tasks_are_every_game_plus_the_check_in_and_it_sits_beside_the_task():
-    assert get_args(FaceTask) == (*get_args(PlayGame), "check_in") == FACE_TASKS
+    # every game, the check-in chat, and the robot's Photo time (its own camera, device "robot")
+    assert get_args(FaceTask) == (*get_args(PlayGame), "check_in", "photo_time") == FACE_TASKS
     assert SOURCE_OF["obs.face_signs"] == SOURCE_OF["obs.play_session"] == "laptop"
     assert "obs.face_signs" in UPLINKABLE
 
@@ -56,7 +57,7 @@ def test_no_face_in_view_keeps_its_provenance_and_carries_no_sign():
 @pytest.mark.parametrize("bad", [
     {"samples": 0}, {"coverage": 1.2}, {"coverage": -0.1}, {"smile_share": 1.5}, {"expression_range": 2.0},
     {"blinks_per_min": -1}, {"head_movement": -0.1}, {"method": "mediapipe_blendshapes"}, {"method": "yolo"},
-    {"task": "drum"}, {"device": "robot"}, {"ref": ""},
+    {"task": "drum"}, {"device": "glasses"}, {"ref": ""},
 ])
 def test_out_of_range_and_unknown_values_are_rejected(bad):
     with pytest.raises(ValidationError):

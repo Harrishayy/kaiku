@@ -35,6 +35,21 @@
           "description": "short cue on the Modulino Buzzer; alert = device fault only",
           "title": "Chime"
         },
+        "face_signs_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 30,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Photo time: count face signs for this many seconds, then send one raw.sensors.face_signs. Nothing is recorded; ignored without a camera",
+          "title": "Face Signs S"
+        },
         "ppg": {
           "anyOf": [
             {
