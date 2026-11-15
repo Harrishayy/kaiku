@@ -87,7 +87,7 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
     model, voice = models()
     pv = assemble.persona_version(persona)
     # Only a walk may answer an input with silence (its own nudges); a talk, a check-in and the ritual always answer.
-    setup = live_token.setup(model, voice, instruction, tools,
+    setup = live_token.setup(model, voice, instruction, tools, language=card.language,
                              proactive_audio=live_token.proactive("walk" if walking else req.purpose))
     # Robot is a trusted server-side adapter with its own budgeted key; apps receive one reserved token.
     # One token and its budget reservation cover at most `token_minutes`; a longer call resumes and gets the next.

@@ -204,7 +204,8 @@ def evidence(store: Store, settings: Settings, patient_id: str, row: dict,
     return refs
 
 
-FACE_METHOD = {"arkit_blendshapes": "the phone's face tracking", "vision_landmarks": "face landmarks"}
+FACE_METHOD = {"arkit_blendshapes": "the phone's face tracking", "vision_landmarks": "face landmarks",
+               "haar_cascades": "the robot's camera"}
 
 
 def face_detail(p: dict) -> str:

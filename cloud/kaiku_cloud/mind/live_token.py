@@ -61,8 +61,17 @@ def proactive(purpose: str | None) -> bool:
     return purpose is not None and purpose in (get("live", "proactive_audio_purposes", []) or [])
 
 
+def transcription(language: str | None) -> dict[str, Any]:
+    """`inputAudioTranscription` for a session in `language` ("en" | "fi" | "sv"): the language's BCP-47 code from
+    `[voice] lang_codes` as `languageCodes` ("hints about the languages present in the audio. If omitted or empty,
+    defaults to automatic language detection", Live API reference, AudioTranscriptionConfig). With automatic
+    detection English speech was transcribed as German. `[live] transcription_language_hint = false` = automatic."""
+    code = (get("voice", "lang_codes", {}) or {}).get(language or "")
+    return {"languageCodes": [code]} if code and get("live", "transcription_language_hint", True) else {}
+
+
 def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str, Any]], *,
-          proactive_audio: bool = False) -> dict[str, Any]:
+          proactive_audio: bool = False, language: str | None = None) -> dict[str, Any]:
     """The BidiGenerateContentSetup (REST camelCase) for one Kaiku session. VAD knobs: config/kaiku.toml [live].
     `proactive_audio` is off unless the caller says this conversation's purpose has it (`proactive`)."""
     vad: dict[str, Any] = {"disabled": False}
@@ -82,7 +91,7 @@ def setup(model: str, voice: str, system_instruction: str, tools: list[dict[str,
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "realtimeInputConfig": {"automaticActivityDetection": vad,
                                 "activityHandling": "START_OF_ACTIVITY_INTERRUPTS"},  # barge-in
-        "inputAudioTranscription": {},
+        "inputAudioTranscription": transcription(language),
         "outputAudioTranscription": {},
         "sessionResumption": {},
     }

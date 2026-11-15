@@ -413,8 +413,34 @@ def test_live_setup_locks_kaiku_and_turns_on_continuous_vad(cohort):
     assert ric["automaticActivityDetection"]["disabled"] is False  # Gemini takes turns: continuous conversation
     assert ric["activityHandling"] == "START_OF_ACTIVITY_INTERRUPTS"  # barge-in
     assert "inputAudioTranscription" in s and "outputAudioTranscription" in s  # the safety gate reads the input
+    assert s["inputAudioTranscription"] == {"languageCodes": ["en-US"]}  # her speech is heard as English, not guessed
+    assert "the person speaks English" in j["system_instruction"]
+    assert live_token.transcription("fi") == {"languageCodes": ["fi-FI"]} and live_token.transcription(None) == {}
     assert "enableAffectiveDialog" not in s["generationConfig"]  # breaks constrained sessions (config/kaiku.toml)
     assert {d["name"] for d in s["tools"][0]["functionDeclarations"]} == {t["name"] for t in j["tools"]}
+
+
+def test_every_surface_and_intent_hears_english_through_the_one_setup(cohort):
+    """Robot, iPhone, Mac and glasses, every intent and the walk (proactive audio, camera frames): one builder
+    (`live_token.setup` in `open_session`), so none of them is left on automatic language detection."""
+    from kaiku_contracts.api import CompanionSessionRequest
+    fields = CompanionSessionRequest.model_fields
+    surfaces, intents = fields["surface"].annotation.__args__, fields["intent"].annotation.__args__
+    assert {"robot", "iphone", "mac", "glasses"} <= set(surfaces)
+    seen = 0
+    for surface in surfaces:
+        for intent in intents:
+            r = cohort.post("/v1/companion/session", json={"home_id": "demo-aino", "surface": surface, "intent": intent})
+            if r.status_code != 200:
+                continue  # a pair the cloud does not offer (answered 4xx): no session, nothing to hear
+            seen += 1
+            j = r.json()
+            assert j["live_setup"]["inputAudioTranscription"] == {"languageCodes": ["en-US"]}, (surface, intent)
+            assert "the person speaks English" in j["system_instruction"], (surface, intent)
+    walk = session(cohort, "demo-aino", "glasses", "walk", purpose="walk")
+    assert walk["live_setup"]["proactivity"] == {"proactiveAudio": True}
+    assert walk["live_setup"]["inputAudioTranscription"] == {"languageCodes": ["en-US"]}
+    assert seen >= len(surfaces)
 
 
 def test_live_token_none_without_key():

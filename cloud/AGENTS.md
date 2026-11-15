@@ -855,6 +855,14 @@ decides in code what to do about it.
   check-in, the ritual and a session with no purpose the field is absent, because with it the Live model left
   plain statements unanswered in a real check-in. The persona ("How Kaiku speaks", "Passing chat") says to always
   answer the person's own words. Tested per purpose and surface in `tests/test_walk.py`; real Live runs in D49.
+- **The person's speech is heard in the session's language (2026-11-15).** `live_setup.inputAudioTranscription` is
+  `{languageCodes: [<code>]}` with the code of the session language from `[voice] lang_codes` (en → `en-US`;
+  `live_token.transcription`), on every surface and intent: there is one builder (`live_token.setup`, called once in
+  `open_session`). Live API reference, AudioTranscriptionConfig: "BCP-47 language codes providing hints about the
+  languages present in the audio. If omitted or empty, defaults to automatic language detection"; with detection
+  English speech came back as German. It is a hint, not a lock. The card's first line also says the person speaks
+  that language. `[live] transcription_language_hint = false` = automatic again. No `speechConfig.languageCode` is
+  set: the Live guide only offers the system instruction to restrict the language a native-audio model speaks.
 - **Tools**: `set_walk_goal`, `log_walk_moment` (device; glasses always, phone only on a walk: registry
   `walk_only_on`, `for_surface(surface, walk=)`), `suggest_activity` (device; phone and Mac). The cloud validates
   and logs the tool name only; nothing is stored or derived from a walk game or a card. `assemble.CARD_RULE` is in

@@ -117,7 +117,7 @@ def device_of(event: dict[str, Any]) -> str:
     t, p = event["type"], event["payload"]
     if t == "obs.wearable_daily":
         return "watch" if p.get("device") in ("apple_watch", "other_watch") else "phone"
-    if t in ("obs.play_session", "obs.face_signs") and p.get("device") in ("phone", "mac", "web"):
+    if t in ("obs.play_session", "obs.face_signs") and p.get("device") in ("phone", "mac", "web", "robot"):
         return p["device"]
     if t == "obs.self_report" and p.get("channel") in CHANNEL_DEVICE:
         return CHANNEL_DEVICE[p["channel"]]

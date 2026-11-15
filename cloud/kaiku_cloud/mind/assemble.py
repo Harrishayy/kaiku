@@ -192,7 +192,10 @@ def validate_card(card: dict[str, Any]) -> None:
 def render_card(card: dict[str, Any]) -> str:
     validate_card(card)
     c = card
-    lines = [f"Language: speak {({'en': 'English', 'fi': 'Finnish', 'sv': 'Swedish'})[c.get('language', 'en')]}."]
+    language = {"en": "English", "fi": "Finnish", "sv": "Swedish"}[c.get("language", "en")]
+    # Short on purpose (the card has a token limit): the person's speech is in this language too, so an unclear
+    # phrase is never taken for another language. The persona's own rule says the rest.
+    lines = [f"Language: speak {language}; the person speaks {language}."]
     if c.get("time_of_day"):
         lines.append(f"It is {c['time_of_day']}" + (f", and the weather is {c['weather_word']}." if c.get("weather_word") else "."))
     if c.get("first_name"):
