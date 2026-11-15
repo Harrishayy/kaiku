@@ -7,7 +7,7 @@ Dimensions come from `hardware/dimensions.md`. Assembly and the cardboard build 
 
 | File | Drawn by | When | Notes |
 |---|---|---|---|
-| `kaiku_cad.py` (every printed part) | Claude Code, with Edwin | 2026-11-14, during the event | New geometry around the measured hardware. Nothing reused from the pre-event renders. |
+| `kaiku_cad.py` (every printed part) | Gemini 4 Argon, with Edwin | 2026-11-14, during the event | New geometry around the measured hardware. Nothing reused from the pre-event renders. |
 | `render.py`, `slice.py`, `cardboard.py`, `overview.py` | Claude Code, with Edwin | 2026-11-14, during the event | Tooling: renders, Bambu Studio slicing, cardboard template, local overview page. |
 
 The pre-event concept renders mentioned in `docs/plans/01-foundation.md` §8 were not used.

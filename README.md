@@ -15,6 +15,8 @@ Kaiku (Finnish for "echo") helps people stay well at home after TMS treatment fo
 
 </div>
 
+<p align="center"><img src="docs/media/robot.jpg" width="420" alt="The Kaiku robot on a workbench at Junction: a red and white head with a glowing ring around its camera and a dial on top, on a geared neck above a white body with red rails and gold windows"><br><sub>The robot, printed and wired during the event.</sub></p>
+
 <!-- VIDEO: add the public video link (maximum 2:00) next to the deck link once it exists. -->
 
 <table align="center">
@@ -214,7 +216,20 @@ the iPhone app ([`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)); the two `apps/g
 
 ### Robot
 
-No clip of the robot in this README yet.
+<p align="center"><img src="docs/media/robot-orbit.gif" width="230" alt="A walk around the Kaiku robot as built, on a workbench at Junction"> &nbsp; <img src="docs/media/robot-cad.png" width="560" alt="The same robot rendered from its CAD parts from three angles: a red arched head with a dial ear, a glowing camera ring and an antenna, an apricot geared neck, and a white body with red rails and gold windows"><br><sub>Left: a walk around the robot as built. Right: the same robot rendered from the CAD parts it was printed from, in the colours as printed. <a href="https://edwiniscoding.github.io/kaiku-tour/">Turn the 3D model yourself</a>.</sub></p>
+
+**How it is built**
+
+- **One parametric script.** Every printed part comes from [`hardware/cad/kaiku_cad.py`](hardware/cad/README.md), designed with Gemini 4 Argon during the event. The script intersects each part with the envelope of every bought-in board and reports clashes before anything is printed.
+- **Head and body.** The head is 112 × 60 × 134 mm with an arched top; the body is 104 × 136 × 100 mm. Every part prints without supports: 5 h 55 min and 327 g for the whole robot (Bambu Studio's estimate on a P1S).
+- **Neck.** A 40-tooth ring gear turns on a fixed hollow axle, driven by a 12-tooth pinion on one motor (3.33 : 1). Every head cable runs down through the axle, so the head can pan without pulling a wire.
+- **Head electronics.** One 14-port Atech board with five modules: the ear dial, an orientation sensor that feels taps, the neck motor, a speaker and a microphone.
+- **Base electronics.** An Arduino UNO Q reads the camera on the board itself and sends only numbers (face position, distance, room light); a face wakes the head, board to board.
+- **Wiring between them.** MQTT on the home network, with a software twin for every hardware node, so each piece can be built and tested alone.
+
+Build it: [illustrated assembly guide (PDF)](hardware/assembly_guide/kaiku_assembly.pdf) · [`hardware/assembly.md`](hardware/assembly.md) · [wiring](hardware/wiring.md) · [bill of materials](hardware/bom.md)
+
+**What it does**
 
 - **It speaks first.** A three-minute morning ritual with no typing: three turns of an ear dial for mood, energy and sleep, one guided breath while the chest glows, and a short rhythm tapped on its head. The drum is inspired by research on improvisational music therapy; the chest light is not light therapy.
 - **Ran on the hardware twin.** The whole hub-driven ritual, its crisis gate and the upload of derived numbers run against software twins of the head and sensors over real MQTT (`make sim`, `make hub`). The twins speak the same messages as the boards, and their records are marked simulated.
@@ -452,4 +467,5 @@ Built at Junction 2026 (Espoo, 13 to 15 November 2026) by **Harrish, Edwin and X
 
 [MIT](LICENSE). All code was written during the event. Third-party services, models and hardware keep their own
 terms ([Gemini API](https://ai.google.dev/gemini-api/terms), [Gemma](https://ai.google.dev/gemma/terms), Modal,
-the Meta Wearables platform, Atech). CAD provenance: [`hardware/AGENTS.md`](hardware/AGENTS.md).
+the Meta Wearables platform, Atech). The robot's printed parts were designed as CAD in code with Gemini 4 Argon
+during the event; provenance: [`hardware/cad/README.md`](hardware/cad/README.md).
