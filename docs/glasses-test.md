@@ -2,7 +2,8 @@
 
 What this checks: Kaiku's voice in your glasses, Kaiku hearing you through them, Kaiku seeing what you look at
 (optional), taking the glasses off, and the walk arriving in Your days and on the practitioner dashboard.
-None of this has run on the real glasses yet. If a step fails, **screenshot You → Glasses check** (scroll so
+On 15 Nov steps 1 to 3 passed on the real glasses (phone as a hotspot, camera over Bluetooth) and a walk sent
+pictures and heard the wearer; steps 5 to 10 and the filming list have not been checked there. If a step fails, **screenshot You → Glasses check** (scroll so
 "Last problem" and the Log lines show), tap **Share the log**, and send both. The log has states and errors only.
 
 ## Before you start (1 minute)

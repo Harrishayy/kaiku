@@ -1405,3 +1405,101 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: no whole spoken conversation through the phone microphone yet (nobody pressed the ear at the
   greeting); `make check` not run on this change; the head needed a reset to rejoin Wi-Fi, cause unknown.
 - Next: press the ear at the greeting with the phone beside the robot, tune `phone_mic_tail_ms`; simplify Kaiku bot.
+
+## 2026-11-15 01:10 UTC — Claude Code — apps/apple: Kaiku bot simplified, nothing to configure
+- Did: the page is three cards (connection + parts, Robot microphone, Now) with "Where the robot is" and "Everything
+  the robot sends" folded under a tap. The robot's home id is learned from the broker instead of the pairing, and a
+  typed address that does not answer falls back to the service's host.
+- Verified: Bot tests pass (34, 2 skipped); on the iPhone, launched with only `-kaikuTab bot -kaikuBotMic YES`, it
+  found the broker and the home by itself and sent 300 frames in 5.9 s. The new layout was not looked at on a screen.
+- Broken/blocked: still no whole conversation through the phone microphone; frame levels were near silence in every
+  run but the first, with nobody known to be speaking: unconfirmed whether far speech is picked up.
+
+## 2026-11-15 01:05 UTC — Claude Code — apps/apple (A): glasses on the real Ray-Ban Meta, phone as hotspot
+- Did: the phone was paired to the Mac's old address (10.0.38.170), so voice lines and Talk hung; repointed it with
+  `-kaikuPairLink`. Camera stream stayed at `waitingForDevice`: the app lacked the toolkit's Bluetooth Classic
+  keys (`com.meta.ar.wearable`, `external-accessory`), added in `project.yml`. Walk screen: Mute Kaiku / Unmute
+  Kaiku button (a mute set in Talk silenced the walk with no way to see or change it). `run_on_iphone.sh` accepts
+  a phone listed as "connected".
+- Verified: on the real glasses with Personal Hotspot on, self-test speaker, microphone and frame pass; a walk sent
+  30 frames and heard the person twice (glasses log). The new mute button is built and installed, not yet tried.
+- Not run: `make check`, Swift tests.
+- Broken/blocked: the Mac's address changes with the network; the phone then needs repointing.
+- 01:25 UTC, same session: You → Voice has a "Mute Kaiku" switch (the saved choice `kaiku.talk.voiceMuted`, applied at once
+  to an open Talk or walk conversation); lines Kaiku says by itself (`VoiceLines.play`) follow it. KaikuKit `swift test`:
+  575 run, 0 failures, taken while another session was mid-edit in `VoiceLines`; the phone build installed after that
+  edit settled and includes it. Not tried on the phone yet.
+
+## 2026-11-15 01:25 UTC — Claude Code — apps/apple: Kaiku never starts talking by itself on a screen
+- Did: every spoken line needs an origin (`VoiceOrigin.pressed` or `.chat`, no default); a chat line plays only
+  while the check-in chat or Talk is showing. Opening the Talk tab shows "Call Kaiku" and opens no call; returning
+  to the app does not reopen one; Today's talk card still leads straight into a call (`app.talkAsked`). Talk's
+  no-Live hello is not said after the person left. Onboarding: hello on "Hear Kaiku", no spoken "well done".
+- Verified: `swift build` and `swift test` on KaikuKit: 579 tests, 14 skipped, 1 expected failure, 0 unexpected
+  (new `VoiceOriginTests`). Not run on a device or simulator; the UI tests were not run (`TalkComposerTests` got
+  `-kaikuTalkStart YES` for its live run).
+- Broken/blocked: none known. Left speaking without a press: Kaiku's Live voice during a walk the person started,
+  the Mac quick talk after its shortcut, `walk.done` after a crisis ends a walk.
+- 01:40 UTC, same session: History no longer shows "Simulated" (labels, legend line, lighter marks) on the user's request;
+  the `sim` flag still travels in the data and "Today, so far" still labels it. History/copy tests pass.
+
+## 2026-11-15 01:25 UTC — Claude Code — cloud + hub + apps/apple: Live hears the session language (English), not a guess
+- Did: every Live setup now names the language of the person's speech: cloud `live_setup.inputAudioTranscription =
+  {languageCodes: ["en-US"]}` (`live_token.transcription`, one builder for robot/iPhone/Mac/glasses, every intent and
+  the walk), hub `live_config(language=)` → `input_audio_transcription.language_codes`, the app sends the cloud's
+  value instead of an empty object. Code from `[voice] lang_codes`; switch `[live] transcription_language_hint`.
+  The card's language line also says the person speaks that language (kept short: the card has a 400-token limit).
+- Verified: `pytest hub cloud contracts` and ruff pass (new: every surface × intent test, SDK type validation);
+  `LiveSessionTests` pass. One real session on `gemini-3.8-live` with the hub's builder and a synthetic English
+  question: the field is accepted, input transcript in English. The same clip was English without the hint too, so
+  the German transcript was NOT reproduced and the fix is not proven against it.
+- Contract changes: none (`live_setup` is an open object).
+- Broken/blocked: the running cloud and hub still serve the old config until restarted; the phone and Mac need the
+  rebuilt app. No real session from a device or with a real voice was run. "Kaiku" is transcribed "Keiko"
+  (`customVocabulary` would bias it; not done). The glasses web app has no code yet (nothing to set).
+
+
+## 2026-11-15 01:15 UTC — Claude Code — hub + firmware/atech-head: when the robot listens, one way through the check-in, lost lines
+- Did: (D57) the first press of the ear the hub sees in a ritual opens the conversation, whatever step the head is
+  in; one conversation per ritual; `health/hub` `talk`. Head firmware 0.5.0: one press per step (700 ms guard, 4 s
+  before breathing or drumming can be skipped), a face wakes it at most every 10 min, taps and room sound wake
+  nothing. Hub: its 15 fixed lines are fetched at start and kept (`LinePlayer.prewarm`); before, an unrendered line
+  hit the 3 s limit of `POST /v1/voice/say` and was never said (`voice_text_unavailable ReadTimeout`, the goodbye and
+  the invitation on 2026-11-15).
+- Verified: hub tests and ruff pass. On the robot: a press in the head's `sleep` step opened the conversation
+  (01:04:45, Live open, Tap it back played, ritual completed). Firmware built, flashed, head back as 0.5.0 in idle.
+  Hub restart: `voice_prewarm 15/15 lines ready` after 43 s.
+- Broken/blocked: the firmware's new press and wake rules were not exercised by hand; `sim/nodes/head_sim.py` (owner
+  C) still has the old ones. At the end of that ritual the Live session closed 0.3 s after the goodbye was asked for
+  (01:08:22), so the goodbye went to the cached voice: what closed it is not found. Whether the phone or the head
+  was the microphone in that conversation was not recorded. `make check` not run.
+- Next: a whole conversation while watching `mic_source` and the speaker counters (`health/head` `audio.dry`).
+
+## 2026-11-15 01:50 UTC — Claude Code — hub + firmware/atech-head + contracts + sim: asking twice, words or the ear, stop
+- Did: D58 and D59 (see decisions). Contract: `cmd.head` gains `activity` and `ritual` (optional fields, no version
+  bump); schemas and TS regenerated. Hub: `_ask_twice*`, `_follow_spoken_dial`, `end_ritual` sends the head to rest;
+  step lines now say "tell me, or turn my ear". Firmware 0.6.0 (arm) and 0.7.0 (next / end). Sim twin mirrors both.
+- Verified: `uv run pytest hub contracts sim` passes (new tests for asking twice, its expiry, a spoken dial answer and
+  stop); ruff passes on hub, contracts, sim except `hub/tests/test_photo_time.py`, an untracked file of another
+  session. Firmware 0.6.0 flashed and verified by hash; hub restarted, `voice_prewarm 15/15`.
+- Contract changes: `HeadCmd.activity`, `HeadCmd.ritual`.
+- Broken/blocked: nothing of D58 or D59 was tried on the robot: the head and the sensor board went off the broker and
+  off USB before the 0.7.0 flash. With 0.6.0 on the head a spoken dial answer is recorded but the head does not move
+  on, and "stop" closes the conversation but the head stays in its step. `make check` not run.
+- Next: plug the head in, `make atech-standalone FLASH=1`, then one check-in using both ways and one asked activity.
+
+## 2026-11-15 02:40 UTC — Claude Code — contracts + firmware/unoq-sensors + hub + sim: Photo time on the robot
+- Did: `photo_time` voice tool (robot) and `cmd.hub {photo_time}`; `cmd.sensors {face_signs_s}`; the board's camera
+  thread counts smiles and head movement for a window (OpenCV cascades, numbers only) and sends one
+  `raw.sensors.face_signs`; the hub records it as `obs.face_signs` (task `photo_time`, device `robot`, method
+  `haar_cascades`). Sensor twin answers the same command. `[photo_time] seconds` in `config/kaiku.toml`.
+- Contract changes: `FaceTask` + `photo_time`, `FaceMethod` + `haar_cascades`, `FaceSigns.device` + `robot`,
+  new `raw.sensors.face_signs`, `SensorsCmd.face_signs_s`, `HubCmd.photo_time`; `make contracts` run.
+- Verified: `make test` (1435) before the last doc edits. Not verified: anything on the board (it left the network
+  before the copy; nothing was changed on it), whether its OpenCV build ships the smile cascade, the tool in a real
+  Live conversation. The hub and the local cloud need a restart to load the tool.
+- Next: copy `firmware/unoq-sensors/python` to the board and restart its app; no criteria metric reads the new
+  method yet (shown in the record only). Apps: a camera switch in Talk is not started.
+- Also 15 Nov: walk demo memories for `aino` stored through `POST /v1/companion/tool` (`remember`); one persona
+  line for a light invitation tied to a thing in view. `aino` has an open safety flag from a manual press at
+  00:57 UTC during testing; it is cleared by the practitioner's acknowledge action, not by code.

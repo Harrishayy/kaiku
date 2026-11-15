@@ -202,10 +202,14 @@ it. The clip above is rendered in-app, not captured from the screen. [`apps/appl
 </tr>
 </table>
 
-**Where it stands:** registration and connection are confirmed on real Gen 2 glasses in Developer Mode. Voice
-and seeing are proven with Meta's Mock Device Kit and real Gemini Live calls: stock landscape pictures as the
-view (a dull road got no words in any style, a lone tree got the question above) and one three-minute walk on
-the simulator with typed lines. Not yet on the real glasses; the five-minute test is [`docs/glasses-test.md`](docs/glasses-test.md). The integration lives in
+**Where it stands:** on real Gen 2 glasses in Developer Mode (15 Nov), with the phone as a Personal Hotspot, the
+Glasses check's self-test passed its three steps: Kaiku's line played in the glasses, the glasses microphone heard
+the wearer, and a camera frame arrived over Bluetooth. A walk with seeing on then sent 30 frames in 40 seconds to
+its Gemini Live conversation, and Kaiku heard the wearer through the glasses and replied twice; its voice was
+muted in the app for that walk, so the walk's replies have not yet been heard in the glasses. What Kaiku says
+about a real view is shown so far with Meta's Mock Device Kit and real Gemini Live calls: stock landscape pictures
+as the view (a dull road got no words in any style, a lone tree got the question above) and one three-minute walk
+on the simulator with typed lines. The rest of the five-minute test is [`docs/glasses-test.md`](docs/glasses-test.md). The integration lives in
 the iPhone app ([`apps/apple/AGENTS.md`](apps/apple/AGENTS.md)); the two `apps/glasses-*` folders hold instructions only.
 
 ### Robot

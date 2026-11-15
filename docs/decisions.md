@@ -756,3 +756,34 @@ flowchart LR
   the audio goes to the same Gemini Live conversation and nowhere else.
 - **Why:** the robot must hold a spoken conversation at the demo with the parts that work.
 
+## D57 — When the robot listens: the first press of its ear in a ritual, until that ritual ends (2026-11-15, Harrish)
+- Before, with the head running its own ritual (follow mode), a conversation opened only if the hub saw the press
+  made during the head's 60 s greeting. A greeting the hub missed, a ritual it joined mid-way, or a press that
+  arrived before the hub knew the head was greeting left the robot deaf for the whole ritual, with nothing to say why.
+- **Rule now:** the first press of the ear the hub sees in a ritual opens the conversation, whatever step the head is
+  in. It stays open until that ritual ends (the head back at idle). One conversation per ritual: after a crisis, or
+  after the person asked to stop talking, a press is only a press. No press = no microphone, as before.
+- The consent is unchanged in kind: the person's own deliberate press at the robot, seen by the hub.
+- `health/hub` says it: `details.talk` = `open` | `opening` | `closed`. The app's Robot microphone line tells the
+  person to press the ear while it is closed.
+- Not changed: the hub's own ritual (drive mode), and the press that wakes an idle head (that one only wakes it).
+
+## D58 — Asking twice: an activity asked for in words starts only on a press of the ear (2026-11-15, Harrish)
+- On a head that runs its own ritual the person can say what they want ("let's play the drums"). The voice calls
+  `start_activity {kind: breathe | drum}`. That starts nothing: the hub checks it can start, arms the head
+  (`cmd.head {activity}`) for 20 s and Kaiku asks for a press of the ear. Only that press starts the step; the head
+  goes straight to it. No press in 20 s: nothing starts, the hub disarms the head and tells Kaiku so.
+- Two different things are needed, her words and her hand, and the second is deterministic at the hub and the head:
+  no model decides whether she confirmed. A press that confirms is not a dial answer and not a skip.
+- The step may lie behind the current one (breathing after the drums): the same ritual and conversation go on.
+- Refused with a plain reason: no open conversation, after a crisis, an activity that is already running, a kind
+  this robot does not have. Kept with the session: `activity_asked`, `activity_confirmed`, `activity_not_confirmed`.
+
+## D59 — Two ways through the check-in, and stop at any point (2026-11-15, Harrish)
+- A dial question can be answered with the ear (turn and press) or in words. For words the voice calls `record_dial`;
+  the hub records it only for the question the head is asking now (`obs.self_report`, 1 to 5) and tells the head to
+  go on (`cmd.head {ritual: next}`). One question, one answer: a value the ear held for that step is dropped.
+- She can stop at any point by saying so. The voice calls `end_session`; the hub sends `cmd.head {ritual: end}`, the
+  head goes back to rest, and the episode is kept as ended early with everything answered so far (each answer was
+  sent when it was given). Nothing is lost and nothing blocks the next thing she wants to do.
+
