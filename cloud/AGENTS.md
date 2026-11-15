@@ -1380,3 +1380,21 @@ Say yes to the robot or on a walk, and the phone and the Mac have it at once.
   second and fell back to the rule-written review; `[insight].cooldown_s` = 60 keeps one person's reviews apart,
   several people opened in the same minute can still meet it. A single call takes 16 to 26 s against
   `[insight].timeout_s` = 30; one call in an earlier run of this evening timed out at 30 s.
+
+## Gemma looks at a few pictures (2026-11-15, D65)
+- **Route:** `POST /v1/vision/look?home_id=` (home token, like every per-home route). Body `{task, device, frames:
+  [base64 JPEG, 1 to 3], ref?}`; answer `VisionLookResult {ok, stored, reason?, note?}`. Code: `kaiku_cloud/vision.py`.
+- **Model:** `gemma.look()` → `llm/gemma_hosted.look()`: `[models].gemma_hosted` through the Gemini API with the
+  pictures as inline data and minimal thinking (without it the answer came back empty). `[gemma] provider = "modal"`
+  → unavailable (our vLLM app serves text only). No other model stands in.
+- **Stored:** only `obs.vision_note` (source `cloud`), closed word lists re-checked by the contract. A refused
+  request, an unusable answer, a model failure or the daily cap (`[vision_look] max_per_day`) stores nothing.
+- **Invariant: a picture is never stored or logged.** The route has no request model, `vision.pictures()` answers a
+  bad request with fixed words, a model failure is reported by type only and raised without a cause chain, and the
+  log line carries counts. `cloud/tests/test_vision.py` proves it with a marker; keep that test when changing this.
+- **Where the note goes:** `account.vision_record` → insight evidence `obs:vision_note` (in `SHOWN_IDS`: shown and
+  citable, never a finding by itself); `mind/face_cue.cued()` counts `lowered`/`tense` at or above `[face_cue]
+  vision_min_confidence` as a held cue; `mind/session.py` sends `vision_look` rules only for a check-in on the
+  iPhone or Mac while the hosted Gemma is the provider.
+- **Verified:** one real look on a throwaway local service with three drawn faces: 200 in 4.1 s, note `smiling,
+  toward_camera, bright`, the database held that one event and no picture bytes. Not seen with a real camera.

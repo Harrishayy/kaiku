@@ -115,6 +115,8 @@ final class CheckInChat {
     /// small line on the check-in screen, so a bench run or a recording can show that it fired and which kind.
     private(set) var debugCue: String?
     @ObservationIgnored private var cueSeen = 0
+    /// The few pictures of this check-in for the one look (D65). Memory only; nil = none are being collected.
+    @ObservationIgnored private var pictures: VisionLookBatch?
     static var cueDebug: Bool {
         #if DEBUG
         return UserDefaults.standard.bool(forKey: "kaikuExpressionDebug")
@@ -198,12 +200,29 @@ final class CheckInChat {
             if Self.cueDebug { self.cueSeen += 1; self.debugCue = "Expression cue \(self.cueSeen): \(kind.rawValue)" }
             #endif
         }
+        // D65: with her separate choice, and only where the service offers it, a few small pictures of this
+        // check-in are collected in memory for ONE look by Kaiku's own model.
+        let look = app.lookOn ? talk.conversation.session?.vision_look : nil
+        camera.lookRules = look
+        pictures = look.map { VisionLookBatch(limit: $0.frames) }
+        camera.onPicture = { [weak self] picture in self?.pictures?.add(picture) }
         await camera.begin(allowed: app.cameraOn)
+    }
+
+    /// The one look (D65): the pictures leave the batch and go out once. Only for a check-in she took part in and
+    /// only while her choice still holds; otherwise they are dropped here.
+    private func sendPictures() {
+        guard let batch = pictures else { return }
+        pictures = nil
+        let taken = batch.take()
+        guard !taken.isEmpty, state.ticked, let app, app.lookOn, let home = app.pairing?.homeID else { return }
+        let request = VisionLookRequest(task: FaceSigns.checkIn, device: KaikuPlatform.isPhone ? "phone" : "mac", pictures: taken)
+        Task { _ = await app.api.visionLook(request, home: home) }
     }
 
     /// Her choice changed while the check-in is open (the switch, "pause everything", the one-time question).
     func cameraChoiceChanged(on: Bool) async {
-        if on { await beginCamera() } else { camera.cancel() }
+        if on { await beginCamera() } else { camera.cancel(); pictures?.drop(); pictures = nil }
     }
 
     /// The check-in is over: the camera closes at once. What it measured is sent only for a check-in that counted
@@ -212,6 +231,7 @@ final class CheckInChat {
         if camera.state == .stopped { cameraOffByHer = true }
         guard camera.state != .off else { return }
         let seen = camera.finish()
+        sendPictures()
         guard state.ticked, let seen, let app else { return }
         Task { await app.recordFaceSigns(seen, task: FaceSigns.checkIn) }
     }
@@ -221,6 +241,7 @@ final class CheckInChat {
         sync()
         if state.end == nil { run(.closed) }
         camera.cancel()        // nothing stays open behind a screen that was left
+        pictures?.drop(); pictures = nil
         observing = false
         left = true
         talk.retire()

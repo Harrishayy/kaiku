@@ -26,6 +26,7 @@ extension Signal {
         case .watch: return "applewatch"
         case .transcripts: return "text.bubble"
         case .see: return "eyeglasses"
+        case .look: return "eye"
         }
     }
     /// One short line for a row: the signal's own line, or its short form where the full text is a paragraph

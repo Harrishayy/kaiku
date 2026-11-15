@@ -1024,6 +1024,18 @@
           },
           "type": "array"
         },
+        "vision_look": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisionLookRules"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how to pick the few pictures Kaiku's own model may look at in this check-in (D65); null = the service does not offer it here. The device still sends none without the person's own opt-in"
+        },
         "voice": {
           "type": "string"
         },
@@ -5054,7 +5066,10 @@
             {
               "enum": [
                 "next",
-                "end"
+                "end",
+                "start",
+                "pause",
+                "resume"
               ],
               "type": "string"
             },
@@ -5063,7 +5078,7 @@
             }
           ],
           "default": null,
-          "description": "only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly. Ignored while idle"
+          "description": "only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly; start = she asked for the check-in: begin at mood; pause = she is talking about something else: the open step waits and the head rests in `talk`; resume = she asked to continue: back to the step that waited (mood when none did). Ignored while idle"
         },
         "show": {
           "anyOf": [
@@ -11716,6 +11731,170 @@
         "days"
       ],
       "title": "VerdictEvidence",
+      "type": "object"
+    },
+    "VisionLookRules": {
+      "additionalProperties": false,
+      "description": "How a device picks the few pictures Kaiku's own model may look at during a check-in (D65; config\n`[vision_look]`). Sent only where the service can do it and only matters with the person's opt-in on that\ndevice. The device takes them in memory, sends them once, and keeps none, also when the send fails.",
+      "properties": {
+        "frames": {
+          "default": 3,
+          "description": "pictures per check-in, at most",
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "jpeg_quality": {
+          "default": 0.6,
+          "maximum": 0.9,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "max_edge_px": {
+          "default": 256,
+          "description": "the longer side after downscaling",
+          "maximum": 768,
+          "minimum": 64,
+          "type": "integer"
+        },
+        "min_interval_s": {
+          "default": 12,
+          "description": "at least this long between two",
+          "maximum": 3600,
+          "minimum": 1,
+          "type": "number"
+        },
+        "settle_s": {
+          "default": 6,
+          "description": "camera time before the first one",
+          "maximum": 600,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "title": "VisionLookRules",
+      "type": "object"
+    },
+    "VisionNote": {
+      "additionalProperties": false,
+      "description": "What Kaiku's own model (Gemma) noted from a few pictures of the camera during one task (D65), with the\nperson's separate opt-in \"Let Kaiku's model look\". The pictures went from the device to the Kaiku service and\nfrom there, in memory, to the model named in `model`; nobody stored them and this record cannot hold one: it has\nno field for a picture, a text or anything free-form, and rejects extra fields. Every field is a closed list of\nwords for what can be SEEN in a still picture. None of them names a feeling, and none may: `lowered` and `tense`\ndescribe a face, not a person. `not_a_diagnosis` is always true and is there so that no reader, human or model,\ncan take the record for more than it is: a description of a picture and a reason to ask. Stored with provenance;\nread by no criteria metric and no verdict (role \"adherence\" in the source map): shown and citable, not scored.",
+      "properties": {
+        "confidence": {
+          "description": "the model's own confidence in this description",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web",
+            "robot"
+          ],
+          "type": "string"
+        },
+        "expression": {
+          "description": "how the face looks in the pictures, in plain words for what is seen; unclear when no face or not readable",
+          "enum": [
+            "neutral",
+            "smiling",
+            "lowered",
+            "tense",
+            "unclear"
+          ],
+          "type": "string"
+        },
+        "face_visible": {
+          "description": "a face could be seen in at least one of them",
+          "type": "boolean"
+        },
+        "frames_n": {
+          "description": "pictures the model was shown; none is kept anywhere",
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "gaze": {
+          "enum": [
+            "toward_camera",
+            "away",
+            "unclear"
+          ],
+          "type": "string"
+        },
+        "lighting": {
+          "enum": [
+            "bright",
+            "dim",
+            "dark",
+            "unclear"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "description": "the model that looked (config [models].gemma_hosted)",
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "not_a_diagnosis": {
+          "const": true,
+          "default": true,
+          "type": "boolean"
+        },
+        "posture": {
+          "enum": [
+            "upright",
+            "leaning",
+            "slumped",
+            "unclear"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "id of the obs.face_signs (or other record) of the same task"
+        },
+        "task": {
+          "description": "the task the pictures were taken in (the check-in chat today)",
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell",
+            "pebbles",
+            "lantern",
+            "seeds",
+            "watering",
+            "check_in",
+            "photo_time"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "device",
+        "model",
+        "frames_n",
+        "face_visible",
+        "expression",
+        "gaze",
+        "posture",
+        "lighting",
+        "confidence"
+      ],
+      "title": "VisionNote",
       "type": "object"
     },
     "VoiceLinesResponse": {

@@ -26,6 +26,7 @@ from kaiku_contracts.api import (
     ExpressionCueRules,
     SessionClose,
     SessionCloseResult,
+    VisionLookRules,
 )
 from kaiku_contracts.companion_tools import TOOLS, allowed, for_surface, validate_args
 from kaiku_contracts.config import load_config
@@ -106,6 +107,7 @@ def start_session(store: Store, settings: Settings, req: CompanionSessionRequest
         walk=walk.guide(style) if style else None,
         idle_end_s=int(live.get("walk_idle_end_s" if walking else "idle_end_s", 0)) or None,
         expression_cue=_expression_cue(req.surface, walking),
+        vision_look=_vision_look(req.surface, req.purpose, walking),
         chat_shape=ChatShape(purpose=card.purpose, depth=card.chat_depth or "brief", open_items=card.open_items)
         if card.purpose else None,
         context_refresh_seconds=int(live.get("context_refresh_seconds", 15)))
@@ -120,6 +122,20 @@ def _expression_cue(surface: str, walking: bool) -> ExpressionCueRules | None:
         return None
     keep = {k: cfg[k] for k in ExpressionCueRules.model_fields if k in cfg}
     return ExpressionCueRules(**keep)
+
+
+def _vision_look(surface: str, purpose: str | None, walking: bool) -> VisionLookRules | None:
+    """How the device may pick the few pictures Kaiku's own model looks at (D65, config `[vision_look]`). Offered
+    only where it can really be done: the phone's or Mac's check-in, and only while the Gemma that takes pictures
+    is the one configured. The device still sends nothing without the person's own opt-in."""
+    from .. import vision
+    from ..llm import gemma
+
+    if surface not in ("iphone", "mac") or walking or purpose != "check_in" or not vision.enabled():
+        return None
+    if gemma.provider() != "hosted":
+        return None
+    return VisionLookRules(**vision.rules())
 
 
 def _strings(v: Any) -> list[str]:

@@ -72,7 +72,7 @@ def cued(events: list[dict[str, Any]], now: datetime) -> list[str]:
     today = now.astimezone(TZ).date()
     seconds = {k: 0.0 for k in KINDS}
     for e in events:
-        if e.get("type") != "obs.face_signs":
+        if e.get("type") not in ("obs.face_signs", "obs.vision_note"):
             continue
         ts = e.get("ts")
         when = ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
@@ -81,6 +81,13 @@ def cued(events: list[dict[str, Any]], now: datetime) -> list[str]:
         p = e.get("payload") or {}
         kind = "check_in" if p.get("task") == "check_in" else "games" if p.get("task") != "photo_time" else None
         if kind is None:
+            continue
+        if e.get("type") == "obs.vision_note":
+            # What Gemma noted from pictures of that task (D65) counts like a cue that held: `lowered` is the cue
+            # kind `lower`. Only a note it was fairly sure of.
+            seen = {"lowered": "lower", "tense": "tense"}.get(str(p.get("expression")))
+            if seen in kinds and float(p.get("confidence") or 0) >= float(cfg("vision_min_confidence", 0.6)):
+                seconds[kind] += need
             continue
         for name, c in (p.get("cues") or {}).items():
             if name in kinds and isinstance(c, dict):

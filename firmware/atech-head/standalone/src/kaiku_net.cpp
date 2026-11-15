@@ -17,7 +17,7 @@
 namespace kaiku_net {
 namespace {
 
-const char* FW_VERSION = "atech-head-standalone-0.8.0";   // 0.1.0 = without the sound streams and the drum hold
+const char* FW_VERSION = "atech-head-standalone-0.9.0";   // 0.1.0 = without the sound streams and the drum hold
 const uint16_t MQTT_PORT = 1883;
 const uint32_t BACKOFF_MIN_MS = 1000, BACKOFF_MAX_MS = 10000, HEALTH_EVERY_MS = 5000, PAN_EVERY_MS = 2000;
 
@@ -202,17 +202,19 @@ void onCmdHead(JsonObject c) {
   if (!strcmp(act, "drum") || !strcmp(act, "breathe") || !strcmp(act, "none")) push("arm", act);
   // she answered in words (next) or asked to stop (end): the hub moves the head's own ritual (main.cpp)
   const char* rit = c["ritual"] | "";
-  if (!strcmp(rit, "next")) push("said", "next");
-  else if (!strcmp(rit, "end")) push("said", "end");
-  if (c["color"].is<const char*>()) push("ring", c["color"]);   // the ear ring's colour, as she asked for it
+  if (!strcmp(rit, "next") || !strcmp(rit, "end") || !strcmp(rit, "start") || !strcmp(rit, "pause")
+      || !strcmp(rit, "resume")) push("said", rit);
   if (c["pan"].is<JsonObject>()) {
     float t = c["pan"]["target_deg"] | 0.0f, s = c["pan"]["speed"] | 0.5f;
-    snprintf(v, sizeof(v), "%d", (int)((t >= 0 ? 1 : -1) * constrain(s, 0.0f, 1.0f) * 100));
+    // "speed,ms": the head has no position sensor, so `target_deg` is not an angle. Its sign is the direction and
+    // its size the length of the nudge: 15 ms a degree, 120 to 600 ms (40 = 600 ms, 10 = 150 ms).
+    int ms = constrain((int)(fabsf(t) * 15), 120, 600);
+    snprintf(v, sizeof(v), "%d,%d", (int)((t >= 0 ? 1 : -1) * constrain(s, 0.0f, 1.0f) * 100), ms);
     push("pan", v);
   }
   const char* g = c["gesture"] | "";
-  if (!strcmp(g, "look_left")) push("pan", "-60");
-  else if (!strcmp(g, "look_right")) push("pan", "60");
+  if (!strcmp(g, "look_left")) push("pan", "-100,600");    // full speed: at 60 the head did not visibly move
+  else if (!strcmp(g, "look_right")) push("pan", "100,600");
   else if (!strcmp(g, "shake")) push("purr", "600");
   if (c["purr"].is<JsonObject>()) { snprintf(v, sizeof(v), "%d", (int)(c["purr"]["ms"] | 500)); push("purr", v); }
 }

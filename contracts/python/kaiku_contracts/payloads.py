@@ -554,6 +554,38 @@ class RawLight(Strict):
     lux_est: float = Field(ge=0)
 
 
+VisionExpression = Literal["neutral", "smiling", "lowered", "tense", "unclear"]
+VisionGaze = Literal["toward_camera", "away", "unclear"]
+VisionPosture = Literal["upright", "leaning", "slumped", "unclear"]
+VisionLighting = Literal["bright", "dim", "dark", "unclear"]
+
+
+class VisionNote(Strict):
+    """What Kaiku's own model (Gemma) noted from a few pictures of the camera during one task (D65), with the
+    person's separate opt-in "Let Kaiku's model look". The pictures went from the device to the Kaiku service and
+    from there, in memory, to the model named in `model`; nobody stored them and this record cannot hold one: it has
+    no field for a picture, a text or anything free-form, and rejects extra fields. Every field is a closed list of
+    words for what can be SEEN in a still picture. None of them names a feeling, and none may: `lowered` and `tense`
+    describe a face, not a person. `not_a_diagnosis` is always true and is there so that no reader, human or model,
+    can take the record for more than it is: a description of a picture and a reason to ask. Stored with provenance;
+    read by no criteria metric and no verdict (role "adherence" in the source map): shown and citable, not scored."""
+
+    task: FaceTask = Field(description="the task the pictures were taken in (the check-in chat today)")
+    device: FaceDevice
+    model: str = Field(min_length=1, max_length=80, description="the model that looked (config [models].gemma_hosted)")
+    frames_n: int = Field(ge=1, le=8, description="pictures the model was shown; none is kept anywhere")
+    face_visible: bool = Field(description="a face could be seen in at least one of them")
+    expression: VisionExpression = Field(description="how the face looks in the pictures, in plain words for what is "
+                                                     "seen; unclear when no face or not readable")
+    gaze: VisionGaze
+    posture: VisionPosture
+    lighting: VisionLighting
+    confidence: float = Field(ge=0, le=1, description="the model's own confidence in this description")
+    not_a_diagnosis: Literal[True] = True
+    ref: str | None = Field(default=None, min_length=1, max_length=64,
+                            description="id of the obs.face_signs (or other record) of the same task")
+
+
 class RawFaceSigns(Strict):
     """What the robot's camera counted in one "Photo time" window (`cmd.sensors face_signs_s`): numbers only, made
     in the camera thread; no frame leaves it. The hub turns it into `obs.face_signs` (task photo_time, device robot,
@@ -681,10 +713,13 @@ class HeadCmd(_AtLeastOne):
                                   "conversation the person started is open); close = stop. Re-sent at least every "
                                   "3 s; the head closes by itself after 10 s without one. Half-duplex: no frames while "
                                   "its speaker plays and about 250 ms after")
-    ritual: Literal["next", "end"] | None = Field(
+    ritual: Literal["next", "end", "start", "pause", "resume"] | None = Field(
         default=None, description="only for a head that runs its own ritual (standalone firmware): next = go on to "
                                   "the next step now (she answered the dial question in words instead of with the "
-                                  "ear); end = she asked to stop: back to idle now, quietly. Ignored while idle")
+                                  "ear); end = she asked to stop: back to idle now, quietly; start = she asked for "
+                                  "the check-in: begin at mood; pause = she is talking about something else: the "
+                                  "open step waits and the head rests in `talk`; resume = she asked to continue: "
+                                  "back to the step that waited (mood when none did). Ignored while idle")
     activity: Literal["breathe", "drum", "none"] | None = Field(
         default=None, description="only for a head that runs its own ritual (standalone firmware), the second half of "
                                   "asking twice (D58): the person asked Kaiku in words for this activity; for the next "

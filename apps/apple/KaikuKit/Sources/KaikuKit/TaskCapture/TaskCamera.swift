@@ -53,7 +53,8 @@ struct TaskCameraFeatures {
     }
 }
 
-/// What a source hands over for one frame it looked at: numbers only.
+/// What a source hands over for one frame it looked at: numbers. One exception (D65): with her separate choice
+/// "Let Kaiku's model look", a few frames of a check-in also carry a small picture for the service's one look.
 struct TaskCameraSample: Sendable {
     /// The older landmark geometry rides on five of the samples a second (its movement number is per 0.2 s step).
     enum Geometry: Sendable { case none, missing, face(TaskFaceFrame) }
@@ -62,6 +63,8 @@ struct TaskCameraSample: Sendable {
     /// The face signs of this frame; nil when it did not hold exactly one usable face.
     var face: FaceReading?
     var geometry: Geometry = .none
+    /// A small JPEG of this frame (`VisionPicture`), only while `lookFor` asked for pictures. In memory only.
+    var picture: Data? = nil
 }
 
 protocol TaskCameraSource: AnyObject, Sendable {
@@ -72,10 +75,14 @@ protocol TaskCameraSource: AnyObject, Sendable {
     var simulated: Bool { get }
     func start(sample: @escaping @Sendable (TaskCameraSample) -> Void, failed: @escaping @Sendable () -> Void) async -> Bool
     func stop()
+    /// From now until `stop`, let up to `rules.frames` samples carry a small picture (D65); nil = none. Asked for
+    /// after `start`, only for a check-in with her choice on. A source that cannot make pictures ignores it.
+    func lookFor(_ rules: VisionLookRules?)
 }
 
 extension TaskCameraSource {
     var simulated: Bool { false }
+    func lookFor(_ rules: VisionLookRules?) {}
 }
 
 /// One task's camera time, finished: the face signs, the two older numbers for obs.play_session when Vision
@@ -145,6 +152,11 @@ private final class TaskCameraTally: @unchecked Sendable {
     @ObservationIgnored var onCue: ((ExpressionCueKind) -> Void)?
     /// The cue thresholds for the NEXT task session (`begin`): the service's, when it sent some.
     @ObservationIgnored var cueRules = ExpressionCueRules.standard { didSet { tally.setCueRules(cueRules) } }
+    /// Pictures for the service's one look (D65): the rules for the NEXT task session, nil = none are made. Only
+    /// the check-in chat sets it, and only with her choice on.
+    @ObservationIgnored var lookRules: VisionLookRules?
+    /// One small picture from the camera, on the main actor. Only the check-in chat listens.
+    @ObservationIgnored var onPicture: ((Data) -> Void)?
     @ObservationIgnored private let source: any TaskCameraSource
     @ObservationIgnored private let permission: () async -> Bool
     @ObservationIgnored private let tally: TaskCameraTally
@@ -243,6 +255,12 @@ private final class TaskCameraTally: @unchecked Sendable {
         guard granted, !blocked() else { state = .unavailable; return }
         tally.accept(current)
         let ready = await source.start(sample: { [tally, weak self] sample in
+                                           if let picture = sample.picture {
+                                               Task { @MainActor in
+                                                   guard let self, self.generation == current, self.state == .capturing else { return }
+                                                   self.onPicture?(picture)
+                                               }
+                                           }
                                            guard let kind = tally.add(sample, generation: current) else { return }
                                            Task { @MainActor in
                                                guard let self, self.generation == current, self.state == .capturing else { return }
@@ -257,6 +275,7 @@ private final class TaskCameraTally: @unchecked Sendable {
         }
         guard ready else { tally.accept(nil); state = .unavailable; return }
         state = .capturing
+        source.lookFor(lookRules)
         watch = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(Self.watchEvery * 1_000_000_000))
@@ -367,6 +386,9 @@ final class VisionTaskCamera: NSObject, TaskCameraSource, AVCaptureVideoDataOutp
     private var previousSample = -Double.infinity, previousGeometry = -Double.infinity
     private var observers: [NSObjectProtocol] = []
     private var reader = VisionFaceReader()
+    private var look: VisionLookSampler?
+
+    func lookFor(_ rules: VisionLookRules?) { queue.async { self.look = rules.map(VisionLookSampler.init) } }
 
     func start(sample: @escaping @Sendable (TaskCameraSample) -> Void, failed: @escaping @Sendable () -> Void) async -> Bool {
         await withCheckedContinuation { continuation in
@@ -411,7 +433,7 @@ final class VisionTaskCamera: NSObject, TaskCameraSource, AVCaptureVideoDataOutp
     func stop() { queue.async { self.stopOnQueue() } }
     private func stopOnQueue() {
         observers.forEach(NotificationCenter.default.removeObserver); observers = []
-        session?.stopRunning(); session = nil; sample = nil; failed = nil
+        session?.stopRunning(); session = nil; sample = nil; failed = nil; look = nil
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -420,7 +442,13 @@ final class VisionTaskCamera: NSObject, TaskCameraSource, AVCaptureVideoDataOutp
         previousSample = time
         let geometry = time - previousGeometry >= Self.geometryStep - Self.slack
         if geometry { previousGeometry = time }
-        autoreleasepool { sample?(reader.read(pixels, orientation: .up, at: time, geometry: geometry)) }
+        autoreleasepool {
+            var out = reader.read(pixels, orientation: .up, at: time, geometry: geometry)
+            if look?.take(at: time, face: out.face != nil) == true, let rules = look?.rules {
+                out.picture = VisionPicture.jpeg(pixels, orientation: .up, rules: rules)
+            }
+            sample?(out)
+        }
     }
 }
 

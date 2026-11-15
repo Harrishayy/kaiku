@@ -400,3 +400,11 @@ the received words unchanged; completion metadata never authorises transcript re
   fields on the day before (`cloud/AGENTS.md` → "Which day a Health number stands under"). No field was added for
   this: a `HistorySession` of such a measure carries the same envelope `id` with a `ts` at the end of that day.
   `sleep_regularity` is in the model and no Apple build sends it (the simulators do).
+
+## What the model noted from pictures (2026-11-15, additive, D65)
+- **`obs.vision_note`** (`payloads.VisionNote`, source `cloud`, group `adherence`, no vote): `task, device, model,
+  frames_n, face_visible, expression (neutral|smiling|lowered|tense|unclear), gaze, posture, lighting, confidence,
+  not_a_diagnosis: true, ref?`. Closed lists only: no free text and no picture field, extra fields are refused.
+- **API:** `VisionLookRules` (in `CompanionSessionResponse.vision_look`, null = not offered) and `VisionLookResult`.
+  The request of `POST /v1/vision/look` has no model on purpose: pictures must not pass through anything that could
+  print them in a validation error.

@@ -405,6 +405,10 @@ export interface CompanionSessionResponse {
   session_id: string;
   system_instruction: string;
   tools: CompanionTool[];
+  /**
+   * how to pick the few pictures Kaiku's own model may look at in this check-in (D65); null = the service does not offer it here. The device still sends none without the person's own opt-in
+   */
+  vision_look?: VisionLookRules | null;
   voice: string;
   /**
    * present when the purpose is walk
@@ -634,6 +638,33 @@ export interface CompanionTool {
   parameters: {
     [k: string]: unknown;
   };
+}
+/**
+ * How a device picks the few pictures Kaiku's own model may look at during a check-in (D65; config
+ * `[vision_look]`). Sent only where the service can do it and only matters with the person's opt-in on that
+ * device. The device takes them in memory, sends them once, and keeps none, also when the send fails.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "VisionLookRules".
+ */
+export interface VisionLookRules {
+  /**
+   * pictures per check-in, at most
+   */
+  frames?: number;
+  jpeg_quality?: number;
+  /**
+   * the longer side after downscaling
+   */
+  max_edge_px?: number;
+  /**
+   * at least this long between two
+   */
+  min_interval_s?: number;
+  /**
+   * camera time before the first one
+   */
+  settle_s?: number;
 }
 /**
  * CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the
@@ -2472,9 +2503,9 @@ export interface HeadCmd {
   pan_mode?: ("track" | "still" | "sway") | null;
   purr?: Purr | null;
   /**
-   * only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly. Ignored while idle
+   * only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly; start = she asked for the check-in: begin at mood; pause = she is talking about something else: the open step waits and the head rests in `talk`; resume = she asked to continue: back to the step that waited (mood when none did). Ignored while idle
    */
-  ritual?: ("next" | "end") | null;
+  ritual?: ("next" | "end" | "start" | "pause" | "resume") | null;
   /**
    * help = the head shows the helpline's name and number and the emergency number on its own screen, from constants compiled into the firmware, until `none`, a new ritual, or 10 minutes; never a sound. Sent by the hub's crisis path only
    */
@@ -4487,6 +4518,54 @@ export interface Transcript {
 export interface TranscriptsResponse {
   home_id: string;
   transcripts: Transcript[];
+}
+/**
+ * What Kaiku's own model (Gemma) noted from a few pictures of the camera during one task (D65), with the
+ * person's separate opt-in "Let Kaiku's model look". The pictures went from the device to the Kaiku service and
+ * from there, in memory, to the model named in `model`; nobody stored them and this record cannot hold one: it has
+ * no field for a picture, a text or anything free-form, and rejects extra fields. Every field is a closed list of
+ * words for what can be SEEN in a still picture. None of them names a feeling, and none may: `lowered` and `tense`
+ * describe a face, not a person. `not_a_diagnosis` is always true and is there so that no reader, human or model,
+ * can take the record for more than it is: a description of a picture and a reason to ask. Stored with provenance;
+ * read by no criteria metric and no verdict (role "adherence" in the source map): shown and citable, not scored.
+ *
+ * This interface was referenced by `KaikuContracts`'s JSON-Schema
+ * via the `definition` "VisionNote".
+ */
+export interface VisionNote {
+  /**
+   * the model's own confidence in this description
+   */
+  confidence: number;
+  device: "phone" | "mac" | "web" | "robot";
+  /**
+   * how the face looks in the pictures, in plain words for what is seen; unclear when no face or not readable
+   */
+  expression: "neutral" | "smiling" | "lowered" | "tense" | "unclear";
+  /**
+   * a face could be seen in at least one of them
+   */
+  face_visible: boolean;
+  /**
+   * pictures the model was shown; none is kept anywhere
+   */
+  frames_n: number;
+  gaze: "toward_camera" | "away" | "unclear";
+  lighting: "bright" | "dim" | "dark" | "unclear";
+  /**
+   * the model that looked (config [models].gemma_hosted)
+   */
+  model: string;
+  not_a_diagnosis?: true;
+  posture: "upright" | "leaning" | "slumped" | "unclear";
+  /**
+   * id of the obs.face_signs (or other record) of the same task
+   */
+  ref?: string | null;
+  /**
+   * the task the pictures were taken in (the check-in chat today)
+   */
+  task: "firefly" | "breathe" | "tell" | "pebbles" | "lantern" | "seeds" | "watering" | "check_in" | "photo_time";
 }
 /**
  * GET /v1/voice?lang= — every keyed line Kaiku says (config/voice_lines.toml), for captions and offline use.

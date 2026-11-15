@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "VisionNote": {
+      "additionalProperties": false,
+      "description": "What Kaiku's own model (Gemma) noted from a few pictures of the camera during one task (D65), with the\nperson's separate opt-in \"Let Kaiku's model look\". The pictures went from the device to the Kaiku service and\nfrom there, in memory, to the model named in `model`; nobody stored them and this record cannot hold one: it has\nno field for a picture, a text or anything free-form, and rejects extra fields. Every field is a closed list of\nwords for what can be SEEN in a still picture. None of them names a feeling, and none may: `lowered` and `tense`\ndescribe a face, not a person. `not_a_diagnosis` is always true and is there so that no reader, human or model,\ncan take the record for more than it is: a description of a picture and a reason to ask. Stored with provenance;\nread by no criteria metric and no verdict (role \"adherence\" in the source map): shown and citable, not scored.",
+      "properties": {
+        "confidence": {
+          "description": "the model's own confidence in this description",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "device": {
+          "enum": [
+            "phone",
+            "mac",
+            "web",
+            "robot"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "expression": {
+          "description": "how the face looks in the pictures, in plain words for what is seen; unclear when no face or not readable",
+          "enum": [
+            "neutral",
+            "smiling",
+            "lowered",
+            "tense",
+            "unclear"
+          ],
+          "title": "Expression",
+          "type": "string"
+        },
+        "face_visible": {
+          "description": "a face could be seen in at least one of them",
+          "title": "Face Visible",
+          "type": "boolean"
+        },
+        "frames_n": {
+          "description": "pictures the model was shown; none is kept anywhere",
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Frames N",
+          "type": "integer"
+        },
+        "gaze": {
+          "enum": [
+            "toward_camera",
+            "away",
+            "unclear"
+          ],
+          "title": "Gaze",
+          "type": "string"
+        },
+        "lighting": {
+          "enum": [
+            "bright",
+            "dim",
+            "dark",
+            "unclear"
+          ],
+          "title": "Lighting",
+          "type": "string"
+        },
+        "model": {
+          "description": "the model that looked (config [models].gemma_hosted)",
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "not_a_diagnosis": {
+          "const": true,
+          "default": true,
+          "title": "Not A Diagnosis",
+          "type": "boolean"
+        },
+        "posture": {
+          "enum": [
+            "upright",
+            "leaning",
+            "slumped",
+            "unclear"
+          ],
+          "title": "Posture",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "id of the obs.face_signs (or other record) of the same task",
+          "title": "Ref"
+        },
+        "task": {
+          "description": "the task the pictures were taken in (the check-in chat today)",
+          "enum": [
+            "firefly",
+            "breathe",
+            "tell",
+            "pebbles",
+            "lantern",
+            "seeds",
+            "watering",
+            "check_in",
+            "photo_time"
+          ],
+          "title": "Task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "device",
+        "model",
+        "frames_n",
+        "face_visible",
+        "expression",
+        "gaze",
+        "posture",
+        "lighting",
+        "confidence"
+      ],
+      "title": "VisionNote",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "home_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Home Id",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/VisionNote"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quality"
+    },
+    "sim": {
+      "default": false,
+      "title": "Sim",
+      "type": "boolean"
+    },
+    "source": {
+      "enum": [
+        "head",
+        "sensors",
+        "hub",
+        "friendlink",
+        "glasses",
+        "laptop",
+        "phone",
+        "cloud",
+        "sim"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "type": {
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "home_id",
+    "source",
+    "type",
+    "payload"
+  ],
+  "title": "Envelope<obs.vision_note>",
+  "type": "object"
+}

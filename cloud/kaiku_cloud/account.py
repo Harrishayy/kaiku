@@ -62,7 +62,8 @@ def generic_records(events: list[dict[str, Any]], crit: Any, data: Any, end: dat
     by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for e in events:
         role = SOURCE_OF.get(e["type"])
-        if e["type"] not in covered and role not in SKIP_ROLES and e["type"] != "obs.phq9" and local_date(e["ts"]) <= end:
+        if (e["type"] not in covered and role not in SKIP_ROLES and e["type"] not in ("obs.phq9", "obs.vision_note")
+                and local_date(e["ts"]) <= end):
             by_type[e["type"]].append(e)
     out = []
     for obs_type, rows in sorted(by_type.items()):
@@ -116,6 +117,45 @@ def cue_record(events: list[dict[str, Any]], end: date) -> RecordCitation | None
               "opt-in. A movement of the face is not proof of a feeling; it is a reason to ask, not a finding, and "
               "it has no vote in the consensus.")
     return RecordCitation(id="obs:face_cues", label="Visible expression signs during tasks", detail=detail[:900],
+                          source=None, observed_at=local_date(rows[0]["ts"]), simulated=all(e.get("sim") for e in rows))
+
+
+VISION_WORDS = {"neutral": "a resting face", "smiling": "smiling", "lowered": "a lowered expression",
+                "tense": "a tense expression", "unclear": "nothing readable"}
+
+
+def vision_phrase(payload: dict[str, Any]) -> str:
+    """One obs.vision_note in the practitioner's words (D65): what the model noted from the pictures. Never a
+    feeling."""
+    where = "during check-in" if payload.get("task") == "check_in" else f"during {payload.get('task', 'a task')}"
+    n = int(payload.get("frames_n") or 0)
+    if not payload.get("face_visible"):
+        return f"what the model noted from the camera ({where}, {n} picture{'s' if n != 1 else ''}): no face in view"
+    bits = [VISION_WORDS.get(str(payload.get("expression")), "nothing readable")]
+    for key, words in (("gaze", {"toward_camera": "looking toward the camera", "away": "looking away"}),
+                       ("posture", {"upright": "upright", "leaning": "leaning", "slumped": "slumped"}),
+                       ("lighting", {"bright": "bright light", "dim": "dim light", "dark": "dark"})):
+        w = words.get(str(payload.get(key)))
+        if w:
+            bits.append(w)
+    return (f"what the model noted from the camera ({where}, {n} picture{'s' if n != 1 else ''}): "
+            + ", ".join(bits) + f" (its confidence {float(payload.get('confidence') or 0):.1f})")
+
+
+def vision_record(events: list[dict[str, Any]], end: date) -> RecordCitation | None:
+    """The last 7 days' vision notes as ONE citable record, shown and not scored (D65). None when there is none."""
+    rows = [e for e in events if e["type"] == "obs.vision_note"
+            and end - timedelta(days=6) <= local_date(e["ts"]) <= end]
+    if not rows:
+        return None
+    rows.sort(key=lambda e: e["ts"], reverse=True)
+    days = {local_date(e["ts"]) for e in rows}
+    lines = [f"{human_date(local_date(e['ts']))}: {vision_phrase(e['payload'])}" for e in rows[:4]]
+    detail = (f"On {len(days)} of the last 7 days. " + ". ".join(lines) + ". Shown, not scored: Kaiku's own model "
+              "described a few pictures the person chose to let it look at; the pictures were not kept. A picture of "
+              "a face is not proof of a feeling; it is a reason to ask, not a finding, and it has no vote in the "
+              "consensus.")
+    return RecordCitation(id="obs:vision_note", label="What the model noted from the camera", detail=detail[:900],
                           source=None, observed_at=local_date(rows[0]["ts"]), simulated=all(e.get("sim") for e in rows))
 
 

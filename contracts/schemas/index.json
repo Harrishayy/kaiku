@@ -131,6 +131,11 @@
       "schema": "obs/tap_back.schema.json",
       "topic": "kaiku/v1/<home_id>/obs/tap_back"
     },
+    "obs.vision_note": {
+      "payload_model": "VisionNote",
+      "schema": "obs/vision_note.schema.json",
+      "topic": "kaiku/v1/<home_id>/obs/vision_note"
+    },
     "obs.wearable_daily": {
       "payload_model": "WearableDaily",
       "schema": "obs/wearable_daily.schema.json",

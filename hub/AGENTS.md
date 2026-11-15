@@ -454,11 +454,21 @@ KAIKU_HOME_ID=aino KAIKU_HUB_ROBOT_HOME_ID=demo-aino KAIKU_CLOUD_URL=http://loca
   `cmd.head {ritual: end}` so the head goes back to rest and `_follow_end` keeps the episode as ended early.
 - **The camera, once per conversation (D61):** `_ask_camera_once` (the fixed `tools.CAMERA_LINE`, after the Live
   session opens in follow mode, only when `health/sensors` says `camera_ok`), `camera_choice` → `_camera_choice`,
-  `_camera_windows` (30 s windows of `cmd.sensors {face_signs_s}` while yes, `obs.face_signs` task check_in), reset
+  `_camera_show` (opens or closes the board's camera with `cmd.sensors {camera_enable}`, repeated on the board's heartbeat; buzzer `ok` for a yes), `_camera_windows` (windows of `cmd.sensors {face_signs_s}` while yes, `obs.face_signs` task check_in), reset
   by `_camera_reset` at every ritual begin and end and on a crisis. `photo_time` needs the yes and marks the day
   (`state.photo_time_done_on`).
-- **Her asks of the body (D62):** `set_light` → `cmd.head {color}`, `turn_head` → `cmd.head {pan}` (forced through
-  in follow mode); `_follow_track` turns the head toward a face at the edge of the picture (`[follow_track]`).
+- **Her asks of the body (D62, D66):** `turn_head` → `cmd.head {pan: {target_deg: ±40, speed: 1.0}}` (forced through
+  in follow mode); `_follow_track` nudges the head toward a face at the edge of the picture (`[follow_track]`:
+  `nudge_deg` 10 at `speed` 1.0; the size of `target_deg` is the length of the nudge, not an angle). The light
+  colour (`set_light`) was removed.
+- **A press opens a talk; the check-in only when asked (D66):** `follow.HEAD_STEPS` has `talk` (not a ritual step);
+  the press at the greeting leads there (`AFTER_PRESS`), `begin` still fires at that press and the conversation
+  lives from it until the head is idle. Tool `checkin {start | continue | pause}` (`tools.CHECKIN_TOOL`) →
+  `_checkin` → `cmd.head {ritual: start | resume | pause}`; `_paused_step` is the step that waits. Entering `talk`
+  from the greeting says `STEP_LINES["talk"]` once; entering it after a pause says nothing. `_talk_idle_check`
+  (every attention tick) ends a talk after `[hub] talk_idle_end_s` (180) without a word, a press, a tool call or
+  a step change. The wake's record ends `completed` (the whole check-in), `ended_early` (started, not finished)
+  or `skipped` (only talked). The invitation is `follow.TALK_OFFER_LINE`.
 - Fixed lines in the cached voice (the invitation, the step lines, Tap it back's lines, the goodbye) are fetched
   when the hub starts (`LinePlayer.prewarm`, log `voice_prewarm n/n lines ready`, up to a minute after a cloud
   restart or a render change) and kept in memory: a line the cloud has not rendered yet takes longer than the 3 s a

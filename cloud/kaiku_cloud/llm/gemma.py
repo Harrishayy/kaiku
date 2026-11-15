@@ -48,4 +48,13 @@ def generate(prompt: str, timeout_s: float | None = None, *, task: str = "explai
     return gemma_hosted.generate(prompt, timeout_s=timeout_s, task=task, home_id=home_id, **more)
 
 
-__all__ = ["LlmUnavailable", "generate", "model_name", "provider", "provider_label"]
+def look(prompt: str, images: list[bytes], timeout_s: float | None = None, *, task: str = "vision_look",
+         home_id: str | None = None) -> str:
+    """Gemma looks at a few pictures (D65). Only the hosted Gemma takes pictures today; our Modal app serves text
+    only, and there is NO other model behind this: with `provider = "modal"` nothing is looked at."""
+    if provider() == "modal":
+        raise LlmUnavailable("pictures are not served by the Modal Gemma app (text only)")
+    return gemma_hosted.look(prompt, images, timeout_s=timeout_s, task=task, home_id=home_id)
+
+
+__all__ = ["LlmUnavailable", "generate", "look", "model_name", "provider", "provider_label"]

@@ -1067,6 +1067,29 @@ class ExpressionCueRules(ApiModel):
     max_per_conversation: int = Field(default=3, ge=0, le=10)
 
 
+class VisionLookRules(ApiModel):
+    """How a device picks the few pictures Kaiku's own model may look at during a check-in (D65; config
+    `[vision_look]`). Sent only where the service can do it and only matters with the person's opt-in on that
+    device. The device takes them in memory, sends them once, and keeps none, also when the send fails."""
+
+    frames: int = Field(default=3, ge=1, le=8, description="pictures per check-in, at most")
+    settle_s: float = Field(default=6, ge=0, le=600, description="camera time before the first one")
+    min_interval_s: float = Field(default=12, ge=1, le=3600, description="at least this long between two")
+    max_edge_px: int = Field(default=256, ge=64, le=768, description="the longer side after downscaling")
+    jpeg_quality: float = Field(default=0.6, ge=0.2, le=0.9)
+
+
+class VisionLookResult(ApiModel):
+    """POST /v1/vision/look — the pictures were looked at (or not) and are gone either way. `stored` true = one
+    obs.vision_note was written and `note` is its payload. `reason` says why nothing was stored; never an error for
+    the device to retry with the same pictures."""
+
+    ok: bool
+    stored: bool = False
+    reason: str | None = Field(default=None, max_length=200)
+    note: dict[str, Any] | None = None
+
+
 class CompanionSessionResponse(ApiModel):
     """POST /v1/companion/session — everything a device needs to open Gemini Live as Kaiku. `live_token` is null
     when Live is unavailable: the device reports unavailability and keeps the microphone closed."""
@@ -1093,6 +1116,10 @@ class CompanionSessionResponse(ApiModel):
     expression_cue: ExpressionCueRules | None = Field(
         default=None, description="thresholds for visible expression cues on this device (D60); null = the device "
                                   "does not look for them in this conversation")
+    vision_look: VisionLookRules | None = Field(
+        default=None, description="how to pick the few pictures Kaiku's own model may look at in this check-in "
+                                  "(D65); null = the service does not offer it here. The device still sends none "
+                                  "without the person's own opt-in")
 
 
 class CompanionToolCall(ApiModel):

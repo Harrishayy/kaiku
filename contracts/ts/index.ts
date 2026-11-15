@@ -35,6 +35,7 @@ export interface PayloadByType {
   'obs.screen_activity': M.ScreenActivity;
   'obs.play_session': M.PlaySession;
   'obs.face_signs': M.FaceSigns;
+  'obs.vision_note': M.VisionNote;
   'obs.wearable_daily': M.WearableDaily;
   'obs.phq9': M.Phq9;
   'obs.intervention_response': M.InterventionResponse;
@@ -65,7 +66,7 @@ export type Message<T extends MessageType = MessageType> = { [K in T]: Envelope<
 export const CONSENSUS_SOURCES = ["robot", "glasses", "laptop", "wearable"] as const;
 export type ConsensusSource = (typeof CONSENSUS_SOURCES)[number];
 /** obs type -> consensus source | learner | adherence | override (mirrors kaiku_contracts.sources). */
-export const SOURCE_OF: Record<string, string> = {"obs.presence": "robot", "obs.self_report": "robot", "obs.hrv_session": "robot", "obs.drum_session": "robot", "obs.tap_back": "robot", "obs.speech_features": "robot", "obs.light_level": "robot", "obs.friend_link": "robot", "obs.outing": "glasses", "obs.laptop_session": "laptop", "obs.screen_activity": "laptop", "obs.play_session": "laptop", "obs.face_signs": "laptop", "obs.wearable_daily": "wearable", "obs.phq9": "laptop", "obs.ritual": "adherence", "obs.engagement": "adherence", "obs.intervention_response": "learner", "obs.nudge_offered": "learner", "obs.nudge_outcome": "learner", "obs.safety_flag": "override"};
+export const SOURCE_OF: Record<string, string> = {"obs.presence": "robot", "obs.self_report": "robot", "obs.hrv_session": "robot", "obs.drum_session": "robot", "obs.tap_back": "robot", "obs.speech_features": "robot", "obs.light_level": "robot", "obs.friend_link": "robot", "obs.outing": "glasses", "obs.laptop_session": "laptop", "obs.screen_activity": "laptop", "obs.play_session": "laptop", "obs.face_signs": "laptop", "obs.vision_note": "adherence", "obs.wearable_daily": "wearable", "obs.phq9": "laptop", "obs.ritual": "adherence", "obs.engagement": "adherence", "obs.intervention_response": "learner", "obs.nudge_offered": "learner", "obs.nudge_outcome": "learner", "obs.safety_flag": "override"};
 /** Display labels for consensus sources ("laptop" is shown as "Apps"). */
 export const SOURCE_LABELS: Record<ConsensusSource, string> = {"robot": "Check-ins & robot", "glasses": "Walks & outings", "laptop": "Apps", "wearable": "Watch"};
 

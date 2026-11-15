@@ -50,13 +50,13 @@ consumes = ["obs.presence", "obs.self_report", "obs.hrv_session", "obs.drum_sess
             "obs.light_level", "obs.ritual", "obs.outing", "obs.laptop_session", "obs.phq9",
             "obs.intervention_response", "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link",
             "obs.safety_flag", "obs.screen_activity", "obs.play_session", "obs.wearable_daily", "obs.engagement",
-            "obs.face_signs"]
-emits = ["cmd.hub", "obs.safety_flag"]
+            "obs.face_signs", "obs.vision_note"]
+emits = ["cmd.hub", "obs.safety_flag", "obs.vision_note"]
 http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/commands", "POST /v1/commands/{command_id}/ack", "GET /v1/nudge", "GET /v1/patients", "GET /v1/patients/{id}/consensus",
         "GET /v1/patients/{id}/timeline", "GET /v1/patients/{id}/phq9", "POST /v1/patients/{id}/actions", "POST /v1/patients/{id}/ask", "GET /v1/patients/{id}/tasks",
         "GET /v1/me", "GET /v1/events", "PUT /v1/health/{home_id}", "GET /v1/health", "POST /v1/admin/recompute",
         "POST /v1/admin/reset", "GET /v1/admin/criteria", "PUT /v1/admin/criteria", "POST /v1/admin/criteria/preview",
-        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
+        "GET /v1/eval", "GET /healthz", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say", "POST /v1/vision/look",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
         "GET /v1/me/transcripts", "DELETE /v1/me/transcripts/{episode_id}", "DELETE /v1/me/transcripts",
@@ -106,18 +106,19 @@ name = "apple"
 path = "apps/apple"
 owner = "A"
 kind = "app"
-summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live, read-only), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
+summary = "SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live; it can turn the robot's camera), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk"
 removable = true
 emits = ["obs.self_report", "obs.play_session", "obs.safety_flag", "obs.screen_activity", "obs.outing",
-         "obs.wearable_daily", "obs.nudge_outcome", "obs.face_signs"]
-# Kaiku bot: read-only on the home broker while the page is on screen (raw/#, cmd/#, obs/#, health/#; never audio/#).
+         "obs.wearable_daily", "obs.nudge_outcome", "obs.face_signs", "cmd.head"]
+# Kaiku bot: on the home broker while the page is on screen it reads raw/#, cmd/#, obs/#, health/# (never audio/#);
+# the one envelope it sends is cmd.head with a pan and nothing else ("Turn the camera", D64).
 consumes = ["raw.head.tap", "raw.head.ear", "raw.head.pan", "raw.head.button", "raw.sensors.ppg", "raw.sensors.distance",
             "raw.sensors.light", "raw.sensors.button", "raw.sensors.hall", "raw.hub.face", "raw.hub.trace",
             "cmd.head", "cmd.sensors", "cmd.hub", "cmd.friendlink", "health",
             "obs.ritual", "obs.self_report", "obs.drum_session", "obs.tap_back", "obs.hrv_session", "obs.presence",
             "obs.engagement", "obs.intervention_response", "obs.speech_features", "obs.light_level",
             "obs.nudge_offered", "obs.nudge_outcome", "obs.friend_link", "obs.phq9", "obs.safety_flag"]
-http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say",
+http = ["GET /v1/discovery", "POST /v1/events", "GET /v1/events", "GET /v1/me", "GET /v1/nudge", "GET /v1/voice", "GET /v1/voice/{line_key}", "POST /v1/voice/say", "POST /v1/vision/look",
         "POST /v1/companion/session", "POST /v1/companion/tool", "POST /v1/companion/episode", "GET /v1/me/memories",
         "DELETE /v1/me/memories/{id}", "DELETE /v1/me/memories", "PUT /v1/me/memory_settings",
         "GET /v1/me/transcripts", "DELETE /v1/me/transcripts", "GET /v1/me/invitation",

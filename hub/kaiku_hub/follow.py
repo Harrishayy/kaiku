@@ -44,11 +44,14 @@ from typing import Any
 from .perception.hrv import HrvResult, PpgBuffer
 from .perception.taps import TapAnalyzer
 
-HEAD_STEPS: tuple[str, ...] = ("idle", "greet", "mood", "energy", "sleep", "breathe", "drum", "done")
+# `talk` (firmware 0.9.0, D64): awake and talking, no check-in running. A press at the greeting leads there; the
+# check-in's own steps open only when she asks for them in words. It is not a ritual step (no obs.ritual of its own).
+HEAD_STEPS: tuple[str, ...] = ("idle", "greet", "talk", "mood", "energy", "sleep", "breathe", "drum", "done")
+CHECKIN_STEPS: tuple[str, ...] = ("mood", "energy", "sleep", "breathe", "drum")
 DIAL: tuple[str, ...] = ("mood", "energy", "sleep")
 RITUAL_STEP: dict[str, str] = {"greet": "greet", "mood": "dial", "energy": "dial", "sleep": "dial",
                                "breathe": "breathe", "drum": "drum", "done": "close"}
-AFTER_PRESS: dict[str, str] = {"greet": "mood", "mood": "energy", "energy": "sleep", "sleep": "breathe",
+AFTER_PRESS: dict[str, str] = {"greet": "talk", "mood": "energy", "energy": "sleep", "sleep": "breathe",
                                "breathe": "drum", "drum": "done", "done": "idle"}
 # chime -> (the step the head just entered, shadow steps from which that is what the hub expected)
 CHIMES: dict[str, tuple[str, tuple[str | None, ...]]] = {
@@ -62,7 +65,9 @@ CHIMES: dict[str, tuple[str, tuple[str | None, ...]]] = {
 # This robot's head has no screen and no light (D54, D55): the dial starts in the middle (5 of 10) and she cannot
 # see its number, so the lines give a direction, not a number (main.cpp: clockwise is higher), and the breathing is
 # paced by Kaiku's words, not by a light.
+TALK_OFFER_LINE = "Hello. Press my ear if you'd like to talk."  # at the head's greeting: a press opens a talk
 STEP_LINES: dict[str, str] = {
+    "talk": "I'm here. What's on your mind?",  # once, when the talk opens; a check-in only if she asks for one
     "mood": "How are you today? Just tell me, or turn my ear: clockwise for lighter, the other way for heavier, "
             "then press it.",
     "energy": "And your energy? Tell me, or turn my ear: clockwise for more, then press.",
@@ -114,6 +119,7 @@ class HeadFollower:
     muted_taps: int = 0
     game: bool = False               # the hub is running Tap it back in the head's drum step: its taps are the game's
     game_levels: int = 0             # levels of that game with a measured try (the hub keeps this current)
+    checkin_started: bool = False    # a check-in step was open in this wake (D64): how the wake's record ends
     asked: str | None = None         # the step the hub sent the head to (asking twice, D58): going there, also
                                      # backwards, is this ritual going on, not a new one
     unanswered: int = 0              # greetings nobody answered since the hub started
@@ -243,13 +249,17 @@ class HeadFollower:
     def _close(self, old: str, new: str | None, now: float, cause: str) -> list[Action]:
         """Close the ritual step the head just left. `new` None = the head is gone or the hub stopped recording."""
         out: list[Action] = []
-        forward = new is not None and new != "idle" and HEAD_STEPS.index(new) > HEAD_STEPS.index(old)
-        status = "completed" if forward else "aborted"
+        paused = new == "talk" and old in CHECKIN_STEPS  # she is talking about something else: the step waits
+        forward = (new is not None and new not in ("idle", "talk") and HEAD_STEPS.index(new) > HEAD_STEPS.index(old)
+                   or (old == "greet" and new == "talk"))
+        status = "completed" if forward else "skipped" if paused else "aborted"
         if old == "greet":
             status = "completed" if forward else ("skipped" if new == "idle" else "aborted")
         elif old in DIAL:
             if forward and not self._dial_presses:
                 status = "skipped"
+            elif paused and self._dial:
+                status = "completed"  # at least one of the three was answered before she turned to something else
         elif old == "breathe":
             out.append(("sensors", {"ppg": "stop"}))
             if forward and cause == "press":
@@ -291,6 +301,8 @@ class HeadFollower:
 
     def _open(self, new: str, now: float) -> list[Action]:
         self._t0 = now
+        if new in CHECKIN_STEPS:
+            self.checkin_started = True
         out: list[Action] = [self._ritual_obs(new, "started", now)]
         if new in DIAL:
             self._dial_presses = 0
@@ -318,6 +330,7 @@ class HeadFollower:
 
     def _fresh(self, reason: str) -> Action:
         self.active = True
+        self.checkin_started = False
         self._held, self._dial, self._dial_presses = [], {}, 0
         return ("begin", reason)
 
@@ -327,7 +340,7 @@ class HeadFollower:
             return []
         out: list[Action] = []
         asked, self.asked = self.asked == new, (None if self.asked == new else self.asked)
-        if (self.active and old is not None and new != "idle" and not asked
+        if (self.active and old is not None and new != "idle" and not asked and "talk" not in (old, new)
                 and HEAD_STEPS.index(new) < HEAD_STEPS.index(old)):
             # the head went backwards (a `greet` / `ritual` serial command, or a reboot into a new ritual)
             out += self._abort(now, "ended_early", f"head went from {old} back to {new}")
@@ -350,12 +363,15 @@ class HeadFollower:
             out += self._close(old, new, now, cause)
         self.step = new
         if self.active and new == "idle":  # the ritual stopped before its end
-            out.append(self._end("skipped" if old == "greet" else "ended_early"))
+            # from `talk`: a check-in that was started (and paused, or stopped) ended early; a wake in which she
+            # only talked has no check-in to end early: its check-in was skipped
+            out.append(self._end("skipped" if old == "greet" or (old == "talk" and not self.checkin_started)
+                                 else "ended_early"))
             return out
         if not self.active and new == "greet":
             self._greet_at, self.consented = now, False
             return out
-        if not self.active and new_r and old is None and new != "done":
+        if not self.active and (new_r or new == "talk") and old is None and new != "done":
             # the hub first hears the head in the middle of a ritual: record the rest, without consent
             self.consented = False
             out.append(self._fresh("follow-joined"))

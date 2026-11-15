@@ -648,6 +648,53 @@
       "title": "LiveToken",
       "type": "object"
     },
+    "VisionLookRules": {
+      "additionalProperties": false,
+      "description": "How a device picks the few pictures Kaiku's own model may look at during a check-in (D65; config\n`[vision_look]`). Sent only where the service can do it and only matters with the person's opt-in on that\ndevice. The device takes them in memory, sends them once, and keeps none, also when the send fails.",
+      "properties": {
+        "frames": {
+          "default": 3,
+          "description": "pictures per check-in, at most",
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Frames",
+          "type": "integer"
+        },
+        "jpeg_quality": {
+          "default": 0.6,
+          "maximum": 0.9,
+          "minimum": 0.2,
+          "title": "Jpeg Quality",
+          "type": "number"
+        },
+        "max_edge_px": {
+          "default": 256,
+          "description": "the longer side after downscaling",
+          "maximum": 768,
+          "minimum": 64,
+          "title": "Max Edge Px",
+          "type": "integer"
+        },
+        "min_interval_s": {
+          "default": 12,
+          "description": "at least this long between two",
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Min Interval S",
+          "type": "number"
+        },
+        "settle_s": {
+          "default": 6,
+          "description": "camera time before the first one",
+          "maximum": 600,
+          "minimum": 0,
+          "title": "Settle S",
+          "type": "number"
+        }
+      },
+      "title": "VisionLookRules",
+      "type": "object"
+    },
     "WalkGuide": {
       "additionalProperties": false,
       "description": "CompanionSessionResponse.walk: how the device keeps a walk going. A Live session only answers input, so the\ndevice nudges: it sends `look_prompt` as a context text turn every `look_every_s` while the camera is on and\nnobody is speaking, and `quiet_prompt` once after `quiet_after_s` without anyone speaking. Null = that nudge\nis not used in this style. Values: config/kaiku.toml [walk].\nKaiku answers a nudge in words only when there is something to say. A declined nudge has no words but is not\nalways silent (real sessions: often a second or two of non-speech sound, transcribed `<no speech>` or `×`),\nso the device holds the audio of a nudge's reply until its first output transcription fragment and plays it\nonly when that fragment has a real word.",
@@ -843,6 +890,18 @@
       },
       "title": "Tools",
       "type": "array"
+    },
+    "vision_look": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VisionLookRules"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "how to pick the few pictures Kaiku's own model may look at in this check-in (D65); null = the service does not offer it here. The device still sends none without the person's own opt-in"
     },
     "voice": {
       "title": "Voice",

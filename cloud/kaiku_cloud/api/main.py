@@ -66,6 +66,7 @@ from kaiku_contracts.api import (
     TimelineResponse,
     Transcript,
     TranscriptsResponse,
+    VisionLookResult,
     VoiceLang,
     VoiceLinesResponse,
     VoiceSayRequest,
@@ -73,7 +74,7 @@ from kaiku_contracts.api import (
 from kaiku_contracts.companion_tools import Surface
 from kaiku_contracts.jlog import get_logger
 
-from .. import clinician_chat, debug_day, history, service, voice
+from .. import clinician_chat, debug_day, history, service, vision, voice
 from .. import insight as patient_insight
 from .. import stream as home_stream
 from ..jobs import nightly
@@ -460,6 +461,26 @@ def create_app(settings: Settings | None = None, *, eval_runner: Callable[..., E
                 "detail": "voice audio unavailable", "reason": str(e),
                 "hint": "show the text and let the person retry when Kaiku’s voice is available"})
         return Response(content=data, media_type="audio/wav", headers={"cache-control": "private, max-age=86400"})
+
+    # ------------------------------------------------------------------ pictures for Kaiku's own model (D65)
+    @app.post("/v1/vision/look", response_model=VisionLookResult)
+    async def vision_look(request: Request, home_id: str) -> VisionLookResult:
+        """A few small pictures of one check-in, looked at once by Gemma and kept nowhere: only what it noted is
+        stored (obs.vision_note). The body is read here, never through a request model, so that no validation
+        error can echo a picture; a body that cannot be used gets a fixed sentence back."""
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(400, "body must be JSON {task, device, frames: [base64 JPEG]}") from None
+        try:
+            out = await asyncio.to_thread(vision.look, store, home_id, body)
+        except vision.Refused as e:
+            raise HTTPException(e.status, e.reason) from None
+        finally:
+            del body
+        if out.get("stored"):
+            service.recompute_home(store, settings, home_id)
+        return VisionLookResult(**out)
 
     # ------------------------------------------------------------------ clinician
     @app.get("/v1/patients", response_model=PatientsResponse)

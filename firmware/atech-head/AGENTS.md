@@ -33,9 +33,18 @@ fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech
   ear starts that step instead of what a press does in the current one; `none` or idle disarms. Flashed.
 - 0.7.0, `cmd.head {ritual: next | end}` (D59): `next` moves on from a dial step (she answered in words), `end` goes
   to idle quietly (she asked to stop). Never while idle or greeting. Flashed.
-- 0.8.0 (D62): `cmd.head {color: "#rrggbb"}` sets the ear ring's colour (kept; breathes while the microphone is open;
-  orange / blue as before until one is chosen). A `pan` waits up to `PAN_WAIT_MS` (8 s) for the speaker to go quiet,
-  then runs its 600 ms (before, a turn asked for during speech ran out with the motor off). Flashed 2026-11-15.
+- 0.8.0 (D62): a `pan` waits up to `PAN_WAIT_MS` (8 s) for the speaker to go quiet, then runs (before, a turn asked
+  for during speech ran out with the motor off). The ring colour that came with it was removed in 0.9.0.
+- 0.9.0 (D66): new step `talk` (`TALK`): a press at the greeting goes there, never into the check-in; a press in
+  `talk` does nothing by itself (it still confirms an armed activity, D58). `cmd.head {ritual: start}` = mood,
+  `pause` = the open step waits (`pausedMode`) and the head rests in `talk` (no drum end chime), `resume` = back to
+  the step that waited (mood when none did). Leaving a running drum step for an armed activity no longer sends
+  the drum's end chime (the hub read it as "the check-in is done"). The ear ring is as it always was: orange at
+  rest, blue while the microphone is open, set only when that changes; `cmd.head {color}` is ignored again.
+  `pan`: `target_deg` is NOT an angle (no position sensor): its sign is the direction, its size the length of the
+  nudge, 15 ms a degree, 120 to 600 ms; speed from `speed`; `look_left` / `look_right` are 600 ms at full speed.
+  **The motor only turns on the head's own charger (port 8), never on a computer's USB port (D54)**, and
+  `raw.head.pan moving` reports the commanded speed, not real motion.
 
 ### One way through the check-in (standalone 0.5.0, 2026-11-15)
 The head used to run through steps by itself or on one press: a bouncing or double press advanced two or three

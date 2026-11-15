@@ -12,11 +12,16 @@ public enum Signal: String, CaseIterable, Identifiable, Sendable {
     /// "Let Kaiku see through the glasses during walks" (off by default): about one picture a second goes to the
     /// live conversation only, while it is open. Never saved, never sent to the Kaiku cloud.
     case see
+    /// "Let Kaiku's model look" (off by default, D65): during a check-in with the camera on, a few small pictures
+    /// go to the Kaiku service once, where Kaiku's own model (Gemma) looks at them. Pictures are not saved; only
+    /// what it notes is kept.
+    case look
     public var id: String { rawValue }
     public var defaultOn: Bool { self == .checkins || self == .walks }
     /// Signals this platform can actually produce (others are shown but explained as another device's).
     public static var forThisDevice: [Signal] {
-        KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .camera, .watch, .transcripts, .see] : [.checkins, .voice, .camera, .mac, .transcripts]
+        KaikuPlatform.isPhone ? [.checkins, .walks, .voice, .camera, .look, .watch, .transcripts, .see]
+            : [.checkins, .voice, .camera, .look, .mac, .transcripts]
     }
 }
 

@@ -11,6 +11,9 @@
   record ends yesterday (< 30 s). Live recordings stay.
 - `make live-day` (`scripts/live_day.py`): a good and a rough day on a throwaway copy, read back through the
   practitioner API; `ARGS="--url ... --kind good|rough"` posts one to a running local API.
+- `robot-test-plan.md`: how to know each robot feature works before a recording: the machine checks
+  (`make robot-bench`, `tools/robot_bench.py`) and the numbered voice-and-hands script with the log line that proves
+  each step. Its part B is dated; re-check it when the robot's conversation rules change.
 - Rule: the demo only shows what runs. Claims are checked against `docs/track-readiness.md` §5.
 
 ## Recordings (gitignored: `demo/recordings/`)

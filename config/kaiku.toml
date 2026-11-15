@@ -262,6 +262,8 @@ queue_path = "logs/uplink_queue.sqlite"
 timeout_s = 10
 
 [hub]
+talk_idle_end_s = 180        # D66: a talk on the robot (the head resting in `talk`) with nothing said, pressed or asked this long
+                             # ends by itself: the hub sends the head back to rest. 0 = never
 transcript_to_phone = true   # D63: while a phone or Mac is the robot's microphone, what the person said (Live's own
                              # transcription) goes to it as raw.hub.transcript for its transcript page. Never stored,
                              # never uplinked, never after a crisis phrase. false = her words never leave the hub
@@ -349,7 +351,9 @@ max_per_conversation = 3
 enabled = true
 sign = 1            # 1 or -1: flip if the head turns AWAY from her (which way this motor turns for a positive pan)
 edge = 0.45         # |x_norm| of the face (0 = middle, 1 = edge of the picture) past which it turns
-speed = 0.35        # motor speed of one 600 ms turn, 0-1
+speed = 1.0         # motor speed of one nudge, 0-1. On the real robot the head did not move at 0.6 or below (2026-11-15)
+turn_s = 2.0        # how long a turn she asked for ("turn your head left") lasts, seconds (0.6 to 6)
+nudge_deg = 10      # how long one nudge is: not an angle (no position sensor), a bigger number is a longer pulse (15 ms each)
 every_s = 2.0
 max_misses = 3
 give_up_s = 60
@@ -469,6 +473,24 @@ cue_min_seconds = 4.5            # a cue counts here only when it held at least 
 [face_cue.metrics]
 games = ["face_range", "face_smiles", "face_range_landmarks"]
 check_in = ["face_range_chat", "face_smiles_chat", "face_range_chat_landmarks"]
+
+[vision_look]
+# Kaiku's own model looks at a few pictures of the camera during a check-in (D65, cloud/kaiku_cloud/vision.py). Only
+# with the person's separate opt-in on their device ("Let Kaiku's model look", off by default). The device sends at
+# most `frames` small JPEGs once; the service hands them in memory to [models].gemma_hosted (Gemma through the Gemini
+# API: verified with a real picture 2026-11-15) and keeps ONLY what it noted (obs.vision_note: closed word lists,
+# shown and citable, not scored). Pictures are never stored, logged or retried. No other model is ever used: with
+# [gemma] provider = "modal" (text only) nothing is looked at.
+enabled = true
+frames = 3                # pictures per check-in, at most (goes to the device with the session)
+settle_s = 6              # camera time before the first one
+min_interval_s = 12       # at least this long between two
+max_edge_px = 256         # the longer side after downscaling on the device
+jpeg_quality = 0.6
+max_frame_bytes = 80000   # a larger picture is refused
+max_per_day = 12          # looks per person in 24 h; more are answered "enough for today" and not looked at
+timeout_s = 30
+max_output_tokens = 200
 
 [expression_cue]
 # Visible expression cues (D60). With her switch "Camera during activities" on, the phone or Mac looks, in memory,

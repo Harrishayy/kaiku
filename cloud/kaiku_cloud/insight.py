@@ -100,7 +100,7 @@ TONE_OF_VERDICT = {"worse": "worse", "better": "better", "as_usual": "similar", 
 CLOCK_UNITS = ("min after midnight", "min from midnight")
 # Records that are always beside the scored evidence, never a finding by themselves: the camera's counts (D52) and
 # its visible expression cues (D60).
-SHOWN_IDS = ("obs:face_signs", "obs:face_cues")
+SHOWN_IDS = ("obs:face_signs", "obs:face_cues", "obs:vision_note")
 OBS_LABEL = {
     "obs.self_report": "Mood, energy and sleep check-ins", "obs.presence": "Presence at the robot",
     "obs.hrv_session": "Pulse during breathing", "obs.drum_session": "Drum sessions",
@@ -112,6 +112,7 @@ OBS_LABEL = {
     "obs.intervention_response": "Before/after activity ratings", "obs.nudge_offered": "Suggestions offered",
     "obs.nudge_outcome": "Suggestion outcomes", "obs.safety_flag": "Safety flags",
     "obs.engagement": "Robot session engagement summary", "obs.face_signs": "Camera face signs during tasks",
+    "obs.vision_note": "What the model noted from the camera",
 }
 _SYSTEM = (
     "You are reviewing one person's record for their practitioner after TMS treatment. Say what THIS record shows: "
@@ -1190,6 +1191,9 @@ def insight(store: Store, settings: Settings, patient_id: str, row: dict[str, An
     cue_rec = account.cue_record(events, end)
     if cue_rec:
         extra.append((cue_rec, "unknown"))
+    vision_rec = account.vision_record(events, end)  # what Gemma noted from pictures (D65): beside, never a finding
+    if vision_rec:
+        extra.append((vision_rec, "unknown"))
     if talk_record:
         extra.append((talk_record, talk_tone))
     min_stable = int(getattr(crit.state, "min_history_days_for_stable", 0) or 0)

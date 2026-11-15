@@ -484,7 +484,9 @@ async def test_standalone_head_sends_what_the_firmware_sends_in_the_same_order()
     assert _sent(head) == [("ear", 5, True), ("chime", "wake")] and head.mode == "greet"
     await head._tick()
     assert head.bus.of("raw.head.pan")[-1].payload.moving   # the greeting purr runs the motor
-    await head.press_ear()                                  # start the ritual
+    await head.press_ear()                                  # a press at the greeting opens a talk (D64) ...
+    assert head.mode == "talk"
+    await head.start_checkin()                              # ... she asks for the check-in: the first question
     assert head.mode == "mood" and head.dial_value == 5
     await head.turn_ear(2)
     await head.turn_ear(9)                                  # clamps at 10

@@ -575,7 +575,7 @@ def test_another_persons_record_has_the_same_days_and_none_of_ainos_words():
     single_person.populate(store, rows, end)
     kept = [m["text"] for m in store.memories("harrish")]
     assert set(kept) == {text for _c, text in single_person.OTHER_NOTES["harrish"]}
-    assert any("protein" in k for k in kept) and any("Chips" in k for k in kept)
+    assert any("favourite robot" in k for k in kept) and any("Chips" in k for k in kept)
     assert not any(e.transcript for e in single_person.episodes(end, "harrish"))
     told = json.dumps([store.actions("harrish"), kept])
     assert not any(name in told for name in ("Aino", "Maija", "Leena", "Eetu"))

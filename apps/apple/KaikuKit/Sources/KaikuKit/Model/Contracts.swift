@@ -383,6 +383,8 @@ public struct CompanionSessionResponse: Codable, Sendable, Equatable {
     public var idle_end_s: Int? = nil
     /// The thresholds for visible expression cues in this conversation (D60); nil = the device does not hand any over.
     public var expression_cue: ExpressionCueRules? = nil
+    /// How to pick the few pictures Kaiku's own model may look at in this check-in (D65); nil = not offered here.
+    public var vision_look: VisionLookRules? = nil
     public var context_refresh_seconds: Int? = nil
     /// Kaiku's recommended Live setup (persona, voice, `[live]` VAD); the token locks only the model.
     public var live_setup: JSONValue?

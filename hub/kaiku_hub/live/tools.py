@@ -49,7 +49,6 @@ ASK_TWICE_TOOL: dict = {
 CAMERA_LINE = "Before we start: shall I have my camera on while we talk? Yes or no."
 CAMERA_ON_LINE = "Camera on. Only numbers, never a picture."
 CAMERA_OFF_LINE = "Okay, the camera stays off."
-CAMERA_RING, REST_RING = "#28dc5a", "#ff8c28"  # the ear ring: green while the camera counts, orange at rest
 CAMERA_WAIT_S = 12.0
 CAMERA_TOOL: dict = {
     "name": "camera_choice",
@@ -75,16 +74,6 @@ EXPRESSION_CUE: dict[str, str] = {
 }
 
 # Things she can ask the robot's body for in words (D62). Small and harmless, so one ask is enough.
-LIGHT_COLOURS: dict[str, str] = {"white": "#ffffff", "orange": "#ff8c28", "yellow": "#ffd21e", "green": "#28dc5a",
-                                 "blue": "#28a0ff", "purple": "#a050ff", "pink": "#ff5aa0", "red": "#ff2814"}
-LIGHT_TOOL: dict = {
-    "name": "set_light",
-    "description": "Change the colour of the light ring on your ear because they asked for it (\"make your light "
-                   "white\"). It stays that colour until they ask for another. While you are listening the ring "
-                   "gently breathes in that colour. Returns {ok, colour}.",
-    "parameters": {"type": "object", "required": ["colour"], "properties": {
-        "colour": {"type": "string", "enum": list(LIGHT_COLOURS)}}},
-}
 TURN_TOOL: dict = {
     "name": "turn_head",
     "description": "Turn your head a little to their left or right because they asked (\"look this way\", \"turn "
@@ -95,12 +84,31 @@ TURN_TOOL: dict = {
 }
 
 
+# The check-in runs only when she asks for it, and her talking has priority over it (D64).
+CHECKIN_TOOL: dict = {
+    "name": "checkin",
+    "description": "The robot's daily check-in (three short questions: mood, energy, sleep; then breathing and the "
+                   "drums). It NEVER starts by itself and you never start it on your own idea: by default you just "
+                   "talk with them. action start: they asked for it (\"let's start\", \"let's do the check-in\"); "
+                   "it begins with the mood question, which the robot asks itself. action continue: they asked to "
+                   "go on with a check-in that was paused (\"continue\", \"where were we\"); it returns to the "
+                   "step that waited. action pause: a check-in step is open and they started talking about "
+                   "something else, or said they do not want it now: call this at once, then simply talk with them "
+                   "about what they brought up. After a pause do NOT bring the check-in up again, do not offer to "
+                   "continue it and do not ask its questions yourself; it comes back only if they ask for it or "
+                   "ask for one activity by name (start_activity). To end the whole conversation use end_session. "
+                   "Returns {ok, checkin}.",
+    "parameters": {"type": "object", "required": ["action"], "properties": {
+        "action": {"type": "string", "enum": ["start", "continue", "pause"]}}},
+}
+
+
 def with_ask_twice(tools: list[dict]) -> list[dict]:
     """The follow-mode tool list plus the hub's own tools there (the ask-twice `start_activity`, the camera
     answer), in the list's own shape."""
     if any(isinstance(t, dict) and "function_declarations" in t for t in tools):
-        return [*tools, {"function_declarations": [ASK_TWICE_TOOL, CAMERA_TOOL, LIGHT_TOOL, TURN_TOOL]}]
-    return [*tools, ASK_TWICE_TOOL, CAMERA_TOOL, LIGHT_TOOL, TURN_TOOL]
+        return [*tools, {"function_declarations": [ASK_TWICE_TOOL, CAMERA_TOOL, TURN_TOOL, CHECKIN_TOOL]}]
+    return [*tools, ASK_TWICE_TOOL, CAMERA_TOOL, TURN_TOOL, CHECKIN_TOOL]
 
 
 def without(tools: list[dict], names: frozenset[str] | set[str]) -> list[dict]:

@@ -94,6 +94,10 @@ extension AppModel {
     /// nothing paused. The system's permission is the camera controller's own question.
     var cameraOn: Bool { allowed(.camera) && allowed(.checkins) && !cameraNeedsConfirm }
 
+    /// Whether a few pictures of a check-in may go to Kaiku's own model (D65): her separate choice, on top of the
+    /// camera choice. Off by default; either one off = no picture is ever made.
+    var lookOn: Bool { cameraOn && allowed(.look) }
+
     /// Her answer to the one-time question: keep the choice on under the new wording, or turn it off.
     func confirmCamera(keep: Bool) {
         if keep { cameraChoice.agree() } else { consents[.camera] = false }

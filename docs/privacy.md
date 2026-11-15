@@ -51,6 +51,14 @@
 - Consent is collected in the native apps' onboarding and Settings, one switch per signal. There is no separate
   glasses app: glasses registration is an explicit action on the iPhone that does not open the microphone.
 - Every plan-02 signal is opt-in per signal, pausable (Mac menu bar), and listed in "What Kaiku saw today".
+- **"Let Kaiku's model look" (D65, a separate switch, off by default):** during a check-in with the camera on, at
+  most three small pictures (256 px, JPEG) go once from the iPhone or Mac to the Kaiku service and from there to
+  Kaiku's model, Gemma, which runs through Google's Gemini API. **Pictures are not saved**: not on the device, not in
+  the Kaiku database, logs or queues; if the send or the model fails they are dropped and not sent again. What is
+  kept is the model's note in fixed words (`obs.vision_note`: face visible, expression resting / smiling / lowered /
+  tense / unclear, gaze, posture, lighting, confidence). The care team sees it as shown, not scored. It describes a
+  picture; it is not a statement about a feeling. What Google does with a request is set by its API terms. Without
+  this switch D52 holds unchanged: no picture leaves the device.
 - **Camera during activities (D52) is not emotion recognition and is not built to become it.** It counts
   movements, compares them only with the same person's own earlier sessions on the same method, and is never used
   to decide a state, raise a flag or handle a crisis. What is not shown: that these counts say anything about how

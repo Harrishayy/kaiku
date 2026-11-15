@@ -364,7 +364,7 @@ class StandaloneHeadSim(TapBackPerson):
     """
 
     FW_VERSION = "atech-head-standalone-0.1.0"
-    STEPS = ("idle", "greet", "mood", "energy", "sleep", "breathe", "drum", "done")
+    STEPS = ("idle", "greet", "talk", "mood", "energy", "sleep", "breathe", "drum", "done")
     DIALS = ("mood", "energy", "sleep")
     IN_MS, OUT_MS = 4000, 6000
     GREET_TIMEOUT_MS, DONE_MS, DRUM_WAIT_MS, QUIET_MS, GREET_PURR_MS, PAN_BURST_MS, PAN_EVERY_MS = (
@@ -403,6 +403,9 @@ class StandaloneHeadSim(TapBackPerson):
         self._moving = False
         self._tap_latch = self._face = False
         self._armed: tuple[str, float] | None = None
+        self._paused: str | None = None  # the check-in step that waits while she talks (main.cpp pausedMode)
+        self.asks_checkin = True         # auto mode: the simulated person asks for the check-in once the talk opens
+        self._asked_checkin = False
         self._last_knock_ms = -10_000
         self._t0 = time.monotonic()
         self._reconnects = 1
@@ -441,6 +444,8 @@ class StandaloneHeadSim(TapBackPerson):
     # ------------------------------------------------------------ main.cpp
     async def _set_mode(self, mode: str) -> None:
         self.mode, self._mode_start = mode, self._ms()
+        if mode == "idle":
+            self._asked_checkin = False
         if mode != "idle":
             self._help_until = 0.0  # kaiku_net::step: the person started something new, the help screen makes way
         if mode in self.DIALS:
@@ -473,8 +478,9 @@ class StandaloneHeadSim(TapBackPerson):
         if m == "idle":
             await self._start_greeting()
         elif m == "greet":
-            self.results = {}
-            await self._set_mode("mood")
+            await self._set_mode("talk")  # main.cpp 0.9.0 (D64): a press at the greeting opens a talk, no check-in
+        elif m == "talk":
+            pass  # a press while talking starts nothing
         elif m in self.DIALS:
             await self._set_mode(("energy", "sleep", "breathe")[self.DIALS.index(m)])
         elif m == "breathe":
@@ -491,6 +497,13 @@ class StandaloneHeadSim(TapBackPerson):
             if self.mode in self.DIALS:  # the firmware reports turns only while dialling
                 self.dial_value = min(10, max(1, self.dial_value + delta))
                 await self._ear(delta, False)
+
+    async def start_checkin(self) -> None:
+        """She asked for the check-in (main.cpp `said start` / serial `ritual`): from the talk to the first question."""
+        async with self._lock:
+            if self.mode == "talk":
+                self._paused, self.results = None, {}
+                await self._set_mode("mood")
 
     async def press_ear(self) -> None:
         async with self._lock:
@@ -543,8 +556,23 @@ class StandaloneHeadSim(TapBackPerson):
         if c.ritual and self.mode not in ("idle", "greet"):  # main.cpp `said`: she said it instead of pressing
             async with self._lock:
                 self._armed = None
+                in_step = self.mode in (*self.DIALS, "breathe", "drum")
                 if c.ritual == "end":
+                    self._paused = None
                     await self._set_mode("idle")
+                elif c.ritual == "start":  # "let's start": the check-in begins at mood
+                    self._paused, self.results = None, {}
+                    await self._set_mode("mood")
+                elif c.ritual == "pause":  # she talks about something else: the open step waits
+                    if in_step:
+                        self._paused = self.mode
+                        await self._set_mode("talk")
+                elif c.ritual == "resume":  # "continue": back to the step that waited (mood when none did)
+                    if self.mode == "talk":
+                        go, self._paused = self._paused or "mood", None
+                        if go == "mood":
+                            self.results = {}
+                        await self._set_mode(go)
                 elif self.mode in self.DIALS:
                     await self._advance()
         if c.activity:  # main.cpp `arm`: for 20 s the next press of the ear starts this step (asking twice, D58)
@@ -641,6 +669,12 @@ class StandaloneHeadSim(TapBackPerson):
         if mode == "greet":
             await asyncio.sleep(1.2)
             await self.press_ear()
+        elif mode == "talk" and self.asks_checkin and not self._asked_checkin:
+            # Auto mode stands in for her saying "let's start" when no voice is there to hear it: the same step
+            # change `cmd.head {ritual: start}` makes (the firmware's serial `ritual` command). Once per wake.
+            self._asked_checkin = True
+            await asyncio.sleep(0.8)
+            await self.start_checkin()
         elif mode in self.DIALS:
             target = self.answers[mode] or self.rng.choice([4, 5, 6, 7, 8])
             await asyncio.sleep(0.6)

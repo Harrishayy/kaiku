@@ -55,6 +55,7 @@ class Settings:
     head_mode: str = "auto"  # auto | follow | drive ([hub]; follow = the standalone head runs the ritual, D44)
     robot_home_id: str | None = None  # the home the robot boards publish on, when it is not the person's record id
     head_stale_s: float = 15.0
+    talk_idle_end_s: float = 180.0  # [hub]: a talk on the robot with nothing said this long ends by itself (D64)
     follow_offer_every_s: float = 300.0  # follow mode: the spoken invitation at the head's greeting, at most this often
     trace: bool = True  # raw.hub.trace on the home broker: Kaiku's own lines and tool names, for the apps' Kaiku bot tab
     # ritual timings (s)
@@ -109,7 +110,9 @@ class Settings:
     track_enabled: bool = True   # [follow_track]: small head turns that keep her face in the camera's picture (D62)
     track_sign: int = 1          # 1 or -1: which way this robot's motor turns for a positive pan
     track_edge: float = 0.45     # |x_norm| past which the head turns toward her
-    track_speed: float = 0.35    # motor speed of one 600 ms turn, 0-1
+    track_speed: float = 1.0     # motor speed of one nudge, 0-1 (below full speed the head did not visibly move)
+    turn_s: float = 2.0          # [follow_track] turn_s: how long one asked-for turn of the head lasts
+    track_nudge_deg: float = 10.0  # the length of one nudge: not an angle, 15 ms a "degree" (10 = 150 ms)
     track_every_s: float = 2.0   # at most one turn this often
     track_max_misses: int = 3    # turns in a row with her no nearer the middle before giving up for a while
     track_give_up_s: float = 60.0
@@ -161,6 +164,7 @@ class Settings:
                        if str(h.get("head_mode", "auto")).lower() in ("auto", "follow", "drive") else "auto"),
             robot_home_id=str(h.get("robot_home_id") or "").strip() or None,
             head_stale_s=_f(c, "hub", "head_stale_s", 15),
+            talk_idle_end_s=_f(c, "hub", "talk_idle_end_s", 180),
             follow_offer_every_s=_f(c, "hub", "follow_offer_every_s", 300),
             trace=bool(h.get("trace", True)),
             presence_leave_s=_f(c, "hub", "presence_leave_s", 6),
@@ -212,7 +216,9 @@ class Settings:
             track_enabled=bool(c.get("follow_track", {}).get("enabled", True)),
             track_sign=-1 if _f(c, "follow_track", "sign", 1) < 0 else 1,
             track_edge=_f(c, "follow_track", "edge", 0.45),
-            track_speed=min(1.0, max(0.1, _f(c, "follow_track", "speed", 0.35))),
+            track_speed=min(1.0, max(0.1, _f(c, "follow_track", "speed", 1.0))),
+            turn_s=min(6.0, max(0.6, _f(c, "follow_track", "turn_s", 2.0))),
+            track_nudge_deg=min(40.0, max(8.0, _f(c, "follow_track", "nudge_deg", 10.0))),
             track_every_s=max(0.8, _f(c, "follow_track", "every_s", 2.0)),
             track_max_misses=int(_f(c, "follow_track", "max_misses", 3)),
             track_give_up_s=_f(c, "follow_track", "give_up_s", 60.0),

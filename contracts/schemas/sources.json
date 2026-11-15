@@ -32,6 +32,7 @@
     "obs.self_report": "robot",
     "obs.speech_features": "robot",
     "obs.tap_back": "robot",
+    "obs.vision_note": "adherence",
     "obs.wearable_daily": "wearable"
   }
 }

@@ -1579,3 +1579,62 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
 - Broken/blocked: not seen on the robot: the camera's light going on with a yes, the spoken confirmation, the green
   ring, the expression note. With the camera closed outside a consented conversation there is no waking on a face,
   no distance, no room light and no following then: only the ear wakes the robot. `make check` not run.
+
+## 2026-11-15 02:40 UTC — Claude Code — apps/apple: Turn the camera on Kaiku bot (D64)
+- Did: Kaiku bot gets a "Turn the camera" card: motor level 40 · 55 · 70 · 85 · 100 % and Turn left / Turn right. A
+  press publishes one `cmd.head {pan: {target_deg: ±20, speed}}` to the home broker (`BotCameraWire`,
+  `MQTTOut.cameraTurn`, `BotBusClient.sendCameraTurn`); the card then says what came back (`BotCameraPush`): motor
+  ran, the face moved in the camera's picture, or the head started again (the level then steps down one).
+- Verified: 31 bot tests pass (`swift test --filter "BotWireTests|BotModelTests|BotBrokerTests|BotStateTests"`),
+  one of them a real round-trip on a throwaway mosquitto. The iPhone 17 simulator drew the card while connected to
+  the real robot's broker (no button pressed); the build is installed on the team's iPhone 14. Before the card existed, the same command from this Mac's
+  terminal reached the real head: the head reported its motor running at 40, 70 and 100 %; the face in the sensor
+  board's picture did not move at 70 % (x 0.13 before and after) and did at 100 % (0.13 to about 0.4), one run each;
+  the person beside the robot saw no movement at 40 %.
+- Contract changes: none (`cmd.head` as it is); `modules.toml`: apple now emits `cmd.head`.
+- Broken/blocked: the card itself has not been pressed against the real head. The hub's own turns use 35 %
+  (`[follow_track] speed`) and `[attention] pan_speed` is 0.4, both under what moved the head here, so following a
+  face probably does not turn it; not changed. The head restarted once between the 70 % and the 100 % run, cause not
+  known. `make check` not run.
+- Next: find the lowest level that turns the head from the page, then set the hub's two speeds to it.
+
+## 2026-11-15 03:50 UTC — Claude Code — cloud: Harrish's notebook for the video (corrects the 03:35 entry)
+- Did: `OTHER_NOTES["harrish"]` no longer holds "Eating more protein this week". It now holds his name, "Chips, the
+  easy snack to grab" and "His favourite robot is Kaiku, the red and white one": the glasses scene of the video
+  turns on the chips and on the robot itself.
+- Verified: `cloud/tests/test_single_person.py` passes; re-seeded the local API on :8000 with `--home harrish --reset
+  --no-jobs`; `/v1/me/memories?home_id=harrish` returns exactly those three entries.
+- Contract changes: none.
+- Broken/blocked: nothing new. `make check` not run.
+
+## 2026-11-15 04:50 UTC — Claude Code — cloud + contracts + apple: Gemma looks at a few pictures of a check-in (D65)
+- Did: new opt-in "Let Kaiku's model look" (off by default). During a check-in with the camera on, the app keeps up
+  to 3 small JPEGs in memory and sends them once to `POST /v1/vision/look`; the service shows them to the hosted
+  Gemma (`gemma-4-26b-a4b-it`, Gemini API) and stores only `obs.vision_note` (closed word lists). The note is shown
+  and citable (`obs:vision_note`), not scored, and a `lowered`/`tense` note feeds the `quieter_in` card line. Rule 5,
+  `docs/privacy.md`, `docs/safety.md` and the module docs say so.
+- Verified: `uv run pytest cloud contracts tools -q` passes, `ruff check cloud contracts` clean, `swift build` and
+  `swift test` (604 tests, 14 skipped, 0 failures). One real look on a throwaway local service (free port, temp
+  database) with three drawn faces: 200 in 4.1 s, `face_visible true, smiling, toward_camera, posture unclear,
+  bright, confidence 1.0`; the database held that one event and no picture bytes.
+- Contract changes: `obs.vision_note`, `VisionLookRules`, `VisionLookResult`, `CompanionSessionResponse.vision_look`
+  (all additive); `modules.toml`: cloud emits and consumes `obs.vision_note`, cloud and apple list the route.
+- Broken/blocked: never run on a real iPhone or Mac camera. The robot is not built (D65 says what it needs). fi copy
+  is the English text. The service on :8000 needs a restart and the apps a new install. `make check` not run.
+- Next: try it on the iPhone with a real check-in; decide whether pictures going to Google's API is acceptable.
+
+## 2026-11-15 02:50 UTC — Claude Code (fork) — hub + firmware/atech-head + sim + contracts: a press opens a talk (D66)
+- Did: D66. Head firmware 0.9.0 (`TALK`, `ritual: start | pause | resume`, pan length from `target_deg`, ring colour
+  removed, no drum end chime when leaving a drum step for an armed activity). Follower: `talk` step, pauses, how a
+  wake's record ends. Hub: `checkin` tool, `_paused_step`, `_talk_idle_check`, `[hub] talk_idle_end_s`, new
+  invitation and talk lines (prewarmed), `turn_head` and following at full speed with short nudges, `set_light`
+  removed. Found and fixed: the hub never sent `cmd.sensors {camera_enable}` (the earlier edit had not applied), so
+  the camera was not closed or opened with her answer; `_camera_show` and the sensors heartbeat now do it.
+  Contract: `HeadCmd.ritual` gains `start`, `pause`, `resume` (additive). Sim twin mirrors the firmware; its
+  simulated person asks for the check-in once the talk opens.
+- Verified: see the fork's report for the final test run. Hub restarted 02:47 (`voice_prewarm 19/19`), head on the
+  broker as 0.9.0.
+- Broken/blocked: the head was flashed by the coordinator from the source as it stood at 02:42; the fork's own flash
+  at 02:46 did not run (the head was no longer on USB), so whether the board has the last pan and ring edits is not
+  known: flash again when it is on USB. Nothing of D66 was tried by a person on the robot. `tools/head_voice_check.py`
+  (owner: tools) scripts the old flow (a press starts the check-in) and was not updated.

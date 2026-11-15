@@ -110,8 +110,8 @@ NOTES = (
 OTHER_NOTES: dict[str, tuple[tuple[str, str], ...]] = {
     "harrish": (
         ("name", "Harrish"),
-        ("plans", "Eating more protein this week"),   # the two things the glasses walk in the video turns on:
-        ("likes", "Chips, the easy snack to grab"),   # what he reaches for, and what he said he wants instead
+        ("likes", "Chips, the easy snack to grab"),               # the two things the glasses scene in the video
+        ("likes", "His favourite robot is Kaiku, the red and white one"),  # turns on: both are on the table
     ),
 }
 OTHER_CARE_NOTE = ("Rang after four short nights and very little time outside. Agreed: a morning walk, an evening "

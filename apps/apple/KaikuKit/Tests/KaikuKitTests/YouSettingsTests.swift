@@ -22,7 +22,7 @@ final class YouSettingsTests: XCTestCase {
 
     func testAShortFormNeverReplacesTheWholeText() {
         let short = Signal.allCases.filter(\.hasShortForm)
-        XCTAssertEqual(Set(short), [.camera, .watch, .transcripts, .see])
+        XCTAssertEqual(Set(short), [.camera, .watch, .transcripts, .see, .look])
         for s in Signal.allCases {
             if s.hasShortForm {
                 XCTAssertEqual(s.lineKey, "sig.\(s.rawValue).s")

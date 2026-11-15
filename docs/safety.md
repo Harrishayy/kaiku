@@ -53,6 +53,17 @@ on the priority uplink → consensus state **Safety** (overrides every source) w
 - Limits: a quiet face has many ordinary reasons (concentration, tiredness, lighting, glasses, a cold, the
   angle of the phone). That is why it changes a manner and nothing else.
 
+## What the model noted from pictures (D65)
+- With the separate opt-in, Gemma looks at up to three pictures of a check-in and its note (`obs.vision_note`) is
+  kept; the pictures are not. The note never enters the crisis path and never decides a state: no vote, no score.
+- The note uses fixed words for what is visible (lowered, tense, smiling, resting). It is a model's description of a
+  picture, wrong some of the time, and not proof of a feeling. Lighting, glasses, tiredness and concentration all
+  change it. It is a reason to ask, never a conclusion.
+- Kaiku never says a picture was looked at and never names a feeling from it; a lowered or tense note can only make
+  its manner gentler.
+- Describing expressions from pictures of a person is emotion recognition under the EU AI Act (high-risk in
+  general). The lead accepted that risk on 2026-11-15 (D65). Not validated against people.
+
 ## Changing the list
 Add phrases freely; removing one needs a note in `docs/progress.md` with the reason. Review with a
 clinician/mentor before the demo.

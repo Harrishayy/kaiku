@@ -22,6 +22,9 @@ final class ARKitFaceSource: NSObject, TaskCameraSource, ARSessionDelegate, @unc
     private var failed: (@Sendable () -> Void)?
     private var previousSample = -Double.infinity, previousGeometry = -Double.infinity
     private let reader = VisionFaceReader()
+    private var look: VisionLookSampler?
+
+    func lookFor(_ rules: VisionLookRules?) { queue.async { self.look = rules.map(VisionLookSampler.init) } }
 
     func start(sample: @escaping @Sendable (TaskCameraSample) -> Void, failed: @escaping @Sendable () -> Void) async -> Bool {
         await withCheckedContinuation { continuation in
@@ -51,7 +54,7 @@ final class ARKitFaceSource: NSObject, TaskCameraSource, ARSessionDelegate, @unc
 
     func stop() { queue.async { self.stopOnQueue() } }
     private func stopOnQueue() {
-        session?.pause(); session?.delegate = nil; session = nil; sample = nil; failed = nil
+        session?.pause(); session?.delegate = nil; session = nil; sample = nil; failed = nil; look = nil
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -63,6 +66,10 @@ final class ARKitFaceSource: NSObject, TaskCameraSource, ARSessionDelegate, @unc
             previousGeometry = t
             // ARKit's picture lies on its side in a phone held upright (the app is portrait only).
             autoreleasepool { out.geometry = reader.geometry(frame.capturedImage, orientation: .right) }
+        }
+        // D65: with her separate choice, a few frames of a check-in also become a small picture for the one look.
+        if look?.take(at: t, face: out.face != nil) == true, let rules = look?.rules {
+            autoreleasepool { out.picture = VisionPicture.jpeg(frame.capturedImage, orientation: .right, rules: rules) }
         }
         sample?(out)
     }

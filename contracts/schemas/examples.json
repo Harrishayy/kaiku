@@ -273,6 +273,19 @@
     "steadiness": 0.94,
     "taps": 40
   },
+  "obs.vision_note": {
+    "confidence": 0.7,
+    "device": "phone",
+    "expression": "neutral",
+    "face_visible": true,
+    "frames_n": 3,
+    "gaze": "toward_camera",
+    "lighting": "bright",
+    "model": "gemma-4-26b-a4b-it",
+    "not_a_diagnosis": true,
+    "posture": "upright",
+    "task": "check_in"
+  },
   "obs.wearable_daily": {
     "date": "2026-11-14",
     "daylight_min": 47.0,

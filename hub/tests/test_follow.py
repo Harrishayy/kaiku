@@ -43,8 +43,14 @@ class Head:
         self.out += (got := self.f.on_chime(name, self.now))
         return got
 
-    def press(self, value=5):
+    def press(self, value=5, checkin=True):
+        """A press of the ear. At the greeting it opens a talk (D64); `checkin` = she then asks for the check-in in
+        words and the head goes to its first question (what `cmd.head {ritual: start}` makes it do)."""
+        was = self.f.step
         self.out += (got := self.f.on_ear(value, True, TS, self.now))
+        if was == "greet" and checkin and self.f.step == "talk":
+            self.out += (more := self.f.on_health("ok", {"step": "mood", "firmware": "standalone"}, self.now))
+            got = got + more
         return got
 
     def knocks(self, n, every_ms=500, start=1000):
@@ -240,8 +246,13 @@ class Rig:
         env = make("cmd.sensors", {"chime": name}, source=source, home_id=self.home, sim=True)
         await self.hub.on_sensors_cmd(parse_topic(f"kaiku/v1/{self.home}/cmd/sensors"), env)
 
-    async def press(self, value=5):
+    async def press(self, value=5, checkin=True):
+        """A press of the ear. At the greeting it opens a talk (D64); `checkin` = she then asks for the check-in and
+        the head goes to its first question, as the firmware does on `cmd.head {ritual: start}`."""
+        was = self.hub.follower.step
         await self.raw("raw.head.ear", {"value": value, "delta": 0, "pressed": True})
+        if was == "greet" and checkin and self.hub.follower.step == "talk":
+            await self.health("mood")
 
     async def whole_ritual(self):
         await self.health("idle")

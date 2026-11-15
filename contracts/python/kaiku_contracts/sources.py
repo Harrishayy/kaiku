@@ -33,6 +33,8 @@ SOURCE_OF: dict[str, str] = {
     "obs.play_session": "laptop",  # games on phone, Mac or web all count toward "Apps"
     "obs.face_signs": "laptop",  # camera face signs during a task (D52): in the Apps group beside the task. Every
     # metric that reads it is `role = "shown"` in config/criteria.toml, so it adds no vote, coverage or freshness
+    "obs.vision_note": "adherence",  # what Gemma noted from a few pictures (D65): stored with provenance, shown and
+    # citable; read by no metric, so it adds no vote, coverage or freshness to any source
     "obs.wearable_daily": "wearable",
     "obs.phq9": "laptop",  # counts toward laptop wherever it was completed; also the clinical anchor
     "obs.ritual": "adherence",

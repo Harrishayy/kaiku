@@ -827,6 +827,18 @@ flowchart LR
   sounds for a yes, and the ear ring is green while the camera counts.
 
 
+## D64 — Turning the robot's camera from the Kaiku bot page (2026-11-15, Harrish)
+- The Kaiku bot page on the iPhone and Mac gets "Turn the camera": five motor levels (40 to 100 %) and two buttons.
+  A press sends one `cmd.head {pan}` to the home broker; it is the only command the apps can send, and the app
+  refuses to build any other (`MQTTOut.cameraTurn`).
+- Why: on 2026-11-15 the real head did not visibly turn at 40 % or 70 % and the hub's own turns use 35 %
+  (`[follow_track] speed`). The page is for finding the lowest level that turns the head without overloading its
+  supply: start low, go up a step at a time, and read what came back (motor ran, the face moved in the picture).
+- Power: unchanged in the head (the motor never runs while the speaker has sound, 0.6 s per turn). The page adds a
+  watch: a head that starts again within 30 s of a turn steps the level down and says so.
+- Not decided here: the hub's own level. Once a level is known to work, `[follow_track] speed` and
+  `[attention] pan_speed` in `config/kaiku.toml` are the places to set it.
+
 ## D60 — Visible expression cues: a marker in the record and one gentle question (2026-11-15, Harrish; supersedes part of D52)
 - **Decision (the lead's, after the trade-off was put to them):** when a person's expression visibly changes for a
   while, that is a marker in the product, and Kaiku may ask one slight question about it without interrupting.
@@ -850,3 +862,73 @@ flowchart LR
 - **Not done:** `lower` and `tense` on the Mac (flat landmarks cannot tell them; only `brighter` from the mouth
   getting wider is coded there, uncalibrated), anything on the robot's own camera, Talk (no camera runs there),
   nothing seen on a real face yet.
+
+## D65 — Gemma looks at a few pictures of a check-in; pictures are never saved, only what it notes (2026-11-15, Harrish; changes rule 5 and part of D52)
+- **Decision (the lead's):** "ensure gemma can see the images, it is important to analyse. we can adjust the rules
+  slightly, but say we do not save the images, but rather the data from it." So D52's "no picture leaves the device"
+  now has one exception, with its own opt-in.
+- **The choice:** "Let Kaiku's model look" (`Signal.look`), off by default, separate from "Camera during activities"
+  and useless without it: "Let Kaiku's own model look at a few pictures from the camera during a check-in. Pictures
+  are not saved; only what it notes is kept."
+- **The path:** during a check-in chat the open camera hands over at most 3 pictures (after 6 s, at least 12 s apart,
+  only with a face in the frame), each downscaled to 256 px on the longer side as a JPEG, held in memory. When the
+  check-in ends and was really taken part in, they go ONCE over HTTPS with the home token to `POST /v1/vision/look`.
+  The service passes them in memory to Gemma with one fixed prompt and keeps only the validated answer as
+  `obs.vision_note`: face visible, expression (neutral, smiling, lowered, tense, unclear), gaze, posture, lighting,
+  confidence, the model's name, how many pictures. Closed word lists; the contract has no free text and no picture.
+  Rules: `[vision_look]` in `config/kaiku.toml`, sent with the session.
+- **Which model, and where (verified with real calls on 2026-11-15):** `gemma-4-26b-a4b-it`, the same Gemma that
+  writes the review, served through Google's Gemini API. So the pictures leave the Kaiku service for Google's API.
+  Our own Modal Gemma app serves text only; with `[gemma] provider = "modal"` the look is refused, and no other
+  model is ever used in its place.
+- **Never saved, and how that is shown:** the route reads the body itself (no request model that could be logged),
+  nothing echoes it, a model failure reports only its type, no retry carries a picture, the app never writes one to
+  a file or to the offline queue and drops them when the send fails, when she turns the choice off or leaves the
+  screen. Tests put a marker in the pictures and look for it in the database file, the logs and every answer
+  (`cloud/tests/test_vision.py`, `VisionLookTests.swift`).
+- **What the note does:** shown to the practitioner as one record ("What the model noted from the camera"), citable
+  by Gemma as `obs:vision_note`, never scored, no vote in the consensus, not a crisis input. A `lowered` or `tense`
+  note with enough confidence makes the next conversation gentler through the existing `quieter_in` card line,
+  like a held cue of D60. Kaiku is never told a picture was looked at and never says it saw her.
+- **Honest limits:** a model's word for a face is a description of a picture, not proof of a feeling (Barrett et al.
+  2019); the prompt is not validated against people; one real call so far, on a drawn face. Describing expressions
+  from pictures of a person in a care product is emotion recognition in the sense of the EU AI Act (high-risk in
+  general); the lead accepts that risk for this product, as in D60. Google's API terms for the key in use decide
+  what Google does with a request; that is outside our code.
+- **Not done:** not run on a real iPhone or Mac camera yet (the Mac shares the code). The robot is not built. It
+  needs: a `cmd.sensors` field that asks the sensor board for up to three small JPEGs, sent only inside a
+  conversation in which she said yes to the camera (D61) AND with this choice on for the home; the board (or the hub,
+  in memory) posts them to the same route with `device: "robot"`; nothing on the bus or in `tools/record.py` may
+  carry or keep them.
+- **2026-11-15, Harrish, after being told:** the only Gemma that takes pictures runs on Google's servers (Gemini API,
+  `gemma-4-26b-a4b-it`); our own Gemma on Modal is text only. Accepted. The consent text now says so: "The pictures
+  are sent to Google's servers, where that model runs, and are not saved by Kaiku; only what the model notes is
+  kept." (replaces "Kaiku's own model" above).
+
+## D66 — On the robot a press opens a talk; the check-in runs only when asked, and talking has priority (2026-11-15, Harrish)
+- A press of the ear at the greeting opens the conversation (D57) and the camera question (D61), and the head rests
+  in a new awake step, `talk` (head firmware 0.9.0). No question is asked and no step runs. Kaiku says one line
+  ("I'm here. What's on your mind?") and listens. The invitation is now "Hello. Press my ear if you'd like to talk."
+- The check-in starts only when she asks in words. The voice reports it with `checkin {action: start | continue |
+  pause}`; the hub moves the head with `cmd.head {ritual: start | resume | pause}` (beside `next` / `end`, D59).
+  `start` begins at mood. One ask is enough; a named activity still needs the press (asking twice, D58) and goes
+  straight to its step, also from the talk.
+- Talking has priority. When a step is open and she talks about something else, the voice calls `pause`: the head
+  goes back to `talk`, the hub remembers the step that waited, Kaiku says no step line and is told not to bring
+  the check-in up again. It comes back only when she asks: `continue` returns to the step that waited (answers
+  already given stay; one question has one answer), `start` begins again at mood.
+- Nothing is lost: each answer is sent when it is given. A check-in that is paused and never resumed is kept as
+  `ended_early` when the talk ends; a wake in which she only talked is kept as `skipped` (no check-in was done, and
+  the day is not marked as done). The talk ends when she says so (`end_session`) or after `[hub] talk_idle_end_s`
+  (180) with nothing said, pressed or asked while the head rests in `talk`: the hub sends `cmd.head {ritual: end}`.
+  Finishing the whole check-in still ends with the goodbye, as before.
+- Not chosen: a private context turn after a pause (it makes the voice speak again); the instruction is in the
+  tool's description and in the result of `pause`.
+- Removed on the same day at the user's request ("it doesn't work"): the ear ring's colour from D62 and the green
+  ring of D61 / D63. The ring is orange at rest and blue while the microphone is open, as before; `set_light` and
+  `cmd.head {color}` on the standalone head are gone. The camera's answer is shown by the camera's own light
+  (the hub opens or closes the camera on the sensors board) and the buzzer.
+- Motor, found on the robot: on its own charger the head turned at full speed and did not visibly move at 0.6 or
+  0.35. Turns are now full speed, and the size of `pan.target_deg` is the LENGTH of the nudge (15 ms a "degree",
+  120 to 600 ms), not an angle: the head has no position sensor. `turn_head` = 40 (600 ms), following = `[follow_track]
+  nudge_deg` 10 (150 ms).

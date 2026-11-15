@@ -88,6 +88,12 @@ public actor APIClient {
         try await send("POST", "/v1/companion/session", body: req, retry: false)
     }
 
+    /// A few small pictures of one check-in for Kaiku's own model (D65). Sent once: no retry, never queued. The
+    /// caller has already let go of the pictures; whatever comes back, they are not sent again.
+    func visionLook(_ req: VisionLookRequest, home: String) async -> VisionLookResult? {
+        try? await send("POST", "/v1/vision/look", query: ["home_id": home], body: req, retry: false, timeout: 40)
+    }
+
     public func companionTool(_ call: CompanionToolCall) async throws -> CompanionToolResult {
         try await send("POST", "/v1/companion/tool", body: call, retry: false, timeout: call.name == "ask_mind" ? 120 : nil)
     }

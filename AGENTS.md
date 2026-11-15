@@ -67,7 +67,12 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
    (opt-in, off by default, D52) yields only counts of face movement per task (`obs.face_signs`); nothing anywhere
    stores an emotion label, and those counts are shown and citable, not scored. From those same numbers the device
    may notice a visible expression cue (D60: lower, tense or brighter for a while against the person's own level in
-   that task); it is recorded as a count and may put one fixed, quiet context sentence in front of Kaiku in a check-in. One exception for pictures (D43): with the separate opt-in "Let Kaiku
+   that task); it is recorded as a count and may put one fixed, quiet context sentence in front of Kaiku in a check-in. A second opt-in, "Let Kaiku's
+   model look" (off by default, D65), changes one thing: during a check-in, at most three small pictures go once from
+   the iPhone or Mac to the Kaiku service (`POST /v1/vision/look`), which shows them in memory to Gemma (the hosted
+   Gemma, through Google's Gemini API) and keeps only what it noted as closed word lists (`obs.vision_note`).
+   **Pictures are never saved**: not on the device, not in the database, a log, a queue, a cache or an error report;
+   a failed look stores nothing and is not sent again. The note is shown and citable, not scored. One more exception for pictures (D43): with the separate opt-in "Let Kaiku
    see through the glasses during walks" (off by default), about one glasses camera frame a second goes from the
    iPhone straight to that same Gemini Live conversation while it is open and unmuted; frames are never stored,
    logged or sent to the Kaiku cloud, and no observation is derived from them. Browser apps never hold the Gemini key.
@@ -114,7 +119,7 @@ index are stale, when a module lacks its `AGENTS.md` sections or grows a README/
 | web | [`apps/web/`](apps/web/AGENTS.md) | D | app | yes | Next.js practitioner dashboard (one viewport, movable panels): consensus, trends, Gemma review and agent trace, knowledge graph, routine, evidence, care actions, ask, coverage; team health/eval/tune/debug day |
 | glasses-webapp | [`apps/glasses-webapp/`](apps/glasses-webapp/AGENTS.md) | D | app | yes | Meta Ray-Ban Display web app: walk companion, reminder card, breathing guide, WebMCP tools |
 | glasses-dat-android | [`apps/glasses-dat-android/`](apps/glasses-dat-android/AGENTS.md) | D | app | yes | Optional DAT camera app: daylight minutes on walks |
-| apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live, read-only), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
+| apple | [`apps/apple/`](apps/apple/AGENTS.md) | A | app | yes | SwiftUI iPhone + Mac apps (KaikuKit): Today, Play (games), Talk, History (your own numbers by day and week, with Your days), Kaiku bot (the home robot's bus, live; it can turn the robot's camera), You; mascot, offline queue, crisis; iPhone: notifications, Live Activities, widget, Siri, HealthKit, glasses walk |
 | atech-head | [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) | A | firmware | yes | Atech board: display eyes, knob ear dial, lid button, pan motor (power-on home, optional hall), speaker, taps from the orientation sensor (standalone); standalone ritual or MQTT firmware (D44); MQTT on the LAN |
 | unoq-sensors | [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) | A | firmware | yes | UNO Q: buzzer chimes, camera (faces, distance, room light, pulse); KY-031 knock, KY-039/KY-053, KY-035 hall and KY-054 light not fitted (D35, D54, D55) |
 | friendlink | [`firmware/friendlink/`](firmware/friendlink/AGENTS.md) | A | firmware | yes | LoRa gateway + friend's lamp (serial to the hub's lora_serial adapter) |
@@ -166,6 +171,9 @@ RealTime through a whole ritual with simulated taps) · `make tap-back [BEAT=1]`
   Never "diagnosis", "relapse detected", "predicts relapse". Drum = "inspired by research on improvisational
   music therapy". Tap it back is a rhythm game, not a test: its words are "perfect / great / nice / not quite", never a score. Robot light is not light therapy. Kaiku "can see" only during a walk with "Let Kaiku see" on and frames flowing (the walk screen shows it); everywhere
   else the glasses are a voice in the ear and never "see".
+  What the model noted from pictures (D65): say "what the model noted from the camera", "pictures are not saved; only
+  what it notes is kept", and the note's own words (resting, smiling, lowered, tense expression); never a feeling,
+  never "the model saw that she was sad", never "analysed your face".
   Face signs (D52): say "face signs", "movements of the face", "shown, not scored"; never "emotion detected" or
   "looked sad", and Kaiku never says it saw the person's face.
   Visible expression cues (D60): say "visible sign: lower / tense / brighter expression", "a reason to ask, not a

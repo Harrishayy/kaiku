@@ -208,7 +208,10 @@
             {
               "enum": [
                 "next",
-                "end"
+                "end",
+                "start",
+                "pause",
+                "resume"
               ],
               "type": "string"
             },
@@ -217,7 +220,7 @@
             }
           ],
           "default": null,
-          "description": "only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly. Ignored while idle",
+          "description": "only for a head that runs its own ritual (standalone firmware): next = go on to the next step now (she answered the dial question in words instead of with the ear); end = she asked to stop: back to idle now, quietly; start = she asked for the check-in: begin at mood; pause = she is talking about something else: the open step waits and the head rests in `talk`; resume = she asked to continue: back to the step that waited (mood when none did). Ignored while idle",
           "title": "Ritual"
         },
         "show": {

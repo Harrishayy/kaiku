@@ -31,14 +31,16 @@ ICM40608 icm40608_imu(&icm40608_imu_i2c);
 NeoPixelGrid neopixel_grid(PIN_NEOPIXEL_GRID_A, PIN_NEOPIXEL_GRID_B);
 
 // ---------------- state ----------------
-enum Mode { IDLE, GREET, DIAL_MOOD, DIAL_ENERGY, DIAL_SLEEP, BREATHE, DRUM, DONE };
+// kaiku: TALK (0.9.0) = awake and talking, no check-in running. A press at the greeting goes here, never straight
+// into the check-in: the check-in starts only when she asks for it in words (the hub's cmd.head {ritual: start}).
+enum Mode { IDLE, GREET, DIAL_MOOD, DIAL_ENERGY, DIAL_SLEEP, BREATHE, DRUM, DONE, TALK };
 static Mode mode = IDLE;
 static unsigned long modeStart = 0;
 static const char* modeName(Mode m) {
   switch (m) {
     case IDLE: return "idle"; case GREET: return "greet"; case DIAL_MOOD: return "mood";
     case DIAL_ENERGY: return "energy"; case DIAL_SLEEP: return "sleep"; case BREATHE: return "breathe";
-    case DRUM: return "drum"; default: return "done";
+    case DRUM: return "drum"; case TALK: return "talk"; default: return "done";
   }
 }
 
@@ -93,14 +95,10 @@ static const unsigned long ARM_MS = 20000;
 // kaiku: a turn of the head that waits for the speaker (see the `pan` command)
 static const unsigned long PAN_WAIT_MS = 8000;
 static int panWant = 0;
+static unsigned long panWantMs = 600;
 static unsigned long panWantAt = 0;
-// kaiku: the ear ring. Orange at rest and blue while the microphone is open, until she asks for a colour of her own
-// (cmd.head {color}): then that colour, and while the microphone is open it breathes (dimmer and brighter once
-// about every 1.6 s), so "listening" still shows.
-static uint8_t ringR = 255, ringG = 140, ringB = 40;
-static bool ringChosen = false;
-static int ringShown = -1;            // the last level sent to the ring (0-100), -1 = send again
 static Mode armedMode = IDLE;        // IDLE = nothing armed
+static Mode pausedMode = IDLE;       // kaiku: the check-in step that waits while she talks (TALK); IDLE = none
 static unsigned long armedAt = 0;
 static bool everFaceWake = false, everRitual = false;
 
@@ -183,7 +181,8 @@ static void finishRitual() {
 static void advance() {   // the step after the current one
   switch (mode) {
     case IDLE: startGreeting(); break;
-    case GREET: startRitual(); break;
+    case GREET: setMode(TALK); if (!quiet()) speaker.playNote(NOTE_E5, 80); break;   // kaiku: a press = talk
+    case TALK: break;                                                                    // a press alone does nothing
     case DIAL_MOOD: setMode(DIAL_ENERGY); break;
     case DIAL_ENERGY: setMode(DIAL_SLEEP); break;
     case DIAL_SLEEP: setMode(BREATHE); break;
@@ -260,6 +259,7 @@ static void updateChest() {
     case BREATHE: { bool in; float l = breathLevel(&in); r = 40; g = 120; b = 255; bright = 2 + (uint8_t)(l * 49); break; }
     case DRUM: { r = 255; g = 60; b = 200; float f = curForce > 2 ? 1 : curForce / 2; bright = 6 + (uint8_t)(f * 45); break; }
     case DONE: r = 80; g = 255; b = 100; bright = 30; break;
+    case TALK: r = 255; g = 160; b = 60; bright = 20; break;
   }
   neopixel_grid.setBrightness(bright);
   neopixel_grid.setAll(r, g, b);
@@ -368,7 +368,19 @@ void loop() {
     else if (!strcmp(a, "said")) {   // kaiku: the hub heard her say it (cmd.head {ritual}); never while idle
       if (mode != IDLE && mode != GREET) {
         armedMode = IDLE;
-        if (!strcmp(cmd.value, "end")) { panUntil = purrUntil = 0; setMode(IDLE); }
+        bool inStep = mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP || mode == BREATHE || mode == DRUM;
+        if (!strcmp(cmd.value, "end")) { panUntil = purrUntil = 0; pausedMode = IDLE; setMode(IDLE); }
+        else if (!strcmp(cmd.value, "start")) { pausedMode = IDLE; startRitual(); }       // "let's start": from mood
+        else if (!strcmp(cmd.value, "pause")) {                                           // she is talking about
+          if (inStep) { pausedMode = mode; panUntil = purrUntil = 0; setMode(TALK); }     // something else: the
+        }                                                                                 // step waits, no chime
+        else if (!strcmp(cmd.value, "resume")) {                                          // "continue": the step
+          if (mode == TALK) {                                                             // that was open
+            Mode go = pausedMode == IDLE ? DIAL_MOOD : pausedMode; pausedMode = IDLE;
+            if (go == DIAL_MOOD) startRitual();
+            else { if (go == BREATHE) breathCycles = 6; else if (go == DRUM) drumMs = 20000; setMode(go); }
+          }
+        }
         else if (mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP) advance();   // a spoken dial answer
       }
     }
@@ -378,15 +390,11 @@ void loop() {
     }
     else if (!strcmp(a, "pan")) {
       // kaiku: the motor never runs with the speaker (POWER RULE), and a turn asked for while Kaiku is speaking used
-      // to run out unseen. It now waits for the speaker to go quiet (up to PAN_WAIT_MS), then turns for 600 ms.
+      // to run out unseen. It now waits for the speaker to go quiet (up to PAN_WAIT_MS), then turns. Value is
+      // "speed" or "speed,ms" (-100..100; 120..600 ms, 600 when not given: the serial `pan` command).
       panWant = constrain(atoi(cmd.value), -100, 100); panWantAt = millis();
-    }
-    else if (!strcmp(a, "ring")) {   // kaiku: the ear ring's colour, "#rrggbb" (cmd.head {color})
-      const char* h = cmd.value[0] == '#' ? cmd.value + 1 : cmd.value;
-      if (strlen(h) == 6) {
-        long v = strtol(h, nullptr, 16);
-        ringR = (v >> 16) & 255; ringG = (v >> 8) & 255; ringB = v & 255; ringChosen = true; ringShown = -1;
-      }
+      const char* comma = strchr(cmd.value, ',');
+      panWantMs = comma ? constrain(atoi(comma + 1), 120, 600) : 600;
     }
     else if (!strcmp(a, "purr")) purr(cmd.value[0] ? constrain(atoi(cmd.value), 100, 10000) : 1500);
     else if (!strcmp(a, "net")) { static char nb[320]; kaiku_net::report(nb, sizeof nb); emit("net", nb); }   // kaiku_net
@@ -464,7 +472,8 @@ void loop() {
     pressedLatch = false;
     Mode go = armedMode; armedMode = IDLE;
     kaiku_net::ear(dialValue, 0, true);
-    if (mode == DRUM) finishDrum();           // leaving a drum step that was running: its numbers and its end chime
+    // (no finishDrum when leaving a running drum step: its end chime would read as "the check-in is done")
+    pausedMode = IDLE;
     if (go == BREATHE) breathCycles = 6; else drumMs = 20000;
     setMode(go);
     if (!quiet()) speaker.playNote(NOTE_E5, 80);
@@ -474,6 +483,7 @@ void loop() {
     pressedLatch = false;
     kaiku_net::ear(dialValue, 0, true);   // kaiku_net
     if (mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP) confirmDial();
+    else if (mode == TALK) {}                 // kaiku: talking: a press starts nothing (the hub still hears it)
     else if (mode == IDLE || mode == GREET || mode == DONE) advance();
     else advance();   // skip breathing or end drumming early
   }
@@ -525,18 +535,11 @@ void loop() {
   }
 
   if (panWant && millis() - panWantAt > PAN_WAIT_MS) panWant = 0;          // kaiku: the sound never stopped: let it go
-  if (panWant && !soundOn()) { panSpeed = panWant; panUntil = millis() + 600; panWant = 0; }
+  if (panWant && !soundOn()) { panSpeed = panWant; panUntil = millis() + panWantMs; panWant = 0; }
 
-  if (kaiku_net::micOpen() != micShown) { micShown = !micShown; ringShown = -1; }   // kaiku_net: listening shows on the ring
-  {                                         // (the only light on this head: there is no display)
-    int level = 100;
-    if (micShown && ringChosen) level = 45 + (int)(55 * (0.5f + 0.5f * sinf(millis() / 255.0f)));   // breathing
-    level -= level % 5;
-    if (level != ringShown) {
-      ringShown = level;
-      if (micShown && !ringChosen) rotary_encoder_knob.setRingColor(40, 160, 255);
-      else rotary_encoder_knob.setRingColor(ringR * level / 100, ringG * level / 100, ringB * level / 100);
-    }
+  if (kaiku_net::micOpen() != micShown) {   // kaiku_net: the ear ring turns blue while the microphone streams to the hub
+    micShown = !micShown;                   // (the only light on this head: there is no display)
+    if (micShown) rotary_encoder_knob.setRingColor(40, 160, 255); else rotary_encoder_knob.setRingColor(255, 140, 40);
   }
 
   if (ledTimer.ready(40)) { updateChest(); curForce *= 0.85f; }

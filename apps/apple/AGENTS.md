@@ -1747,3 +1747,17 @@ puts the fifth AND the sixth (You) behind "More" (seen on the iPhone SE simulato
   broker with a name and password; a `raw.hub.trace` `tool` or `heard` line, an open microphone and the help
   screen from real software (no Live conversation was run: those are covered by the reducer tests only);
   VoiceOver and Dynamic Type at accessibility sizes by a person; the Finnish text (English under the fi keys).
+
+## Let Kaiku's model look (2026-11-15, D65)
+- **Choice:** `Signal.look` ("Let Kaiku's model look"), off by default, on You and in onboarding beside the camera
+  choice; `AppModel.lookOn` = that choice AND `cameraOn`. Copy `sig.look.t/.d/.s` (fi is the English text for now).
+- **Code:** `TaskCapture/VisionLook.swift`: `VisionLookRules` (from the session's `vision_look`), `VisionLookSampler`
+  (pure: settle, interval, count, a face in the frame), `VisionPicture.jpeg` (downscale in memory),
+  `VisionLookBatch`, `VisionLookRequest`. `TaskCameraSource.lookFor(_:)` is implemented by `ARKitFaceSource` and
+  `VisionTaskCamera`; `TaskCamera.lookRules`/`onPicture`; only `CheckInChat` sets them.
+- **Sending:** `CheckInChat.sendPictures()` at the end of a check-in she took part in: `APIClient.visionLook`, once,
+  `retry: false`. Dropped unsent when she left without taking part, turned a choice off, or left the screen.
+- **Invariant:** a picture lives only in `VisionLookBatch` (memory). Never a file, never `OfflineQueue`, never a log,
+  never a second send. `VisionLookTests` holds this; games, Talk and walks never make pictures.
+- **Not verified:** on a real iPhone or Mac camera. The package builds and its tests pass; the app needs a new
+  install and the service a restart before the switch does anything.
