@@ -1638,3 +1638,15 @@ A hardware/firmware · B hub/live · C cloud/ML/sim · D apps/demo/story (fill i
   at 02:46 did not run (the head was no longer on USB), so whether the board has the last pan and ring edits is not
   known: flash again when it is on USB. Nothing of D66 was tried by a person on the robot. `tools/head_voice_check.py`
   (owner: tools) scripts the old flow (a press starts the check-in) and was not updated.
+
+## 2026-11-15 04:00 UTC — Claude Code — docs + root README: one page per partner technology (`docs/stack/`)
+- Did: new `docs/stack/` (`INDEX.md`, `gemini.md`, `gemma.md`, `modal.md`, `meta-glasses.md`, `atech.md`,
+  `arduino-uno-q.md`), each written from the code: what we use and how, what has run (dates, numbers), whether it
+  was the right choice, how it joins the others. Root README: new section "The stack, piece by piece", the jury
+  table's Meta and Atech rows brought up to date, an Arduino row, the robot's "pending" paragraph and the Modal GPU
+  lines corrected. `docs/tracks.md` rewritten from the code. `docs/AGENTS.md` lists the new pages.
+- Verified: every relative link in the new pages, the README and `tracks.md` resolves; `tools/agents_sync.py
+  --check` in sync; `uv run pytest tools` passes. No code changed. `make check` not run.
+- Contract changes: none.
+- Broken/blocked: nothing new.
+- Next: fix `submission.md` from the stack pages before FINAL.

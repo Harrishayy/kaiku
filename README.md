@@ -222,10 +222,12 @@ No clip of the robot in this README yet.
 
 - **The head's ritual reaches the record.** In follow mode the hub shadows the standalone head: its dial answers become mood, energy and sleep check-ins and the knocks become a drum session, queued for the cloud and shown in the practitioner's daily account. The hub sends the head no commands, so the two never compete.
 
-**Pending on the physical head:** follow mode is proven against a software twin of the standalone firmware; the
-head's network code is built but not yet flashed, so nothing from the physical robot is on the dashboard yet.
-The hub-driven ritual with a real microphone, speaker and motor has not run end to end, a crisis phrase cannot
-yet stop the standalone head, and pulse stays "not measured" until the finger cradle passes its quality check.
+**Pending on the physical head:** the whole follow-mode ritual with Gemini Live and Lyria is proven against a
+software twin of the standalone firmware. On the board itself (15 Nov) a press opened a Gemini Live
+conversation and the ritual completed; in a later run, with a phone as the microphone, her spoken yes to a question asked through the head's speaker arrived as a tool
+call. Nothing from the physical robot has been shown on the
+dashboard yet, the newest behaviour (asking twice, a press opens a talk) has not been tried by a person on the
+robot, and pulse stays "not measured". What is fitted: [`docs/stack/atech.md`](docs/stack/atech.md).
 Bring-up steps: [`hub/AGENTS.md`](hub/AGENTS.md). Module docs:
 [`hub/`](hub/AGENTS.md) · [`firmware/atech-head/`](firmware/atech-head/AGENTS.md) · [`firmware/unoq-sensors/`](firmware/unoq-sensors/AGENTS.md) ·
 [`sim/`](sim/AGENTS.md) · [network handover](docs/robot-network-handover.md)
@@ -250,10 +252,10 @@ reading, every model call, and Gemma's read of the day with each sentence checke
 
 - **One deployed app.** A single warm container serves the API and the dashboard from one URL, with SQLite on a Modal Volume ([`cloud/app.py`](cloud/app.py)). It accepts derived observations only and rejects anything else.
 - **Scheduled and parallel work.** The same file schedules a recompute every 15 minutes, a nightly run and a weekly brief, and fans a simulation of 72 synthetic people out over 8 shards with `.map()`.
-- **Gemma, plainly placed.** Reviews run through Google's hosted API (`gemma-4-26b-a4b-it`). A separate scale-to-zero GPU app ([`cloud/gemma_app.py`](cloud/gemma_app.py)) answered one cold call on a Modal H100 and is not the default path.
+- **Gemma, plainly placed.** Reviews run through Google's hosted API (`gemma-4-26b-a4b-it`). A separate scale-to-zero GPU app ([`cloud/gemma_app.py`](cloud/gemma_app.py)) serves the same model with vLLM on a Modal H100 behind one switch: on 15 Nov it wrote the practitioner review (5.2 and 10.5 s warm, after a 235 s cold start) and answered a record question, called from a local API. It is not the public demo's default path.
 
 **Where it stands:** the public URL was checked from outside (dashboard open, admin routes closed without a
-token). [`cloud/AGENTS.md`](cloud/AGENTS.md)
+token). Every Modal feature we use, and why: [`docs/stack/modal.md`](docs/stack/modal.md) · [`cloud/AGENTS.md`](cloud/AGENTS.md)
 
 ## Try it
 
@@ -334,7 +336,7 @@ are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrat
 | Part | Real today | Simulated or pending a physical test |
 |---|---|---|
 | Cloud, consensus, dashboard | Deployed on Modal and checked from outside; 973 Python tests passed at the last logged merge | Every record is authored and marked simulated; thresholds are engineering defaults |
-| Gemma | Reviews through Google's hosted API on the simulated record; one cold call on a Modal H100 | Our own GPU is not the default path; no tuned weights |
+| Gemma | Reviews through Google's hosted API on the simulated record; the review and a record question also from our own vLLM on a Modal H100 (15 Nov) | Our own GPU is not the default path; no tuned weights |
 | Gemini Live | Real Live calls with injected speech, typed turns (ordinary day, hard day, spotting game) and pictures as the walk's view | A spoken exchange on a real microphone |
 | iPhone app | Signed build installed on a real iPhone; 309 Swift tests passed (11 skipped); a real typed call kept going while the simulator was locked | Microphone, Kaiku's voice while locked and Apple Health on the device |
 | Mac app | Builds; a simulated late evening produced the notch peek and its hourly record; quick talk rendered in every state | Quick talk by real key presses and voice; a screen capture; real usage over days |
@@ -344,6 +346,58 @@ are in [`docs/validation.md`](docs/validation.md); reproduce with `make calibrat
 
 Sources: the dated audit [`docs/track-readiness.md`](docs/track-readiness.md) and the latest entries of [`docs/progress.md`](docs/progress.md).
 
+## The stack, piece by piece
+
+Six partner technologies carry Kaiku, and each one does work the others cannot. Every one has a page under
+[`docs/stack/`](docs/stack/INDEX.md), written from the code: what we use and how, what has run with dates and
+measured numbers, and whether it was the right choice.
+[One sentence through all six](docs/stack/INDEX.md#one-sentence-through-all-six) follows a single morning from
+the robot's camera to the practitioner's page.
+
+### Gemini API: the voice that has hands · [full page](docs/stack/gemini.md)
+
+- **Gemini Live on four bodies.** One voice on iPhone, Mac, Meta glasses and the robot. The apps speak to Live over a raw WebSocket with a one-use token minted by the cloud (locked to the model, five minutes, renewed mid-call between two sentences); the robot's hub uses `google-genai`.
+- **Session features we lean on.** Barge-in, input and output transcription (captions, and the crisis gate reads them), voice activity tuned for slow speech (900 ms of silence), session resumption and sliding-window compression for 30-minute walks, proactive audio on walks only, one picture a second from the glasses.
+- **Function calling does the work.** One registry of 18 tools. `feel` is non-blocking: the voice tells Kaiku's mind what it heard and code answers with a plan in about 5 ms, so the talk never stalls. Other calls move the robot's check-in, keep a walk's spotting game, put a card on the phone and reach Gemma (`ask_mind`).
+- **Code decides what counts as her yes.** Every tool call passes the crisis gate and a schema; a memory must be grounded in her own words; "maybe" starts nothing; on the robot a model's call only arms the head and her own press starts the activity.
+- **Six more models, one job each.** TTS in the same voice for fixed lines, cached; Embedding 2 for her notes; Lyria RealTime for the drum game; Flash and Argon as fallback and escalation behind Gemma; an image model for a walk's postcard.
+- **Measured:** 2.3 s from the end of her speech to Kaiku's first sound (5 turns); a 4 min 48 s call across a token renewal while the phone was locked.
+
+### Gemma: reasoning that can be checked · [full page](docs/stack/gemma.md)
+
+- **Eight jobs.** The practitioner's review, questions to the record, the mind behind the voice, the nightly knowledge graph, the tone of a kept reflection, a look at a few check-in pictures, the consensus in words, and the team's read of one day.
+- **The same pattern every time.** Gemma is given facts that code wrote, answers in a small structure, and code checks it. In the review a finding is rejected if it cites an unknown record, contains any number, claims a cause, names an emotion, or tells the practitioner what to do. For record questions Gemma returns only citation ids and its prose is never shown.
+- **A trace on the dashboard.** Ten steps, each marked code, Gemma or template, with time taken and how many answers were rejected in which category.
+- **Two routes, one switch.** Google's hosted API by default; our own vLLM on a Modal H100 behind `[gemma].provider`, verified on 15 Nov for the review (5.2 and 10.5 s warm) and a record question (2.2 s).
+- **Never:** a state, a crisis, a number of its own, a feeling read from a face, an edit to her memories.
+
+### Modal: the whole cloud in two files · [full page](docs/stack/modal.md)
+
+- **One warm container, by design.** API, dashboard and SQLite on a Volume from one URL; `max_containers=1` with 50 concurrent inputs because SQLite has one writer. The Volume is committed after every write, and a failed commit answers 503 so the phone sends the reading again.
+- **Schedules that cannot become a second writer.** A 15-minute recompute, a nightly run and a weekly brief call the container's own admin routes over HTTP; they never mount the Volume.
+- **`.map()` over synthetic people.** 72 people in 8 shards replay the real rule day by day; the result sits beside the rule editor.
+- **Gemma on an H100, scale to zero.** vLLM in a GPU class, weights pulled into a Volume by a CPU function. A cold start took 215 to 235 s, so the caller shows deterministic text and deliberately leaves the cold call running: the next question is answered by Gemma. Every GPU call is costed in a spend ledger before it runs.
+
+### Meta AI glasses: a walk, head up · [full page](docs/stack/meta-glasses.md)
+
+- **Device Access Toolkit 1.0.1 on iOS.** Explicit registration through the Meta AI app, a device session with every state worded on screen, the camera stream (360 × 640), head motion at 30 Hz, and worn or not from the device state.
+- **Hands-free Bluetooth for the voice.** Chosen because it is the only route that gives the glasses' own microphone; the Live session's voice activity is tuned for it.
+- **Seeing is a second opt-in.** At most one picture a second, straight to that walk's Gemini Live session and to no Kaiku service, behind five gates; the screen counts pictures sent and Kaiku says "I cannot see" whenever no frame is flowing.
+- **The walk survives the glasses.** Session lost, Bluetooth lost or glasses taken off: the walk continues on the phone and Kaiku is told.
+- **On real glasses (15 Nov):** the self-test passed speaker, microphone and camera frame, and a walk sent 30 frames to its Live conversation.
+
+### Atech: a head that works alone, and better together · [full page](docs/stack/atech.md)
+
+- **One 14-port board, five modules.** An ear dial, an orientation sensor that feels taps (0.15 g above rest, muted while the motor or speaker runs), a neck motor, a speaker and a microphone.
+- **Standalone first.** The head runs the whole check-in by knob with no laptop; the hub shadows it and writes the record, and never fights it for control.
+- **A live voice over MQTT.** Kaiku's Gemini Live voice and Lyria's music reach the head's speaker as 20 ms audio frames; a press of the ear opens a talk.
+
+### Arduino UNO Q: eyes that keep the picture · [full page](docs/stack/arduino-uno-q.md)
+
+- **Both halves used.** The Linux side reads a USB camera and turns each frame into numbers on the board (face position, distance, room light); the microcontroller plays the chimes; Arduino's Bridge joins them.
+- **Only numbers leave the board,** and the camera device is closed unless she said yes in this conversation.
+- **Board to board.** A face seen by the UNO Q wakes the Atech head through the broker, with no hub in between.
+
 ## What each jury can click or see
 
 | Challenge | What we show | Proof |
@@ -352,11 +406,12 @@ Sources: the dated audit [`docs/track-readiness.md`](docs/track-readiness.md) an
 | **Gemini API** | Gemini Live is Kaiku's one voice on phone, Mac, glasses and robot, with tool calls that move a ritual and a walk. Short-lived tokens, TTS, embeddings. | Real Live call with injected speech and a picture; the Talk tab in the app |
 | **Gemma** | Gemma 4 chooses evidence and words the review; code validates each finding and renders every number. | [Dashboard](https://harrish21raj--kaiku-web.us-east.modal.run/?id=aino) → Kaiku's review → Agent trace (10 steps) |
 | **Modal** | API, dashboard and database served from one deployed app; scheduled analytics; a parallel simulation of synthetic people; a scale-to-zero GPU class for Gemma. | [The demo URL](https://harrish21raj--kaiku-web.us-east.modal.run/?id=aino) on slide 1 · one cold Gemma call on a Modal H100 (default stays the hosted API) |
-| **Meta**<br>AI glasses | Audio-first walk companion through the Device Access Toolkit; opt-in seeing; the walk survives the glasses coming off. | Registration on real Gen 2 · You → Glasses check self-test · real walk pending |
-| **Atech**<br>Real World | The robot's head on one 14-port board with eight modules, linked to the hub over MQTT. | [`firmware/atech-head`](firmware/atech-head/AGENTS.md) compiles; microphone and LED grid on the board · live loop pending |
+| **Meta**<br>AI glasses | Audio-first walk companion through the Device Access Toolkit; opt-in seeing; the walk survives the glasses coming off. | On real glasses: registration, the Glasses check self-test (speaker, microphone, camera frame) and a walk that sent 30 frames to Gemini Live · [page](docs/stack/meta-glasses.md) |
+| **Atech**<br>Real World | The robot's head on one 14-port board with five modules (ear dial, orientation sensor for taps, neck motor, speaker, microphone), on MQTT with the hub and the UNO Q. | On the board: the ritual by knob with no laptop, taps, motor over MQTT, a Gemini Live conversation through its speaker with a phone as microphone · [page](docs/stack/atech.md) |
+| **Arduino**<br>UNO Q | The robot's eyes: camera numbers made on the board, chimes from the microcontroller, a face that wakes the Atech head. | On the board: faces, distance, room light and chimes on the broker · [page](docs/stack/arduino-uno-q.md) |
 
-As on slide 10 of the [deck](demo/deck/kaiku-deck.pdf). Since the deck was rendered, the head has also run the
-ritual on the board with its standalone firmware (see [Robot](#robot)); the live loop to the dashboard is still pending.
+The first four rows are as on slide 10 of the [deck](demo/deck/kaiku-deck.pdf); the Meta, Atech and Arduino rows
+are newer than the deck. Details for every row: [`docs/stack/`](docs/stack/INDEX.md).
 
 ## Safety and privacy
 
@@ -389,7 +444,7 @@ Every module has one doc, its `AGENTS.md`. New here? Read the root [`AGENTS.md`]
 | [`design/`](design/AGENTS.md) | Look ground truth: tokens, mascot spec and generated assets, motion |
 | [`hardware/`](hardware/AGENTS.md) | CAD with provenance, wiring, bill of materials |
 | [`demo/`](demo/AGENTS.md) | Table demo checklist, video shot list, deck, reset script |
-| [`docs/`](docs/AGENTS.md) | Progress log, decisions, safety, privacy, tracks, validation, submission text |
+| [`docs/`](docs/AGENTS.md) | Progress log, decisions, safety, privacy, tracks, validation, submission text, and [one page per partner technology](docs/stack/INDEX.md) |
 
 ## Team and licence
 
