@@ -42,7 +42,7 @@ from .live import Music, Voice, make_music, make_voice
 from .live.context_events import ContextEvents, DrumFeel, breathing_calmer, late_key, light_key
 from .live.head_audio import HeadAudio, HeadSpeaker
 from .live.lines import LinePlayer
-from .live.tools import HEAD_RUNS_ITS_STEPS, TOOLS, without
+from .live.tools import ASK_TWICE_KINDS, ASK_TWICE_S, HEAD_RUNS_ITS_STEPS, TOOLS, with_ask_twice, without
 from .perception import face
 from .perception.engagement import EngagementTracker
 from .perception.light import LightAggregator
@@ -50,6 +50,7 @@ from .perception.presence import PresenceTracker
 from .perception.presses import PressCounter
 from .perception.tap_back import OneTapSource
 from .rituals import Event, RitualMachine, default_steps, steps, tap_back
+from .rituals.photo_time import PhotoTime
 from .safety import ButtonLongPress, CrisisScript, SafetyGate, Trigger
 from .settings import Settings
 from .state import HubState
@@ -139,6 +140,7 @@ class Hub:
         self._drum_step = next((st for st in self.machine.steps if st.name == "drum"), None)
         self.tap_source = OneTapSource()  # the knock switch and the head's motion sensor can both feel one tap
         self._game: tap_back.Game | None = None  # Tap it back run by the hub inside a standalone head's drum step
+        self.photo_time = PhotoTime(s.photo_time_s)  # the camera's face-signs moment (rituals/photo_time.py)
         self._game_task: asyncio.Task | None = None
         self.lora = LoraSerialAdapter(self.emit)
         self.atech = AtechAdapter() if s.head == "atech" else None
@@ -155,6 +157,9 @@ class Hub:
         self.face = face.FaceTracker(self._on_face) if s.face_source == "laptop" and face.available() else None
         self.unoq_faces = UnoqYoloFaces(self.sensors) if s.face_source == "unoq_yolo" else None
         self.conversation_consented = False
+        self._talk_used = False  # this ritual's one conversation was opened (reset when the next ritual begins)
+        self._asked: dict[str, Any] | None = None  # asking twice (D58): {kind, until, n} while a press is awaited
+        self._asked_n = 0
         self._live_open_task: asyncio.Task | None = None
         self.ritual_reason = ""
         self.node_health: dict[str, dict] = {}
@@ -474,6 +479,12 @@ class Hub:
         self.conversation_consented = False
         if self._live_open_task and not self._live_open_task.done():
             self._live_open_task.cancel()
+        if self.following and self.follower.active:
+            # She asked to stop (D59): the head goes back to rest now. What was answered so far is already sent;
+            # the follower closes the open step and the episode when the head reports idle (`_follow_end`).
+            self._asked = None
+            with contextlib.suppress(Exception):
+                await self._cmd("cmd.head", {"ritual": "end"}, force=True)
         await self.machine.abort()
         await self.voice.close_session()
 
@@ -494,7 +505,7 @@ class Hub:
         if self.following:
             # the head moves through its own steps and takes the dial from its own knob: the model is not offered
             # tools the hub cannot honour there (`on_tool` refuses them too)
-            tools = without(tools, HEAD_RUNS_ITS_STEPS)
+            tools = with_ask_twice(without(tools, HEAD_RUNS_ITS_STEPS))  # start_activity only as asking twice (D58)
         if sess.get("max_session_seconds"):
             self.voice.max_seconds = float(sess["max_session_seconds"])
         ok = await self.voice.open_session(instruction, tools, model=model, voice=voice)
@@ -577,6 +588,7 @@ class Hub:
         if hasattr(self.voice, "transcript"):
             self.voice.transcript = []
         self._crisis_n += 1
+        self._asked = None  # nothing she asked for starts after this
         self._trace_quiet = True  # nothing but the script line goes on the trace from here
         self.conversation_consented = False
         if self._live_open_task and not self._live_open_task.done():
@@ -696,6 +708,12 @@ class Hub:
         if name == "end_ritual":
             await self.end_ritual()
             return {"ok": True}
+        if name == "photo_time":
+            return await self.photo_time.run(self)
+        if self.following and name == "start_activity":
+            return await self._ask_twice(args)
+        if self.following and name == "record_dial":
+            return await self._follow_spoken_dial(args)
         if self.following and name in HEAD_RUNS_ITS_STEPS:
             return {"ok": False, "error": "this head runs its own steps: she answers by turning the ear and pressing "
                                           "it, and a press moves on"}
@@ -802,6 +820,9 @@ class Hub:
         self._mark_sim(env)
         p = env.payload.model_dump()
         name = t.name
+        if name == "sensors/face_signs":
+            self.photo_time.on_raw(p)  # numbers only; the frames never left the board
+            return
         if name == "head/tap" and not self.tap_source.accept(f"{env.source}/{p.get('src')}", time.monotonic()):
             return  # the other board's report of a tap already counted (their clocks cannot be compared)
         if name == "head/ear" and p.get("pressed"):
@@ -819,7 +840,11 @@ class Hub:
             if name == "head/ear":
                 self.attention.person_started(datetime.now().astimezone())
                 stored = self._in_session
+                if p.get("pressed") and self._ask_twice_press():
+                    return  # her yes to the activity she asked for: the head goes there itself (D58)
                 await self._follow_do(f.on_ear(int(p["value"]), bool(p.get("pressed")), env.ts, time.monotonic()))
+                if p.get("pressed"):
+                    self._follow_press_opens_talk()
                 if self._in_session and not stored:
                     self.store.add_raw(env)  # the press that started the ritual belongs to its record
             elif name == "head/tap":
@@ -977,6 +1002,8 @@ class Hub:
             await self.on_utterance(c.say)
         if c.start_ritual:
             self.start_ritual("command")
+        if c.photo_time:
+            self._tasks.append(asyncio.create_task(self.photo_time.run(self), name="photo-time"))
         if c.suggest_nudge:
             self.state.suggest_arm(c.suggest_nudge.arm)
         if c.set_ritual_time:
@@ -1053,11 +1080,11 @@ class Hub:
                     # The consent rule of drive mode, nothing new: the person started this ritual themselves and
                     # the hub saw the press. Never for a ritual joined mid-way or a start the hub did not see.
                     self._talk_n += 1
+                    self._talk_used = True
                     self.accept_conversation()
                     log.info("follow_conversation", "opening: she pressed the ear at the head's greeting")
                 else:
-                    log.info("follow_conversation", "not opened: the ritual was joined mid-way" if a[1] != "follow"
-                             else "not opened: the hub did not see her press at the greeting")
+                    log.info("follow_conversation", "not open yet: her next press of the ear opens it (D57)")
             elif kind == "end":
                 await self._follow_end(a[1], a[2], a[3])
             elif kind == "emit":
@@ -1080,6 +1107,90 @@ class Hub:
         if step != self._follow_step_seen:
             self._follow_step_seen = step
             self._follow_step(step)
+
+    async def _follow_spoken_dial(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Two ways to answer a dial question on a head that runs its own ritual (D59): the ear, or her words. The
+        voice calls `record_dial` for what she said; the hub records it for the question the head is asking NOW
+        and tells the head to go on. Never for another question, never outside an open conversation."""
+        problems = validate_args(REGISTRY["record_dial"]["parameters"], args)
+        if problems:
+            return {"ok": False, "error": "; ".join(problems)}
+        f = self.follower
+        if not self.conversation_consented or not f.active:
+            return {"ok": False, "error": "no check-in is open on the robot right now"}
+        actions = f.spoken_dial(str(args["item"]), int(args["value"]))
+        if actions is None:
+            asking = f.step if f.step in follow.DIAL else None
+            return {"ok": False, "error": f"the robot is asking about {asking} now" if asking
+                    else "the robot is not asking a dial question now"}
+        await self._follow_do(actions)
+        await self._cmd("cmd.head", {"ritual": "next"}, force=True)
+        return {"ok": True, "recorded": args["item"]}
+
+    # ---------------------------------------------------------------- asking twice (D58)
+    async def _ask_twice(self, args: dict[str, Any]) -> dict[str, Any]:
+        """First half: she asked Kaiku in words (the voice called `start_activity`). Nothing starts. The head is
+        armed for `ASK_TWICE_S`: only a press of its ear in that time starts the activity (`_ask_twice_press`).
+        Deterministic from here on: no model decides whether she confirmed."""
+        kind = str(args.get("kind"))
+        f = self.follower
+        if kind not in ASK_TWICE_KINDS:
+            return {"ok": False, "error": "this robot can start the breathing or the drums"}
+        if not self.conversation_consented or not f.active or f.step in (None, "idle"):
+            return {"ok": False, "error": "no check-in is open on the robot right now"}
+        if self._episode and self._episode.get("outcome") == "crisis":
+            return {"ok": False, "error": "stopped"}
+        if kind == "drum" and (self._game is not None or f.step == "drum"):
+            return {"ok": False, "error": "the drums are already on"}
+        if kind == "breathe" and f.step == "breathe":
+            return {"ok": False, "error": "the breathing is already on"}
+        self._asked_n += 1
+        self._asked = {"kind": kind, "until": time.monotonic() + ASK_TWICE_S, "n": self._asked_n}
+        await self._cmd("cmd.head", {"activity": kind}, force=True)
+        self.note("activity_asked", kind=kind, step=f.step)
+        self._tasks.append(asyncio.create_task(self._ask_twice_expire(self._asked_n), name="ask-twice"))
+        return {"ok": True, "started": False, "waiting_for": "a press of your ear", "seconds": int(ASK_TWICE_S)}
+
+    def _ask_twice_press(self) -> bool:
+        """Second half: a press of the ear while an ask is open is her yes. The head goes straight to that step by
+        itself (it was armed); the follower is told to expect it. True = this press was that yes and nothing else
+        (not a dial answer, not a skip)."""
+        asked, self._asked = self._asked, None
+        if asked is None or time.monotonic() > asked["until"]:
+            return False
+        self.follower.asked = asked["kind"]
+        self.note("activity_confirmed", kind=asked["kind"])
+        return True
+
+    async def _ask_twice_expire(self, n: int) -> None:
+        await asyncio.sleep(ASK_TWICE_S + 0.5)
+        asked = self._asked
+        if asked is None or asked["n"] != n:
+            return  # she pressed, or asked for something else
+        self._asked = None
+        with contextlib.suppress(Exception):
+            await self._cmd("cmd.head", {"activity": "none"}, force=True)
+        self.note("activity_not_confirmed", kind=asked["kind"])
+        await self._send_context(f"The ear was not pressed, so {ASK_TWICE_KINDS[asked['kind']]} did not start. "
+                                 "Say so in a few words. They can ask again.")
+
+    def _follow_press_opens_talk(self) -> None:
+        """The one rule for when the robot listens while the head runs its own ritual (D57): the first press of the
+        ear the hub sees in a ritual opens the conversation, whatever step the head is in (the greeting, or later
+        when the hub missed the greeting or joined mid-way). It stays open until that ritual ends. One conversation
+        per ritual: after a crisis, or after she asked to stop talking, a press is only a press."""
+        f, ep = self.follower, self._episode
+        if (not f.active or ep is None or f.step in (None, "idle") or self.conversation_consented
+                or ep.get("outcome") == "crisis" or self._talk_used or not self.voice.wants_session):
+            return
+        f.consented = True
+        self._talk_n += 1
+        self._talk_used = True
+        self.accept_conversation()
+        log.info("follow_conversation", f"opening: she pressed the ear (head in {f.step})")
+        line = follow.STEP_LINES.get(f.step or "")
+        if line and f.step not in ("drum", "done"):
+            self._tasks.append(asyncio.create_task(self._follow_say(f.step, line), name="follow-say"))
 
     def _follow_step(self, step: str | None) -> None:
         """The head entered a step of its own ritual. At its greeting Kaiku says the invitation (what a press will
@@ -1184,6 +1295,7 @@ class Hub:
 
     def _follow_begin(self, reason: str) -> None:
         log.info("ritual_start", reason, head_step=self.follower.step)
+        self._talk_used = False
         self._clear_help()
         self._episode = {"id": str(uuid4()), "start": datetime.now(UTC), "outcome": "completed", "tools_used": []}
         self.ritual_reason = reason
@@ -1199,6 +1311,7 @@ class Hub:
                                            energy=dial.get("energy"), sleep=dial.get("sleep"))
             if nudge:
                 await self.emit("obs.nudge_outcome", nudge)
+        self._asked = None
         talked, self.conversation_consented = self.conversation_consented, False
         if self._live_open_task and not self._live_open_task.done():
             self._live_open_task.cancel()
@@ -1256,6 +1369,9 @@ class Hub:
             "music_out": self.settings.music_out,
             "voice_audio": getattr(self.voice, "audio_name", "none"),
             "mic_source": self.head_audio.mic_source,  # "phone" while a phone beside the robot sends its microphone
+            # open = the robot is listening; closed + a head that runs its own ritual = a press of its ear opens it
+            "talk": "open" if self.conversation_consented and self.voice.in_session
+                    else "opening" if self.conversation_consented else "closed",
             "cloud": bool(self.settings.cloud_url),
             "episodes_queue": self.episodes.size(),
             "store": "off" if self.settings.store_path is None else ("error" if self.store.error else "ok"),
@@ -1294,6 +1410,12 @@ class Hub:
         b.on_audio("mic", self.head_audio.on_phone_frame, node="phone")  # a phone beside the robot as its ear (D56)
         await b.__aenter__()
         await self.voice.start(self.on_utterance, self.on_tool)
+        # Every fixed line Kaiku can say in the cached voice, fetched now: an unrendered line takes longer than the
+        # 3 s a spoken line may wait, and was then never said (the goodbye and the invitation, 2026-11-15).
+        fixed = [steps.OFFER_LINE, *follow.STEP_LINES.values(), *tap_back.BAND_LINE.values(), tap_back.AGAIN_LINE,
+                 tap_back.NO_TAPS_LINE, tap_back.MOVE_ON_LINE, tap_back.FALLBACK_LINE,
+                 "Good morning. I'm here whenever you're ready."]
+        self._tasks.append(asyncio.create_task(self.lines.prewarm(fixed, self.settings.language), name="voice-prewarm"))
         await self.lora.start()
         if self.atech:
             await self.atech.start()

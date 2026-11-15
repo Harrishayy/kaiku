@@ -121,3 +121,31 @@ async def test_pulse_ky039_first_then_camera_backup(broker, monkeypatch):
     cam = [e for e in got if e.payload.fs_hz == 14.8]
     assert len(ky) == 2 and ky[0].quality == 0.9
     assert len(cam) == 1 and cam[0].quality == 0.6
+
+
+def test_photo_time_face_signs_are_numbers_and_absent_when_not_measured():
+    from kaiku_contracts.registry import payload_model
+
+    def validate_payload(type_, payload):
+        payload_model(type_).model_validate(payload)
+
+    from kaiku_unoq.vision import SignFrame, face_signs
+
+    assert face_signs([], 8.0) is None  # nothing sampled: nothing sent
+    # nobody in front of the camera: a valid window with no sign (never a zero)
+    empty = face_signs([SignFrame(t / 10, 0) for t in range(80)], 8.0)
+    assert empty == {"duration_s": 8.0, "samples": 80, "coverage": 0.0}
+    validate_payload("raw.sensors.face_signs", empty)
+    # one face for 8 s at 10 Hz, two smiles (frames 10-19 and 40-49), the face drifting half a width a second
+    frames = [SignFrame(i / 10, 1, cx=100 + 5 * i, cy=200, w=100, smile=10 <= i < 20 or 40 <= i < 50) for i in range(80)]
+    frames[30] = SignFrame(3.0, 2)  # a second face for one frame: not counted
+    got = face_signs(frames, 8.0)
+    validate_payload("raw.sensors.face_signs", got)
+    assert got["coverage"] == round(79 / 80, 3) and got["smiles"] == 2
+    assert abs(got["smile_share"] - 20 / 79) < 0.01 and 0.45 < got["head_movement"] < 0.55
+    # the smile cascade is missing on this board: no smile sign at all, movement still counted
+    blind = face_signs([SignFrame(i / 10, 1, cx=100, cy=200, w=100) for i in range(40)], 4.0)
+    assert "smile_share" not in blind and "smiles" not in blind and blind["head_movement"] == 0.0
+    # a face seen too briefly: coverage only
+    brief = face_signs([SignFrame(0.0, 1, 1, 1, 50, True), SignFrame(0.1, 1, 1, 1, 50, True)] + [SignFrame(1, 0)] * 8, 2.0)
+    assert set(brief) == {"duration_s", "samples", "coverage"}

@@ -77,6 +77,23 @@ static int knobSteps = 0;
 static bool tapLatch = false;
 static bool micShown = false;        // kaiku_net: the ear ring is blue while the microphone streams to the hub
 
+// kaiku: ONE way through the check-in, and nothing happens by itself that the person did not ask for (2026-11-15).
+// - A press is taken once per step: none within PRESS_GUARD_MS of the last step change (a bouncing or double press
+//   used to run through two or three steps), and breathing or drumming cannot be skipped in their first
+//   ACTIVITY_MIN_MS (a press that was meant for the step before).
+// - Kaiku wakes on a press of the ear. A face in front of the camera wakes it at most every FACE_WAKE_EVERY_MS and
+//   not for RITUAL_REST_MS after a check-in ended. A bump on the table or a sound in the room wakes nothing.
+static const unsigned long PRESS_GUARD_MS = 700, ACTIVITY_MIN_MS = 4000;
+static const unsigned long FACE_WAKE_EVERY_MS = 10UL * 60 * 1000, RITUAL_REST_MS = 3UL * 60 * 1000;
+static unsigned long lastFaceWake = 0, ritualEndedAt = 0;
+// kaiku: asking twice (D58). She asked Kaiku in words for an activity; the hub armed it (cmd.head {activity}); for
+// ARM_MS the next press of the ear starts THAT step instead of what a press does in the current one. The words
+// alone start nothing, and neither does a press alone.
+static const unsigned long ARM_MS = 20000;
+static Mode armedMode = IDLE;        // IDLE = nothing armed
+static unsigned long armedAt = 0;
+static bool everFaceWake = false, everRitual = false;
+
 // kaiku: a line goes out only when the USB buffer has room for all of it. Plugged into a computer with nobody
 // reading the port, writes stalled the loop and the head fell off the broker after ~15 s (bench 2026-11-14).
 static void serialLine(const char* line, size_t n) {
@@ -99,7 +116,22 @@ static void setMode(Mode m) {
   if (m == BREATHE) eyes = EYES_SLEEPY;
   if (m == DRUM) { kaiku_net::chime("start_drum");   /* kaiku_net */ taps = 0; firstTap = lastTap = 0; forceSum = forceMax = curForce = 0; eyes = EYES_WIDE; }
   if (m == IDLE) { eyes = EYES_CALM; quietUntil = millis() + 3000; }
-  if (m == DONE) eyes = EYES_HAPPY;
+  if (m == DONE) { eyes = EYES_HAPPY; ritualEndedAt = millis(); everRitual = true; }
+}
+
+// kaiku: may this press do something now? (see PRESS_GUARD_MS)
+static bool pressCounts() {
+  unsigned long in = millis() - modeStart;
+  if (mode == IDLE) return true;                       // waking is always allowed
+  if (mode == BREATHE || mode == DRUM) return in >= ACTIVITY_MIN_MS;
+  return in >= PRESS_GUARD_MS;
+}
+// kaiku: may a face in front of the camera start a greeting now? (see FACE_WAKE_EVERY_MS)
+static bool faceMayWake() {
+  unsigned long now = millis();
+  if (everFaceWake && now - lastFaceWake < FACE_WAKE_EVERY_MS) return false;
+  if (everRitual && now - ritualEndedAt < RITUAL_REST_MS) return false;
+  return true;
 }
 
 // kaiku_net: no sound of the head's own while the hub's song, cue or voice is on the speaker (same I2S port)
@@ -323,6 +355,17 @@ void loop() {
     else if (!strcmp(a, "breathe")) { breathCycles = cmd.value[0] ? constrain(atoi(cmd.value), 1, 30) : 6; setMode(BREATHE); }
     else if (!strcmp(a, "drum")) { drumMs = cmd.value[0] ? constrain(atoi(cmd.value), 5, 120) * 1000UL : 20000; setMode(DRUM); }
     else if (!strcmp(a, "idle") || !strcmp(a, "stop")) { panUntil = purrUntil = 0; setMode(IDLE); }
+    else if (!strcmp(a, "said")) {   // kaiku: the hub heard her say it (cmd.head {ritual}); never while idle
+      if (mode != IDLE && mode != GREET) {
+        armedMode = IDLE;
+        if (!strcmp(cmd.value, "end")) { panUntil = purrUntil = 0; setMode(IDLE); }
+        else if (mode == DIAL_MOOD || mode == DIAL_ENERGY || mode == DIAL_SLEEP) advance();   // a spoken dial answer
+      }
+    }
+    else if (!strcmp(a, "arm")) {   // kaiku: asking twice
+      armedMode = !strcmp(cmd.value, "drum") ? DRUM : !strcmp(cmd.value, "breathe") ? BREATHE : IDLE;
+      armedAt = millis();
+    }
     else if (!strcmp(a, "pan")) { panSpeed = constrain(atoi(cmd.value), -100, 100); panUntil = millis() + 600; }
     else if (!strcmp(a, "purr")) purr(cmd.value[0] ? constrain(atoi(cmd.value), 100, 10000) : 1500);
     else if (!strcmp(a, "net")) { static char nb[320]; kaiku_net::report(nb, sizeof nb); emit("net", nb); }   // kaiku_net
@@ -382,7 +425,10 @@ void loop() {
   applyMotor();
   powerRule();   // kaiku: speaker and motor never both at full
   kaiku_net::moving(dc_motor.getSpeed() != 0);   // kaiku_net: raw.head.pan
-  if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil) startGreeting();   // kaiku_net: UNO Q camera (never while calm)
+  if (kaiku_net::takeFace() && mode == IDLE && millis() > quietUntil && faceMayWake()) {   // kaiku_net: UNO Q camera (never while calm)
+    lastFaceWake = millis(); everFaceWake = true;
+    startGreeting();
+  }
 
   // knob
   if (knobSteps) {
@@ -392,6 +438,17 @@ void loop() {
     }
     knobSteps = 0;
   }
+  if (armedMode != IDLE && (millis() - armedAt > ARM_MS || mode == IDLE)) armedMode = IDLE;   // kaiku: the ask ran out
+  if (pressedLatch && armedMode != IDLE) {   // kaiku: asking twice: this press is her yes to the activity she asked for
+    pressedLatch = false;
+    Mode go = armedMode; armedMode = IDLE;
+    kaiku_net::ear(dialValue, 0, true);
+    if (mode == DRUM) finishDrum();           // leaving a drum step that was running: its numbers and its end chime
+    if (go == BREATHE) breathCycles = 6; else drumMs = 20000;
+    setMode(go);
+    if (!quiet()) speaker.playNote(NOTE_E5, 80);
+  }
+  if (pressedLatch && !pressCounts()) pressedLatch = false;   // kaiku: not a press for this step (and not sent on)
   if (pressedLatch) {
     pressedLatch = false;
     kaiku_net::ear(dialValue, 0, true);   // kaiku_net
@@ -421,9 +478,7 @@ void loop() {
       char b[80]; snprintf(b, sizeof b, "{\"n\":%d,\"force_g\":%.2f}", taps, curForce);
       emit("tap", b);
       dirty = true;
-    } else if (mode == IDLE && millis() > quietUntil && !kaiku_net::calm()) {   // kaiku_net: not after {show: help}
-      startGreeting();   // a pat on the head wakes Kaiku
-    }
+    }   // kaiku: a tap while idle wakes nothing (a bump on the table did; the ear press is the way in)
   }
 
   // timed steps
@@ -445,7 +500,7 @@ void loop() {
   // microphone: someone speaks or claps nearby while idle
   if (micTimer.ready(30)) {
     lastPeak = microphone.getPeakAmplitude();
-    if (mode == IDLE && millis() > quietUntil && lastPeak > soundThreshold && !quiet() && !kaiku_net::calm()) startGreeting();   // kaiku_net: not woken by its own speaker, nor after {show: help}
+    // kaiku: a sound in the room wakes nothing any more (it greeted people who were only talking nearby)
   }
 
   if (kaiku_net::micOpen() != micShown) {   // kaiku_net: the ear ring turns blue while the microphone streams to the hub

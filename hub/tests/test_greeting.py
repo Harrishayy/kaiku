@@ -89,7 +89,8 @@ def test_live_config_fields():
     assert "proactivity" not in cfg
     assert cfg["speech_config"]["voice_config"]["prebuilt_voice_config"]["voice_name"] == "Sulafat"
     assert cfg["tools"][0]["function_declarations"][0]["name"] == "record_dial"
-    assert "input_audio_transcription" in cfg and cfg["response_modalities"] == ["AUDIO"]
+    assert cfg["input_audio_transcription"] == {} and cfg["response_modalities"] == ["AUDIO"]  # no language given
+    assert live_config("sys", TOOLS, "Sulafat", language="en")["input_audio_transcription"] == {"language_codes": ["en-US"]}
     blocks = [{"function_declarations": [{"name": "x"}]}]
     assert tool_config(blocks) == blocks and tool_config([]) == []
 
@@ -157,6 +158,7 @@ async def test_own_face_echo_ignored(hub):
 
 def test_live_config_validates_against_installed_sdk():
     types = pytest.importorskip("google.genai.types")
-    c = types.LiveConnectConfig(**live_config("sys", TOOLS, "Sulafat"))
+    c = types.LiveConnectConfig(**live_config("sys", TOOLS, "Sulafat", language="en"))
+    assert c.input_audio_transcription.language_codes == ["en-US"]
     assert not c.enable_affective_dialog and c.proactivity is None
     assert c.speech_config.voice_config.prebuilt_voice_config.voice_name == "Sulafat"

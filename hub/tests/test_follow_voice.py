@@ -212,7 +212,8 @@ async def test_her_own_press_opens_the_conversation_kaiku_says_each_step_and_the
     assert r.bootstraps() == [{"surface": "robot", "home_id": hub.settings.home_id, "intent": "ritual"}]
     assert r.mic()[0] == "open"                                        # forced through to a head the hub never commands
     declared = {d["name"] for block in r.client.configs[-1]["tools"] for d in block["function_declarations"]}
-    assert declared == set(DECLARED) - HEAD_RUNS_ITS_STEPS             # no tool the hub cannot honour on this head
+    # no tool the hub cannot honour on this head; start_activity only as asking twice (D58)
+    assert declared == (set(DECLARED) - HEAD_RUNS_ITS_STEPS) | {"start_activity"}
 
     await settle(lambda: r.said(follow.STEP_LINES["mood"]), timeout=3)  # said through the head, by the Live voice
     await settle(lambda: len(r.wire.frames) >= 4, timeout=3)
@@ -233,12 +234,18 @@ async def test_her_own_press_opens_the_conversation_kaiku_says_each_step_and_the
     assert steps_seen[-1] == ("close", "completed")                    # the record is what it was before
 
 
-async def test_a_ritual_joined_mid_way_or_started_unseen_never_opens_the_microphone(settings):
+async def test_the_first_press_the_hub_sees_opens_the_conversation_whatever_step_the_head_is_in(settings):
+    """D57: one rule. No press seen = no microphone; the first press in a ritual opens it, also when the hub joined
+    mid-way or missed the greeting."""
     r = Rig(settings)
     await r.health("energy")                                           # the hub first hears the head mid-ritual
     await asyncio.sleep(0.1)
     assert r.hub.follower.active and not r.hub.follower.consented
     assert r.bootstraps() == [] and r.mic() == [] and not r.hub.voice.in_session and not r.client.connections
+    await r.press(6)                                                   # her press: now Kaiku listens
+    await settle(lambda: r.hub.voice.in_session, timeout=3)
+    assert r.hub.conversation_consented and r.hub.follower.consented and len(r.bootstraps()) == 1
+    assert "open" in r.mic()
 
     r2 = Rig(settings)
     await r2.health("idle")
@@ -247,9 +254,81 @@ async def test_a_ritual_joined_mid_way_or_started_unseen_never_opens_the_microph
     await asyncio.sleep(0.1)
     assert r2.hub.follower.active and not r2.hub.follower.consented
     assert r2.bootstraps() == [] and r2.mic() == [] and not r2.hub.voice.in_session
-    await r2.press(6)                                                  # later presses are dial answers, not a start
-    await asyncio.sleep(0.1)
-    assert r2.bootstraps() == [] and r2.mic() == []
+    await r2.press(6)                                                  # the first press the hub sees
+    await settle(lambda: r2.hub.voice.in_session, timeout=3)
+    assert len(r2.bootstraps()) == 1 and r2.hub.follower.step == "energy"
+
+
+async def test_asking_twice_her_words_arm_the_head_and_only_a_press_of_the_ear_starts_the_activity(settings):
+    """D58. She asks for the drums in words (the voice calls start_activity): nothing starts, the head is armed.
+    Her press of the ear is the yes: it is not a dial answer, the head goes to the drum step by itself, and the
+    same ritual and conversation go on, also when the step she asked for lies behind the current one."""
+    r = Rig(settings)
+    hub = r.hub
+    await r.greeted_and_pressed()                                      # the head is in mood, the conversation open
+    assert (await hub.on_tool("start_activity", {"kind": "walk"}))["ok"] is False
+    out = await hub.on_tool("start_activity", {"kind": "drum"})
+    assert out == {"ok": True, "started": False, "waiting_for": "a press of your ear", "seconds": 20}
+    assert {"activity": "drum"} in r.heads() and hub.follower.step == "mood"    # armed; nothing started
+    await r.press(5)                                                   # her yes
+    assert hub.follower.step == "mood" and hub.follower.asked == "drum" and hub._asked is None
+    assert not [e for e in hub.emitted if e.type == "obs.self_report"]   # that press was not a dial answer
+    await r.chime("start_drum")
+    await r.health("drum")                                             # the head went there itself
+    assert hub.follower.step == "drum" and hub.follower.active and hub.conversation_consented
+    assert hub.follower.asked is None and "activity_confirmed" in hub._notes
+
+    assert (await hub.on_tool("start_activity", {"kind": "drum"}))["ok"] is False   # already on
+    out = await hub.on_tool("start_activity", {"kind": "breathe"})     # a step behind the current one
+    assert out["ok"] and {"activity": "breathe"} in r.heads()
+    await r.press(5)
+    await r.health("breathe")
+    assert hub.follower.step == "breathe" and hub.follower.active and hub.conversation_consented
+    assert hub.voice.in_session                                        # the same conversation, not a new ritual
+
+
+async def test_asking_twice_without_a_press_starts_nothing_and_kaiku_is_told(settings, monkeypatch):
+    from kaiku_hub import main as hub_main
+    monkeypatch.setattr(hub_main, "ASK_TWICE_S", 0.1)
+    r = Rig(settings)
+    hub = r.hub
+    await r.greeted_and_pressed()
+    told: list[str] = []
+
+    async def send_context(text):
+        told.append(text)
+
+    hub._send_context = send_context
+    assert (await hub.on_tool("start_activity", {"kind": "breathe"}))["ok"]
+    await asyncio.sleep(0.9)
+    assert hub._asked is None and {"activity": "none"} in r.heads() and hub.follower.step == "mood"
+    assert told and "not pressed" in told[0] and "activity_not_confirmed" in hub._notes
+    await r.press(4)                                                   # a late press is an ordinary press again
+    assert hub.follower.step == "energy"
+
+
+async def test_a_dial_question_is_answered_in_words_or_with_the_ear_and_stop_saves_what_there_is(settings):
+    """D59. In the mood step she says it: the voice calls record_dial, the hub records that answer and tells the
+    head to go on. The next question she answers with the ear. Then she says stop: the head is sent to rest, and the
+    episode is kept as ended early with both answers."""
+    r = Rig(settings)
+    hub = r.hub
+    await r.greeted_and_pressed()                                      # mood
+    assert (await hub.on_tool("record_dial", {"item": "sleep", "value": 2}))["ok"] is False   # not what is asked now
+    assert (await hub.on_tool("record_dial", {"item": "mood", "value": 2})) == {"ok": True, "recorded": "mood"}
+    assert {"ritual": "next"} in r.heads()
+    await r.health("energy")                                           # the head went on by itself
+    await r.press(8)                                                   # this one with the ear
+    await r.health("sleep")
+    reports = [(e.payload.item, e.payload.value) for e in hub.emitted if e.type == "obs.self_report"]
+    assert reports == [("mood", 2), ("energy", 4)]
+    assert (await hub.on_tool("end_session", {"outcome": "ended_early"}))["ok"]   # "that's enough for today"
+    assert {"ritual": "end"} in r.heads()
+    await r.health("idle")                                             # the head is back at rest
+    await settle(lambda: not hub.voice.in_session, timeout=3)
+    assert not hub.follower.active and not hub.conversation_consented
+    kept = hub.episodes.queued[-1] if hasattr(hub.episodes, "queued") else None
+    assert kept is None or kept.outcome == "ended_early"
 
 
 async def test_the_invitation_is_not_repeated_every_time_the_head_greets_a_face(settings):
@@ -276,12 +355,12 @@ async def test_step_tools_are_refused_on_a_self_running_head_and_ending_the_talk
     r = Rig(settings)
     hub = r.hub
     await r.greeted_and_pressed()
-    for name, args in (("record_dial", {"item": "mood", "value": 3}), ("start_activity", {"kind": "drum"}),
-                       ("start_phq9", {})):
+    for name, args in (("start_drum", {}), ("start_phq9", {})):
         out = await hub.on_tool(name, args)
         assert out["ok"] is False and "ear" in out["error"]
     assert not [e for e in hub.emitted if e.type == "obs.self_report"] and not hub.state.phq9_due
     assert (await hub.on_tool("end_session", {"outcome": "completed"}))["ok"]   # she asked to stop talking
+    assert {"ritual": "end"} in r.heads()                              # the head is told to go back to rest (D59)
     await settle(lambda: not hub.voice.in_session, timeout=3)
     assert r.mic()[-1] == "close" and hub.follower.active and not hub.conversation_consented
     n = len(r.client.connections[-1].session.said)
@@ -292,7 +371,7 @@ async def test_step_tools_are_refused_on_a_self_running_head_and_ending_the_talk
 
 
 def test_the_tool_filter_takes_both_shapes():
-    plain = [{"name": "record_dial"}, {"name": "feel"}]
+    plain = [{"name": "start_drum"}, {"name": "feel"}]
     blocks = [{"function_declarations": [{"name": "start_activity"}, {"name": "recall"}]},
               {"function_declarations": [{"name": "start_phq9"}]}]
     assert without(plain, HEAD_RUNS_ITS_STEPS) == [{"name": "feel"}]

@@ -19,7 +19,35 @@ def from_registry(name: str) -> dict:
 
 # A head that runs its own ritual (standalone firmware, follow mode) moves through its steps by itself and takes its
 # dial answers from its own knob: these tools would promise the model something the hub cannot do there.
-HEAD_RUNS_ITS_STEPS = frozenset({"record_dial", "start_activity", "start_breathing", "start_drum", "start_phq9"})
+# `record_dial` is honoured there: she may answer a dial question in words or with the ear (the hub records the
+# spoken answer and moves the head on). `start_activity` comes back as asking twice (below).
+HEAD_RUNS_ITS_STEPS = frozenset({"start_activity", "start_breathing", "start_drum", "start_phq9"})
+
+
+# Asking twice (D58): on a head that runs its own ritual the person can ask for an activity in words. The words alone
+# start nothing: the hub arms the head and only a press of its ear inside ASK_TWICE_S starts it.
+ASK_TWICE_S = 20.0
+ASK_TWICE_KINDS: dict[str, str] = {"breathe": "the breathing", "drum": "the drums"}
+ASK_TWICE_TOOL: dict = {
+    "name": "start_activity",
+    "description": "The person has just asked, in their own words, to do an activity with you now: breathe = slow "
+                   "breathing together, drum = the drums (the rhythm game Tap it back). Calling this does NOT start "
+                   "it: it gets the robot ready, and only a press of your ear in the next 20 seconds starts it. "
+                   "Right after calling, say one short line that names the activity and asks them to press your ear "
+                   "to start, for example \"The drums? Press my ear and we start.\" Call it only when they asked "
+                   "for it or clearly said yes to your suggestion; never because you think it would do them good, "
+                   "never for a maybe. If the result is not ok, tell them plainly it cannot start now and why. You "
+                   "will be told if the ear was not pressed. Returns {ok, started: false, waiting_for, seconds}.",
+    "parameters": {"type": "object", "required": ["kind"], "properties": {
+        "kind": {"type": "string", "enum": list(ASK_TWICE_KINDS)}}},
+}
+
+
+def with_ask_twice(tools: list[dict]) -> list[dict]:
+    """The follow-mode tool list plus the ask-twice `start_activity`, in the list's own shape."""
+    if any(isinstance(t, dict) and "function_declarations" in t for t in tools):
+        return [*tools, {"function_declarations": [ASK_TWICE_TOOL]}]
+    return [*tools, ASK_TWICE_TOOL]
 
 
 def without(tools: list[dict], names: frozenset[str] | set[str]) -> list[dict]:
@@ -59,6 +87,8 @@ TOOLS: list[dict] = [
     # An activity agreed with the robot shows up on the phone and Mac at once (cloud `agree_activity`, D50): the
     # robot has no screen for games, the journal or a walk, so a clear yes is forwarded and the cloud keeps it.
     from_registry("agree_activity"),
+    # Photo time: the sensors board counts face signs for a few seconds (rituals/photo_time.py). No picture.
+    from_registry("photo_time"),
 ]
 
 SYSTEM_PROMPT = (

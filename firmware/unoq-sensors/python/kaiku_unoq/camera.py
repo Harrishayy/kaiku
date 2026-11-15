@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .vision import Box, biggest, distance_cm, face_payload, forehead, light_payload
+from .vision import Box, SignFrame, biggest, distance_cm, face_payload, face_signs, forehead, light_payload
 
 
 @dataclass
@@ -68,9 +68,17 @@ class Camera:
 
     def __init__(self, cfg: CameraConfig, on_faces: Callable[[list[dict], float], None],
                  on_light: Callable[[dict], None], on_error: Callable[[str], None] = lambda _e: None,
-                 on_ppg: Callable[[int, float, list[int]], None] = lambda *_a: None):
+                 on_ppg: Callable[[int, float, list[int]], None] = lambda *_a: None,
+                 on_signs: Callable[[dict], None] = lambda _p: None):
         self.cfg = cfg
         self.on_faces, self.on_light, self.on_error, self.on_ppg = on_faces, on_light, on_error, on_ppg
+        self.on_signs = on_signs
+        # Photo time: seconds asked for (set by the node), then the window's frames as numbers only.
+        self._signs_want = 0.0
+        self._signs_lock = threading.Lock()
+        self._signs: list[SignFrame] = []
+        self._signs_t0 = 0.0
+        self._signs_end = 0.0
         self.ppg_on = threading.Event()
         self._box: Box | None = None
         self._ppg: list[int] = []
@@ -97,6 +105,56 @@ class Camera:
 
     def sample_light_now(self) -> None:
         self._light_now.set()
+
+    def count_signs(self, seconds: float) -> None:
+        """Photo time: count face signs for `seconds` from the next frame, then call `on_signs` once.
+        A window that is already running is not restarted."""
+        with self._signs_lock:
+            if self._signs_end == 0.0 and self._signs_want == 0.0:
+                self._signs_want = max(1.0, min(30.0, float(seconds)))
+
+    def _smile_detector(self, cv2):  # noqa: ANN001
+        """Smile cascade on the lower half of the face box; None when this OpenCV build ships no such file."""
+        clf = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_smile.xml")
+        if clf.empty():
+            return None
+
+        def smiling(gray, b: Box) -> bool:  # noqa: ANN001
+            mouth = gray[b.y + b.h // 2:b.y + b.h, b.x:b.x + b.w]
+            if mouth.size == 0:
+                return False
+            return len(clf.detectMultiScale(mouth, scaleFactor=1.6, minNeighbors=18,
+                                            minSize=(max(8, b.w // 4), max(4, b.h // 8)))) > 0
+
+        return smiling
+
+    def _signs_tick(self, gray, boxes: list[Box], now: float, smiling) -> None:  # noqa: ANN001
+        """One frame of a Photo time window: keep numbers, never the frame; at the end hand the summary over."""
+        with self._signs_lock:
+            if self._signs_want:
+                self._signs, self._signs_t0 = [], now
+                self._signs_end, self._signs_want = now + self._signs_want, 0.0
+            if self._signs_end == 0.0:
+                return
+            end = self._signs_end
+        if len(boxes) == 1:
+            b = boxes[0]
+            self._signs.append(SignFrame(now, 1, b.x + b.w / 2, b.y + b.h / 2, float(b.w),
+                                         smiling(gray, b) if smiling else None))
+        else:
+            self._signs.append(SignFrame(now, len(boxes)))
+        if now >= end:
+            payload = face_signs(self._signs, now - self._signs_t0)
+            self._signs = []
+            with self._signs_lock:
+                self._signs_end = 0.0
+            if payload:
+                self.on_signs(payload)
+
+    @property
+    def counting_signs(self) -> bool:
+        with self._signs_lock:
+            return bool(self._signs_want or self._signs_end)
 
     def _detector(self, cv2):  # noqa: ANN001
         # VERIFY yunet: cv2.FaceDetectorYN needs a model file on the board; haar ships with OpenCV.
@@ -158,6 +216,7 @@ class Camera:
                 continue
             backoff, self.ok = 1.0, True
             detect = self._detector(cv2)
+            smiling = self._smile_detector(cv2)
             next_face = 0.0
             next_light = time.monotonic() + (5 if c.light_every_s != float("inf") else float("inf"))
             try:
@@ -176,10 +235,14 @@ class Camera:
                     self._ppg_tick(frame, time.monotonic())
                     if now < next_face:
                         continue
-                    next_face = now + 1.0 / c.face_hz
+                    # Photo time looks twice as often for its few seconds (smiles are short).
+                    next_face = now + 1.0 / (c.face_hz * (2 if self.counting_signs else 1))
                     h, w = frame.shape[:2]
-                    boxes = detect(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    boxes = detect(gray)
                     del frame  # never kept past this tick
+                    self._signs_tick(gray, boxes, now, smiling)
+                    del gray
                     faces = [face_payload(b, w, h) for b in boxes]
                     big = biggest(boxes)
                     self._box = big or self._box

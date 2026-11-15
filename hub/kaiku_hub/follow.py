@@ -63,9 +63,10 @@ CHIMES: dict[str, tuple[str, tuple[str | None, ...]]] = {
 # see its number, so the lines give a direction, not a number (main.cpp: clockwise is higher), and the breathing is
 # paced by Kaiku's words, not by a light.
 STEP_LINES: dict[str, str] = {
-    "mood": "How are you today? Turn my ear clockwise for lighter, the other way for heavier, then press it.",
-    "energy": "And your energy? Clockwise for more, the other way for less, then press.",
-    "sleep": "How did you sleep last night? Clockwise for better, the other way for worse.",
+    "mood": "How are you today? Just tell me, or turn my ear: clockwise for lighter, the other way for heavier, "
+            "then press it.",
+    "energy": "And your energy? Tell me, or turn my ear: clockwise for more, then press.",
+    "sleep": "How did you sleep last night? Tell me, or turn my ear: clockwise for better, then press.",
     "breathe": "Now let's breathe slowly together. In through your nose, and a long breath out.",
     "drum": "Now drum on my head. Any rhythm you like.",
     "done": "See you tomorrow. Kiitos!",
@@ -113,6 +114,8 @@ class HeadFollower:
     muted_taps: int = 0
     game: bool = False               # the hub is running Tap it back in the head's drum step: its taps are the game's
     game_levels: int = 0             # levels of that game with a measured try (the hub keeps this current)
+    asked: str | None = None         # the step the hub sent the head to (asking twice, D58): going there, also
+                                     # backwards, is this ritual going on, not a new one
     unanswered: int = 0              # greetings nobody answered since the hub started
     _greet_at: float | None = None   # the head is greeting; not a record until the person answers
     _last_unanswered: float | None = None
@@ -163,6 +166,18 @@ class HeadFollower:
             else:
                 out.append(("note", "dial_value_out_of_range", {"item": step, "value": int(value)}))
         return out + self._goto(AFTER_PRESS[step], now, cause="press")
+
+    def spoken_dial(self, item: str, value: int) -> list[Action] | None:
+        """She answered the open dial question in words (the voice's `record_dial`, 1-5) instead of with the ear.
+        None = not the question the head is asking now. The hub then tells the head to go on (`cmd.head {ritual:
+        next}`); a dial value the ear holds for this step is dropped, so one question has one answer."""
+        if not self.active or self.step != item or item not in DIAL or not 1 <= int(value) <= 5:
+            return None
+        self._held = [h for h in self._held if h[0] != item]
+        self._dial[item] = int(value)
+        self._dial_presses += 1
+        return [("emit", "obs.self_report", {"item": item, "value": int(value), "context": "ritual",
+                                             "channel": "robot"}, None, None)]
 
     def on_tap(self, t_ms: int, force: float | None = None) -> bool:
         """A UNO Q knock. Counted only while the head is in drum and its motor is still."""
@@ -311,7 +326,9 @@ class HeadFollower:
         if new == old:
             return []
         out: list[Action] = []
-        if self.active and old is not None and new != "idle" and HEAD_STEPS.index(new) < HEAD_STEPS.index(old):
+        asked, self.asked = self.asked == new, (None if self.asked == new else self.asked)
+        if (self.active and old is not None and new != "idle" and not asked
+                and HEAD_STEPS.index(new) < HEAD_STEPS.index(old)):
             # the head went backwards (a `greet` / `ritual` serial command, or a reboot into a new ritual)
             out += self._abort(now, "ended_early", f"head went from {old} back to {new}")
         if not self.active and old == "greet" and self._greet_at is not None:

@@ -120,15 +120,25 @@ def non_blocking_names(tools: list[dict[str, Any]]) -> set[str]:
             if str(d.get("behavior", "")).upper().endswith("NON_BLOCKING")}
 
 
+def transcription(language: str) -> dict[str, Any]:
+    """`input_audio_transcription` for a session in `language` ("en" | "fi" | "sv"): its BCP-47 code from
+    `[voice] lang_codes` as `language_codes` ("hints about the languages present in the audio. If omitted or empty,
+    defaults to automatic language detection", google-genai `AudioTranscriptionConfig`). With automatic detection
+    English speech was transcribed as German. `[live] transcription_language_hint = false` = automatic again."""
+    cfg = load_config()
+    code = (cfg.get("voice", {}).get("lang_codes", {}) or {}).get(language or "")
+    return {"language_codes": [code]} if code and cfg.get("live", {}).get("transcription_language_hint", True) else {}
+
+
 def live_config(system_instruction: str, tools: list[dict[str, Any]], voice_name: str = "",
-                non_blocking: bool = True) -> dict[str, Any]:
+                non_blocking: bool = True, language: str = "") -> dict[str, Any]:
     """LiveConnectConfig as a dict (pure; tested without the SDK)."""
     live = load_config().get("live", {})
     cfg: dict[str, Any] = {
         "response_modalities": ["AUDIO"],
         "system_instruction": system_instruction,
         "tools": tool_config(tools, non_blocking),
-        "input_audio_transcription": {},
+        "input_audio_transcription": transcription(language),
         "output_audio_transcription": {},
         "session_resumption": {},
         "realtime_input_config": {
@@ -255,7 +265,7 @@ class GeminiLiveVoice(Voice):
         # declaration's `behavior` is dropped and such a tool (feel) is forwarded as an ordinary blocking call.
         asynchronous = not getattr(self.client, "vertexai", False)
         config = live_config(system_instruction + CUE_RULES, tools, voice or self.voice_name,
-                             non_blocking=asynchronous)
+                             non_blocking=asynchronous, language=self.language)
         self._non_blocking = non_blocking_names(config["tools"])
         self.transcript = []
         self._transcript_pending = {}

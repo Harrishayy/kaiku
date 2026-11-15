@@ -43,6 +43,7 @@ class SensorsSim:
         self.arrive_after_s = arrive_after_s
         self.dwell_s = dwell_s
         self.rng = random.Random(seed)
+        self.photo_time_scale = 1.0  # tests shorten the Photo time window
         self.ppg = PpgSynth(hr_bpm=hr_bpm, seed=seed)
         self._hr_rest = hr_bpm
         self._breathe_t0: float | None = None
@@ -118,7 +119,22 @@ class SensorsSim:
             self.ppg_active = ("camera" if self.ppg_mode == "camera" else "ky039") if self.ppg_on else None
         if cmd.camera_enable is not None:
             self.camera = cmd.camera_enable
+        if cmd.face_signs_s is not None and self.camera:
+            asyncio.get_running_loop().create_task(self._photo_time(cmd.face_signs_s))
         self.bus.log.info("cmd_sensors", str(cmd.model_dump(exclude_none=True)))
+
+    async def _photo_time(self, seconds: float) -> None:
+        """Photo time twin: after the window, the same message the board's camera sends (a face only when the
+        simulated person is at the robot)."""
+        await asyncio.sleep(seconds * self.photo_time_scale)
+        n = max(1, int(seconds * 10))
+        if self._arrived_at is None:
+            payload = {"duration_s": seconds, "samples": n, "coverage": 0.0}
+        else:
+            payload = {"duration_s": seconds, "samples": n, "coverage": round(self.rng.uniform(0.8, 1.0), 3),
+                       "smile_share": round(self.rng.uniform(0.1, 0.6), 3), "smiles": self.rng.randint(1, 3),
+                       "head_movement": round(self.rng.uniform(0.05, 0.4), 3)}
+        await self.bus.publish("raw.sensors.face_signs", payload)
 
     async def _on_ritual(self, _t, env) -> None:
         # paced breathing raises RSA, like the real thing

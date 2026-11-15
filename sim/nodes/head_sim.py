@@ -402,6 +402,7 @@ class StandaloneHeadSim(TapBackPerson):
         self._pan_speed = 0
         self._moving = False
         self._tap_latch = self._face = False
+        self._armed: tuple[str, float] | None = None
         self._last_knock_ms = -10_000
         self._t0 = time.monotonic()
         self._reconnects = 1
@@ -494,6 +495,10 @@ class StandaloneHeadSim(TapBackPerson):
     async def press_ear(self) -> None:
         async with self._lock:
             await self._ear(0, True)  # sent first, with the dial value as it stands
+            armed, self._armed = self._armed, None
+            if armed and self.mode != "idle" and time.monotonic() - armed[1] <= 20.0:
+                await self._set_mode(armed[0])  # main.cpp, asking twice (D58): this press starts what she asked for
+                return
             if self.mode in self.DIALS:
                 self.results[self.mode] = self.dial_value
             await self._advance()
@@ -535,6 +540,15 @@ class StandaloneHeadSim(TapBackPerson):
 
     async def _on_cmd(self, _t, env) -> None:
         c = env.payload
+        if c.ritual and self.mode not in ("idle", "greet"):  # main.cpp `said`: she said it instead of pressing
+            async with self._lock:
+                self._armed = None
+                if c.ritual == "end":
+                    await self._set_mode("idle")
+                elif self.mode in self.DIALS:
+                    await self._advance()
+        if c.activity:  # main.cpp `arm`: for 20 s the next press of the ear starts this step (asking twice, D58)
+            self._armed = None if c.activity == "none" else (c.activity, time.monotonic())
         if c.eyes:  # kaiku_net.cpp mapEyes: five faces; `listening` is the wide one, neutral/thinking/soft the calm one
             self.eyes = c.eyes if c.eyes in ("happy", "wide", "sleepy") else "wide" if c.eyes == "listening" else "calm"
         self.mic.on_cmd(c.mic)

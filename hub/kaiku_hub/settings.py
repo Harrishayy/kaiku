@@ -96,6 +96,7 @@ class Settings:
     phone_mic_tail_ms: float = 400  # a phone as the robot's microphone: not heard this long after the speaker ends
     voice_audio: str = "auto"  # auto | head | local ([voice] audio): Kaiku's Live voice and the microphone
     tap_back: TapBackConfig = field(default_factory=TapBackConfig)  # [tap_back]: the drum step as a rhythm game
+    photo_time_s: float = 8  # [photo_time] seconds: how long the robot's camera counts face signs
     # models (VERIFY in docs; never hard-code in code)
     gemini_live_model: str = ""
     lyria_model: str = ""
@@ -182,6 +183,7 @@ class Settings:
             phone_mic_tail_ms=_f(c, "voice", "phone_mic_tail_ms", 400),
             voice_audio=(str(c.get("voice", {}).get("audio", "auto")).lower()
                          if str(c.get("voice", {}).get("audio", "auto")).lower() in ("auto", "head", "local") else "auto"),
+            photo_time_s=min(30.0, max(2.0, _f(c, "photo_time", "seconds", 8))),
             tap_back=TapBackConfig.from_dict(c.get("tap_back", {}), bpm_min=_f(c, "music", "bpm_min", 60),
                                              bpm_max=_f(c, "music", "bpm_max", 200)),
             gemini_live_model=str(c.get("models", {}).get("gemini_live", "")),

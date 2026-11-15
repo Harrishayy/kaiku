@@ -56,9 +56,9 @@ async def test_a_ritual_with_the_voice_is_traced_and_her_words_are_in_none_of_it
     (tool,) = of(r.sent, "tool")
     assert {k: v for k, v in tool.items() if k != "ms"} == {"kind": "tool", "tool": "feel", "ok": True, "by": "rule"}
     assert isinstance(tool["ms"], int) and tool["ms"] >= 0
-    await hub.on_tool("record_dial", {"item": "mood", "value": 3})     # refused on this head: traced as not ok
+    await hub.on_tool("start_drum", {})                                # refused on this head: traced as not ok
     await settle(lambda: len(of(r.sent, "tool")) == 2)
-    assert of(r.sent, "tool")[-1]["tool"] == "record_dial" and of(r.sent, "tool")[-1]["ok"] is False
+    assert of(r.sent, "tool")[-1]["tool"] == "start_drum" and of(r.sent, "tool")[-1]["ok"] is False
 
     for v in (7, 4, 9):
         await r.press(v)

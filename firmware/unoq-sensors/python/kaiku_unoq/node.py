@@ -61,7 +61,8 @@ class SensorsNode:
         self._ppg_watch: asyncio.Task | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.camera = Camera(camera_config(), self._faces_from_thread, self._light_from_thread,
-                             self._error_from_thread, self._camera_ppg_from_thread) if camera else None
+                             self._error_from_thread, self._camera_ppg_from_thread,
+                             self._signs_from_thread) if camera else None
         bridge.provide("on_ppg", self._ppg_from_bridge)
         bridge.provide("on_hall", self._hall_from_bridge)
         bridge.provide("mcu_ready", self._ready_from_bridge)
@@ -165,6 +166,10 @@ class SensorsNode:
     def _light_from_thread(self, payload: dict) -> None:
         self._hop(self.bus.publish, "raw.sensors.light", payload)
 
+    def _signs_from_thread(self, payload: dict) -> None:
+        """Photo time is over: the window's numbers (no frame) go to the hub."""
+        self._hop(self.bus.publish, "raw.sensors.face_signs", payload)
+
     def _error_from_thread(self, msg: str) -> None:
         log.warning("camera", msg)
 
@@ -193,6 +198,8 @@ class SensorsNode:
             (self.camera.enabled.set() if c.camera_enable else self.camera.enabled.clear())
         if c.ppg is not None:
             await (self.ppg_start() if c.ppg == "start" else self.ppg_stop())
+        if c.face_signs_s is not None and self.camera is not None:
+            self.camera.count_signs(c.face_signs_s)
 
     # ------------------------------------------------------------ run
     async def run(self, stop: asyncio.Event | None = None) -> None:

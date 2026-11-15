@@ -18,7 +18,8 @@ Sketch ↔ app only through the Bridge (RPC router). App ↔ everything else onl
 and the ritual. The eyes, knob, LEDs and motor belong to the Atech board. Camera frames never leave the camera thread.
 
 ## Consumes (topics/endpoints)
-`cmd/sensors`: `chime: wake|ok|start_drum|end_drum|alert` · `ppg: start|stop` · `camera_enable`.
+`cmd/sensors`: `chime: wake|ok|start_drum|end_drum|alert` · `ppg: start|stop` · `camera_enable` ·
+`face_signs_s` (Photo time: count face signs for that many seconds, then one `raw/sensors/face_signs`).
 Taps are not this node's any more (D55): the KY-031 knock switch is removed; the Atech head publishes `raw/head/tap`.
 
 ## Emits (topics/endpoints)
@@ -26,7 +27,8 @@ Taps are not this node's any more (D55): the KY-031 knock switch is removed; the
 `raw/sensors/light` `{raw, lux_est}` every 10 s (camera with locked exposure: `light_source = "camera"`, this build; KY-054 if fitted) ·
 `raw/sensors/ppg` `{t0_ms, fs_hz, samples}`: KY-039 100 Hz × 25 (quality 0.9), or the camera backup ~15 Hz (quality
 0.6) · `raw/hub/face` per face at 5 Hz · `raw/sensors/distance` `{cm}` from the biggest face (`far_cm` when nobody is
-there) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, ppg, at_home}`.
+there) · `raw/sensors/face_signs` `{duration_s, samples, coverage, smile_share?, smiles?, head_movement?}` once after a
+Photo time window (Haar cascades; a sign that was not measured is absent; written 15 Nov, not yet run on the board) · `health/sensors` `details{camera_ok, mcu_ok, mcu_fw, ppg, at_home}`.
 
 ## Map
 ```
@@ -55,6 +57,7 @@ bench/<part>/         one-part tests: knock (part not fitted, D55), hall, light,
 ## Invariants
 - Same topics + payloads as `sensors_sim`: the hub can't tell them apart.
 - No frame, audio or image is stored, logged or sent. Only the numbers above leave the camera thread (docs/privacy.md).
+- Photo time counts movements (smiles, head movement), never a feeling, and takes no picture (D52).
 - PPG only between `ppg start` and `ppg stop`, at a stable `fs_hz` (fixed micros grid on the sketch).
 - `alert` chime = device fault only, never mood or safety.
 - A dead sketch or camera never kills the node: Bridge calls and the camera fail soft and show in `health/sensors`.

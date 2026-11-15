@@ -24,6 +24,7 @@ May import `kaiku_contracts` + third-party libs only — never `cloud`, `sim`, `
 | `kaiku/v1/<home>/raw/sensors/distance` | presence → `obs/presence` + the attention ladder (no camera = presence alone means "at desk"). On the build it is the UNO Q's estimate from the face box (`far_cm` = no face): a face turned away for `[hub] presence_leave_s` = left; no reading for `presence_stale_s` = unknown, not "here" |
 | `kaiku/v1/<home>/raw/sensors/light` | `obs/light_level` (hourly mean) |
 | `kaiku/v1/<home>/raw/sensors/button` (`id: "top"`), `raw/head/button` (`id: "head"`) | short press idle → start ritual; hold ≥ 2 s → crisis (manual); button build (`[robot] dial_input = "button"`): short presses during a ritual → one dial answer per run (`perception/presses.py`, `press_window_s`), fed as the ear event below |
+| `kaiku/v1/<home>/raw/sensors/face_signs` | Photo time (`rituals/photo_time.py`): started by the voice tool `photo_time` or `cmd/hub {photo_time: true}`; the hub says "Photo time!", sends `cmd/sensors {face_signs_s}` (`[photo_time] seconds`), and turns the board's one answer into `obs.face_signs` (task `photo_time`, device `robot`, method `haar_cascades`). No picture; no face in the window is a normal result; the voice model is never told how the face looked. Tests: `tests/test_photo_time.py`. Not yet run on the robot |
 | `kaiku/v1/<home>/raw/hub/face` (source ≠ `hub`) | attention ladder (one message per face per frame; UNO Q YOLO or sim) + greet step looks at the face |
 | `kaiku/v1/<home>/audio/head/mic` (**binary, not an envelope**) | the head's microphone: 640-byte frames (16 kHz mono 16-bit, 20 ms), only while the hub holds it open for a consented Live conversation; passed to Gemini Live and nowhere else. Frames that come while no conversation holds it open are dropped unread |
 | `kaiku/v1/<home>/audio/phone/mic` (**binary, not an envelope**) | a phone or Mac beside the robot standing in for the head's microphone (D56; the app's "Robot microphone" switch): the same 640-byte frames, sent by the app only while the hub holds the microphone open. `HeadAudio.on_phone_frame`: dropped unread with no conversation open; dropped while the head's speaker has sound of ours and `[voice] phone_mic_tail_ms` (400) after, so Kaiku never hears herself; while phone frames arrive (the last 2 s) the head's own frames are ignored. `health/hub` `details.mic_source`: `phone` or `head`. |
@@ -326,8 +327,10 @@ tests/             unit + contract tests per area; test_integration.py = full ri
 - **The conversation in follow mode (the same consent rule as drive mode, nothing new):** drive mode opens the Live
   conversation when the person started the ritual themselves; on a head that runs its own ritual that is her press
   of the ear at the head's greeting, which the hub records as `follower.consented`. The hub opens the conversation
-  on the follower's `begin` only then: **never for a ritual it joined mid-way, never for a start whose press it did
-  not see.** At the head's greeting (not yet a ritual) Kaiku's invitation is said once in the cached voice, at most
+  on the follower's `begin` then, and otherwise on **the first press of the ear it sees in that ritual, whatever step
+  the head is in** (D57, `_follow_press_opens_talk`: a missed greeting or a ritual joined mid-way no longer leaves
+  the robot deaf). One conversation per ritual: after a crisis or after she asked to stop talking, a press is only
+  a press. No press seen = no microphone. `health/hub` `details.talk`: `open` | `opening` | `closed`. At the head's greeting (not yet a ritual) Kaiku's invitation is said once in the cached voice, at most
   every `[hub] follow_offer_every_s` 300 (the head greets a face about once a minute); nothing is listened to
   before her press. The session uses the cloud's existing `ritual` intent (`POST /v1/companion/session`); the tools
   that would run a step are taken out of what the model is offered and refused if called
@@ -340,6 +343,11 @@ tests/             unit + contract tests per area; test_integration.py = full ri
   ritual ends (after "See you tomorrow", with the microphone already closed), when she asks to stop talking
   (`end_session`: the head's ritual and its record go on), on the session's own limits, and at once on a crisis.
   Speech features and the engagement summary stay as they were (drive mode's rules).
+- **The robot hears the configured language (2026-11-15).** `live_config(..., language=)` sets
+  `input_audio_transcription.language_codes` to the code of `[home] language` from `[voice] lang_codes` (en →
+  `en-US`; `gemini_live.transcription`), so her speech is not left to automatic language detection (English came
+  back as German). `[live] transcription_language_hint = false` turns it off. A hint to the recogniser, not a lock;
+  the instruction from the cloud says the same in words.
 - **The game and the voice in one ritual, the same in both modes:** `Game` closes the open conversation's microphone
   when it begins (`ctx.listening(False)` → `Voice.listen`: `cmd.head {mic: close}`, the keep-alive stops, frames
   that still arrive are dropped, the server is told once that the stream paused) and opens it again when the game
@@ -437,9 +445,19 @@ KAIKU_HOME_ID=aino KAIKU_HUB_ROBOT_HOME_ID=demo-aino KAIKU_CLOUD_URL=http://loca
   played there; absent (the firmware before sound) → no game, the head's own free drumming is recorded as before
   (the hub logs `tap_back … cannot lend its drum step`). With `KAIKU_VOICE_AUDIO=auto` the voice goes through the
   head only when its health has the `audio` block, else through this Mac.
-- The conversation opens only when she presses the ear at the head's greeting WITH THE HUB ALREADY RUNNING (hub log
-  `follow_conversation opening`). Started the hub mid-ritual: `not opened: the ritual was joined mid-way`; let the
-  head return to idle and start again.
+- **Asking twice (D58):** in follow mode the voice is offered `start_activity {breathe | drum}` (`tools.ASK_TWICE_TOOL`).
+  `_ask_twice` arms the head (`cmd.head {activity}`), `_ask_twice_press` takes the next press of the ear within
+  `ASK_TWICE_S` (20) as the yes (that press is not fed to the follower; `follower.asked` lets the head go to that
+  step, also backwards, inside the same ritual), `_ask_twice_expire` disarms and tells Kaiku.
+- **Words or the ear, and stop (D59):** `record_dial` is honoured in follow mode for the question the head asks now
+  (`_follow_spoken_dial`, `follower.spoken_dial`, then `cmd.head {ritual: next}`); `end_session` / `end_ritual` send
+  `cmd.head {ritual: end}` so the head goes back to rest and `_follow_end` keeps the episode as ended early.
+- Fixed lines in the cached voice (the invitation, the step lines, Tap it back's lines, the goodbye) are fetched
+  when the hub starts (`LinePlayer.prewarm`, log `voice_prewarm n/n lines ready`, up to a minute after a cloud
+  restart or a render change) and kept in memory: a line the cloud has not rendered yet takes longer than the 3 s a
+  spoken line may wait and would not be said.
+- The conversation opens on the first press of the ear the hub sees in a ritual (hub log `follow_conversation
+  opening`, D57). Until then the log says `not open yet: her next press of the ear opens it`.
 - The fallback line was NOT run by the agent who wrote it (it would have opened this Mac's microphone and speaker):
   it is the drive-mode sound path that existed before, plus `--with sounddevice`. Through a laptop speaker and
   microphone Kaiku can hear itself; use headphones or keep the laptop away from the robot if it answers its own

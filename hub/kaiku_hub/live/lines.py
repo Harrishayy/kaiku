@@ -70,6 +70,7 @@ class LinePlayer:
         self.transport = transport
         self.lines = {**FALLBACK_TEXT, **load_lines()}
         self._audio: dict[tuple[str, str], bytes] = {}
+        self._said: dict[tuple[str, str], bytes] = {}  # unkeyed lines by (text, lang): fetched once, kept in memory
         self.last_source: str | None = None  # cloud | cache | text (for logs/tests)
 
     def text(self, key: str, lang: str = "en") -> str:
@@ -119,15 +120,43 @@ class LinePlayer:
         print(f"\U0001f916 Kaiku: {text}", file=sys.stderr, flush=True)
         if not self.cloud_url or not self.play_audio:
             return
+        audio = await self.fetch_text(text, lang, self.timeout_s)
+        if audio is not None:
+            await self._play(audio)
+
+    async def fetch_text(self, text: str, lang: str, timeout_s: float) -> bytes | None:
+        """The audio of an unkeyed line (`POST /v1/voice/say`), from memory when it was fetched before. A line the
+        cloud has not rendered yet takes several seconds: longer than a spoken line can wait, so `prewarm` fetches
+        the hub's fixed lines ahead of time and a miss here is logged, never spoken late."""
+        if (text, lang) in self._said:
+            return self._said[(text, lang)]
+        if not self.cloud_url:
+            return None
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         try:
-            async with httpx.AsyncClient(base_url=self.cloud_url, headers=headers, timeout=self.timeout_s,
+            async with httpx.AsyncClient(base_url=self.cloud_url, headers=headers, timeout=timeout_s,
                                          transport=self.transport) as c:
                 r = await c.post("/v1/voice/say", json={"text": text[:400], "lang": lang})
             if r.status_code == 200 and r.headers.get("content-type", "").startswith("audio/"):
-                await self._play(r.content)
+                self._said[(text, lang)] = r.content
+                return r.content
+            log.info("voice_text_unavailable", f"HTTP {r.status_code}")
         except Exception as e:
             log.info("voice_text_unavailable", type(e).__name__)
+        return None
+
+    async def prewarm(self, texts: list[str], lang: str = "en", timeout_s: float = 45.0) -> int:
+        """Fetch the hub's own fixed lines before anyone needs them (one at a time, each may be a fresh render).
+        Returns how many are ready. Keyed lines are fetched through their key."""
+        if not self.cloud_url or not self.play_audio:
+            return 0
+        ready = 0
+        for text in dict.fromkeys(texts):
+            key = next((k for k, tr in self.lines.items() if text in tr.values()), None)
+            audio = await self.fetch(key, lang) if key else await self.fetch_text(text, lang, timeout_s)
+            ready += audio is not None
+        log.info("voice_prewarm", f"{ready}/{len(dict.fromkeys(texts))} lines ready", lang=lang)
+        return ready
 
     async def _play(self, data: bytes) -> None:
         """One spoken line, heard to its end: through the head's speaker when the robot is its own body."""

@@ -28,6 +28,24 @@ grids, the pan motor (open loop, homed on the KY-035 hall edge) and the Speaker 
 fitted but unused in v1. Custom firmware speaks MQTT on the LAN. **Never** Atech's cloud gateway or
 `atech.Board.connect()` at runtime; those are for flashing and debugging only.
 
+### What the hub may ask of the head's own ritual (standalone 0.6.0 and 0.7.0, 2026-11-15)
+- 0.6.0, `cmd.head {activity: breathe | drum | none}` (D58, asking twice): for `ARM_MS` (20 s) the next press of the
+  ear starts that step instead of what a press does in the current one; `none` or idle disarms. Flashed.
+- 0.7.0, `cmd.head {ritual: next | end}` (D59): `next` moves on from a dial step (she answered in words), `end` goes
+  to idle quietly (she asked to stop). Never while idle or greeting. **Built, NOT flashed** (the head was not on USB).
+
+### One way through the check-in (standalone 0.5.0, 2026-11-15)
+The head used to run through steps by itself or on one press: a bouncing or double press advanced two or three
+steps, a press meant for the step before skipped breathing or drumming, and a face in view, a bump on the table or a
+sound in the room started a greeting about once a minute. Rules now (`standalone/src/main.cpp`, constants on top):
+- A press counts once per step: none within `PRESS_GUARD_MS` (700) of the last step change; breathing and drumming
+  cannot be skipped in their first `ACTIVITY_MIN_MS` (4000). A press that does not count is not published either
+  (`raw.head.ear`), so the hub's shadow of the step stays right.
+- Waking: a press of the ear, always. A face (`raw.hub.face`) at most every `FACE_WAKE_EVERY_MS` (10 min) and not for
+  `RITUAL_REST_MS` (3 min) after a check-in ended. A tap while idle and a sound in the room wake nothing.
+- Not verified on the bench beyond: built, flashed, back on the broker as 0.5.0 in `idle`. The sim twin
+  (`sim/nodes/head_sim.py`) still has the old rules (a tap and every face wake it, no press guard).
+
 ## Boundaries
 Only messages from `contracts/` (envelope built in C++ to match `kaiku_contracts/envelope.py`). Behaviour lives in
 the custom module `kaiku_link/` (plain C++). The Atech module C++ API is touched only in `project.yaml` files
